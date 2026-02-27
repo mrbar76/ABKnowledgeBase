@@ -3,6 +3,7 @@
 const API = '/api';
 let currentView = 'dashboard';
 let currentCategory = '';
+let currentSource = '';
 
 // --- Navigation ---
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -151,8 +152,17 @@ function renderKanbanCard(task) {
 
 // --- Knowledge ---
 async function loadKnowledge() {
-  const q = currentCategory ? `?category=${encodeURIComponent(currentCategory)}` : '';
+  const params = new URLSearchParams();
+  if (currentCategory) params.set('category', currentCategory);
+  if (currentSource) params.set('ai_source', currentSource);
+  const q = params.toString() ? `?${params}` : '';
   const data = await api(`/knowledge${q}`);
+
+  // Source filter chips
+  const sources = ['claude', 'chatgpt', 'gemini', 'bee'];
+  document.getElementById('source-chips').innerHTML =
+    `<span class="chip ${!currentSource ? 'active' : ''}" onclick="filterSource('')">All Sources</span>` +
+    sources.map(s => `<span class="chip source-${s} ${currentSource === s ? 'active' : ''}" onclick="filterSource('${s}')">${s}</span>`).join('');
 
   try {
     const cats = await api('/knowledge/meta/categories');
@@ -165,11 +175,16 @@ async function loadKnowledge() {
 
   document.getElementById('knowledge-list').innerHTML = data.entries.length
     ? data.entries.map(renderKnowledgeItem).join('')
-    : '<div class="empty-state"><div class="empty-icon">&#128218;</div>No knowledge entries yet.<br>Add some via the API or the + button.</div>';
+    : `<div class="empty-state"><div class="empty-icon">&#128218;</div>${currentSource ? `No entries from ${currentSource} yet.` : 'No knowledge entries yet.<br>Add some via the API or the + button.'}</div>`;
 }
 
 function filterCategory(cat) {
   currentCategory = cat;
+  loadKnowledge();
+}
+
+function filterSource(source) {
+  currentSource = source;
   loadKnowledge();
 }
 
@@ -191,11 +206,13 @@ function renderKnowledgeItem(entry) {
   const tags = Array.isArray(entry.tags) ? entry.tags : [];
   return `
     <div class="knowledge-item ${typeClass}" onclick="openKnowledgeDetail('${entry.id}')">
-      <div class="k-title">${esc(entry.title)}</div>
+      <div class="k-title">
+        ${entry.ai_source ? `<span class="k-source-badge source-${entry.ai_source}">${entry.ai_source}</span>` : ''}
+        ${esc(entry.title)}
+      </div>
       <div class="k-preview">${esc(entry.content)}</div>
       <div class="k-meta">
         <span>${entry.category}</span>
-        ${entry.ai_source ? `<span>via ${entry.ai_source}</span>` : ''}
         <span>${timeAgo(entry.updated_at)}</span>
       </div>
       ${tags.length ? `<div class="k-tags">${tags.map(t => `<span class="k-tag">${esc(t)}</span>`).join('')}</div>` : ''}
