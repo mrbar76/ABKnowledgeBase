@@ -1037,7 +1037,7 @@ async function triggerBeeCloudSync(force = false) {
 
   const headers = token ? { 'X-Bee-Token': token } : {};
   const bodyBase = token ? { bee_token: token } : {};
-  const totals = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [] };
+  const totals = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [], debugKeys: {} };
 
   try {
     // Purge first if force
@@ -1056,6 +1056,7 @@ async function triggerBeeCloudSync(force = false) {
       const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
       totals.facts += r.imported || 0;
       totals.skipped += r.skipped || 0;
+      if (r.debug_keys) totals.debugKeys.facts = r.debug_keys;
       cursor = r.cursor;
       if (r.done) break;
     } while (cursor);
@@ -1082,6 +1083,7 @@ async function triggerBeeCloudSync(force = false) {
       const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
       totals.todos += r.imported || 0;
       totals.skipped += r.skipped || 0;
+      if (r.debug_keys) totals.debugKeys.todos = r.debug_keys;
       cursor = r.cursor;
       if (r.done) break;
     } while (cursor);
@@ -1098,6 +1100,14 @@ async function triggerBeeCloudSync(force = false) {
       totals.conversations += r.imported || 0;
       totals.skipped += r.skipped || 0;
       totalApiConvos += r.api_total || 0;
+      if (r.debug_keys && !totals.debugKeys.conversations) totals.debugKeys.conversations = r.debug_keys;
+      if (r.date_range) {
+        if (!totals.dateRange) totals.dateRange = { earliest: r.date_range.earliest, latest: r.date_range.latest };
+        else {
+          if (r.date_range.earliest < totals.dateRange.earliest) totals.dateRange.earliest = r.date_range.earliest;
+          if (r.date_range.latest > totals.dateRange.latest) totals.dateRange.latest = r.date_range.latest;
+        }
+      }
       if (r.skip_reasons) {
         for (const [k, v] of Object.entries(r.skip_reasons)) convoSkipReasons[k] = (convoSkipReasons[k] || 0) + v;
       }
@@ -1255,6 +1265,13 @@ function showBeeResult(el, data) {
     }
     if (i.errors && i.errors.length) {
       html += `<br><small style="color:#f87171">${i.errors.length} errors</small>`;
+    }
+    if (i.dateRange) {
+      html += `<br><small style="opacity:0.7">Conversation date range: ${new Date(i.dateRange.earliest).toLocaleDateString()} — ${new Date(i.dateRange.latest).toLocaleDateString()}</small>`;
+    }
+    if (i.debugKeys && Object.keys(i.debugKeys).length) {
+      const dk = Object.entries(i.debugKeys).map(([k, v]) => `${k}: [${Array.isArray(v) ? v.join(', ') : v}]`).join('; ');
+      html += `<br><small style="opacity:0.5">API response keys: ${dk}</small>`;
     }
     el.innerHTML = html;
   } else {

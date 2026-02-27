@@ -327,8 +327,11 @@ router.post('/sync-chunk', async (req, res) => {
       const conf = confirmed !== undefined ? confirmed : true;
       const url = `/v1/facts?limit=250&confirmed=${conf}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
-      const facts = Array.isArray(data) ? data : (data.facts || data.items || data.data || []);
-      const nextCursor = data.next_cursor || null;
+      const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
+      const facts = Array.isArray(data) ? data
+        : (data.facts || data.user_facts || data.results || data.items || data.data
+           || Object.values(data).find(v => Array.isArray(v)) || []);
+      const nextCursor = data.next_cursor || data.cursor || null;
       let imported = 0, skipped = 0;
 
       for (const fact of facts) {
@@ -345,13 +348,16 @@ router.post('/sync-chunk', async (req, res) => {
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 && !nextCursor, page_size: facts.length });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 && !nextCursor, page_size: facts.length, debug_keys: debugKeys });
 
     } else if (type === 'todos') {
       const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
-      const todos = Array.isArray(data) ? data : (data.todos || data.items || data.data || []);
-      const nextCursor = data.next_cursor || null;
+      const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
+      const todos = Array.isArray(data) ? data
+        : (data.todos || data.todo_items || data.results || data.items || data.data
+           || Object.values(data).find(v => Array.isArray(v)) || []);
+      const nextCursor = data.next_cursor || data.cursor || null;
       let imported = 0, skipped = 0;
 
       for (const todo of todos) {
@@ -366,13 +372,15 @@ router.post('/sync-chunk', async (req, res) => {
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 && !nextCursor, page_size: todos.length });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 && !nextCursor, page_size: todos.length, debug_keys: debugKeys });
 
     } else if (type === 'conversations') {
-      const url = `/v1/conversations?limit=5` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      // Include created_after to fetch full history (API may default to recent window)
+      const url = `/v1/conversations?limit=5&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
+      const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
       const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
-      const nextCursor = data.next_cursor || null;
+      const nextCursor = data.next_cursor || data.cursor || null;
       let imported = 0, skipped = 0, errors = [];
       let skipReasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
 
@@ -442,7 +450,9 @@ router.post('/sync-chunk', async (req, res) => {
         }
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 && !nextCursor, page_size: convos.length, api_total: convos.length, skip_reasons: skipReasons, errors: errors.length ? errors : undefined });
+      // Include date range of this page for debugging
+      const dates = convos.map(c => c.start_time || c.created_at).filter(Boolean).sort();
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 && !nextCursor, page_size: convos.length, api_total: convos.length, skip_reasons: skipReasons, errors: errors.length ? errors : undefined, debug_keys: debugKeys, date_range: dates.length ? { earliest: new Date(Math.min(...dates.map(d => new Date(d)))).toISOString(), latest: new Date(Math.max(...dates.map(d => new Date(d)))).toISOString() } : null });
 
     } else {
       return res.status(400).json({ error: `Unknown type: ${type}` });
