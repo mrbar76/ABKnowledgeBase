@@ -644,6 +644,162 @@ async function deleteProject(id) {
   loadProjects();
 }
 
+// --- Import ---
+const dropZone = document.getElementById('drop-zone');
+const importFile = document.getElementById('import-file');
+
+dropZone.addEventListener('click', () => importFile.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleImportFile(e.dataTransfer.files[0]);
+});
+importFile.addEventListener('change', e => {
+  if (e.target.files.length) handleImportFile(e.target.files[0]);
+});
+
+function handleImportFile(file) {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const source = document.getElementById('import-source').value;
+      await runImport(data, source);
+    } catch (err) {
+      updateImportLog(`Error: ${err.message}`, true);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function updateImportLog(text, isError) {
+  const log = document.getElementById('import-log');
+  const status = document.getElementById('import-status');
+  status.style.display = 'block';
+  log.innerHTML = `<span style="color:${isError ? 'var(--red)' : 'var(--text-dim)'}">${esc(text)}</span>`;
+}
+
+function updateImportProgress(pct) {
+  document.getElementById('import-progress-fill').style.width = pct + '%';
+}
+
+async function runImport(data, source) {
+  const conversations = Array.isArray(data) ? data : (data.conversations || [data]);
+
+  if (!conversations.length) {
+    updateImportLog('No conversations found in file', true);
+    return;
+  }
+
+  updateImportLog(`Found ${conversations.length} conversations. Importing...`);
+  updateImportProgress(0);
+
+  let imported = 0, skipped = 0, failed = 0;
+
+  for (let i = 0; i < conversations.length; i++) {
+    const conv = conversations[i];
+    const title = conv.title || conv.name || `${source} Conversation ${i + 1}`;
+    let content = '';
+
+    if (source === 'chatgpt') {
+      content = extractChatGPT(conv);
+    } else if (source === 'claude') {
+      content = extractClaude(conv);
+    } else {
+      content = JSON.stringify(conv, null, 2);
+    }
+
+    if (!content || content.trim().length < 20) {
+      skipped++;
+      updateImportProgress(((i + 1) / conversations.length) * 100);
+      continue;
+    }
+
+    const category = autoCategory(title, content);
+
+    try {
+      await api('/knowledge', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          content: content.substring(0, 50000),
+          category,
+          tags: [`${source}-import`, 'conversation'],
+          source: `${source}-export`,
+          ai_source: source === 'chatgpt' ? 'chatgpt' : source === 'claude' ? 'claude' : source,
+          metadata: {
+            original_id: conv.id || null,
+            created: conv.create_time ? new Date(conv.create_time * 1000).toISOString() : conv.created_at || null,
+            message_count: conv.mapping ? Object.keys(conv.mapping).length : null
+          }
+        })
+      });
+      imported++;
+    } catch (err) {
+      failed++;
+    }
+
+    updateImportProgress(((i + 1) / conversations.length) * 100);
+    updateImportLog(`Importing... ${imported} done, ${skipped} skipped, ${failed} failed (${i + 1}/${conversations.length})`);
+
+    // Small pause every 10 to avoid overwhelming the API
+    if (i % 10 === 9) await new Promise(r => setTimeout(r, 100));
+  }
+
+  updateImportProgress(100);
+  updateImportLog(`Done! Imported ${imported} conversations. ${skipped} skipped, ${failed} failed.`);
+}
+
+function extractChatGPT(conv) {
+  if (!conv.mapping) return '';
+  const nodes = Object.values(conv.mapping);
+  nodes.sort((a, b) => (a.message?.create_time || 0) - (b.message?.create_time || 0));
+
+  const parts = [];
+  for (const node of nodes) {
+    const msg = node.message;
+    if (!msg || !msg.content) continue;
+    const role = msg.author?.role;
+    if (role === 'system') continue;
+
+    let text = '';
+    if (msg.content.parts) {
+      text = msg.content.parts.filter(p => typeof p === 'string').join('\n');
+    } else if (msg.content.text) {
+      text = msg.content.text;
+    }
+    if (text.trim()) {
+      parts.push(`**${role === 'user' ? 'You' : 'ChatGPT'}:** ${text.trim()}`);
+    }
+  }
+  return parts.join('\n\n---\n\n');
+}
+
+function extractClaude(conv) {
+  // Claude export format: array of chat_messages with sender and text
+  const messages = conv.chat_messages || conv.messages || [];
+  if (!messages.length && typeof conv.content === 'string') return conv.content;
+
+  return messages.map(m => {
+    const role = m.sender === 'human' || m.role === 'user' ? 'You' : 'Claude';
+    const text = m.text || m.content || '';
+    if (typeof text === 'string') return `**${role}:** ${text.trim()}`;
+    if (Array.isArray(text)) return `**${role}:** ${text.filter(t => typeof t === 'string' || t.text).map(t => t.text || t).join('\n')}`;
+    return '';
+  }).filter(Boolean).join('\n\n---\n\n');
+}
+
+function autoCategory(title, content) {
+  const lower = (title + ' ' + content.substring(0, 500)).toLowerCase();
+  if (lower.includes('code') || lower.includes('function') || lower.includes('bug') || lower.includes('error') || lower.includes('api') || lower.includes('javascript') || lower.includes('python')) return 'code';
+  if (lower.includes('meeting') || lower.includes('agenda') || lower.includes('standup')) return 'meeting';
+  if (lower.includes('research') || lower.includes('study') || lower.includes('paper') || lower.includes('analysis')) return 'research';
+  if (lower.includes('idea') || lower.includes('brainstorm') || lower.includes('plan') || lower.includes('strategy')) return 'decision';
+  return 'general';
+}
+
 // --- Utilities ---
 function esc(str) {
   if (!str) return '';

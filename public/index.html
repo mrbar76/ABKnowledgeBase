@@ -45,6 +45,10 @@
       <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
       <span>Projects</span>
     </button>
+    <button class="nav-btn" data-view="import">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+      <span>Import</span>
+    </button>
   </nav>
 
   <!-- Header -->
@@ -131,6 +135,55 @@
     <section id="view-projects" class="view">
       <div id="projects-list" class="projects-list"></div>
       <button class="fab" onclick="openProjectModal()">+</button>
+    </section>
+
+    <!-- Import View -->
+    <section id="view-import" class="view">
+      <div class="card">
+        <h2>Import AI Conversations</h2>
+        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
+          Upload your exported data from ChatGPT, Claude, or other AIs to import all conversations into your brain.
+        </p>
+
+        <div class="form-group">
+          <label>Source</label>
+          <select id="import-source">
+            <option value="chatgpt">ChatGPT (conversations.json)</option>
+            <option value="claude">Claude (conversations.json)</option>
+            <option value="generic">Generic JSON</option>
+          </select>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-zone-content">
+            <svg viewBox="0 0 24 24" width="48" height="48" style="color:var(--accent)"><path fill="currentColor" d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+            <p>Tap to select file or drag & drop</p>
+            <p style="font-size:0.75rem;color:var(--text-dim)">conversations.json from your data export</p>
+          </div>
+          <input type="file" id="import-file" accept=".json" style="display:none">
+        </div>
+
+        <div id="import-status" style="display:none">
+          <div class="import-progress-bar">
+            <div class="import-progress-fill" id="import-progress-fill"></div>
+          </div>
+          <div id="import-log" style="font-size:0.8rem;color:var(--text-dim);margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>How to Export Your Data</h2>
+        <div style="font-size:0.85rem;line-height:1.6">
+          <p style="margin-bottom:12px"><strong style="color:var(--green)">ChatGPT:</strong><br>
+            chatgpt.com &rarr; Profile &rarr; Settings &rarr; Data Controls &rarr; Export Data<br>
+            Unzip the download and upload <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px">conversations.json</code>
+          </p>
+          <p style="margin-bottom:12px"><strong style="color:var(--purple)">Claude:</strong><br>
+            claude.ai &rarr; Settings &rarr; Export Data<br>
+            Upload the conversations file from the export
+          </p>
+        </div>
+      </div>
     </section>
   </main>
 

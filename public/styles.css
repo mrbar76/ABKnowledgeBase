@@ -467,6 +467,37 @@ body {
 }
 .empty-state .empty-icon { font-size: 2rem; margin-bottom: 8px; }
 
+/* --- Import / Drop Zone --- */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 16px;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.05);
+}
+.drop-zone-content p { margin-top: 8px; font-size: 0.9rem; }
+
+.import-progress-bar {
+  height: 8px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.import-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s;
+  width: 0%;
+}
+
 /* --- Desktop adjustments --- */
 @media (min-width: 768px) {
   .views-container { max-width: 1200px; margin: 0 auto; padding: 0 24px 16px; }
