@@ -1031,31 +1031,115 @@ async function triggerBeeCloudSync(force = false) {
 
   if (force && !confirm('This will DELETE all existing Bee data and re-import everything from scratch. Continue?')) return;
 
-  btn.textContent = force ? 'Full syncing...' : 'Syncing...';
   btn.disabled = true;
   resultEl.style.display = 'block';
   resultEl.style.background = 'var(--bg-input)';
-  resultEl.textContent = force
-    ? 'Purging old data and pulling everything from Bee... this may take a few minutes.'
-    : 'Connecting to Bee cloud API... this may take a minute.';
+
+  const headers = token ? { 'X-Bee-Token': token } : {};
+  const bodyBase = token ? { bee_token: token } : {};
+  const totals = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [] };
 
   try {
-    const body = token ? { bee_token: token } : {};
-    if (force) body.force = true;
-    const opts = { method: 'POST', body: JSON.stringify(body) };
-    if (token) {
-      opts.headers = { 'X-Bee-Token': token };
+    // Purge first if force
+    if (force) {
+      resultEl.textContent = 'Purging old Bee data...';
+      await api('/bee/purge', { method: 'POST', headers });
     }
-    const data = await api('/bee/sync', opts);
-    showBeeResult(resultEl, data);
+
+    // Phase 1: Facts (confirmed)
+    let cursor = null;
+    let pageNum = 0;
+    do {
+      pageNum++;
+      resultEl.innerHTML = `Syncing confirmed facts (page ${pageNum})... <strong>${totals.facts}</strong> imported so far`;
+      const body = { ...bodyBase, type: 'facts', cursor, confirmed: true, force };
+      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
+      totals.facts += r.imported || 0;
+      totals.skipped += r.skipped || 0;
+      cursor = r.cursor;
+      if (r.done) break;
+    } while (cursor);
+
+    // Phase 2: Facts (unconfirmed)
+    cursor = null; pageNum = 0;
+    do {
+      pageNum++;
+      resultEl.innerHTML = `Syncing unconfirmed facts (page ${pageNum})... <strong>${totals.facts}</strong> facts total`;
+      const body = { ...bodyBase, type: 'facts', cursor, confirmed: false, force };
+      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
+      totals.facts += r.imported || 0;
+      totals.skipped += r.skipped || 0;
+      cursor = r.cursor;
+      if (r.done) break;
+    } while (cursor);
+
+    // Phase 3: Todos
+    cursor = null; pageNum = 0;
+    do {
+      pageNum++;
+      resultEl.innerHTML = `Syncing todos (page ${pageNum})... <strong>${totals.facts}</strong> facts, <strong>${totals.todos}</strong> todos`;
+      const body = { ...bodyBase, type: 'todos', cursor, force };
+      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
+      totals.todos += r.imported || 0;
+      totals.skipped += r.skipped || 0;
+      cursor = r.cursor;
+      if (r.done) break;
+    } while (cursor);
+
+    // Phase 4: Conversations (slowest — 20 per page with detail fetches)
+    cursor = null; pageNum = 0;
+    do {
+      pageNum++;
+      resultEl.innerHTML = `Syncing conversations (page ${pageNum})... <strong>${totals.facts}</strong> facts, <strong>${totals.todos}</strong> todos, <strong>${totals.conversations}</strong> convos`;
+      const body = { ...bodyBase, type: 'conversations', cursor, force };
+      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
+      totals.conversations += r.imported || 0;
+      totals.skipped += r.skipped || 0;
+      if (r.errors) totals.errors.push(...r.errors);
+      cursor = r.cursor;
+      if (r.done) break;
+    } while (cursor);
+
+    showBeeResult(resultEl, { imported: totals });
     loadBeeStatus();
   } catch (e) {
     if (e.message !== 'Unauthorized') {
       resultEl.style.background = 'rgba(239,68,68,0.15)';
-      resultEl.textContent = 'Sync failed: ' + e.message;
+      resultEl.innerHTML = `Sync stopped: ${e.message}<br>Progress so far: ${totals.facts} facts, ${totals.todos} todos, ${totals.conversations} conversations`;
     }
   } finally {
     btn.textContent = force ? 'Full Sync (purge & re-import)' : 'Sync Now from Bee Cloud';
+    btn.disabled = false;
+  }
+}
+
+async function triggerBeeIncrementalSync() {
+  const btn = document.getElementById('bee-incremental-btn');
+  const resultEl = document.getElementById('bee-import-result');
+  const token = document.getElementById('bee-token-input')?.value?.trim();
+
+  btn.disabled = true;
+  btn.textContent = 'Checking for changes...';
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'var(--bg-input)';
+  resultEl.textContent = 'Fetching changes from Bee...';
+
+  try {
+    const body = token ? { bee_token: token } : {};
+    const opts = { method: 'POST', body: JSON.stringify(body) };
+    if (token) opts.headers = { 'X-Bee-Token': token };
+    const data = await api('/bee/sync-incremental', opts);
+    const i = data.imported || {};
+    resultEl.style.background = 'rgba(34,197,94,0.15)';
+    resultEl.innerHTML = `Incremental sync: <strong>${i.facts || 0}</strong> facts, <strong>${i.todos || 0}</strong> todos, <strong>${i.conversations || 0}</strong> conversations updated` +
+      (data.changes_processed ? ` (${data.changes_processed} changes processed)` : '') +
+      (i.skipped ? ` (${i.skipped} skipped)` : '');
+    loadBeeStatus();
+  } catch (e) {
+    resultEl.style.background = 'rgba(239,68,68,0.15)';
+    resultEl.textContent = 'Incremental sync failed: ' + e.message;
+  } finally {
+    btn.textContent = 'Sync Updates Only';
     btn.disabled = false;
   }
 }

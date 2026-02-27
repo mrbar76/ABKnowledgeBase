@@ -86,10 +86,10 @@ initDB().then(() => {
     const https = require('https');
 
     async function runBeeSync() {
-      console.log('[bee-auto-sync] Starting scheduled sync...');
+      console.log('[bee-auto-sync] Starting incremental sync...');
       try {
         const payload = JSON.stringify({ bee_token: BEE_TOKEN });
-        const url = new URL('/api/bee/sync', `http://127.0.0.1:${PORT}`);
+        const url = new URL('/api/bee/sync-incremental', `http://127.0.0.1:${PORT}`);
         const http = require('http');
 
         const result = await new Promise((resolve, reject) => {
@@ -114,7 +114,7 @@ initDB().then(() => {
         });
 
         const i = result.imported || {};
-        console.log(`[bee-auto-sync] Done: ${i.facts || 0} facts, ${i.todos || 0} todos, ${i.conversations || 0} conversations (${i.skipped || 0} skipped)`);
+        console.log(`[bee-auto-sync] Done: ${i.facts || 0} facts, ${i.todos || 0} todos, ${i.conversations || 0} conversations (${result.changes_processed || 0} changes processed)`);
         if (i.errors?.length) console.log(`[bee-auto-sync] Errors: ${i.errors.join(', ')}`);
       } catch (e) {
         console.error(`[bee-auto-sync] Failed: ${e.message}`);

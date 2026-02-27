@@ -57,6 +57,34 @@ function getBeeToken(req) {
   return req.headers['x-bee-token'] || req.body?.bee_token || process.env.BEE_API_TOKEN || '';
 }
 
+// Extract the best available transcript text from a conversation detail response
+function extractTranscript(detail) {
+  // If the API returns utterances, join them into a readable transcript
+  if (detail.utterances && Array.isArray(detail.utterances) && detail.utterances.length > 0) {
+    return detail.utterances.map(u => {
+      const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
+      const text = u.text || u.content || '';
+      return `${speaker}: ${text}`;
+    }).join('\n');
+  }
+  // Fall back to pre-built transcript fields
+  return detail.transcript || detail.full_transcript || detail.text || '';
+}
+
+// Build a complete raw_text that includes both transcript and summary
+function buildConversationText(detail, listItem) {
+  const transcript = extractTranscript(detail);
+  const summary = detail.summary || listItem.summary || '';
+
+  // Combine both when available — transcript is the primary content, summary is supplementary
+  const parts = [];
+  if (transcript) parts.push(transcript);
+  if (summary && summary !== transcript) {
+    parts.push('\n\n---\n\n' + summary);
+  }
+  return parts.join('') || summary || '';
+}
+
 // ============================================================
 // CLOUD SYNC — calls Bee API directly from Railway
 // POST /api/bee/sync
@@ -176,25 +204,22 @@ router.post('/sync', async (req, res) => {
           if (existing.rows.length > 0) { results.skipped++; continue; }
         }
 
-        // Use summary from list response if available; fetch detail for transcript
+        // Skip conversations still being captured
+        if (convo.state === 'CAPTURING') { results.skipped++; continue; }
+
+        // Fetch full conversation detail for transcript + utterances
         let summary = convo.summary || null;
-        let rawText = summary || '';
         let full = convo;
 
-        // Try to get full conversation detail for transcript
         try {
           const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
           full = detail.conversation || detail;
-          rawText = full.transcript || full.full_transcript || full.text || full.summary || summary || '';
           if (full.summary) summary = full.summary;
         } catch (e) {
-          // Fall back to list-level data
-          if (!rawText) {
-            results.errors.push(`Conversation ${beeId}: ${e.message}`);
-            continue;
-          }
+          if (!summary) { results.errors.push(`Conversation ${beeId}: ${e.message}`); continue; }
         }
 
+        const rawText = buildConversationText(full, convo);
         if (!rawText) continue;
 
         const title = full.short_summary || convo.short_summary ||
@@ -203,6 +228,9 @@ router.post('/sync', async (req, res) => {
 
         const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
         const durationSec = durationMs ? Math.round(durationMs / 1000) : (full.duration_seconds || null);
+
+        const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
+          : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
 
         const result = await query(`
           INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
@@ -213,13 +241,15 @@ router.post('/sync', async (req, res) => {
           rawText,
           summary,
           durationSec,
-          convo.start_time ? new Date(convo.start_time).toISOString() : (convo.created_at ? new Date(convo.created_at).toISOString() : null),
+          recordedAt,
           JSON.stringify(['bee', 'conversation']),
           JSON.stringify({
             bee_id: beeId,
-            utterances_count: convo.utterances_count || null,
+            utterances_count: convo.utterances_count || full.utterances_count || null,
             location: convo.primary_location?.address || null,
-            state: convo.state || null
+            state: convo.state || null,
+            start_time: convo.start_time || null,
+            end_time: convo.end_time || null
           })
         ]);
 
@@ -247,6 +277,285 @@ router.post('/sync', async (req, res) => {
   `, [`Cloud sync${force ? ' (full)' : ''}: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
 
   res.json({ message: `Bee cloud sync complete${force ? ' (full refresh)' : ''}`, imported: results });
+});
+
+// ============================================================
+// CHUNKED SYNC — one page at a time, driven by the frontend
+// POST /api/bee/sync-chunk
+// Body: { type: 'facts'|'todos'|'conversations', cursor, confirmed, force }
+// Returns: { imported, skipped, cursor (next), done }
+// ============================================================
+router.post('/sync-chunk', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  const { type, cursor, confirmed, force } = req.body;
+  if (!type) return res.status(400).json({ error: 'type required (facts, todos, conversations)' });
+
+  try {
+    if (type === 'facts') {
+      const conf = confirmed !== undefined ? confirmed : true;
+      const url = `/v1/facts?limit=250&confirmed=${conf}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const facts = Array.isArray(data) ? data : (data.facts || data.items || data.data || []);
+      const nextCursor = data.next_cursor || null;
+      let imported = 0, skipped = 0;
+
+      for (const fact of facts) {
+        if (!fact.text) continue;
+        if (!force) {
+          const existing = await query(`SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`, [`%${fact.text.substring(0, 100)}%`]);
+          if (existing.rows.length > 0) { skipped++; continue; }
+        }
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)`, [
+          `Bee Fact: ${fact.text.substring(0, 80)}`, fact.text,
+          JSON.stringify(['bee', 'fact', conf ? 'confirmed' : 'unconfirmed']),
+          JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
+        ]);
+        imported++;
+      }
+
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 || !nextCursor, page_size: facts.length });
+
+    } else if (type === 'todos') {
+      const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const todos = Array.isArray(data) ? data : (data.todos || data.items || data.data || []);
+      const nextCursor = data.next_cursor || null;
+      let imported = 0, skipped = 0;
+
+      for (const todo of todos) {
+        if (!todo.text) continue;
+        if (!force) {
+          const existing = await query(`SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`, [todo.text]);
+          if (existing.rows.length > 0) { skipped++; continue; }
+        }
+        await query(`INSERT INTO tasks (title, status, priority, ai_agent, next_steps) VALUES ($1, $2, 'medium', 'bee', $3)`, [
+          todo.text, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null
+        ]);
+        imported++;
+      }
+
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 || !nextCursor, page_size: todos.length });
+
+    } else if (type === 'conversations') {
+      const url = `/v1/conversations?limit=20` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
+      const nextCursor = data.next_cursor || null;
+      let imported = 0, skipped = 0, errors = [];
+
+      for (const convo of convos) {
+        const beeId = convo.id;
+        if (!beeId) continue;
+
+        // Skip conversations still being captured
+        if (convo.state === 'CAPTURING') { skipped++; continue; }
+
+        if (!force) {
+          const existing = await query(`SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`, [`%${beeId}%`]);
+          if (existing.rows.length > 0) { skipped++; continue; }
+        }
+
+        let summary = convo.summary || null;
+        let full = convo;
+
+        try {
+          const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
+          full = detail.conversation || detail;
+          if (full.summary) summary = full.summary;
+        } catch (e) {
+          if (!summary) { errors.push(`${beeId}: ${e.message}`); continue; }
+        }
+
+        const rawText = buildConversationText(full, convo);
+        if (!rawText) continue;
+
+        const title = full.short_summary || convo.short_summary ||
+          (summary ? summary.substring(0, 80) : null) ||
+          `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
+
+        const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
+        const durationSec = durationMs ? Math.round(durationMs / 1000) : (full.duration_seconds || null);
+        const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
+          : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
+
+        const result = await query(`
+          INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
+          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7) RETURNING id
+        `, [
+          title.substring(0, 200), rawText, summary, durationSec, recordedAt,
+          JSON.stringify(['bee', 'conversation']),
+          JSON.stringify({
+            bee_id: beeId,
+            utterances_count: convo.utterances_count || full.utterances_count || null,
+            location: convo.primary_location?.address || null,
+            state: convo.state || null,
+            start_time: convo.start_time || null,
+            end_time: convo.end_time || null
+          })
+        ]);
+
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
+          title.substring(0, 200), (summary || rawText).substring(0, 5000),
+          JSON.stringify(['bee', 'conversation']),
+          JSON.stringify({ transcript_id: result.rows[0].id, bee_id: beeId })
+        ]);
+        imported++;
+      }
+
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 || !nextCursor, page_size: convos.length, errors: errors.length ? errors : undefined });
+
+    } else {
+      return res.status(400).json({ error: `Unknown type: ${type}` });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// INCREMENTAL SYNC — uses /v1/changes to only fetch new/modified items
+// POST /api/bee/sync-incremental
+// ============================================================
+router.post('/sync-incremental', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  try {
+    // Get last stored change cursor
+    const cursorRow = await query(`SELECT details FROM activity_log WHERE action = 'bee-change-cursor' ORDER BY created_at DESC LIMIT 1`);
+    const lastCursor = cursorRow.rows[0]?.details || null;
+
+    const url = '/v1/changes' + (lastCursor ? `?cursor=${encodeURIComponent(lastCursor)}` : '');
+    const data = await beeApiGet(url, beeToken);
+
+    const changes = data.changes || data.items || data.data || [];
+    const newCursor = data.next_cursor || data.cursor || null;
+    const results = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [] };
+
+    // Group changed IDs by type
+    const changedFacts = [];
+    const changedTodos = [];
+    const changedConvos = [];
+
+    for (const change of (Array.isArray(changes) ? changes : [])) {
+      const entityType = change.type || change.entity_type;
+      const entityId = change.id || change.entity_id;
+      if (!entityId) continue;
+      if (entityType === 'fact') changedFacts.push(entityId);
+      else if (entityType === 'todo') changedTodos.push(entityId);
+      else if (entityType === 'conversation') changedConvos.push(entityId);
+    }
+
+    // Fetch and upsert changed facts
+    for (const factId of changedFacts) {
+      try {
+        const fact = await beeApiGet(`/v1/facts/${factId}`, beeToken);
+        const f = fact.fact || fact;
+        if (!f.text) continue;
+        const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_id' = $1 AND ai_source = 'bee'`, [String(f.id)]);
+        if (existing.rows.length > 0) {
+          await query(`UPDATE knowledge SET content = $1, title = $2, updated_at = NOW() WHERE metadata->>'bee_id' = $3 AND ai_source = 'bee'`, [
+            f.text, `Bee Fact: ${f.text.substring(0, 80)}`, String(f.id)
+          ]);
+        } else {
+          await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)`, [
+            `Bee Fact: ${f.text.substring(0, 80)}`, f.text,
+            JSON.stringify(['bee', 'fact', f.confirmed ? 'confirmed' : 'unconfirmed']),
+            JSON.stringify({ bee_id: f.id, confirmed: f.confirmed })
+          ]);
+        }
+        results.facts++;
+      } catch (e) { results.errors.push(`fact ${factId}: ${e.message}`); }
+    }
+
+    // Fetch and upsert changed todos
+    for (const todoId of changedTodos) {
+      try {
+        const todo = await beeApiGet(`/v1/todos/${todoId}`, beeToken);
+        const t = todo.todo || todo;
+        if (!t.text) continue;
+        const existing = await query(`SELECT id FROM tasks WHERE next_steps LIKE $1 AND ai_agent = 'bee'`, [`%${t.id}%`]);
+        if (existing.rows.length > 0) {
+          await query(`UPDATE tasks SET title = $1, status = $2, updated_at = NOW() WHERE next_steps LIKE $3 AND ai_agent = 'bee'`, [
+            t.text, t.completed ? 'done' : 'todo', `%${t.id}%`
+          ]);
+        } else {
+          await query(`INSERT INTO tasks (title, status, priority, ai_agent, next_steps) VALUES ($1, $2, 'medium', 'bee', $3)`, [
+            t.text, t.completed ? 'done' : 'todo', `Bee Todo ID: ${t.id}`
+          ]);
+        }
+        results.todos++;
+      } catch (e) { results.errors.push(`todo ${todoId}: ${e.message}`); }
+    }
+
+    // Fetch and upsert changed conversations
+    for (const convoId of changedConvos) {
+      try {
+        const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken);
+        const c = detail.conversation || detail;
+        if (c.state === 'CAPTURING') continue;
+        const rawText = buildConversationText(c, c);
+        if (!rawText) continue;
+        const title = c.short_summary || (c.summary ? c.summary.substring(0, 80) : `Bee Conversation ${convoId}`);
+        const existing = await query(`SELECT id FROM transcripts WHERE metadata->>'bee_id' = $1 AND source = 'bee'`, [String(convoId)]);
+        if (existing.rows.length > 0) {
+          await query(`UPDATE transcripts SET raw_text = $1, summary = $2, title = $3, updated_at = NOW() WHERE metadata->>'bee_id' = $4 AND source = 'bee'`, [
+            rawText, c.summary || null, title.substring(0, 200), String(convoId)
+          ]);
+          await query(`UPDATE knowledge SET content = $1, title = $2, updated_at = NOW() WHERE metadata->>'bee_id' = $3 AND ai_source = 'bee' AND category = 'meeting'`, [
+            (c.summary || rawText).substring(0, 5000), title.substring(0, 200), String(convoId)
+          ]);
+        } else {
+          const result = await query(`INSERT INTO transcripts (title, raw_text, summary, source, tags, metadata) VALUES ($1, $2, $3, 'bee', $4, $5) RETURNING id`, [
+            title.substring(0, 200), rawText, c.summary || null,
+            JSON.stringify(['bee', 'conversation']),
+            JSON.stringify({ bee_id: convoId, state: c.state || null })
+          ]);
+          await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
+            title.substring(0, 200), (c.summary || rawText).substring(0, 5000),
+            JSON.stringify(['bee', 'conversation']),
+            JSON.stringify({ transcript_id: result.rows[0].id, bee_id: convoId })
+          ]);
+        }
+        results.conversations++;
+      } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
+    }
+
+    // Store the new cursor for next incremental sync
+    if (newCursor) {
+      await query(`INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ('bee-change-cursor', 'bee-sync', 'cursor', 'bee', $1)`, [newCursor]);
+    }
+
+    await query(`INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ('create', 'bee-import', 'incremental', 'bee', $1)`, [
+      `Incremental sync: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations`
+    ]);
+
+    res.json({
+      message: 'Incremental sync complete',
+      imported: results,
+      changes_processed: changes.length,
+      had_cursor: !!lastCursor
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// PURGE — clear all bee data (used before chunked full sync)
+// POST /api/bee/purge
+// ============================================================
+router.post('/purge', async (req, res) => {
+  try {
+    const k = await query(`DELETE FROM knowledge WHERE ai_source = 'bee'`);
+    const t = await query(`DELETE FROM tasks WHERE ai_agent = 'bee'`);
+    const tr = await query(`DELETE FROM transcripts WHERE source = 'bee'`);
+    res.json({ purged: { knowledge: k.rowCount, tasks: t.rowCount, transcripts: tr.rowCount } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ============================================================
