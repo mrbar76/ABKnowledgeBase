@@ -730,9 +730,27 @@ router.get('/test', async (req, res) => {
     results.todos_error = e.message;
   }
 
-  // Test conversations
+  // Test conversations (list + one detail)
   try {
-    results.conversations_raw = await beeApiGet('/v1/conversations?page=1&limit=3', beeToken);
+    const listData = await beeApiGet('/v1/conversations?limit=3', beeToken);
+    results.conversations_raw = listData;
+
+    // Fetch ONE completed conversation detail to see what fields are available
+    const convos = listData.conversations || [];
+    const completed = convos.find(c => c.state === 'COMPLETED');
+    if (completed) {
+      const detail = await beeApiGet(`/v1/conversations/${completed.id}`, beeToken);
+      // Show all top-level keys and their types/lengths so we know what's available
+      const detailShape = {};
+      for (const [key, val] of Object.entries(detail.conversation || detail)) {
+        if (val === null || val === undefined) detailShape[key] = null;
+        else if (Array.isArray(val)) detailShape[key] = `Array[${val.length}]${val.length > 0 ? ' first: ' + JSON.stringify(val[0]).substring(0, 200) : ''}`;
+        else if (typeof val === 'string') detailShape[key] = `String(${val.length}) "${val.substring(0, 150)}${val.length > 150 ? '...' : ''}"`;
+        else detailShape[key] = val;
+      }
+      results.conversation_detail_shape = detailShape;
+      results.conversation_detail_id = completed.id;
+    }
   } catch (e) {
     results.conversations_error = e.message;
   }
