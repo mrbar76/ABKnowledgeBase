@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.abbrain.bee-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>bee-live-sync.js</string>
+        <string>--start-proxy</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/avibar/ABKnowledgeBase/scripts</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BRAIN_API_KEY</key>
+        <string>YOUR_API_KEY_HERE</string>
+        <key>BRAIN_API</key>
+        <string>https://ab-brain.up.railway.app/api</string>
+        <key>SYNC_INTERVAL</key>
+        <string>30</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/bee-sync.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/bee-sync-error.log</string>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
