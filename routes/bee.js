@@ -85,11 +85,13 @@ router.post('/sync', async (req, res) => {
   // --- Sync Facts (both confirmed and unconfirmed) ---
   for (const confirmed of [true, false]) {
     try {
-      let page = 1;
+      let cursor = null;
       let hasMore = true;
       while (hasMore) {
-        const data = await beeApiGet(`/v1/facts?page=${page}&limit=250&confirmed=${confirmed}`, beeToken);
+        const url = `/v1/facts?limit=250&confirmed=${confirmed}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken);
         const facts = Array.isArray(data) ? data : (data.facts || data.items || data.data || []);
+        cursor = data.next_cursor || null;
         for (const fact of facts) {
           if (!fact.text) continue;
           if (!force) {
@@ -111,8 +113,7 @@ router.post('/sync', async (req, res) => {
           ]);
           results.facts++;
         }
-        hasMore = facts.length >= 250;
-        page++;
+        hasMore = facts.length > 0 && !!cursor;
       }
     } catch (e) {
       results.errors.push(`Facts (confirmed=${confirmed}): ${e.message}`);
@@ -121,11 +122,13 @@ router.post('/sync', async (req, res) => {
 
   // --- Sync Todos ---
   try {
-    let page = 1;
+    let cursor = null;
     let hasMore = true;
     while (hasMore) {
-      const data = await beeApiGet(`/v1/todos?page=${page}&limit=250`, beeToken);
+      const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
       const todos = Array.isArray(data) ? data : (data.todos || data.items || data.data || []);
+      cursor = data.next_cursor || null;
       for (const todo of todos) {
         if (!todo.text) continue;
         if (!force) {
@@ -146,8 +149,7 @@ router.post('/sync', async (req, res) => {
         ]);
         results.todos++;
       }
-      hasMore = todos.length >= 250;
-      page++;
+      hasMore = todos.length > 0 && !!cursor;
     }
   } catch (e) {
     results.errors.push(`Todos: ${e.message}`);
@@ -155,11 +157,13 @@ router.post('/sync', async (req, res) => {
 
   // --- Sync Conversations ---
   try {
-    let page = 1;
+    let cursor = null;
     let hasMore = true;
     while (hasMore) {
-      const data = await beeApiGet(`/v1/conversations?page=${page}&limit=50`, beeToken);
+      const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
       const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
+      cursor = data.next_cursor || null;
       for (const convo of convos) {
         const beeId = convo.id;
         if (!beeId) continue;
@@ -172,20 +176,33 @@ router.post('/sync', async (req, res) => {
           if (existing.rows.length > 0) { results.skipped++; continue; }
         }
 
-        // Get full conversation detail
-        let full;
+        // Use summary from list response if available; fetch detail for transcript
+        let summary = convo.summary || null;
+        let rawText = summary || '';
+        let full = convo;
+
+        // Try to get full conversation detail for transcript
         try {
-          full = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
-          if (full.conversation) full = full.conversation;
+          const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
+          full = detail.conversation || detail;
+          rawText = full.transcript || full.full_transcript || full.text || full.summary || summary || '';
+          if (full.summary) summary = full.summary;
         } catch (e) {
-          results.errors.push(`Conversation ${beeId}: ${e.message}`);
-          continue;
+          // Fall back to list-level data
+          if (!rawText) {
+            results.errors.push(`Conversation ${beeId}: ${e.message}`);
+            continue;
+          }
         }
 
-        const rawText = full.transcript || full.full_transcript || full.text || full.summary || '';
         if (!rawText) continue;
 
-        const title = full.title || full.summary?.substring(0, 80) || `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
+        const title = full.short_summary || convo.short_summary ||
+          (summary ? summary.substring(0, 80) : null) ||
+          `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
+
+        const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
+        const durationSec = durationMs ? Math.round(durationMs / 1000) : (full.duration_seconds || null);
 
         const result = await query(`
           INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
@@ -194,11 +211,16 @@ router.post('/sync', async (req, res) => {
         `, [
           title.substring(0, 200),
           rawText,
-          full.summary || null,
-          full.duration_seconds || null,
-          full.created_at || convo.created_at || null,
+          summary,
+          durationSec,
+          convo.start_time ? new Date(convo.start_time).toISOString() : (convo.created_at ? new Date(convo.created_at).toISOString() : null),
           JSON.stringify(['bee', 'conversation']),
-          JSON.stringify({ bee_id: beeId })
+          JSON.stringify({
+            bee_id: beeId,
+            utterances_count: convo.utterances_count || null,
+            location: convo.primary_location?.address || null,
+            state: convo.state || null
+          })
         ]);
 
         await query(`
@@ -206,15 +228,14 @@ router.post('/sync', async (req, res) => {
           VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)
         `, [
           title.substring(0, 200),
-          (full.summary || rawText).substring(0, 5000),
+          (summary || rawText).substring(0, 5000),
           JSON.stringify(['bee', 'conversation']),
           JSON.stringify({ transcript_id: result.rows[0].id, bee_id: beeId })
         ]);
 
         results.conversations++;
       }
-      hasMore = convos.length >= 50;
-      page++;
+      hasMore = convos.length > 0 && !!cursor;
     }
   } catch (e) {
     results.errors.push(`Conversations: ${e.message}`);
