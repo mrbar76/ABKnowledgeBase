@@ -356,7 +356,7 @@ router.post('/sync-chunk', async (req, res) => {
       return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 && !nextCursor, page_size: todos.length });
 
     } else if (type === 'conversations') {
-      const url = `/v1/conversations?limit=20` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const url = `/v1/conversations?limit=5` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
       const nextCursor = data.next_cursor || null;
@@ -375,51 +375,56 @@ router.post('/sync-chunk', async (req, res) => {
           if (existing.rows.length > 0) { skipped++; skipReasons.duplicate++; continue; }
         }
 
-        let summary = convo.summary || null;
-        let full = convo;
-
         try {
-          const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
-          full = detail.conversation || detail;
-          if (full.summary) summary = full.summary;
-        } catch (e) {
-          if (!summary) { errors.push(`${beeId}: ${e.message}`); skipReasons.fetchError++; continue; }
+          let summary = convo.summary || null;
+          let full = convo;
+
+          try {
+            const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
+            full = detail.conversation || detail;
+            if (full.summary) summary = full.summary;
+          } catch (e) {
+            if (!summary) { errors.push(`${beeId}: ${e.message}`); skipReasons.fetchError++; continue; }
+          }
+
+          const rawText = buildConversationText(full, convo);
+          // Free the heavy detail object to reduce memory pressure
+          full = null;
+          if (!rawText) { skipReasons.noText++; continue; }
+
+          const title = convo.short_summary || (summary ? summary.substring(0, 80) : null) ||
+            `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
+
+          const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
+          const durationSec = durationMs ? Math.round(durationMs / 1000) : null;
+          const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
+            : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
+
+          const result = await query(`
+            INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
+            VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7) RETURNING id
+          `, [
+            title.substring(0, 200), rawText, summary, durationSec, recordedAt,
+            JSON.stringify(['bee', 'conversation']),
+            JSON.stringify({
+              bee_id: beeId,
+              utterances_count: convo.utterances_count || null,
+              location: convo.primary_location?.address || null,
+              state: convo.state || null,
+              start_time: convo.start_time || null,
+              end_time: convo.end_time || null
+            })
+          ]);
+
+          await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
+            title.substring(0, 200), (summary || rawText).substring(0, 5000),
+            JSON.stringify(['bee', 'conversation']),
+            JSON.stringify({ transcript_id: result.rows[0].id, bee_id: beeId })
+          ]);
+          imported++;
+        } catch (convErr) {
+          errors.push(`${beeId}: ${convErr.message}`);
         }
-
-        const rawText = buildConversationText(full, convo);
-        if (!rawText) { skipReasons.noText++; continue; }
-
-        const title = full.short_summary || convo.short_summary ||
-          (summary ? summary.substring(0, 80) : null) ||
-          `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
-
-        const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
-        const durationSec = durationMs ? Math.round(durationMs / 1000) : (full.duration_seconds || null);
-        const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
-          : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
-
-        const result = await query(`
-          INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
-          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7) RETURNING id
-        `, [
-          title.substring(0, 200), rawText, summary, durationSec, recordedAt,
-          JSON.stringify(['bee', 'conversation']),
-          JSON.stringify({
-            bee_id: beeId,
-            utterances_count: convo.utterances_count || full.utterances_count || null,
-            location: convo.primary_location?.address || null,
-            state: convo.state || null,
-            start_time: convo.start_time || null,
-            end_time: convo.end_time || null
-          })
-        ]);
-
-        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
-          title.substring(0, 200), (summary || rawText).substring(0, 5000),
-          JSON.stringify(['bee', 'conversation']),
-          JSON.stringify({ transcript_id: result.rows[0].id, bee_id: beeId })
-        ]);
-        imported++;
       }
 
       return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 && !nextCursor, page_size: convos.length, api_total: convos.length, skip_reasons: skipReasons, errors: errors.length ? errors : undefined });

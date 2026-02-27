@@ -1086,7 +1086,7 @@ async function triggerBeeCloudSync(force = false) {
       if (r.done) break;
     } while (cursor);
 
-    // Phase 4: Conversations (slowest — 20 per page with detail fetches)
+    // Phase 4: Conversations (5 per page — each needs full transcript fetch)
     cursor = null; pageNum = 0;
     let convoSkipReasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
     let totalApiConvos = 0;
