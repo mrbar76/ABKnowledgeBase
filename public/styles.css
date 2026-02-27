@@ -352,12 +352,14 @@ body {
 .source-chatgpt { background: rgba(16,185,129,0.15); color: #10b981; }
 .source-gemini  { background: rgba(96,165,250,0.15); color: #60a5fa; }
 .source-bee     { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.source-bee-sync { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
 /* Source filter chips */
 .chip.source-claude.active  { background: rgba(168,85,247,0.25); border-color: #a855f7; }
 .chip.source-chatgpt.active { background: rgba(16,185,129,0.25); border-color: #10b981; }
 .chip.source-gemini.active  { background: rgba(96,165,250,0.25); border-color: #60a5fa; }
 .chip.source-bee.active     { background: rgba(251,191,36,0.25); border-color: #fbbf24; }
+.chip.source-bee-sync.active { background: rgba(251,191,36,0.25); border-color: #fbbf24; }
 
 /* --- Projects --- */
 .projects-list { display: flex; flex-direction: column; gap: 10px; }

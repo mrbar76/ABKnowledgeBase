@@ -265,6 +265,37 @@
           <div class="connect-prompt" id="prompt-gemini"></div>
           <button class="btn-copy" onclick="copyPrompt('gemini')">Copy Instructions</button>
         </div>
+
+        <!-- Bee Wearable -->
+        <div class="connect-card">
+          <div class="connect-card-header">
+            <span class="connect-card-icon" style="color:var(--yellow)">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a3 3 0 0 0-3 3v1H7a2 2 0 0 0-2 2v2a6 6 0 0 0 3.34 5.37A5.98 5.98 0 0 0 12 22a5.98 5.98 0 0 0 3.66-6.63A6 6 0 0 0 19 10V8a2 2 0 0 0-2-2h-2V5a3 3 0 0 0-3-3z"/></svg>
+            </span>
+            <strong>Bee Wearable</strong>
+            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Sync Script</span>
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
+            Syncs facts, todos, and conversations from your Bee wearable into AB Brain.
+          </p>
+          <div class="connect-prompt" style="font-size:0.75rem;white-space:pre-wrap"># Install prerequisites
+npm install -g @beeai/cli
+bee login
+
+# Run sync (from repo root)
+./scripts/bee-to-brain-sync.sh
+
+# Sync only specific data
+./scripts/bee-to-brain-sync.sh --only facts
+./scripts/bee-to-brain-sync.sh --only todos
+./scripts/bee-to-brain-sync.sh --only convos
+
+# Sync last 7 days of conversations
+./scripts/bee-to-brain-sync.sh --recent-days 7
+
+# Schedule daily at 8am (add to crontab -e)
+0 8 * * * /path/to/scripts/bee-to-brain-sync.sh >> ~/bee-sync.log 2>&amp;1</div>
+        </div>
       </div>
     </section>
   </main>

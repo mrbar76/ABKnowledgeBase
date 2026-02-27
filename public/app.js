@@ -222,7 +222,7 @@ async function loadKnowledge() {
     const data = await api(`/knowledge${q}`);
 
     // Source filter chips
-    const sources = ['claude', 'chatgpt', 'gemini', 'bee'];
+    const sources = ['claude', 'chatgpt', 'gemini', 'bee-sync'];
     document.getElementById('source-chips').innerHTML =
       `<span class="chip ${!currentSource ? 'active' : ''}" onclick="filterSource('')">All Sources</span>` +
       sources.map(s => `<span class="chip source-${s} ${currentSource === s ? 'active' : ''}" onclick="filterSource('${s}')">${s}</span>`).join('');
