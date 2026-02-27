@@ -3,19 +3,47 @@ const https = require('https');
 const { query } = require('../db');
 const router = express.Router();
 
-// --- Bee Cloud API helper ---
-const BEE_API = 'https://api.bee.computer';
+// --- Bee Cloud API (Amazon-hosted) ---
+// Bee was acquired by Amazon; the API lives at an Amazon dev domain
+// and requires a private CA certificate for TLS.
+const BEE_API = 'https://app-api-developer.ce.bee.amazon.dev';
+
+// Bee's production root CA — required because the API uses a private CA, not a public one
+const BEE_CA_CERT = `-----BEGIN CERTIFICATE-----
+MIIDfzCCAmegAwIBAgIRANp9rGecKAk6t6XGd3GWVHkwDQYJKoZIhvcNAQELBQAw
+WTELMAkGA1UEBhMCVVMxDDAKBgNVBAoMA0JlZTEaMBgGA1UECwwRVHJ1c3QgYW5k
+IFByaXZhY3kxIDAeBgNVBAMMF0JlZUNlcnRpZmljYXRlQXV0aG9yaXR5MB4XDTI1
+MDgyMTE5MjUyNloXDTM1MDgyMTIwMjUyNlowWTELMAkGA1UEBhMCVVMxDDAKBgNV
+BAoMA0JlZTEaMBgGA1UECwwRVHJ1c3QgYW5kIFByaXZhY3kxIDAeBgNVBAMMF0Jl
+ZUNlcnRpZmljYXRlQXV0aG9yaXR5MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
+CgKCAQEA7a4dWfEBlstJGQWx2MG9fInEWw4v5e2Sasiw8D09fW77VbSskLEectYl
+t8XgM8a2O9JAPkCQ3vNJmIO+6etyPj/DEtjwllSPR5/1qcZXGFMbjRGzmDz2Y6Mr
+uPlrGYZZQgSNrnuSSndADCrqSEGLdBzkjXqkuXLXDqdLLTzseNQVfCiN2LDCwFRD
+Ugjw4KuiJzSBZ1CQEdug4qauitcif6NOFEiTViAOkXjSmjAdTjN0GDKQdTmDtQYg
+NfLuhhfmEB9mdiEm3++AUURQ2Cn+MfP2YAy/5gr3t+ydPRx361mbA1UiWnx7lmLU
+xRmZhzeaDmO8vUxxM1jHSXLNxMPMUwIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/
+MB0GA1UdDgQWBBRAKKN5ASGNfQOKcsdpaFwNki78xzAOBgNVHQ8BAf8EBAMCAYYw
+DQYJKoZIhvcNAQELBQADggEBADXy/YcenRwuAbCH57sFcwe/akWsdh7bs9ZNb7dq
+g6qzDpitO8yhpEK1DSW2Nmbtxd59rhV5jmnAfFHLEoeOlsSeBLADH3/3uRLV1kIR
+M3kUPKOv1FJq7UkK2VzgabpehyeJ4lfozfT983b3AoDvI6quf3Dl2NrCmmUUewrZ
+6g+RSR6n6Q/PalGUPtoV+W4OT5j9hS1d0PSNO6QbRRFzW+NZ+aQdLwHQPzwjofSh
+vM1JjV7Hz2KOPJwmqHQbCiaayGq5lZIVI3UrqnTIqB/hySEBIJNeyHN3ggORH2JJ
+wzMF+xiaNYUCir9ZzsgYiEsuaxEyiS96ydDImWJboALiWmE=
+-----END CERTIFICATE-----`;
+
+const beeAgent = new https.Agent({ ca: BEE_CA_CERT });
 
 function beeApiGet(path, beeToken) {
   return new Promise((resolve, reject) => {
     const url = new URL(path, BEE_API);
     https.get(url, {
-      headers: { 'x-api-key': beeToken }
+      agent: beeAgent,
+      headers: { 'Authorization': `Bearer ${beeToken}` }
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        if (res.statusCode === 401) return reject(new Error('Invalid Bee API token'));
+        if (res.statusCode === 401) return reject(new Error('Invalid Bee token — run "bee login" on your Mac and copy ~/.bee/token-prod'));
         if (res.statusCode !== 200) return reject(new Error(`Bee API ${res.statusCode}: ${data.substring(0, 200)}`));
         try { resolve(JSON.parse(data)); }
         catch (e) { reject(new Error('Invalid JSON from Bee API')); }
@@ -38,8 +66,8 @@ router.post('/sync', async (req, res) => {
   const beeToken = getBeeToken(req);
   if (!beeToken) {
     return res.status(400).json({
-      error: 'Bee API token required. Set BEE_API_TOKEN env var on Railway or pass X-Bee-Token header.',
-      setup: 'Get your token at https://developer.bee.computer/keys'
+      error: 'Bee token required. Set BEE_API_TOKEN env var on Railway or pass X-Bee-Token header.',
+      setup: 'Run "bee login" on your Mac, then: cat ~/.bee/token-prod'
     });
   }
 
