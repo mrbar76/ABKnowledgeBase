@@ -316,7 +316,8 @@ bee login
             </div>
 
             <div style="display:flex;flex-direction:column;gap:8px">
-              <button class="btn-submit" onclick="triggerBeeCloudSync()" id="bee-sync-btn">Sync Now from Bee Cloud</button>
+              <button class="btn-submit" onclick="triggerBeeCloudSync(false)" id="bee-sync-btn">Sync New from Bee Cloud</button>
+              <button class="btn-submit" onclick="triggerBeeCloudSync(true)" id="bee-full-sync-btn" style="background:#d97706;color:#fff">Full Sync (purge &amp; re-import all)</button>
 
               <!-- Upload bee-sync folder -->
               <label class="btn-submit" style="text-align:center;cursor:pointer;display:block;background:var(--bg-input);color:var(--text)">

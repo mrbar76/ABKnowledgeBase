@@ -1024,19 +1024,25 @@ async function loadBeeStatus() {
   } catch (e) { /* ignore */ }
 }
 
-async function triggerBeeCloudSync() {
-  const btn = document.getElementById('bee-sync-btn');
+async function triggerBeeCloudSync(force = false) {
+  const btn = document.getElementById(force ? 'bee-full-sync-btn' : 'bee-sync-btn');
   const resultEl = document.getElementById('bee-import-result');
   const token = document.getElementById('bee-token-input')?.value?.trim();
 
-  btn.textContent = 'Syncing...';
+  if (force && !confirm('This will DELETE all existing Bee data and re-import everything from scratch. Continue?')) return;
+
+  btn.textContent = force ? 'Full syncing...' : 'Syncing...';
   btn.disabled = true;
   resultEl.style.display = 'block';
   resultEl.style.background = 'var(--bg-input)';
-  resultEl.textContent = 'Connecting to Bee cloud API... this may take a minute.';
+  resultEl.textContent = force
+    ? 'Purging old data and pulling everything from Bee... this may take a few minutes.'
+    : 'Connecting to Bee cloud API... this may take a minute.';
 
   try {
-    const opts = { method: 'POST', body: JSON.stringify(token ? { bee_token: token } : {}) };
+    const body = token ? { bee_token: token } : {};
+    if (force) body.force = true;
+    const opts = { method: 'POST', body: JSON.stringify(body) };
     if (token) {
       opts.headers = { 'X-Bee-Token': token };
     }
@@ -1049,7 +1055,7 @@ async function triggerBeeCloudSync() {
       resultEl.textContent = 'Sync failed: ' + e.message;
     }
   } finally {
-    btn.textContent = 'Sync Now from Bee Cloud';
+    btn.textContent = force ? 'Full Sync (purge & re-import)' : 'Sync Now from Bee Cloud';
     btn.disabled = false;
   }
 }

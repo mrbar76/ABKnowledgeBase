@@ -71,39 +71,52 @@ router.post('/sync', async (req, res) => {
     });
   }
 
-  const results = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [] };
+  const force = req.body?.force === true;
+  const results = { facts: 0, todos: 0, conversations: 0, skipped: 0, purged: false, errors: [] };
 
-  // --- Sync Facts ---
-  try {
-    let page = 1;
-    let hasMore = true;
-    while (hasMore) {
-      const data = await beeApiGet(`/v1/me/facts?page=${page}&limit=250&confirmed=true`, beeToken);
-      const facts = data.facts || [];
-      for (const fact of facts) {
-        if (!fact.text) continue;
-        const existing = await query(
-          `SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`,
-          [`%${fact.text.substring(0, 100)}%`]
-        );
-        if (existing.rows.length > 0) { results.skipped++; continue; }
+  // --- Force mode: purge existing Bee data first ---
+  if (force) {
+    await query(`DELETE FROM knowledge WHERE ai_source = 'bee'`);
+    await query(`DELETE FROM tasks WHERE ai_agent = 'bee'`);
+    await query(`DELETE FROM transcripts WHERE source = 'bee'`);
+    results.purged = true;
+  }
 
-        await query(`
-          INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
-          VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)
-        `, [
-          `Bee Fact: ${fact.text.substring(0, 80)}`,
-          fact.text,
-          JSON.stringify(['bee', 'fact']),
-          JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
-        ]);
-        results.facts++;
+  // --- Sync Facts (both confirmed and unconfirmed) ---
+  for (const confirmed of [true, false]) {
+    try {
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const data = await beeApiGet(`/v1/me/facts?page=${page}&limit=250&confirmed=${confirmed}`, beeToken);
+        const facts = data.facts || [];
+        for (const fact of facts) {
+          if (!fact.text) continue;
+          if (!force) {
+            const existing = await query(
+              `SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`,
+              [`%${fact.text.substring(0, 100)}%`]
+            );
+            if (existing.rows.length > 0) { results.skipped++; continue; }
+          }
+
+          await query(`
+            INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
+            VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)
+          `, [
+            `Bee Fact: ${fact.text.substring(0, 80)}`,
+            fact.text,
+            JSON.stringify(['bee', 'fact', confirmed ? 'confirmed' : 'unconfirmed']),
+            JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
+          ]);
+          results.facts++;
+        }
+        hasMore = facts.length >= 250;
+        page++;
       }
-      hasMore = facts.length >= 250;
-      page++;
+    } catch (e) {
+      results.errors.push(`Facts (confirmed=${confirmed}): ${e.message}`);
     }
-  } catch (e) {
-    results.errors.push(`Facts: ${e.message}`);
   }
 
   // --- Sync Todos ---
@@ -115,11 +128,13 @@ router.post('/sync', async (req, res) => {
       const todos = data.todos || [];
       for (const todo of todos) {
         if (!todo.text) continue;
-        const existing = await query(
-          `SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`,
-          [todo.text]
-        );
-        if (existing.rows.length > 0) { results.skipped++; continue; }
+        if (!force) {
+          const existing = await query(
+            `SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`,
+            [todo.text]
+          );
+          if (existing.rows.length > 0) { results.skipped++; continue; }
+        }
 
         await query(`
           INSERT INTO tasks (title, status, priority, ai_agent, next_steps)
@@ -149,19 +164,23 @@ router.post('/sync', async (req, res) => {
         const beeId = convo.id;
         if (!beeId) continue;
 
-        // Deduplicate by bee_id in metadata
-        const existing = await query(
-          `SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`,
-          [`%${beeId}%`]
-        );
-        if (existing.rows.length > 0) { results.skipped++; continue; }
+        if (!force) {
+          const existing = await query(
+            `SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`,
+            [`%${beeId}%`]
+          );
+          if (existing.rows.length > 0) { results.skipped++; continue; }
+        }
 
         // Get full conversation detail
         let full;
         try {
           full = await beeApiGet(`/v1/me/conversations/${beeId}`, beeToken);
           if (full.conversation) full = full.conversation;
-        } catch (e) { continue; }
+        } catch (e) {
+          results.errors.push(`Conversation ${beeId}: ${e.message}`);
+          continue;
+        }
 
         const rawText = full.transcript || full.full_transcript || full.text || full.summary || '';
         if (!rawText) continue;
@@ -182,7 +201,6 @@ router.post('/sync', async (req, res) => {
           JSON.stringify({ bee_id: beeId })
         ]);
 
-        // Also add to knowledge for searchability
         await query(`
           INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
           VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)
@@ -205,9 +223,9 @@ router.post('/sync', async (req, res) => {
   await query(`
     INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
     VALUES ('create', 'bee-import', 'cloud-sync', 'bee', $1)
-  `, [`Cloud sync: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
+  `, [`Cloud sync${force ? ' (full)' : ''}: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
 
-  res.json({ message: 'Bee cloud sync complete', imported: results });
+  res.json({ message: `Bee cloud sync complete${force ? ' (full refresh)' : ''}`, imported: results });
 });
 
 // ============================================================
