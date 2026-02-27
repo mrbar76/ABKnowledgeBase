@@ -33,22 +33,34 @@ wzMF+xiaNYUCir9ZzsgYiEsuaxEyiS96ydDImWJboALiWmE=
 
 const beeAgent = new https.Agent({ ca: BEE_CA_CERT });
 
-function beeApiGet(path, beeToken) {
+function beeApiGet(path, beeToken, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     const url = new URL(path, BEE_API);
-    https.get(url, {
+    const req = https.get(url, {
       agent: beeAgent,
       headers: { 'Authorization': `Bearer ${beeToken}` }
     }, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      res.on('data', chunk => {
+        data += chunk;
+        // Abort if response exceeds 5MB to prevent memory issues
+        if (data.length > 5 * 1024 * 1024) {
+          req.destroy();
+          reject(new Error('Response too large (>5MB), skipping'));
+        }
+      });
       res.on('end', () => {
         if (res.statusCode === 401) return reject(new Error('Invalid Bee token — run "bee login" on your Mac and copy ~/.bee/token-prod'));
         if (res.statusCode !== 200) return reject(new Error(`Bee API ${res.statusCode}: ${data.substring(0, 200)}`));
         try { resolve(JSON.parse(data)); }
         catch (e) { reject(new Error('Invalid JSON from Bee API')); }
       });
-    }).on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error(`Bee API timeout after ${timeoutMs}ms`));
+    });
   });
 }
 
@@ -65,7 +77,8 @@ function extractTranscript(detail, convoStartTime) {
     const finalized = detail.transcriptions.find(t => t.realtime === false) || detail.transcriptions[0];
     if (finalized.utterances && finalized.utterances.length > 0) {
       // Sort utterances by start offset (seconds) for chronological order
-      const sorted = [...finalized.utterances].sort((a, b) => (a.start || 0) - (b.start || 0));
+      // Cap at 1500 utterances to prevent memory issues on very long recordings
+      const sorted = [...finalized.utterances].sort((a, b) => (a.start || 0) - (b.start || 0)).slice(0, 1500);
       return sorted.map(u => {
         const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
         const text = u.text || u.content || '';
@@ -387,10 +400,12 @@ router.post('/sync-chunk', async (req, res) => {
             if (!summary) { errors.push(`${beeId}: ${e.message}`); skipReasons.fetchError++; continue; }
           }
 
-          const rawText = buildConversationText(full, convo);
+          let rawText = buildConversationText(full, convo);
           // Free the heavy detail object to reduce memory pressure
           full = null;
           if (!rawText) { skipReasons.noText++; continue; }
+          // Cap transcript at 500KB to prevent DB/memory issues on very long recordings
+          if (rawText.length > 500000) rawText = rawText.substring(0, 500000) + '\n\n[Transcript truncated at 500KB]';
 
           const title = convo.short_summary || (summary ? summary.substring(0, 80) : null) ||
             `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
