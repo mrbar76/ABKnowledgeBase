@@ -26,8 +26,13 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding-bottom: calc(var(--nav-height) + 16px);
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0) + 16px);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
 }
 
 /* --- Header --- */
@@ -46,14 +51,14 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--nav-height);
   background: var(--bg-card);
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: space-around;
   align-items: center;
   z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding: 8px 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
 }
 .nav-btn {
   background: none;
@@ -64,7 +69,9 @@ body {
   align-items: center;
   gap: 3px;
   cursor: pointer;
-  padding: 6px 8px;
+  padding: 8px 12px;
+  min-height: 44px;
+  min-width: 44px;
   transition: color 0.2s;
   font-size: 0.65rem;
 }

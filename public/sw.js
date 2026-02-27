@@ -1,0 +1,57 @@
+const CACHE_NAME = 'abkb-v1';
+const SHELL_FILES = [
+  '/',
+  '/styles.css',
+  '/app.js',
+  '/manifest.json'
+];
+
+// Install — cache app shell
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(SHELL_FILES))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// Activate — clean old caches
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+// Fetch — network-first for API, cache-first for static assets
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // Always go to network for API calls
+  if (url.pathname.startsWith('/api')) {
+    return e.respondWith(fetch(e.request));
+  }
+
+  // Cache-first for static assets, fallback to network
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      if (cached) {
+        // Update cache in background
+        fetch(e.request).then(response => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then(cache => cache.put(e.request, response));
+          }
+        }).catch(() => {});
+        return cached;
+      }
+      return fetch(e.request).then(response => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+        }
+        return response;
+      });
+    })
+  );
+});
