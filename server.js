@@ -29,6 +29,19 @@ app.get('/api/health-check', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// OpenAPI spec — no auth required (ChatGPT needs to fetch it during setup)
+app.get('/openapi.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'openapi-chatgpt.json'));
+});
+
+// ChatGPT privacy policy placeholder
+app.get('/privacy', (req, res) => {
+  res.type('text/html').send(`<!DOCTYPE html><html><head><title>AB Brain - Privacy</title></head><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px">
+    <h1>AB Brain - Privacy Policy</h1>
+    <p>AB Brain is a personal knowledge base. All data is stored privately and only accessible via authenticated API calls. No data is shared with third parties. This API is for personal use by the account owner only.</p>
+    <p>Last updated: 2025</p></body></html>`);
+});
+
 // API key authentication for /api routes
 app.use('/api', (req, res, next) => {
   if (!API_KEY) return next();
