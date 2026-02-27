@@ -58,33 +58,48 @@ function getBeeToken(req) {
 }
 
 // Extract the best available transcript text from a conversation detail response
-function extractTranscript(detail) {
-  // If the API returns utterances, join them into a readable transcript
+function extractTranscript(detail, convoStartTime) {
+  // Bee API returns transcriptions[] array, each with utterances[]
+  // Prefer the finalized (realtime: false) transcription over real-time
+  if (detail.transcriptions && Array.isArray(detail.transcriptions) && detail.transcriptions.length > 0) {
+    const finalized = detail.transcriptions.find(t => t.realtime === false) || detail.transcriptions[0];
+    if (finalized.utterances && finalized.utterances.length > 0) {
+      // Sort utterances by start offset (seconds) for chronological order
+      const sorted = [...finalized.utterances].sort((a, b) => (a.start || 0) - (b.start || 0));
+      return sorted.map(u => {
+        const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
+        const text = u.text || u.content || '';
+        // Calculate actual time from conversation start + offset seconds
+        let timeStr = '';
+        if (convoStartTime && u.start != null) {
+          const actualTime = new Date(convoStartTime + (u.start * 1000));
+          timeStr = `[${actualTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}] `;
+        } else if (u.spoken_at) {
+          const spokenTime = new Date(u.spoken_at);
+          timeStr = `[${spokenTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}] `;
+        }
+        return `${timeStr}${speaker}: ${text}`;
+      }).join('\n');
+    }
+  }
+  // Legacy: direct utterances array (old format)
   if (detail.utterances && Array.isArray(detail.utterances) && detail.utterances.length > 0) {
     return detail.utterances.map(u => {
       const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
       const text = u.text || u.content || '';
-      const ts = u.start_time || u.timestamp || u.start || u.time || null;
-      const timeStr = ts ? `[${new Date(typeof ts === 'number' ? ts : ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}] ` : '';
-      return `${timeStr}${speaker}: ${text}`;
+      return `${speaker}: ${text}`;
     }).join('\n');
   }
   // Fall back to pre-built transcript fields
   return detail.transcript || detail.full_transcript || detail.text || '';
 }
 
-// Build a complete raw_text that includes both transcript and summary
+// Build raw_text: detailed transcript only (summary stored separately)
 function buildConversationText(detail, listItem) {
-  const transcript = extractTranscript(detail);
-  const summary = detail.summary || listItem.summary || '';
-
-  // Combine both when available — transcript is the primary content, summary is supplementary
-  const parts = [];
-  if (transcript) parts.push(transcript);
-  if (summary && summary !== transcript) {
-    parts.push('\n\n---\n\n' + summary);
-  }
-  return parts.join('') || summary || '';
+  const convoStartTime = listItem.start_time || detail.start_time || null;
+  const transcript = extractTranscript(detail, convoStartTime);
+  // Return transcript if available, otherwise fall back to summary as raw_text
+  return transcript || detail.summary || listItem.summary || '';
 }
 
 // ============================================================
