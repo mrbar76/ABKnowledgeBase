@@ -743,16 +743,31 @@ router.get('/test', async (req, res) => {
     const completed = convos.find(c => c.state === 'COMPLETED');
     if (completed) {
       const detail = await beeApiGet(`/v1/conversations/${completed.id}`, beeToken);
+      const fullConvo = detail.conversation || detail;
       // Show all top-level keys and their types/lengths so we know what's available
       const detailShape = {};
-      for (const [key, val] of Object.entries(detail.conversation || detail)) {
+      for (const [key, val] of Object.entries(fullConvo)) {
         if (val === null || val === undefined) detailShape[key] = null;
-        else if (Array.isArray(val)) detailShape[key] = `Array[${val.length}]${val.length > 0 ? ' first: ' + JSON.stringify(val[0]).substring(0, 200) : ''}`;
-        else if (typeof val === 'string') detailShape[key] = `String(${val.length}) "${val.substring(0, 150)}${val.length > 150 ? '...' : ''}"`;
+        else if (Array.isArray(val)) detailShape[key] = `Array[${val.length}]${val.length > 0 ? ' first: ' + JSON.stringify(val[0]).substring(0, 300) : ''}`;
+        else if (typeof val === 'object') detailShape[key] = `Object keys: [${Object.keys(val).join(', ')}] => ${JSON.stringify(val).substring(0, 300)}`;
+        else if (typeof val === 'string') detailShape[key] = `String(${val.length}) "${val.substring(0, 300)}${val.length > 300 ? '...' : ''}"`;
         else detailShape[key] = val;
       }
       results.conversation_detail_shape = detailShape;
       results.conversation_detail_id = completed.id;
+      results.conversation_detail_full = fullConvo;
+
+      // Try potential transcript sub-endpoints
+      const subEndpoints = ['transcript', 'utterances', 'segments', 'blocks', 'text'];
+      results.sub_endpoints = {};
+      for (const ep of subEndpoints) {
+        try {
+          const sub = await beeApiGet(`/v1/conversations/${completed.id}/${ep}`, beeToken);
+          results.sub_endpoints[ep] = { status: 'ok', shape: typeof sub === 'object' ? Object.keys(sub) : typeof sub, preview: JSON.stringify(sub).substring(0, 500) };
+        } catch (e) {
+          results.sub_endpoints[ep] = { status: 'error', message: e.message };
+        }
+      }
     }
   } catch (e) {
     results.conversations_error = e.message;
