@@ -1036,7 +1036,7 @@ async function triggerBeeCloudSync() {
   resultEl.textContent = 'Connecting to Bee cloud API... this may take a minute.';
 
   try {
-    const opts = { method: 'POST', body: JSON.stringify({}) };
+    const opts = { method: 'POST', body: JSON.stringify(token ? { bee_token: token } : {}) };
     if (token) {
       opts.headers = { 'X-Bee-Token': token };
     }
