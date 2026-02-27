@@ -184,6 +184,68 @@
           </p>
         </div>
       </div>
+
+      <!-- Connect AI Section -->
+      <div class="card" style="margin-top:12px">
+        <h2>Connect AI (Live)</h2>
+        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
+          Give any AI these instructions so it can read &amp; write to your brain in real time.
+        </p>
+
+        <div class="form-group">
+          <label>Your API Key</label>
+          <input type="password" id="connect-api-key" placeholder="Paste your API_KEY here" style="font-family:monospace">
+          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">This stays in your browser. Never sent anywhere.</p>
+        </div>
+
+        <!-- Claude -->
+        <div class="connect-card">
+          <div class="connect-card-header">
+            <span class="connect-card-icon" style="color:var(--purple)">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            </span>
+            <strong>Claude</strong>
+            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Project Instructions</span>
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
+            claude.ai &rarr; Projects &rarr; New Project &rarr; paste into <strong>Project Instructions</strong>
+          </p>
+          <div class="connect-prompt" id="prompt-claude"></div>
+          <button class="btn-copy" onclick="copyPrompt('claude')">Copy Instructions</button>
+        </div>
+
+        <!-- ChatGPT -->
+        <div class="connect-card">
+          <div class="connect-card-header">
+            <span class="connect-card-icon" style="color:var(--green)">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+            </span>
+            <strong>ChatGPT</strong>
+            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Custom GPT / Memory</span>
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
+            chatgpt.com &rarr; Explore GPTs &rarr; Create &rarr; paste into <strong>Instructions</strong>
+          </p>
+          <div class="connect-prompt" id="prompt-chatgpt"></div>
+          <button class="btn-copy" onclick="copyPrompt('chatgpt')">Copy Instructions</button>
+        </div>
+
+        <!-- Gemini -->
+        <div class="connect-card">
+          <div class="connect-card-header">
+            <span class="connect-card-icon" style="color:var(--blue, #60a5fa)">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </span>
+            <strong>Gemini</strong>
+            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Gem Instructions</span>
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
+            gemini.google.com &rarr; Gem manager &rarr; New Gem &rarr; paste into instructions
+          </p>
+          <div class="connect-prompt" id="prompt-gemini"></div>
+          <button class="btn-copy" onclick="copyPrompt('gemini')">Copy Instructions</button>
+        </div>
+      </div>
     </section>
   </main>
 

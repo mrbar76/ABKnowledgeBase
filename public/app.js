@@ -820,5 +820,96 @@ function timeAgo(dateStr) {
   return date.toLocaleDateString();
 }
 
+// --- Connect AI Prompts ---
+const SITE_URL = 'https://ab-brain.up.railway.app';
+
+function getApiKey() {
+  return document.getElementById('connect-api-key')?.value?.trim() || 'YOUR_API_KEY';
+}
+
+function buildPrompt(ai) {
+  const key = getApiKey();
+  const base = `${SITE_URL}/api`;
+
+  const shared = `API Base: ${base}
+Auth: X-Api-Key: ${key}
+
+ENDPOINTS:
+- Search knowledge: GET ${base}/knowledge?q=SEARCH_TERM
+- Get all knowledge: GET ${base}/knowledge
+- Save knowledge:  POST ${base}/knowledge
+  Body: {"title":"...","content":"...","category":"general","tags":["tag1"],"ai_source":"${ai}"}
+- Get tasks:       GET ${base}/tasks
+- Create task:     POST ${base}/tasks
+  Body: {"title":"...","status":"todo","ai_agent":"${ai}","priority":"medium"}
+- Update task:     PUT ${base}/tasks/:id
+  Body: {"status":"in_progress","next_steps":"..."}`;
+
+  if (ai === 'claude') {
+    return `You have access to my personal knowledge base (AB Brain). Use it to remember things across our conversations.
+
+${shared}
+
+INSTRUCTIONS:
+1. At the start of each conversation, search my knowledge base for context relevant to my question.
+2. When we reach an important insight, decision, or piece of information worth remembering, save it to my knowledge base.
+3. When I ask you to do something, create a task in the task board.
+4. Always include ai_source: "claude" when saving knowledge.
+5. Categories: general, code, meeting, research, decision, reference, health, personal
+6. Keep titles short and descriptive. Content should capture the full context.`;
+  }
+
+  if (ai === 'chatgpt') {
+    return `You have access to the user's personal knowledge base (AB Brain). Use it to remember things across conversations.
+
+${shared}
+
+INSTRUCTIONS:
+1. At the start of each conversation, search the knowledge base for context relevant to the user's question.
+2. When you reach an important insight or decision, save it to the knowledge base.
+3. When the user asks you to do something actionable, create a task.
+4. Always include ai_source: "chatgpt" when saving knowledge.
+5. Categories: general, code, meeting, research, decision, reference, health, personal
+6. Keep titles short and descriptive. Content should capture the full context.`;
+  }
+
+  // gemini
+  return `You have access to the user's personal knowledge base (AB Brain). Use it to remember things across conversations.
+
+${shared}
+
+INSTRUCTIONS:
+1. At the start of each conversation, search the knowledge base for context relevant to the user's question.
+2. When you reach an important insight or decision, save it to the knowledge base.
+3. When the user asks you to do something actionable, create a task.
+4. Always include ai_source: "gemini" when saving knowledge.
+5. Categories: general, code, meeting, research, decision, reference, health, personal
+6. Keep titles short and descriptive. Content should capture the full context.`;
+}
+
+function renderPrompts() {
+  ['claude', 'chatgpt', 'gemini'].forEach(ai => {
+    const el = document.getElementById(`prompt-${ai}`);
+    if (el) el.textContent = buildPrompt(ai);
+  });
+}
+
+function copyPrompt(ai) {
+  const text = buildPrompt(ai);
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+  });
+}
+
+// Re-render prompts when API key changes
+document.getElementById('connect-api-key')?.addEventListener('input', renderPrompts);
+
+// Initial render
+renderPrompts();
+
 // --- Init ---
 loadDashboard();

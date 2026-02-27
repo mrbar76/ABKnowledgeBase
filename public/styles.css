@@ -498,6 +498,50 @@ body {
   width: 0%;
 }
 
+/* --- Connect AI cards --- */
+.connect-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.connect-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+.connect-card-icon { display: flex; align-items: center; }
+.connect-prompt {
+  background: var(--bg-input);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.btn-copy {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-copy:active { opacity: 0.85; }
+
 /* --- Desktop adjustments --- */
 @media (min-width: 768px) {
   .views-container { max-width: 1200px; margin: 0 auto; padding: 0 24px 16px; }
