@@ -1002,6 +1002,70 @@ document.getElementById('connect-api-key')?.addEventListener('input', renderProm
 // Initial render
 renderPrompts();
 
+// --- Auto-refresh ---
+function refreshCurrentView() {
+  if (currentView === 'dashboard') loadDashboard();
+  else if (currentView === 'kanban') loadKanban();
+  else if (currentView === 'knowledge') loadKnowledge();
+  else if (currentView === 'transcripts') loadTranscripts();
+  else if (currentView === 'projects') loadProjects();
+}
+
+// Refresh when app comes back into focus (tab switch / app switch on iPhone)
+let lastRefresh = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && getStoredKey()) {
+    // Only refresh if it's been at least 30 seconds since last load
+    if (Date.now() - lastRefresh > 30000) {
+      lastRefresh = Date.now();
+      refreshCurrentView();
+    }
+  }
+});
+
+// Pull-to-refresh for mobile PWA
+(function initPullToRefresh() {
+  let startY = 0;
+  let pulling = false;
+  const threshold = 80;
+  const indicator = document.getElementById('pull-indicator');
+  const container = document.querySelector('.views-container');
+
+  container.addEventListener('touchstart', (e) => {
+    // Only trigger if scrolled to top
+    if (container.scrollTop <= 0) {
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }
+  }, { passive: true });
+
+  container.addEventListener('touchmove', (e) => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 10 && container.scrollTop <= 0) {
+      indicator.style.transform = `translateY(${Math.min(dy * 0.4, threshold) - indicator.offsetHeight}px)`;
+    }
+  }, { passive: true });
+
+  container.addEventListener('touchend', (e) => {
+    if (!pulling) return;
+    pulling = false;
+    const dy = (e.changedTouches[0]?.clientY || 0) - startY;
+
+    if (dy > threshold && container.scrollTop <= 0 && getStoredKey()) {
+      indicator.classList.add('visible');
+      indicator.style.transform = '';
+      lastRefresh = Date.now();
+      refreshCurrentView();
+      setTimeout(() => {
+        indicator.classList.remove('visible');
+      }, 1000);
+    } else {
+      indicator.style.transform = '';
+    }
+  }, { passive: true });
+})();
+
 // --- Init ---
 (async function init() {
   const key = getStoredKey();
