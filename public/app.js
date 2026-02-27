@@ -1088,6 +1088,8 @@ async function triggerBeeCloudSync(force = false) {
 
     // Phase 4: Conversations (slowest — 20 per page with detail fetches)
     cursor = null; pageNum = 0;
+    let convoSkipReasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
+    let totalApiConvos = 0;
     do {
       pageNum++;
       resultEl.innerHTML = `Syncing conversations (page ${pageNum})... <strong>${totals.facts}</strong> facts, <strong>${totals.todos}</strong> todos, <strong>${totals.conversations}</strong> convos`;
@@ -1095,10 +1097,16 @@ async function triggerBeeCloudSync(force = false) {
       const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
       totals.conversations += r.imported || 0;
       totals.skipped += r.skipped || 0;
+      totalApiConvos += r.api_total || 0;
+      if (r.skip_reasons) {
+        for (const [k, v] of Object.entries(r.skip_reasons)) convoSkipReasons[k] = (convoSkipReasons[k] || 0) + v;
+      }
       if (r.errors) totals.errors.push(...r.errors);
       cursor = r.cursor;
       if (r.done) break;
     } while (cursor);
+    totals.convoSkipReasons = convoSkipReasons;
+    totals.totalApiConvos = totalApiConvos;
 
     showBeeResult(resultEl, { imported: totals });
     loadBeeStatus();
@@ -1230,8 +1238,25 @@ function showBeeResult(el, data) {
   if (data.imported) {
     const i = data.imported;
     el.style.background = 'rgba(34,197,94,0.15)';
-    el.innerHTML = `Imported: <strong>${i.facts || 0}</strong> facts, <strong>${i.todos || 0}</strong> todos, <strong>${i.conversations || 0}</strong> conversations` +
+    let html = `Imported: <strong>${i.facts || 0}</strong> facts, <strong>${i.todos || 0}</strong> todos, <strong>${i.conversations || 0}</strong> conversations` +
       (i.skipped ? ` (${i.skipped} duplicates skipped)` : '');
+    if (i.totalApiConvos) {
+      html += `<br><small style="opacity:0.7">API returned ${i.totalApiConvos} total conversations from Bee</small>`;
+    }
+    if (i.convoSkipReasons) {
+      const sr = i.convoSkipReasons;
+      const parts = [];
+      if (sr.capturing) parts.push(`${sr.capturing} still capturing`);
+      if (sr.duplicate) parts.push(`${sr.duplicate} duplicates`);
+      if (sr.noText) parts.push(`${sr.noText} empty`);
+      if (sr.fetchError) parts.push(`${sr.fetchError} fetch errors`);
+      if (sr.noId) parts.push(`${sr.noId} no ID`);
+      if (parts.length) html += `<br><small style="opacity:0.7">Skipped: ${parts.join(', ')}</small>`;
+    }
+    if (i.errors && i.errors.length) {
+      html += `<br><small style="color:#f87171">${i.errors.length} errors</small>`;
+    }
+    el.innerHTML = html;
   } else {
     el.style.background = 'rgba(239,68,68,0.15)';
     el.textContent = data.error || 'Unknown error';

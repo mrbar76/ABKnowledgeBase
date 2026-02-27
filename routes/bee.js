@@ -64,7 +64,9 @@ function extractTranscript(detail) {
     return detail.utterances.map(u => {
       const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
       const text = u.text || u.content || '';
-      return `${speaker}: ${text}`;
+      const ts = u.start_time || u.timestamp || u.start || u.time || null;
+      const timeStr = ts ? `[${new Date(typeof ts === 'number' ? ts : ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}] ` : '';
+      return `${timeStr}${speaker}: ${text}`;
     }).join('\n');
   }
   // Fall back to pre-built transcript fields
@@ -315,7 +317,7 @@ router.post('/sync-chunk', async (req, res) => {
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 || !nextCursor, page_size: facts.length });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 && !nextCursor, page_size: facts.length });
 
     } else if (type === 'todos') {
       const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
@@ -336,7 +338,7 @@ router.post('/sync-chunk', async (req, res) => {
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 || !nextCursor, page_size: todos.length });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 && !nextCursor, page_size: todos.length });
 
     } else if (type === 'conversations') {
       const url = `/v1/conversations?limit=20` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
@@ -344,17 +346,18 @@ router.post('/sync-chunk', async (req, res) => {
       const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
       const nextCursor = data.next_cursor || null;
       let imported = 0, skipped = 0, errors = [];
+      let skipReasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
 
       for (const convo of convos) {
         const beeId = convo.id;
-        if (!beeId) continue;
+        if (!beeId) { skipReasons.noId++; continue; }
 
         // Skip conversations still being captured
-        if (convo.state === 'CAPTURING') { skipped++; continue; }
+        if (convo.state === 'CAPTURING') { skipped++; skipReasons.capturing++; continue; }
 
         if (!force) {
           const existing = await query(`SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`, [`%${beeId}%`]);
-          if (existing.rows.length > 0) { skipped++; continue; }
+          if (existing.rows.length > 0) { skipped++; skipReasons.duplicate++; continue; }
         }
 
         let summary = convo.summary || null;
@@ -365,11 +368,11 @@ router.post('/sync-chunk', async (req, res) => {
           full = detail.conversation || detail;
           if (full.summary) summary = full.summary;
         } catch (e) {
-          if (!summary) { errors.push(`${beeId}: ${e.message}`); continue; }
+          if (!summary) { errors.push(`${beeId}: ${e.message}`); skipReasons.fetchError++; continue; }
         }
 
         const rawText = buildConversationText(full, convo);
-        if (!rawText) continue;
+        if (!rawText) { skipReasons.noText++; continue; }
 
         const title = full.short_summary || convo.short_summary ||
           (summary ? summary.substring(0, 80) : null) ||
@@ -404,7 +407,7 @@ router.post('/sync-chunk', async (req, res) => {
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 || !nextCursor, page_size: convos.length, errors: errors.length ? errors : undefined });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 && !nextCursor, page_size: convos.length, api_total: convos.length, skip_reasons: skipReasons, errors: errors.length ? errors : undefined });
 
     } else {
       return res.status(400).json({ error: `Unknown type: ${type}` });
