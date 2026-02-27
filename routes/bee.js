@@ -88,8 +88,8 @@ router.post('/sync', async (req, res) => {
       let page = 1;
       let hasMore = true;
       while (hasMore) {
-        const data = await beeApiGet(`/v1/me/facts?page=${page}&limit=250&confirmed=${confirmed}`, beeToken);
-        const facts = data.facts || [];
+        const data = await beeApiGet(`/v1/facts?page=${page}&limit=250&confirmed=${confirmed}`, beeToken);
+        const facts = Array.isArray(data) ? data : (data.facts || data.items || data.data || []);
         for (const fact of facts) {
           if (!fact.text) continue;
           if (!force) {
@@ -124,8 +124,8 @@ router.post('/sync', async (req, res) => {
     let page = 1;
     let hasMore = true;
     while (hasMore) {
-      const data = await beeApiGet(`/v1/me/todos?page=${page}&limit=250`, beeToken);
-      const todos = data.todos || [];
+      const data = await beeApiGet(`/v1/todos?page=${page}&limit=250`, beeToken);
+      const todos = Array.isArray(data) ? data : (data.todos || data.items || data.data || []);
       for (const todo of todos) {
         if (!todo.text) continue;
         if (!force) {
@@ -158,8 +158,8 @@ router.post('/sync', async (req, res) => {
     let page = 1;
     let hasMore = true;
     while (hasMore) {
-      const data = await beeApiGet(`/v1/me/conversations?page=${page}&limit=50`, beeToken);
-      const convos = data.conversations || [];
+      const data = await beeApiGet(`/v1/conversations?page=${page}&limit=50`, beeToken);
+      const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
       for (const convo of convos) {
         const beeId = convo.id;
         if (!beeId) continue;
@@ -175,7 +175,7 @@ router.post('/sync', async (req, res) => {
         // Get full conversation detail
         let full;
         try {
-          full = await beeApiGet(`/v1/me/conversations/${beeId}`, beeToken);
+          full = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
           if (full.conversation) full = full.conversation;
         } catch (e) {
           results.errors.push(`Conversation ${beeId}: ${e.message}`);
@@ -388,21 +388,21 @@ router.get('/test', async (req, res) => {
 
   // Test facts
   try {
-    results.facts_raw = await beeApiGet('/v1/me/facts?page=1&limit=3&confirmed=true', beeToken);
+    results.facts_raw = await beeApiGet('/v1/facts?page=1&limit=3&confirmed=true', beeToken);
   } catch (e) {
     results.facts_error = e.message;
   }
 
   // Test todos
   try {
-    results.todos_raw = await beeApiGet('/v1/me/todos?page=1&limit=3', beeToken);
+    results.todos_raw = await beeApiGet('/v1/todos?page=1&limit=3', beeToken);
   } catch (e) {
     results.todos_error = e.message;
   }
 
   // Test conversations
   try {
-    results.conversations_raw = await beeApiGet('/v1/me/conversations?page=1&limit=3', beeToken);
+    results.conversations_raw = await beeApiGet('/v1/conversations?page=1&limit=3', beeToken);
   } catch (e) {
     results.conversations_error = e.message;
   }
