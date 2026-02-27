@@ -372,6 +372,44 @@ router.post('/import-markdown', async (req, res) => {
   }
 });
 
+// Debug: test Bee API connection and see raw responses
+router.get('/test', async (req, res) => {
+  const beeToken = req.headers['x-bee-token'] || req.query.bee_token || process.env.BEE_API_TOKEN || '';
+  if (!beeToken) return res.status(400).json({ error: 'No Bee token available' });
+
+  const results = { token_length: beeToken.length, token_prefix: beeToken.substring(0, 20) + '...' };
+
+  // Test /v1/me (identity)
+  try {
+    results.me = await beeApiGet('/v1/me', beeToken);
+  } catch (e) {
+    results.me_error = e.message;
+  }
+
+  // Test facts
+  try {
+    results.facts_raw = await beeApiGet('/v1/me/facts?page=1&limit=3&confirmed=true', beeToken);
+  } catch (e) {
+    results.facts_error = e.message;
+  }
+
+  // Test todos
+  try {
+    results.todos_raw = await beeApiGet('/v1/me/todos?page=1&limit=3', beeToken);
+  } catch (e) {
+    results.todos_error = e.message;
+  }
+
+  // Test conversations
+  try {
+    results.conversations_raw = await beeApiGet('/v1/me/conversations?page=1&limit=3', beeToken);
+  } catch (e) {
+    results.conversations_error = e.message;
+  }
+
+  res.json(results);
+});
+
 // Get Bee sync status
 router.get('/status', async (req, res) => {
   try {
