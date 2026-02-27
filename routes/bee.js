@@ -1,106 +1,157 @@
 const express = require('express');
+const https = require('https');
 const { query } = require('../db');
 const router = express.Router();
 
-// Import Bee sync data (from bee sync markdown export)
-// POST /api/bee/import
-// Body: { facts: [...], todos: [...], conversations: [...] }
-router.post('/import', async (req, res) => {
-  try {
-    const { facts, todos, conversations } = req.body;
-    const results = { facts: 0, todos: 0, conversations: 0, skipped: 0 };
+// --- Bee Cloud API helper ---
+const BEE_API = 'https://api.bee.computer';
 
-    // --- Import Facts ---
-    if (Array.isArray(facts)) {
+function beeApiGet(path, beeToken) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, BEE_API);
+    https.get(url, {
+      headers: { 'x-api-key': beeToken }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 401) return reject(new Error('Invalid Bee API token'));
+        if (res.statusCode !== 200) return reject(new Error(`Bee API ${res.statusCode}: ${data.substring(0, 200)}`));
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('Invalid JSON from Bee API')); }
+      });
+    }).on('error', reject);
+  });
+}
+
+// Get the Bee token from env or request
+function getBeeToken(req) {
+  return req.headers['x-bee-token'] || req.body?.bee_token || process.env.BEE_API_TOKEN || '';
+}
+
+// ============================================================
+// CLOUD SYNC — calls Bee API directly from Railway
+// POST /api/bee/sync
+// Headers: X-Bee-Token: your-bee-token (or set BEE_API_TOKEN env var)
+// ============================================================
+router.post('/sync', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) {
+    return res.status(400).json({
+      error: 'Bee API token required. Set BEE_API_TOKEN env var on Railway or pass X-Bee-Token header.',
+      setup: 'Get your token at https://developer.bee.computer/keys'
+    });
+  }
+
+  const results = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [] };
+
+  // --- Sync Facts ---
+  try {
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const data = await beeApiGet(`/v1/me/facts?page=${page}&limit=250&confirmed=true`, beeToken);
+      const facts = data.facts || [];
       for (const fact of facts) {
         if (!fact.text) continue;
-        const beeId = fact.id || fact.text.substring(0, 80);
-
-        // Deduplicate by checking content
         const existing = await query(
           `SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`,
           [`%${fact.text.substring(0, 100)}%`]
         );
+        if (existing.rows.length > 0) { results.skipped++; continue; }
 
-        if (existing.rows.length > 0) {
-          results.skipped++;
-          continue;
-        }
-
-        const title = `Bee Fact: ${fact.text.substring(0, 80)}`;
         await query(`
           INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
           VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)
         `, [
-          title,
+          `Bee Fact: ${fact.text.substring(0, 80)}`,
           fact.text,
-          JSON.stringify(fact.tags || ['bee', 'fact']),
-          JSON.stringify({ bee_id: beeId, confirmed: fact.confirmed || false })
+          JSON.stringify(['bee', 'fact']),
+          JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
         ]);
         results.facts++;
       }
+      hasMore = facts.length >= 250;
+      page++;
     }
+  } catch (e) {
+    results.errors.push(`Facts: ${e.message}`);
+  }
 
-    // --- Import Todos as Tasks ---
-    if (Array.isArray(todos)) {
+  // --- Sync Todos ---
+  try {
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const data = await beeApiGet(`/v1/me/todos?page=${page}&limit=250`, beeToken);
+      const todos = data.todos || [];
       for (const todo of todos) {
         if (!todo.text) continue;
-
-        // Deduplicate
         const existing = await query(
           `SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`,
           [todo.text]
         );
+        if (existing.rows.length > 0) { results.skipped++; continue; }
 
-        if (existing.rows.length > 0) {
-          results.skipped++;
-          continue;
-        }
-
-        const status = todo.completed ? 'done' : 'todo';
         await query(`
           INSERT INTO tasks (title, status, priority, ai_agent, next_steps)
           VALUES ($1, $2, 'medium', 'bee', $3)
         `, [
           todo.text,
-          status,
+          todo.completed ? 'done' : 'todo',
           todo.id ? `Bee Todo ID: ${todo.id}` : null
         ]);
         results.todos++;
       }
+      hasMore = todos.length >= 250;
+      page++;
     }
+  } catch (e) {
+    results.errors.push(`Todos: ${e.message}`);
+  }
 
-    // --- Import Conversations as Transcripts ---
-    if (Array.isArray(conversations)) {
-      for (const convo of conversations) {
-        if (!convo.text && !convo.raw_text) continue;
-        const rawText = convo.raw_text || convo.text;
-        const title = convo.title || `Bee Conversation ${convo.date || new Date().toLocaleDateString()}`;
+  // --- Sync Conversations ---
+  try {
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const data = await beeApiGet(`/v1/me/conversations?page=${page}&limit=50`, beeToken);
+      const convos = data.conversations || [];
+      for (const convo of convos) {
+        const beeId = convo.id;
+        if (!beeId) continue;
 
-        // Deduplicate by title + source
+        // Deduplicate by bee_id in metadata
         const existing = await query(
-          `SELECT id FROM transcripts WHERE title = $1 AND source = 'bee'`,
-          [title]
+          `SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`,
+          [`%${beeId}%`]
         );
+        if (existing.rows.length > 0) { results.skipped++; continue; }
 
-        if (existing.rows.length > 0) {
-          results.skipped++;
-          continue;
-        }
+        // Get full conversation detail
+        let full;
+        try {
+          full = await beeApiGet(`/v1/me/conversations/${beeId}`, beeToken);
+          if (full.conversation) full = full.conversation;
+        } catch (e) { continue; }
+
+        const rawText = full.transcript || full.full_transcript || full.text || full.summary || '';
+        if (!rawText) continue;
+
+        const title = full.title || full.summary?.substring(0, 80) || `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
 
         const result = await query(`
-          INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, tags, metadata)
-          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8)
+          INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
+          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7)
           RETURNING id
         `, [
-          title,
+          title.substring(0, 200),
           rawText,
-          convo.summary || null,
-          JSON.stringify(convo.speakers || []),
-          convo.duration_seconds || null,
-          convo.date || convo.recorded_at || null,
-          JSON.stringify(convo.tags || ['bee', 'conversation']),
-          JSON.stringify({ bee_id: convo.id || null })
+          full.summary || null,
+          full.duration_seconds || null,
+          full.created_at || convo.created_at || null,
+          JSON.stringify(['bee', 'conversation']),
+          JSON.stringify({ bee_id: beeId })
         ]);
 
         // Also add to knowledge for searchability
@@ -108,86 +159,81 @@ router.post('/import', async (req, res) => {
           INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
           VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)
         `, [
-          title,
-          (convo.summary || rawText).substring(0, 5000),
-          JSON.stringify(convo.tags || ['bee', 'conversation']),
-          JSON.stringify({ transcript_id: result.rows[0].id, bee_id: convo.id || null })
+          title.substring(0, 200),
+          (full.summary || rawText).substring(0, 5000),
+          JSON.stringify(['bee', 'conversation']),
+          JSON.stringify({ transcript_id: result.rows[0].id, bee_id: beeId })
         ]);
 
         results.conversations++;
       }
+      hasMore = convos.length >= 50;
+      page++;
     }
-
-    await query(`
-      INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-      VALUES ('create', 'bee-import', 'bulk', 'bee', $1)
-    `, [`Bee import: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped/duplicates)`]);
-
-    res.json({
-      message: 'Bee data imported successfully',
-      imported: results
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  } catch (e) {
+    results.errors.push(`Conversations: ${e.message}`);
   }
+
+  await query(`
+    INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
+    VALUES ('create', 'bee-import', 'cloud-sync', 'bee', $1)
+  `, [`Cloud sync: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
+
+  res.json({ message: 'Bee cloud sync complete', imported: results });
 });
 
-// Import from raw bee sync markdown files
-// POST /api/bee/import-markdown
-// Body: { facts_md: "...", todos_md: "...", conversations: [{ title, markdown }] }
-router.post('/import-markdown', async (req, res) => {
+// ============================================================
+// IMPORT — from local bee sync data (JSON or markdown)
+// ============================================================
+router.post('/import', async (req, res) => {
   try {
-    const { facts_md, todos_md, conversations } = req.body;
+    const { facts, todos, conversations } = req.body;
     const results = { facts: 0, todos: 0, conversations: 0, skipped: 0 };
 
-    // Parse facts.md
-    if (facts_md) {
-      const factLines = facts_md.split('\n').filter(l => l.startsWith('- '));
-      for (const line of factLines) {
-        const text = line.replace(/^- /, '').trim();
-        if (!text) continue;
-
+    if (Array.isArray(facts)) {
+      for (const fact of facts) {
+        if (!fact.text) continue;
         const existing = await query(
           `SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`,
-          [`%${text.substring(0, 100)}%`]
+          [`%${fact.text.substring(0, 100)}%`]
         );
         if (existing.rows.length > 0) { results.skipped++; continue; }
 
         await query(`
-          INSERT INTO knowledge (title, content, category, tags, source, ai_source)
-          VALUES ($1, $2, 'personal', '["bee","fact"]', 'bee', 'bee')
-        `, [`Bee Fact: ${text.substring(0, 80)}`, text]);
+          INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
+          VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)
+        `, [
+          `Bee Fact: ${fact.text.substring(0, 80)}`,
+          fact.text,
+          JSON.stringify(fact.tags || ['bee', 'fact']),
+          JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed || false })
+        ]);
         results.facts++;
       }
     }
 
-    // Parse todos.md
-    if (todos_md) {
-      const todoLines = todos_md.split('\n').filter(l => /^- \[[ x]\]/.test(l));
-      for (const line of todoLines) {
-        const completed = line.includes('[x]');
-        const text = line.replace(/^- \[[ x]\] /, '').trim();
-        if (!text) continue;
-
+    if (Array.isArray(todos)) {
+      for (const todo of todos) {
+        if (!todo.text) continue;
         const existing = await query(
           `SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`,
-          [text]
+          [todo.text]
         );
         if (existing.rows.length > 0) { results.skipped++; continue; }
 
         await query(`
-          INSERT INTO tasks (title, status, priority, ai_agent)
-          VALUES ($1, $2, 'medium', 'bee')
-        `, [text, completed ? 'done' : 'todo']);
+          INSERT INTO tasks (title, status, priority, ai_agent, next_steps)
+          VALUES ($1, $2, 'medium', 'bee', $3)
+        `, [todo.text, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null]);
         results.todos++;
       }
     }
 
-    // Import conversation markdown files
     if (Array.isArray(conversations)) {
       for (const convo of conversations) {
-        if (!convo.markdown) continue;
-        const title = convo.title || convo.filename || `Bee Conversation`;
+        if (!convo.text && !convo.raw_text) continue;
+        const rawText = convo.raw_text || convo.text;
+        const title = convo.title || `Bee Conversation ${convo.date || new Date().toLocaleDateString()}`;
 
         const existing = await query(
           `SELECT id FROM transcripts WHERE title = $1 AND source = 'bee'`,
@@ -195,21 +241,26 @@ router.post('/import-markdown', async (req, res) => {
         );
         if (existing.rows.length > 0) { results.skipped++; continue; }
 
-        // Extract date from title or filename
-        const dateMatch = (convo.title || convo.filename || '').match(/(\d{4}-\d{2}-\d{2})/);
-        const recordedAt = dateMatch ? dateMatch[1] : null;
-
         const result = await query(`
-          INSERT INTO transcripts (title, raw_text, source, recorded_at, tags)
-          VALUES ($1, $2, 'bee', $3, '["bee","conversation"]')
+          INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, tags, metadata)
+          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8)
           RETURNING id
-        `, [title, convo.markdown, recordedAt]);
+        `, [
+          title, rawText, convo.summary || null,
+          JSON.stringify(convo.speakers || []), convo.duration_seconds || null,
+          convo.date || convo.recorded_at || null,
+          JSON.stringify(convo.tags || ['bee', 'conversation']),
+          JSON.stringify({ bee_id: convo.id || null })
+        ]);
 
         await query(`
           INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
-          VALUES ($1, $2, 'meeting', '["bee","conversation"]', 'bee', 'bee', $3)
-        `, [title, convo.markdown.substring(0, 5000), JSON.stringify({ transcript_id: result.rows[0].id })]);
-
+          VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)
+        `, [
+          title, (convo.summary || rawText).substring(0, 5000),
+          JSON.stringify(convo.tags || ['bee', 'conversation']),
+          JSON.stringify({ transcript_id: result.rows[0].id, bee_id: convo.id || null })
+        ]);
         results.conversations++;
       }
     }
@@ -217,7 +268,57 @@ router.post('/import-markdown', async (req, res) => {
     await query(`
       INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
       VALUES ('create', 'bee-import', 'bulk', 'bee', $1)
-    `, [`Bee markdown import: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
+    `, [`Bee import: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
+
+    res.json({ message: 'Bee data imported', imported: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import markdown files
+router.post('/import-markdown', async (req, res) => {
+  try {
+    const { facts_md, todos_md, conversations } = req.body;
+    const results = { facts: 0, todos: 0, conversations: 0, skipped: 0 };
+
+    if (facts_md) {
+      const factLines = facts_md.split('\n').filter(l => l.startsWith('- '));
+      for (const line of factLines) {
+        const text = line.replace(/^- /, '').trim();
+        if (!text) continue;
+        const existing = await query(`SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`, [`%${text.substring(0, 100)}%`]);
+        if (existing.rows.length > 0) { results.skipped++; continue; }
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source) VALUES ($1, $2, 'personal', '["bee","fact"]', 'bee', 'bee')`, [`Bee Fact: ${text.substring(0, 80)}`, text]);
+        results.facts++;
+      }
+    }
+
+    if (todos_md) {
+      const todoLines = todos_md.split('\n').filter(l => /^- \[[ x]\]/.test(l));
+      for (const line of todoLines) {
+        const completed = line.includes('[x]');
+        const text = line.replace(/^- \[[ x]\] /, '').trim();
+        if (!text) continue;
+        const existing = await query(`SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`, [text]);
+        if (existing.rows.length > 0) { results.skipped++; continue; }
+        await query(`INSERT INTO tasks (title, status, priority, ai_agent) VALUES ($1, $2, 'medium', 'bee')`, [text, completed ? 'done' : 'todo']);
+        results.todos++;
+      }
+    }
+
+    if (Array.isArray(conversations)) {
+      for (const convo of conversations) {
+        if (!convo.markdown) continue;
+        const title = convo.title || convo.filename || `Bee Conversation`;
+        const existing = await query(`SELECT id FROM transcripts WHERE title = $1 AND source = 'bee'`, [title]);
+        if (existing.rows.length > 0) { results.skipped++; continue; }
+        const dateMatch = (convo.title || convo.filename || '').match(/(\d{4}-\d{2}-\d{2})/);
+        const result = await query(`INSERT INTO transcripts (title, raw_text, source, recorded_at, tags) VALUES ($1, $2, 'bee', $3, '["bee","conversation"]') RETURNING id`, [title, convo.markdown, dateMatch ? dateMatch[1] : null]);
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', '["bee","conversation"]', 'bee', 'bee', $3)`, [title, convo.markdown.substring(0, 5000), JSON.stringify({ transcript_id: result.rows[0].id })]);
+        results.conversations++;
+      }
+    }
 
     res.json({ message: 'Bee markdown imported', imported: results });
   } catch (err) {
@@ -237,7 +338,8 @@ router.get('/status', async (req, res) => {
       facts: Number(facts.rows[0].count),
       tasks: Number(tasks.rows[0].count),
       transcripts: Number(transcripts.rows[0].count),
-      last_import: lastImport.rows[0]?.created_at || null
+      last_import: lastImport.rows[0]?.created_at || null,
+      bee_token_configured: !!process.env.BEE_API_TOKEN
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

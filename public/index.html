@@ -303,16 +303,23 @@ bee login
 0 8 * * * /path/to/scripts/bee-to-brain-sync.sh >> ~/bee-sync.log 2>&amp;1</div>
 
           <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-            <h4 style="margin-bottom:8px;font-size:0.9rem">Quick Import from Bee</h4>
+            <h4 style="margin-bottom:8px;font-size:0.9rem">Cloud Sync (runs on server)</h4>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
-              Run <code>bee sync</code> on your Mac, then upload the files here. Or paste JSON data directly.
+              Syncs automatically every 30 min when <code>BEE_API_TOKEN</code> is set on Railway.<br>
+              Get your token at <a href="https://developer.bee.computer/keys" target="_blank" style="color:var(--accent)">developer.bee.computer/keys</a>
             </p>
 
             <div id="bee-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
 
+            <div class="form-group" style="margin-bottom:12px">
+              <input type="password" id="bee-token-input" placeholder="Bee API Token (for one-time sync)" style="font-family:monospace;font-size:0.85rem">
+            </div>
+
             <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn-submit" onclick="triggerBeeCloudSync()" id="bee-sync-btn">Sync Now from Bee Cloud</button>
+
               <!-- Upload bee-sync folder -->
-              <label class="btn-submit" style="text-align:center;cursor:pointer;display:block">
+              <label class="btn-submit" style="text-align:center;cursor:pointer;display:block;background:var(--bg-input);color:var(--text)">
                 Upload bee-sync files
                 <input type="file" id="bee-file-upload" multiple accept=".md,.json,.txt" style="display:none" onchange="handleBeeFileUpload(this.files)">
               </label>

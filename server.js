@@ -77,6 +77,58 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 // Initialize database after server is listening
 initDB().then(() => {
   console.log('Database ready');
+
+  // --- Scheduled Bee Cloud Sync ---
+  const BEE_TOKEN = process.env.BEE_API_TOKEN;
+  const BEE_SYNC_INTERVAL = Number(process.env.BEE_SYNC_INTERVAL || 30) * 60 * 1000;
+
+  if (BEE_TOKEN) {
+    const https = require('https');
+
+    async function runBeeSync() {
+      console.log('[bee-auto-sync] Starting scheduled sync...');
+      try {
+        const payload = JSON.stringify({ bee_token: BEE_TOKEN });
+        const url = new URL('/api/bee/sync', `http://127.0.0.1:${PORT}`);
+        const http = require('http');
+
+        const result = await new Promise((resolve, reject) => {
+          const req = http.request(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': API_KEY || '',
+              'Content-Length': Buffer.byteLength(payload)
+            }
+          }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try { resolve(JSON.parse(data)); }
+              catch (e) { reject(new Error(data)); }
+            });
+          });
+          req.on('error', reject);
+          req.write(payload);
+          req.end();
+        });
+
+        const i = result.imported || {};
+        console.log(`[bee-auto-sync] Done: ${i.facts || 0} facts, ${i.todos || 0} todos, ${i.conversations || 0} conversations (${i.skipped || 0} skipped)`);
+        if (i.errors?.length) console.log(`[bee-auto-sync] Errors: ${i.errors.join(', ')}`);
+      } catch (e) {
+        console.error(`[bee-auto-sync] Failed: ${e.message}`);
+      }
+    }
+
+    // Initial sync 10 seconds after startup
+    setTimeout(runBeeSync, 10000);
+    // Then every N minutes
+    setInterval(runBeeSync, BEE_SYNC_INTERVAL);
+    console.log(`[bee-auto-sync] Scheduled every ${BEE_SYNC_INTERVAL / 60000} minutes (BEE_API_TOKEN configured)`);
+  } else {
+    console.log('[bee-auto-sync] Skipped — no BEE_API_TOKEN env var set');
+  }
 }).catch(err => {
   console.error('Database init failed:', err.message);
   console.error('Server is running but database is not available.');

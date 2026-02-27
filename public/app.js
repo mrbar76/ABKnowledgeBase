@@ -1013,12 +1013,45 @@ async function loadBeeStatus() {
       if (data.facts) parts.push(`${data.facts} facts`);
       if (data.tasks) parts.push(`${data.tasks} todos`);
       if (data.transcripts) parts.push(`${data.transcripts} transcripts`);
+      const autoSync = data.bee_token_configured ? '<span style="color:var(--green)">Auto-sync active</span>' : '<span style="color:var(--yellow)">Auto-sync off (no BEE_API_TOKEN on Railway)</span>';
       if (parts.length) {
-        el.innerHTML = `Synced from Bee: <strong>${parts.join(', ')}</strong>` +
-          (data.last_import ? ` &mdash; last import ${timeAgo(data.last_import)}` : '');
+        el.innerHTML = `${autoSync} &mdash; <strong>${parts.join(', ')}</strong>` +
+          (data.last_import ? ` &mdash; last sync ${timeAgo(data.last_import)}` : '');
+      } else {
+        el.innerHTML = autoSync;
       }
     }
   } catch (e) { /* ignore */ }
+}
+
+async function triggerBeeCloudSync() {
+  const btn = document.getElementById('bee-sync-btn');
+  const resultEl = document.getElementById('bee-import-result');
+  const token = document.getElementById('bee-token-input')?.value?.trim();
+
+  btn.textContent = 'Syncing...';
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'var(--bg-input)';
+  resultEl.textContent = 'Connecting to Bee cloud API... this may take a minute.';
+
+  try {
+    const opts = { method: 'POST', body: JSON.stringify({}) };
+    if (token) {
+      opts.headers = { 'X-Bee-Token': token };
+    }
+    const data = await api('/bee/sync', opts);
+    showBeeResult(resultEl, data);
+    loadBeeStatus();
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      resultEl.style.background = 'rgba(239,68,68,0.15)';
+      resultEl.textContent = 'Sync failed: ' + e.message;
+    }
+  } finally {
+    btn.textContent = 'Sync Now from Bee Cloud';
+    btn.disabled = false;
+  }
 }
 
 async function handleBeeFileUpload(files) {
