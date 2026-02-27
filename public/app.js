@@ -214,30 +214,36 @@ function renderKanbanCard(task) {
 
 // --- Knowledge ---
 async function loadKnowledge() {
-  const params = new URLSearchParams();
-  if (currentCategory) params.set('category', currentCategory);
-  if (currentSource) params.set('ai_source', currentSource);
-  const q = params.toString() ? `?${params}` : '';
-  const data = await api(`/knowledge${q}`);
-
-  // Source filter chips
-  const sources = ['claude', 'chatgpt', 'gemini', 'bee'];
-  document.getElementById('source-chips').innerHTML =
-    `<span class="chip ${!currentSource ? 'active' : ''}" onclick="filterSource('')">All Sources</span>` +
-    sources.map(s => `<span class="chip source-${s} ${currentSource === s ? 'active' : ''}" onclick="filterSource('${s}')">${s}</span>`).join('');
-
   try {
-    const cats = await api('/knowledge/meta/categories');
-    if (Array.isArray(cats)) {
-      document.getElementById('category-chips').innerHTML =
-        `<span class="chip ${!currentCategory ? 'active' : ''}" onclick="filterCategory('')">All</span>` +
-        cats.map(c => `<span class="chip ${currentCategory === c ? 'active' : ''}" onclick="filterCategory('${esc(c)}')">${esc(c)}</span>`).join('');
-    }
-  } catch (e) { /* no categories yet */ }
+    const params = new URLSearchParams();
+    if (currentCategory) params.set('category', currentCategory);
+    if (currentSource) params.set('ai_source', currentSource);
+    const q = params.toString() ? `?${params}` : '';
+    const data = await api(`/knowledge${q}`);
 
-  document.getElementById('knowledge-list').innerHTML = data.entries.length
-    ? data.entries.map(renderKnowledgeItem).join('')
-    : `<div class="empty-state"><div class="empty-icon">&#128218;</div>${currentSource ? `No entries from ${currentSource} yet.` : 'No knowledge entries yet.<br>Add some via the API or the + button.'}</div>`;
+    // Source filter chips
+    const sources = ['claude', 'chatgpt', 'gemini', 'bee'];
+    document.getElementById('source-chips').innerHTML =
+      `<span class="chip ${!currentSource ? 'active' : ''}" onclick="filterSource('')">All Sources</span>` +
+      sources.map(s => `<span class="chip source-${s} ${currentSource === s ? 'active' : ''}" onclick="filterSource('${s}')">${s}</span>`).join('');
+
+    try {
+      const cats = await api('/knowledge/meta/categories');
+      if (Array.isArray(cats)) {
+        document.getElementById('category-chips').innerHTML =
+          `<span class="chip ${!currentCategory ? 'active' : ''}" onclick="filterCategory('')">All</span>` +
+          cats.map(c => `<span class="chip ${currentCategory === c ? 'active' : ''}" onclick="filterCategory('${esc(c)}')">${esc(c)}</span>`).join('');
+      }
+    } catch (e) { /* no categories yet */ }
+
+    document.getElementById('knowledge-list').innerHTML = data.entries && data.entries.length
+      ? data.entries.map(renderKnowledgeItem).join('')
+      : `<div class="empty-state"><div class="empty-icon">&#128218;</div>${currentSource ? `No entries from ${currentSource} yet.` : 'No knowledge entries yet.<br>Add some via the API or the + button.'}</div>`;
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      document.getElementById('knowledge-list').innerHTML = '<div class="empty-state">Failed to load entries. Check connection.</div>';
+    }
+  }
 }
 
 function filterCategory(cat) {
@@ -253,10 +259,16 @@ function filterSource(source) {
 async function searchKnowledge() {
   const q = document.getElementById('knowledge-search').value.trim();
   if (!q) return loadKnowledge();
-  const data = await api(`/knowledge?q=${encodeURIComponent(q)}`);
-  document.getElementById('knowledge-list').innerHTML = data.entries.length
-    ? data.entries.map(renderKnowledgeItem).join('')
-    : '<div class="empty-state">No results found</div>';
+  try {
+    const data = await api(`/knowledge?q=${encodeURIComponent(q)}`);
+    document.getElementById('knowledge-list').innerHTML = data.entries && data.entries.length
+      ? data.entries.map(renderKnowledgeItem).join('')
+      : '<div class="empty-state">No results found</div>';
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      document.getElementById('knowledge-list').innerHTML = '<div class="empty-state">Search failed. Try again.</div>';
+    }
+  }
 }
 
 document.getElementById('knowledge-search').addEventListener('keydown', e => {

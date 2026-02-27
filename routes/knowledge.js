@@ -10,6 +10,7 @@ router.get('/', async (req, res) => {
 
     let sql, params;
     if (q) {
+      // Try full-text search first
       sql = `
         SELECT *, ts_rank(
           to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')),
@@ -22,6 +23,23 @@ router.get('/', async (req, res) => {
         LIMIT $2 OFFSET $3
       `;
       params = [q, Number(limit), Number(offset)];
+
+      let result = await query(sql, params);
+
+      // Fallback to ILIKE if full-text search found nothing
+      if (result.rows.length === 0) {
+        const pattern = `%${q}%`;
+        sql = `
+          SELECT *, 0 as rank FROM knowledge
+          WHERE title ILIKE $1 OR content ILIKE $1
+          ORDER BY updated_at DESC
+          LIMIT $2 OFFSET $3
+        `;
+        params = [pattern, Number(limit), Number(offset)];
+        result = await query(sql, params);
+      }
+
+      return res.json({ count: result.rows.length, entries: result.rows });
     } else {
       let where = [];
       params = [];
