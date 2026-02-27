@@ -100,6 +100,7 @@ async function api(path, opts = {}) {
 // --- Dashboard ---
 async function loadDashboard() {
   const data = await api('/dashboard');
+  loadBeeStatus();
 
   const totalTasks = Object.values(data.tasks.by_status).reduce((a, b) => a + b, 0);
   const inProgress = data.tasks.by_status.in_progress || 0;
@@ -1001,6 +1002,118 @@ document.getElementById('connect-api-key')?.addEventListener('input', renderProm
 
 // Initial render
 renderPrompts();
+
+// --- Bee Import ---
+async function loadBeeStatus() {
+  try {
+    const data = await api('/bee/status');
+    const el = document.getElementById('bee-status');
+    if (el) {
+      const parts = [];
+      if (data.facts) parts.push(`${data.facts} facts`);
+      if (data.tasks) parts.push(`${data.tasks} todos`);
+      if (data.transcripts) parts.push(`${data.transcripts} transcripts`);
+      if (parts.length) {
+        el.innerHTML = `Synced from Bee: <strong>${parts.join(', ')}</strong>` +
+          (data.last_import ? ` &mdash; last import ${timeAgo(data.last_import)}` : '');
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function handleBeeFileUpload(files) {
+  const resultEl = document.getElementById('bee-import-result');
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'var(--bg-input)';
+  resultEl.textContent = 'Processing files...';
+
+  const payload = { facts_md: null, todos_md: null, conversations: [] };
+
+  for (const file of files) {
+    const text = await file.text();
+    const name = file.name.toLowerCase();
+
+    if (name === 'facts.md') {
+      payload.facts_md = text;
+    } else if (name === 'todos.md') {
+      payload.todos_md = text;
+    } else if (name.endsWith('.md')) {
+      // Treat other .md files as conversations
+      payload.conversations.push({ title: file.name.replace('.md', ''), markdown: text });
+    } else if (name.endsWith('.json')) {
+      // Try to parse as Bee JSON export
+      try {
+        const json = JSON.parse(text);
+        if (json.facts) payload.facts_md = null; // Will use JSON path
+        // Post JSON directly
+        const data = await api('/bee/import', {
+          method: 'POST',
+          body: JSON.stringify(json)
+        });
+        showBeeResult(resultEl, data);
+        loadBeeStatus();
+        return;
+      } catch (e) { /* not valid JSON, skip */ }
+    }
+  }
+
+  // Send markdown import
+  try {
+    const data = await api('/bee/import-markdown', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    showBeeResult(resultEl, data);
+    loadBeeStatus();
+  } catch (e) {
+    resultEl.style.background = 'rgba(239,68,68,0.15)';
+    resultEl.textContent = 'Import failed: ' + e.message;
+  }
+}
+
+function showBeeJsonImport() {
+  const json = prompt('Paste your Bee JSON data (from bee facts list --json, bee todos list --json, etc.):');
+  if (!json) return;
+
+  try {
+    const parsed = JSON.parse(json);
+    // Wrap in expected format if it's an array
+    let payload;
+    if (Array.isArray(parsed)) {
+      // Guess type from structure
+      if (parsed[0]?.text && parsed[0]?.confirmed !== undefined) {
+        payload = { facts: parsed };
+      } else if (parsed[0]?.text && parsed[0]?.completed !== undefined) {
+        payload = { todos: parsed };
+      } else {
+        payload = { conversations: parsed };
+      }
+    } else {
+      payload = parsed;
+    }
+
+    api('/bee/import', { method: 'POST', body: JSON.stringify(payload) }).then(data => {
+      const resultEl = document.getElementById('bee-import-result');
+      resultEl.style.display = 'block';
+      showBeeResult(resultEl, data);
+      loadBeeStatus();
+    });
+  } catch (e) {
+    alert('Invalid JSON: ' + e.message);
+  }
+}
+
+function showBeeResult(el, data) {
+  if (data.imported) {
+    const i = data.imported;
+    el.style.background = 'rgba(34,197,94,0.15)';
+    el.innerHTML = `Imported: <strong>${i.facts || 0}</strong> facts, <strong>${i.todos || 0}</strong> todos, <strong>${i.conversations || 0}</strong> conversations` +
+      (i.skipped ? ` (${i.skipped} duplicates skipped)` : '');
+  } else {
+    el.style.background = 'rgba(239,68,68,0.15)';
+    el.textContent = data.error || 'Unknown error';
+  }
+}
 
 // --- Auto-refresh ---
 function refreshCurrentView() {

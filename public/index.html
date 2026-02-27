@@ -301,6 +301,28 @@ bee login
 
 # Schedule daily at 8am (add to crontab -e)
 0 8 * * * /path/to/scripts/bee-to-brain-sync.sh >> ~/bee-sync.log 2>&amp;1</div>
+
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+            <h4 style="margin-bottom:8px;font-size:0.9rem">Quick Import from Bee</h4>
+            <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
+              Run <code>bee sync</code> on your Mac, then upload the files here. Or paste JSON data directly.
+            </p>
+
+            <div id="bee-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <!-- Upload bee-sync folder -->
+              <label class="btn-submit" style="text-align:center;cursor:pointer;display:block">
+                Upload bee-sync files
+                <input type="file" id="bee-file-upload" multiple accept=".md,.json,.txt" style="display:none" onchange="handleBeeFileUpload(this.files)">
+              </label>
+
+              <!-- Paste JSON -->
+              <button class="btn-submit" style="background:var(--bg-input);color:var(--text)" onclick="showBeeJsonImport()">Paste Bee JSON data</button>
+            </div>
+
+            <div id="bee-import-result" style="display:none;margin-top:12px;padding:10px;border-radius:var(--radius);font-size:0.8rem"></div>
+          </div>
         </div>
       </div>
     </section>

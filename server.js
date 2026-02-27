@@ -11,6 +11,7 @@ const transcriptRoutes = require('./routes/transcripts');
 const healthRoutes = require('./routes/health');
 const activityRoutes = require('./routes/activity');
 const dashboardRoutes = require('./routes/dashboard');
+const beeRoutes = require('./routes/bee');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +62,7 @@ app.use('/api/transcripts', transcriptRoutes);
 app.use('/api/healthdata', healthRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/bee', beeRoutes);
 
 // SPA fallback
 app.get('*', (req, res) => {
