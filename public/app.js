@@ -5,6 +5,62 @@ let currentView = 'dashboard';
 let currentCategory = '';
 let currentSource = '';
 
+// --- Auth ---
+function getStoredKey() {
+  return sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key') || '';
+}
+
+function showLogin(message) {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.querySelector('.bottom-nav').style.display = 'none';
+  document.querySelector('.app-header').style.display = 'none';
+  document.querySelector('.views-container').style.display = 'none';
+  if (message) {
+    document.getElementById('login-error').textContent = message;
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function hideLogin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.querySelector('.bottom-nav').style.display = '';
+  document.querySelector('.app-header').style.display = '';
+  document.querySelector('.views-container').style.display = '';
+}
+
+async function doLogin(e) {
+  if (e) e.preventDefault();
+  const key = document.getElementById('login-key').value.trim();
+  if (!key) return;
+
+  // Test the key
+  try {
+    const res = await fetch(API + '/dashboard', {
+      headers: { 'X-Api-Key': key }
+    });
+    if (res.status === 401) {
+      document.getElementById('login-error').textContent = 'Invalid API key. Try again.';
+      document.getElementById('login-error').style.display = 'block';
+      return;
+    }
+    // Key works — store it
+    const remember = document.getElementById('login-remember').checked;
+    sessionStorage.setItem('ab_api_key', key);
+    if (remember) localStorage.setItem('ab_api_key', key);
+    hideLogin();
+    loadDashboard();
+  } catch (err) {
+    document.getElementById('login-error').textContent = 'Connection error. Check your network.';
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('ab_api_key');
+  localStorage.removeItem('ab_api_key');
+  showLogin();
+}
+
 // --- Navigation ---
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -28,10 +84,16 @@ function switchView(view) {
 
 // --- API helpers ---
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
-    ...opts
-  });
+  const key = getStoredKey();
+  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  if (key) headers['X-Api-Key'] = key;
+
+  const res = await fetch(API + path, { ...opts, headers });
+
+  if (res.status === 401) {
+    showLogin('Session expired. Please log in again.');
+    throw new Error('Unauthorized');
+  }
   return res.json();
 }
 
@@ -841,7 +903,7 @@ function timeAgo(dateStr) {
 const SITE_URL = 'https://ab-brain.up.railway.app';
 
 function getApiKey() {
-  return document.getElementById('connect-api-key')?.value?.trim() || 'YOUR_API_KEY';
+  return document.getElementById('connect-api-key')?.value?.trim() || getStoredKey() || 'YOUR_API_KEY';
 }
 
 function buildPrompt(ai) {
@@ -929,4 +991,32 @@ document.getElementById('connect-api-key')?.addEventListener('input', renderProm
 renderPrompts();
 
 // --- Init ---
-loadDashboard();
+(async function init() {
+  const key = getStoredKey();
+  if (!key) {
+    showLogin();
+    return;
+  }
+  // Verify the stored key still works
+  try {
+    const res = await fetch(API + '/health-check');
+    // health-check is unauthenticated, so test with dashboard
+    const test = await fetch(API + '/dashboard', {
+      headers: { 'X-Api-Key': key }
+    });
+    if (test.status === 401) {
+      sessionStorage.removeItem('ab_api_key');
+      localStorage.removeItem('ab_api_key');
+      showLogin('API key expired or changed. Please log in again.');
+      return;
+    }
+  } catch (e) {
+    // Network error — try loading anyway
+  }
+  hideLogin();
+  // Pre-fill the Connect AI key field
+  const connectInput = document.getElementById('connect-api-key');
+  if (connectInput) connectInput.value = key;
+  renderPrompts();
+  loadDashboard();
+})();

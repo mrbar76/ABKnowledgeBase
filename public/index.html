@@ -23,6 +23,25 @@
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 </head>
 <body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="login-screen" style="display:none">
+    <div class="login-card">
+      <svg viewBox="0 0 24 24" width="48" height="48" style="color:var(--accent);margin-bottom:12px"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+      <h1 style="font-size:1.3rem;margin-bottom:4px">AB Knowledge Base</h1>
+      <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:20px">Enter your API key to continue</p>
+      <form onsubmit="doLogin(event)">
+        <div class="form-group">
+          <input type="password" id="login-key" placeholder="Your API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
+        </div>
+        <div id="login-error" style="display:none;color:var(--red);font-size:0.8rem;margin-bottom:12px;text-align:center"></div>
+        <label style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.8rem;color:var(--text-dim);margin-bottom:16px;cursor:pointer">
+          <input type="checkbox" id="login-remember" checked> Remember me
+        </label>
+        <button type="submit" class="btn-submit" style="width:100%">Log In</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Bottom Navigation (mobile-first) -->
   <nav class="bottom-nav">
     <button class="nav-btn active" data-view="dashboard">
