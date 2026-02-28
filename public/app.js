@@ -1017,6 +1017,8 @@ async function loadBeeStatus() {
       if (data.facts) parts.push(`${data.facts} facts`);
       if (data.tasks) parts.push(`${data.tasks} todos`);
       if (data.transcripts) parts.push(`${data.transcripts} transcripts`);
+      if (data.journals) parts.push(`${data.journals} journals`);
+      if (data.daily) parts.push(`${data.daily} daily summaries`);
       const autoSync = data.bee_token_configured ? '<span style="color:var(--green)">Auto-sync active</span>' : '<span style="color:var(--yellow)">Auto-sync off (no BEE_API_TOKEN on Railway)</span>';
       if (parts.length) {
         el.innerHTML = `${autoSync} &mdash; <strong>${parts.join(', ')}</strong>` +
@@ -1026,6 +1028,24 @@ async function loadBeeStatus() {
       }
     }
   } catch (e) { /* ignore */ }
+}
+
+function buildProgressBar(pct) {
+  return `<div style="background:var(--bg-card);border-radius:4px;overflow:hidden;height:8px;margin-top:6px"><div style="background:var(--accent);height:100%;width:${Math.min(100, pct)}%;transition:width 0.3s"></div></div>`;
+}
+
+function buildProgressText(phase, totals, pct) {
+  let txt = `<strong>${phase}</strong>`;
+  const parts = [];
+  if (totals.facts) parts.push(`${totals.facts} facts`);
+  if (totals.todos) parts.push(`${totals.todos} todos`);
+  if (totals.conversations) parts.push(`${totals.conversations} convos`);
+  if (totals.journals) parts.push(`${totals.journals} journals`);
+  if (totals.daily) parts.push(`${totals.daily} daily`);
+  if (parts.length) txt += ` — ${parts.join(', ')}`;
+  if (pct !== null) txt += ` (${Math.round(pct)}%)`;
+  txt += buildProgressBar(pct || 0);
+  return txt;
 }
 
 async function triggerBeeCloudSync(force = false) {
@@ -1041,69 +1061,65 @@ async function triggerBeeCloudSync(force = false) {
 
   const headers = token ? { 'X-Bee-Token': token } : {};
   const bodyBase = token ? { bee_token: token } : {};
-  const totals = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [], debugKeys: {} };
+  const totals = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [], debugKeys: {} };
+
+  // Track overall progress across 5 phases
+  const phaseWeights = { facts: 5, todos: 5, conversations: 70, journals: 10, daily: 10 };
+  let completedWeight = 0;
+
+  function overallPct(phaseKey, phasePct) {
+    return completedWeight + (phaseWeights[phaseKey] * phasePct / 100);
+  }
 
   try {
-    // Purge first if force
     if (force) {
       resultEl.textContent = 'Purging old Bee data...';
       await api('/bee/purge', { method: 'POST', headers });
     }
 
-    // Phase 1: Facts (confirmed)
+    // Phase 1: Facts (single call — API returns all facts at once)
+    resultEl.innerHTML = buildProgressText('Syncing facts...', totals, overallPct('facts', 0));
     let cursor = null;
     let pageNum = 0;
     do {
       pageNum++;
-      resultEl.innerHTML = `Syncing confirmed facts (page ${pageNum})... <strong>${totals.facts}</strong> imported so far`;
-      const body = { ...bodyBase, type: 'facts', cursor, confirmed: true, force };
+      const body = { ...bodyBase, type: 'facts', cursor, force };
       const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
       totals.facts += r.imported || 0;
       totals.skipped += r.skipped || 0;
       if (r.debug_keys) totals.debugKeys.facts = r.debug_keys;
       cursor = r.cursor;
+      resultEl.innerHTML = buildProgressText(`Syncing facts (page ${pageNum})...`, totals, overallPct('facts', r.done ? 100 : 50));
       if (r.done) break;
     } while (cursor);
+    completedWeight += phaseWeights.facts;
 
-    // Phase 2: Facts (unconfirmed)
+    // Phase 2: Todos
     cursor = null; pageNum = 0;
     do {
       pageNum++;
-      resultEl.innerHTML = `Syncing unconfirmed facts (page ${pageNum})... <strong>${totals.facts}</strong> facts total`;
-      const body = { ...bodyBase, type: 'facts', cursor, confirmed: false, force };
-      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
-      totals.facts += r.imported || 0;
-      totals.skipped += r.skipped || 0;
-      cursor = r.cursor;
-      if (r.done) break;
-    } while (cursor);
-
-    // Phase 3: Todos
-    cursor = null; pageNum = 0;
-    do {
-      pageNum++;
-      resultEl.innerHTML = `Syncing todos (page ${pageNum})... <strong>${totals.facts}</strong> facts, <strong>${totals.todos}</strong> todos`;
+      resultEl.innerHTML = buildProgressText(`Syncing todos (page ${pageNum})...`, totals, overallPct('todos', 0));
       const body = { ...bodyBase, type: 'todos', cursor, force };
       const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
       totals.todos += r.imported || 0;
       totals.skipped += r.skipped || 0;
       if (r.debug_keys) totals.debugKeys.todos = r.debug_keys;
       cursor = r.cursor;
+      resultEl.innerHTML = buildProgressText(`Syncing todos (page ${pageNum})...`, totals, overallPct('todos', r.done ? 100 : 50));
       if (r.done) break;
     } while (cursor);
+    completedWeight += phaseWeights.todos;
 
-    // Phase 4: Conversations (5 per page — each needs full transcript fetch)
+    // Phase 3: Conversations (5 per page — each needs full transcript fetch)
     cursor = null; pageNum = 0;
     let convoSkipReasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
-    let totalApiConvos = 0;
     do {
       pageNum++;
-      resultEl.innerHTML = `Syncing conversations (page ${pageNum})... <strong>${totals.facts}</strong> facts, <strong>${totals.todos}</strong> todos, <strong>${totals.conversations}</strong> convos`;
+      resultEl.innerHTML = buildProgressText(`Syncing conversations (page ${pageNum})...`, totals, overallPct('conversations', 0));
       const body = { ...bodyBase, type: 'conversations', cursor, force };
       const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
       totals.conversations += r.imported || 0;
       totals.skipped += r.skipped || 0;
-      totalApiConvos += r.api_total || 0;
       if (r.debug_keys && !totals.debugKeys.conversations) totals.debugKeys.conversations = r.debug_keys;
       if (r.date_range) {
         if (!totals.dateRange) totals.dateRange = { earliest: r.date_range.earliest, latest: r.date_range.latest };
@@ -1117,17 +1133,50 @@ async function triggerBeeCloudSync(force = false) {
       }
       if (r.errors) totals.errors.push(...r.errors);
       cursor = r.cursor;
+      // Estimate conversation progress: each page processes ~5, typical user has ~500
+      const estPct = Math.min(95, (pageNum * 5 / 600) * 100);
+      resultEl.innerHTML = buildProgressText(`Syncing conversations (page ${pageNum})...`, totals, overallPct('conversations', r.done ? 100 : estPct));
       if (r.done) break;
     } while (cursor);
     totals.convoSkipReasons = convoSkipReasons;
-    totals.totalApiConvos = totalApiConvos;
+    completedWeight += phaseWeights.conversations;
+
+    // Phase 4: Journals
+    cursor = null; pageNum = 0;
+    do {
+      pageNum++;
+      resultEl.innerHTML = buildProgressText(`Syncing journals (page ${pageNum})...`, totals, overallPct('journals', 0));
+      const body = { ...bodyBase, type: 'journals', cursor, force };
+      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
+      totals.journals += r.imported || 0;
+      totals.skipped += r.skipped || 0;
+      cursor = r.cursor;
+      resultEl.innerHTML = buildProgressText(`Syncing journals (page ${pageNum})...`, totals, overallPct('journals', r.done ? 100 : 50));
+      if (r.done) break;
+    } while (cursor);
+    completedWeight += phaseWeights.journals;
+
+    // Phase 5: Daily summaries
+    cursor = null; pageNum = 0;
+    do {
+      pageNum++;
+      resultEl.innerHTML = buildProgressText(`Syncing daily summaries (page ${pageNum})...`, totals, overallPct('daily', 0));
+      const body = { ...bodyBase, type: 'daily', cursor, force };
+      const r = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify(body), headers });
+      totals.daily += r.imported || 0;
+      totals.skipped += r.skipped || 0;
+      cursor = r.cursor;
+      resultEl.innerHTML = buildProgressText(`Syncing daily summaries (page ${pageNum})...`, totals, overallPct('daily', r.done ? 100 : 50));
+      if (r.done) break;
+    } while (cursor);
+    completedWeight += phaseWeights.daily;
 
     showBeeResult(resultEl, { imported: totals });
     loadBeeStatus();
   } catch (e) {
     if (e.message !== 'Unauthorized') {
       resultEl.style.background = 'rgba(239,68,68,0.15)';
-      resultEl.innerHTML = `Sync stopped: ${e.message}<br>Progress so far: ${totals.facts} facts, ${totals.todos} todos, ${totals.conversations} conversations`;
+      resultEl.innerHTML = `Sync stopped: ${e.message}<br>Progress so far: ${totals.facts} facts, ${totals.todos} todos, ${totals.conversations} convos, ${totals.journals} journals, ${totals.daily} daily`;
     }
   } finally {
     btn.textContent = force ? 'Full Sync (purge & re-import)' : 'Sync Now from Bee Cloud';
@@ -1253,6 +1302,8 @@ function showBeeResult(el, data) {
     const i = data.imported;
     el.style.background = 'rgba(34,197,94,0.15)';
     let html = `Imported: <strong>${i.facts || 0}</strong> facts, <strong>${i.todos || 0}</strong> todos, <strong>${i.conversations || 0}</strong> conversations` +
+      (i.journals ? `, <strong>${i.journals}</strong> journals` : '') +
+      (i.daily ? `, <strong>${i.daily}</strong> daily summaries` : '') +
       (i.skipped ? ` (${i.skipped} duplicates skipped)` : '');
     if (i.totalApiConvos) {
       html += `<br><small style="opacity:0.7">API returned ${i.totalApiConvos} total conversations from Bee</small>`;

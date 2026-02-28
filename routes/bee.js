@@ -43,7 +43,6 @@ function beeApiGet(path, beeToken, timeoutMs = 30000) {
       let data = '';
       res.on('data', chunk => {
         data += chunk;
-        // Abort if response exceeds 5MB to prevent memory issues
         if (data.length > 5 * 1024 * 1024) {
           req.destroy();
           reject(new Error('Response too large (>5MB), skipping'));
@@ -69,20 +68,40 @@ function getBeeToken(req) {
   return req.headers['x-bee-token'] || req.body?.bee_token || process.env.BEE_API_TOKEN || '';
 }
 
+// Extract text from a fact item — Bee API uses "text" but check alternatives for safety
+function extractFactText(item) {
+  if (typeof item === 'string') return item;
+  return item.text || item.content || item.body || item.description || item.value || item.fact || null;
+}
+
+// Extract text from a todo item
+function extractTodoText(item) {
+  if (typeof item === 'string') return item;
+  return item.text || item.content || item.title || item.body || item.description || item.task || null;
+}
+
+// Extract items array from an API response — tries all common wrapper patterns
+function extractArray(data, primaryKey) {
+  if (Array.isArray(data)) return data;
+  if (data[primaryKey] && Array.isArray(data[primaryKey])) return data[primaryKey];
+  // Try common alternatives
+  for (const key of ['items', 'results', 'data']) {
+    if (data[key] && Array.isArray(data[key])) return data[key];
+  }
+  // Auto-detect: find first array value
+  const found = Object.values(data).find(v => Array.isArray(v));
+  return found || [];
+}
+
 // Extract the best available transcript text from a conversation detail response
 function extractTranscript(detail, convoStartTime) {
-  // Bee API returns transcriptions[] array, each with utterances[]
-  // Prefer the finalized (realtime: false) transcription over real-time
   if (detail.transcriptions && Array.isArray(detail.transcriptions) && detail.transcriptions.length > 0) {
     const finalized = detail.transcriptions.find(t => t.realtime === false) || detail.transcriptions[0];
     if (finalized.utterances && finalized.utterances.length > 0) {
-      // Sort utterances by start offset (seconds) for chronological order
-      // Cap at 1500 utterances to prevent memory issues on very long recordings
       const sorted = [...finalized.utterances].sort((a, b) => (a.start || 0) - (b.start || 0)).slice(0, 1500);
       return sorted.map(u => {
         const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
         const text = u.text || u.content || '';
-        // Calculate actual time from conversation start + offset seconds
         let timeStr = '';
         if (convoStartTime && u.start != null) {
           const actualTime = new Date(convoStartTime + (u.start * 1000));
@@ -95,7 +114,6 @@ function extractTranscript(detail, convoStartTime) {
       }).join('\n');
     }
   }
-  // Legacy: direct utterances array (old format)
   if (detail.utterances && Array.isArray(detail.utterances) && detail.utterances.length > 0) {
     return detail.utterances.map(u => {
       const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
@@ -103,7 +121,6 @@ function extractTranscript(detail, convoStartTime) {
       return `${speaker}: ${text}`;
     }).join('\n');
   }
-  // Fall back to pre-built transcript fields
   return detail.transcript || detail.full_transcript || detail.text || '';
 }
 
@@ -111,14 +128,59 @@ function extractTranscript(detail, convoStartTime) {
 function buildConversationText(detail, listItem) {
   const convoStartTime = listItem.start_time || detail.start_time || null;
   const transcript = extractTranscript(detail, convoStartTime);
-  // Return transcript if available, otherwise fall back to summary as raw_text
   return transcript || detail.summary || listItem.summary || '';
 }
 
 // ============================================================
+// COUNTS — fetch item counts from Bee API for progress tracking
+// GET /api/bee/counts
+// ============================================================
+router.get('/counts', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  const counts = {};
+
+  // Fetch first page of each type with limit=1 to get total counts quickly
+  try {
+    const data = await beeApiGet('/v1/facts?limit=1', beeToken);
+    const items = extractArray(data, 'facts');
+    counts.facts = data.total || data.total_count || data.count || items.length || 0;
+    counts.facts_keys = Array.isArray(data) ? '_array_' : Object.keys(data);
+  } catch (e) { counts.facts_error = e.message; }
+
+  try {
+    const data = await beeApiGet('/v1/todos?limit=1', beeToken);
+    const items = extractArray(data, 'todos');
+    counts.todos = data.total || data.total_count || data.count || items.length || 0;
+    counts.todos_keys = Array.isArray(data) ? '_array_' : Object.keys(data);
+  } catch (e) { counts.todos_error = e.message; }
+
+  try {
+    const data = await beeApiGet('/v1/conversations?limit=1&created_after=2024-01-01', beeToken);
+    const items = extractArray(data, 'conversations');
+    counts.conversations = data.total || data.total_count || data.count || items.length || 0;
+    counts.conversations_keys = Array.isArray(data) ? '_array_' : Object.keys(data);
+  } catch (e) { counts.conversations_error = e.message; }
+
+  try {
+    const data = await beeApiGet('/v1/journals?limit=1', beeToken);
+    const items = extractArray(data, 'journals');
+    counts.journals = data.total || data.total_count || data.count || items.length || 0;
+  } catch (e) { counts.journals_error = e.message; }
+
+  try {
+    const data = await beeApiGet('/v1/daily?limit=1', beeToken);
+    const items = extractArray(data, 'daily');
+    counts.daily = data.total || data.total_count || data.count || items.length || 0;
+  } catch (e) { counts.daily_error = e.message; }
+
+  res.json(counts);
+});
+
+// ============================================================
 // CLOUD SYNC — calls Bee API directly from Railway
 // POST /api/bee/sync
-// Headers: X-Bee-Token: your-bee-token (or set BEE_API_TOKEN env var)
 // ============================================================
 router.post('/sync', async (req, res) => {
   const beeToken = getBeeToken(req);
@@ -130,9 +192,8 @@ router.post('/sync', async (req, res) => {
   }
 
   const force = req.body?.force === true;
-  const results = { facts: 0, todos: 0, conversations: 0, skipped: 0, purged: false, errors: [] };
+  const results = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, purged: false, errors: [] };
 
-  // --- Force mode: purge existing Bee data first ---
   if (force) {
     await query(`DELETE FROM knowledge WHERE ai_source = 'bee'`);
     await query(`DELETE FROM tasks WHERE ai_agent = 'bee'`);
@@ -140,111 +201,87 @@ router.post('/sync', async (req, res) => {
     results.purged = true;
   }
 
-  // --- Sync Facts (both confirmed and unconfirmed) ---
-  for (const confirmed of [true, false]) {
-    try {
-      let cursor = null;
-      let hasMore = true;
-      while (hasMore) {
-        const url = `/v1/facts?limit=250&confirmed=${confirmed}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-        const data = await beeApiGet(url, beeToken);
-        const facts = Array.isArray(data) ? data
-          : (data.facts || data.user_facts || data.results || data.items || data.data
-             || Object.values(data).find(v => Array.isArray(v)) || []);
-        cursor = data.next_cursor || null;
-        for (const fact of facts) {
-          if (!fact.text) continue;
-          if (!force) {
-            const existing = await query(
-              `SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`,
-              [`%${fact.text.substring(0, 100)}%`]
-            );
-            if (existing.rows.length > 0) { results.skipped++; continue; }
-          }
+  // --- Sync Facts ---
+  try {
+    let cursor = null;
+    let page = 0;
+    do {
+      page++;
+      const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const facts = extractArray(data, 'facts');
+      cursor = data.next_cursor || null;
+      console.log(`[bee-sync] Facts page ${page}: ${facts.length} items, response keys: ${Array.isArray(data) ? '_array_' : Object.keys(data).join(',')}`);
+      if (facts.length > 0 && page === 1) console.log(`[bee-sync] First fact: ${JSON.stringify(facts[0]).substring(0, 400)}`);
 
-          await query(`
-            INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
-            VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)
-          `, [
-            `Bee Fact: ${fact.text.substring(0, 80)}`,
-            fact.text,
-            JSON.stringify(['bee', 'fact', confirmed ? 'confirmed' : 'unconfirmed']),
-            JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
-          ]);
-          results.facts++;
+      for (const fact of facts) {
+        const factText = extractFactText(fact);
+        if (!factText) continue;
+        if (!force) {
+          const existing = await query(`SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`, [`%${factText.substring(0, 100)}%`]);
+          if (existing.rows.length > 0) { results.skipped++; continue; }
         }
-        hasMore = facts.length > 0 && !!cursor;
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)`, [
+          `Bee Fact: ${factText.substring(0, 80)}`, factText,
+          JSON.stringify(['bee', 'fact', fact.confirmed ? 'confirmed' : 'unconfirmed']),
+          JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
+        ]);
+        results.facts++;
       }
-    } catch (e) {
-      results.errors.push(`Facts (confirmed=${confirmed}): ${e.message}`);
-    }
+    } while (cursor);
+  } catch (e) {
+    results.errors.push(`Facts: ${e.message}`);
   }
 
   // --- Sync Todos ---
   try {
     let cursor = null;
-    let hasMore = true;
-    while (hasMore) {
-      const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+    let page = 0;
+    do {
+      page++;
+      const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
-      const todos = Array.isArray(data) ? data
-        : (data.todos || data.todo_items || data.results || data.items || data.data
-           || Object.values(data).find(v => Array.isArray(v)) || []);
+      const todos = extractArray(data, 'todos');
       cursor = data.next_cursor || null;
+      console.log(`[bee-sync] Todos page ${page}: ${todos.length} items, response keys: ${Array.isArray(data) ? '_array_' : Object.keys(data).join(',')}`);
+      if (todos.length > 0 && page === 1) console.log(`[bee-sync] First todo: ${JSON.stringify(todos[0]).substring(0, 400)}`);
+
       for (const todo of todos) {
-        if (!todo.text) continue;
+        const todoText = extractTodoText(todo);
+        if (!todoText) continue;
         if (!force) {
-          const existing = await query(
-            `SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`,
-            [todo.text]
-          );
+          const existing = await query(`SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`, [todoText]);
           if (existing.rows.length > 0) { results.skipped++; continue; }
         }
-
-        await query(`
-          INSERT INTO tasks (title, status, priority, ai_agent, next_steps)
-          VALUES ($1, $2, 'medium', 'bee', $3)
-        `, [
-          todo.text,
-          todo.completed ? 'done' : 'todo',
-          todo.id ? `Bee Todo ID: ${todo.id}` : null
+        await query(`INSERT INTO tasks (title, status, priority, ai_agent, next_steps) VALUES ($1, $2, 'medium', 'bee', $3)`, [
+          todoText, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null
         ]);
         results.todos++;
       }
-      hasMore = todos.length > 0 && !!cursor;
-    }
+    } while (cursor);
   } catch (e) {
     results.errors.push(`Todos: ${e.message}`);
   }
 
-  // --- Sync Conversations ---
+  // --- Sync Conversations (oldest first) ---
   try {
     let cursor = null;
-    let hasMore = true;
-    while (hasMore) {
+    do {
       const url = `/v1/conversations?limit=50&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
-      const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
+      const convos = extractArray(data, 'conversations');
       cursor = data.next_cursor || null;
       for (const convo of convos) {
         const beeId = convo.id;
         if (!beeId) continue;
-
         if (!force) {
-          const existing = await query(
-            `SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`,
-            [`%${beeId}%`]
-          );
+          const existing = await query(`SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`, [`%${beeId}%`]);
           if (existing.rows.length > 0) { results.skipped++; continue; }
         }
-
-        // Skip conversations still being captured
         if (convo.state === 'CAPTURING') { results.skipped++; continue; }
 
-        // Fetch full conversation detail for transcript + utterances
         let summary = convo.summary || null;
         let full = convo;
-
         try {
           const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
           full = detail.conversation || detail;
@@ -262,53 +299,97 @@ router.post('/sync', async (req, res) => {
 
         const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
         const durationSec = durationMs ? Math.round(durationMs / 1000) : (full.duration_seconds || null);
-
         const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
           : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
 
         const result = await query(`
           INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
-          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7)
-          RETURNING id
+          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7) RETURNING id
         `, [
-          title.substring(0, 200),
-          rawText,
-          summary,
-          durationSec,
-          recordedAt,
+          title.substring(0, 200), rawText, summary, durationSec, recordedAt,
           JSON.stringify(['bee', 'conversation']),
           JSON.stringify({
-            bee_id: beeId,
-            utterances_count: convo.utterances_count || full.utterances_count || null,
-            location: convo.primary_location?.address || null,
-            state: convo.state || null,
-            start_time: convo.start_time || null,
-            end_time: convo.end_time || null
+            bee_id: beeId, utterances_count: convo.utterances_count || full.utterances_count || null,
+            location: convo.primary_location?.address || null, state: convo.state || null,
+            start_time: convo.start_time || null, end_time: convo.end_time || null
           })
         ]);
 
-        await query(`
-          INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
-          VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)
-        `, [
-          title.substring(0, 200),
-          (summary || rawText).substring(0, 5000),
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
+          title.substring(0, 200), (summary || rawText).substring(0, 5000),
           JSON.stringify(['bee', 'conversation']),
           JSON.stringify({ transcript_id: result.rows[0].id, bee_id: beeId })
         ]);
-
         results.conversations++;
       }
-      hasMore = convos.length > 0 && !!cursor;
-    }
+    } while (cursor);
   } catch (e) {
     results.errors.push(`Conversations: ${e.message}`);
   }
 
-  await query(`
-    INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-    VALUES ('create', 'bee-import', 'cloud-sync', 'bee', $1)
-  `, [`Cloud sync${force ? ' (full)' : ''}: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
+  // --- Sync Journals ---
+  try {
+    let cursor = null;
+    do {
+      const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const journals = extractArray(data, 'journals');
+      cursor = data.next_cursor || null;
+      console.log(`[bee-sync] Journals: ${journals.length} items`);
+
+      for (const journal of journals) {
+        const jText = journal.text || journal.content || journal.body || journal.markdown || '';
+        const jTitle = journal.title || journal.short_summary || (jText ? jText.substring(0, 80) : `Journal ${journal.id}`);
+        if (!jText && !journal.summary) continue;
+        if (!force) {
+          const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_journal_id' = $1 AND ai_source = 'bee'`, [String(journal.id)]);
+          if (existing.rows.length > 0) { results.skipped++; continue; }
+        }
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'journal', $3, 'bee', 'bee', $4)`, [
+          jTitle.substring(0, 200), (jText || journal.summary).substring(0, 10000),
+          JSON.stringify(['bee', 'journal']),
+          JSON.stringify({ bee_journal_id: journal.id, created_at: journal.created_at })
+        ]);
+        results.journals++;
+      }
+    } while (cursor);
+  } catch (e) {
+    results.errors.push(`Journals: ${e.message}`);
+  }
+
+  // --- Sync Daily Summaries ---
+  try {
+    let cursor = null;
+    do {
+      const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const dailies = extractArray(data, 'daily');
+      cursor = data.next_cursor || null;
+      console.log(`[bee-sync] Daily summaries: ${dailies.length} items`);
+
+      for (const day of dailies) {
+        const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
+        if (!dText) continue;
+        const dDate = day.date || day.created_at || '';
+        const dTitle = day.title || `Daily Summary ${dDate ? new Date(dDate).toLocaleDateString() : day.id}`;
+        if (!force) {
+          const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_daily_id' = $1 AND ai_source = 'bee'`, [String(day.id)]);
+          if (existing.rows.length > 0) { results.skipped++; continue; }
+        }
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'daily-summary', $3, 'bee', 'bee', $4)`, [
+          dTitle.substring(0, 200), dText.substring(0, 10000),
+          JSON.stringify(['bee', 'daily-summary']),
+          JSON.stringify({ bee_daily_id: day.id, date: dDate })
+        ]);
+        results.daily++;
+      }
+    } while (cursor);
+  } catch (e) {
+    results.errors.push(`Daily: ${e.message}`);
+  }
+
+  await query(`INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ('create', 'bee-import', 'cloud-sync', 'bee', $1)`,
+    [`Cloud sync${force ? ' (full)' : ''}: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations, ${results.journals} journals, ${results.daily} daily (${results.skipped} skipped)`]);
 
   res.json({ message: `Bee cloud sync complete${force ? ' (full refresh)' : ''}`, imported: results });
 });
@@ -316,85 +397,88 @@ router.post('/sync', async (req, res) => {
 // ============================================================
 // CHUNKED SYNC — one page at a time, driven by the frontend
 // POST /api/bee/sync-chunk
-// Body: { type: 'facts'|'todos'|'conversations', cursor, confirmed, force }
-// Returns: { imported, skipped, cursor (next), done }
+// Body: { type: 'facts'|'todos'|'conversations'|'journals'|'daily', cursor, force }
+// Returns: { imported, skipped, cursor (next), done, debug_* }
 // ============================================================
 router.post('/sync-chunk', async (req, res) => {
   const beeToken = getBeeToken(req);
   if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
 
-  const { type, cursor, confirmed, force } = req.body;
-  if (!type) return res.status(400).json({ error: 'type required (facts, todos, conversations)' });
+  const { type, cursor, force } = req.body;
+  if (!type) return res.status(400).json({ error: 'type required (facts, todos, conversations, journals, daily)' });
 
   try {
     if (type === 'facts') {
-      const conf = confirmed !== undefined ? confirmed : true;
-      const url = `/v1/facts?limit=250&confirmed=${conf}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      // Bee API: GET /v1/facts — returns all facts, cursor-paginated
+      const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
-      const facts = Array.isArray(data) ? data
-        : (data.facts || data.user_facts || data.results || data.items || data.data
-           || Object.values(data).find(v => Array.isArray(v)) || []);
-      const nextCursor = data.next_cursor || data.cursor || null;
+      const facts = extractArray(data, 'facts');
+      const nextCursor = data.next_cursor || null;
       let imported = 0, skipped = 0;
 
+      const debugFirstItem = facts.length > 0 ? Object.keys(facts[0]) : [];
+      console.log(`[bee-sync-chunk] Facts: ${facts.length} items, response keys: ${JSON.stringify(debugKeys)}`);
+      if (facts.length > 0) console.log(`[bee-sync-chunk] First fact: ${JSON.stringify(facts[0]).substring(0, 400)}`);
+
       for (const fact of facts) {
-        if (!fact.text) continue;
+        const factText = extractFactText(fact);
+        if (!factText) { skipped++; continue; }
         if (!force) {
-          const existing = await query(`SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`, [`%${fact.text.substring(0, 100)}%`]);
+          const existing = await query(`SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`, [`%${factText.substring(0, 100)}%`]);
           if (existing.rows.length > 0) { skipped++; continue; }
         }
         await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)`, [
-          `Bee Fact: ${fact.text.substring(0, 80)}`, fact.text,
-          JSON.stringify(['bee', 'fact', conf ? 'confirmed' : 'unconfirmed']),
+          `Bee Fact: ${factText.substring(0, 80)}`, factText,
+          JSON.stringify(['bee', 'fact', fact.confirmed ? 'confirmed' : 'unconfirmed']),
           JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed })
         ]);
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 && !nextCursor, page_size: facts.length, debug_keys: debugKeys });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: facts.length === 0 && !nextCursor, page_size: facts.length, debug_keys: debugKeys, debug_first_item_keys: debugFirstItem, total: data.total || data.total_count || data.count || null });
 
     } else if (type === 'todos') {
-      const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      // Bee API: GET /v1/todos — returns all todos, cursor-paginated
+      const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
-      const todos = Array.isArray(data) ? data
-        : (data.todos || data.todo_items || data.results || data.items || data.data
-           || Object.values(data).find(v => Array.isArray(v)) || []);
-      const nextCursor = data.next_cursor || data.cursor || null;
+      const todos = extractArray(data, 'todos');
+      const nextCursor = data.next_cursor || null;
       let imported = 0, skipped = 0;
 
+      const debugFirstItem = todos.length > 0 ? Object.keys(todos[0]) : [];
+      console.log(`[bee-sync-chunk] Todos: ${todos.length} items, response keys: ${JSON.stringify(debugKeys)}`);
+      if (todos.length > 0) console.log(`[bee-sync-chunk] First todo: ${JSON.stringify(todos[0]).substring(0, 400)}`);
+
       for (const todo of todos) {
-        if (!todo.text) continue;
+        const todoText = extractTodoText(todo);
+        if (!todoText) { skipped++; continue; }
         if (!force) {
-          const existing = await query(`SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`, [todo.text]);
+          const existing = await query(`SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`, [todoText]);
           if (existing.rows.length > 0) { skipped++; continue; }
         }
         await query(`INSERT INTO tasks (title, status, priority, ai_agent, next_steps) VALUES ($1, $2, 'medium', 'bee', $3)`, [
-          todo.text, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null
+          todoText, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null
         ]);
         imported++;
       }
 
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 && !nextCursor, page_size: todos.length, debug_keys: debugKeys });
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: todos.length === 0 && !nextCursor, page_size: todos.length, debug_keys: debugKeys, debug_first_item_keys: debugFirstItem, total: data.total || data.total_count || data.count || null });
 
     } else if (type === 'conversations') {
-      // Include created_after to fetch full history (API may default to recent window)
       const url = `/v1/conversations?limit=5&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
-      const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
-      const nextCursor = data.next_cursor || data.cursor || null;
+      const convos = extractArray(data, 'conversations');
+      const nextCursor = data.next_cursor || null;
       let imported = 0, skipped = 0, errors = [];
       let skipReasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
 
       for (const convo of convos) {
         const beeId = convo.id;
         if (!beeId) { skipReasons.noId++; continue; }
-
-        // Skip conversations still being captured
         if (convo.state === 'CAPTURING') { skipped++; skipReasons.capturing++; continue; }
-
         if (!force) {
           const existing = await query(`SELECT id FROM transcripts WHERE metadata::text ILIKE $1 AND source = 'bee'`, [`%${beeId}%`]);
           if (existing.rows.length > 0) { skipped++; skipReasons.duplicate++; continue; }
@@ -403,7 +487,6 @@ router.post('/sync-chunk', async (req, res) => {
         try {
           let summary = convo.summary || null;
           let full = convo;
-
           try {
             const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
             full = detail.conversation || detail;
@@ -413,10 +496,8 @@ router.post('/sync-chunk', async (req, res) => {
           }
 
           let rawText = buildConversationText(full, convo);
-          // Free the heavy detail object to reduce memory pressure
           full = null;
           if (!rawText) { skipReasons.noText++; continue; }
-          // Cap transcript at 500KB to prevent DB/memory issues on very long recordings
           if (rawText.length > 500000) rawText = rawText.substring(0, 500000) + '\n\n[Transcript truncated at 500KB]';
 
           const title = convo.short_summary || (summary ? summary.substring(0, 80) : null) ||
@@ -434,12 +515,9 @@ router.post('/sync-chunk', async (req, res) => {
             title.substring(0, 200), rawText, summary, durationSec, recordedAt,
             JSON.stringify(['bee', 'conversation']),
             JSON.stringify({
-              bee_id: beeId,
-              utterances_count: convo.utterances_count || null,
-              location: convo.primary_location?.address || null,
-              state: convo.state || null,
-              start_time: convo.start_time || null,
-              end_time: convo.end_time || null
+              bee_id: beeId, utterances_count: convo.utterances_count || null,
+              location: convo.primary_location?.address || null, state: convo.state || null,
+              start_time: convo.start_time || null, end_time: convo.end_time || null
             })
           ]);
 
@@ -454,14 +532,78 @@ router.post('/sync-chunk', async (req, res) => {
         }
       }
 
-      // Include date range of this page for debugging
       const dates = convos.map(c => c.start_time || c.created_at).filter(Boolean).sort();
-      return res.json({ type, imported, skipped, cursor: nextCursor, done: convos.length === 0 && !nextCursor, page_size: convos.length, api_total: convos.length, skip_reasons: skipReasons, errors: errors.length ? errors : undefined, debug_keys: debugKeys, date_range: dates.length ? { earliest: new Date(Math.min(...dates.map(d => new Date(d)))).toISOString(), latest: new Date(Math.max(...dates.map(d => new Date(d)))).toISOString() } : null });
+      return res.json({
+        type, imported, skipped, cursor: nextCursor, done: convos.length === 0 && !nextCursor,
+        page_size: convos.length, skip_reasons: skipReasons, errors: errors.length ? errors : undefined,
+        debug_keys: debugKeys, total: data.total || data.total_count || data.count || null,
+        date_range: dates.length ? { earliest: new Date(Math.min(...dates.map(d => new Date(d)))).toISOString(), latest: new Date(Math.max(...dates.map(d => new Date(d)))).toISOString() } : null
+      });
+
+    } else if (type === 'journals') {
+      const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
+      const journals = extractArray(data, 'journals');
+      const nextCursor = data.next_cursor || null;
+      let imported = 0, skipped = 0;
+
+      console.log(`[bee-sync-chunk] Journals: ${journals.length} items, keys: ${JSON.stringify(debugKeys)}`);
+      if (journals.length > 0) console.log(`[bee-sync-chunk] First journal: ${JSON.stringify(journals[0]).substring(0, 400)}`);
+
+      for (const journal of journals) {
+        const jText = journal.text || journal.content || journal.body || journal.markdown || '';
+        const jTitle = journal.title || journal.short_summary || (jText ? jText.substring(0, 80) : `Journal ${journal.id}`);
+        if (!jText && !journal.summary) { skipped++; continue; }
+        if (!force) {
+          const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_journal_id' = $1 AND ai_source = 'bee'`, [String(journal.id)]);
+          if (existing.rows.length > 0) { skipped++; continue; }
+        }
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'journal', $3, 'bee', 'bee', $4)`, [
+          jTitle.substring(0, 200), (jText || journal.summary).substring(0, 10000),
+          JSON.stringify(['bee', 'journal']),
+          JSON.stringify({ bee_journal_id: journal.id, created_at: journal.created_at })
+        ]);
+        imported++;
+      }
+
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: journals.length === 0 && !nextCursor, page_size: journals.length, debug_keys: debugKeys, total: data.total || data.total_count || data.count || null });
+
+    } else if (type === 'daily') {
+      const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const debugKeys = Array.isArray(data) ? '_array_' : Object.keys(data);
+      const dailies = extractArray(data, 'daily');
+      const nextCursor = data.next_cursor || null;
+      let imported = 0, skipped = 0;
+
+      console.log(`[bee-sync-chunk] Daily: ${dailies.length} items, keys: ${JSON.stringify(debugKeys)}`);
+      if (dailies.length > 0) console.log(`[bee-sync-chunk] First daily: ${JSON.stringify(dailies[0]).substring(0, 400)}`);
+
+      for (const day of dailies) {
+        const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
+        if (!dText) { skipped++; continue; }
+        const dDate = day.date || day.created_at || '';
+        const dTitle = day.title || `Daily Summary ${dDate ? new Date(dDate).toLocaleDateString() : day.id}`;
+        if (!force) {
+          const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_daily_id' = $1 AND ai_source = 'bee'`, [String(day.id)]);
+          if (existing.rows.length > 0) { skipped++; continue; }
+        }
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'daily-summary', $3, 'bee', 'bee', $4)`, [
+          dTitle.substring(0, 200), dText.substring(0, 10000),
+          JSON.stringify(['bee', 'daily-summary']),
+          JSON.stringify({ bee_daily_id: day.id, date: dDate })
+        ]);
+        imported++;
+      }
+
+      return res.json({ type, imported, skipped, cursor: nextCursor, done: dailies.length === 0 && !nextCursor, page_size: dailies.length, debug_keys: debugKeys, total: data.total || data.total_count || data.count || null });
 
     } else {
       return res.status(400).json({ error: `Unknown type: ${type}` });
     }
   } catch (err) {
+    console.error(`[bee-sync-chunk] Error for type=${type}: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -475,7 +617,6 @@ router.post('/sync-incremental', async (req, res) => {
   if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
 
   try {
-    // Get last stored change cursor
     const cursorRow = await query(`SELECT details FROM activity_log WHERE action = 'bee-change-cursor' ORDER BY created_at DESC LIMIT 1`);
     const lastCursor = cursorRow.rows[0]?.details || null;
 
@@ -486,10 +627,7 @@ router.post('/sync-incremental', async (req, res) => {
     const newCursor = data.next_cursor || data.cursor || null;
     const results = { facts: 0, todos: 0, conversations: 0, skipped: 0, errors: [] };
 
-    // Group changed IDs by type
-    const changedFacts = [];
-    const changedTodos = [];
-    const changedConvos = [];
+    const changedFacts = [], changedTodos = [], changedConvos = [];
 
     for (const change of (Array.isArray(changes) ? changes : [])) {
       const entityType = change.type || change.entity_type;
@@ -500,49 +638,48 @@ router.post('/sync-incremental', async (req, res) => {
       else if (entityType === 'conversation') changedConvos.push(entityId);
     }
 
-    // Fetch and upsert changed facts
     for (const factId of changedFacts) {
       try {
         const fact = await beeApiGet(`/v1/facts/${factId}`, beeToken);
         const f = fact.fact || fact;
-        if (!f.text) continue;
-        const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_id' = $1 AND ai_source = 'bee'`, [String(f.id)]);
+        const fText = extractFactText(f);
+        if (!fText) continue;
+        const existing = await query(`SELECT id FROM knowledge WHERE metadata->>'bee_id' = $1 AND ai_source = 'bee'`, [String(f.id || factId)]);
         if (existing.rows.length > 0) {
           await query(`UPDATE knowledge SET content = $1, title = $2, updated_at = NOW() WHERE metadata->>'bee_id' = $3 AND ai_source = 'bee'`, [
-            f.text, `Bee Fact: ${f.text.substring(0, 80)}`, String(f.id)
+            fText, `Bee Fact: ${fText.substring(0, 80)}`, String(f.id || factId)
           ]);
         } else {
           await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)`, [
-            `Bee Fact: ${f.text.substring(0, 80)}`, f.text,
+            `Bee Fact: ${fText.substring(0, 80)}`, fText,
             JSON.stringify(['bee', 'fact', f.confirmed ? 'confirmed' : 'unconfirmed']),
-            JSON.stringify({ bee_id: f.id, confirmed: f.confirmed })
+            JSON.stringify({ bee_id: f.id || factId, confirmed: f.confirmed })
           ]);
         }
         results.facts++;
       } catch (e) { results.errors.push(`fact ${factId}: ${e.message}`); }
     }
 
-    // Fetch and upsert changed todos
     for (const todoId of changedTodos) {
       try {
         const todo = await beeApiGet(`/v1/todos/${todoId}`, beeToken);
         const t = todo.todo || todo;
-        if (!t.text) continue;
-        const existing = await query(`SELECT id FROM tasks WHERE next_steps LIKE $1 AND ai_agent = 'bee'`, [`%${t.id}%`]);
+        const tText = extractTodoText(t);
+        if (!tText) continue;
+        const existing = await query(`SELECT id FROM tasks WHERE next_steps LIKE $1 AND ai_agent = 'bee'`, [`%${t.id || todoId}%`]);
         if (existing.rows.length > 0) {
           await query(`UPDATE tasks SET title = $1, status = $2, updated_at = NOW() WHERE next_steps LIKE $3 AND ai_agent = 'bee'`, [
-            t.text, t.completed ? 'done' : 'todo', `%${t.id}%`
+            tText, t.completed ? 'done' : 'todo', `%${t.id || todoId}%`
           ]);
         } else {
           await query(`INSERT INTO tasks (title, status, priority, ai_agent, next_steps) VALUES ($1, $2, 'medium', 'bee', $3)`, [
-            t.text, t.completed ? 'done' : 'todo', `Bee Todo ID: ${t.id}`
+            tText, t.completed ? 'done' : 'todo', `Bee Todo ID: ${t.id || todoId}`
           ]);
         }
         results.todos++;
       } catch (e) { results.errors.push(`todo ${todoId}: ${e.message}`); }
     }
 
-    // Fetch and upsert changed conversations
     for (const convoId of changedConvos) {
       try {
         const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken);
@@ -575,7 +712,6 @@ router.post('/sync-incremental', async (req, res) => {
       } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
     }
 
-    // Store the new cursor for next incremental sync
     if (newCursor) {
       await query(`INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ('bee-change-cursor', 'bee-sync', 'cursor', 'bee', $1)`, [newCursor]);
     }
@@ -584,12 +720,7 @@ router.post('/sync-incremental', async (req, res) => {
       `Incremental sync: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations`
     ]);
 
-    res.json({
-      message: 'Incremental sync complete',
-      imported: results,
-      changes_processed: changes.length,
-      had_cursor: !!lastCursor
-    });
+    res.json({ message: 'Incremental sync complete', imported: results, changes_processed: changes.length, had_cursor: !!lastCursor });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -620,19 +751,12 @@ router.post('/import', async (req, res) => {
 
     if (Array.isArray(facts)) {
       for (const fact of facts) {
-        if (!fact.text) continue;
-        const existing = await query(
-          `SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`,
-          [`%${fact.text.substring(0, 100)}%`]
-        );
+        const factText = extractFactText(fact);
+        if (!factText) continue;
+        const existing = await query(`SELECT id FROM knowledge WHERE content ILIKE $1 AND ai_source = 'bee'`, [`%${factText.substring(0, 100)}%`]);
         if (existing.rows.length > 0) { results.skipped++; continue; }
-
-        await query(`
-          INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
-          VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)
-        `, [
-          `Bee Fact: ${fact.text.substring(0, 80)}`,
-          fact.text,
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'personal', $3, 'bee', 'bee', $4)`, [
+          `Bee Fact: ${factText.substring(0, 80)}`, factText,
           JSON.stringify(fact.tags || ['bee', 'fact']),
           JSON.stringify({ bee_id: fact.id, confirmed: fact.confirmed || false })
         ]);
@@ -642,17 +766,13 @@ router.post('/import', async (req, res) => {
 
     if (Array.isArray(todos)) {
       for (const todo of todos) {
-        if (!todo.text) continue;
-        const existing = await query(
-          `SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`,
-          [todo.text]
-        );
+        const todoText = extractTodoText(todo);
+        if (!todoText) continue;
+        const existing = await query(`SELECT id FROM tasks WHERE title = $1 AND ai_agent = 'bee'`, [todoText]);
         if (existing.rows.length > 0) { results.skipped++; continue; }
-
-        await query(`
-          INSERT INTO tasks (title, status, priority, ai_agent, next_steps)
-          VALUES ($1, $2, 'medium', 'bee', $3)
-        `, [todo.text, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null]);
+        await query(`INSERT INTO tasks (title, status, priority, ai_agent, next_steps) VALUES ($1, $2, 'medium', 'bee', $3)`, [
+          todoText, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : null
+        ]);
         results.todos++;
       }
     }
@@ -662,29 +782,16 @@ router.post('/import', async (req, res) => {
         if (!convo.text && !convo.raw_text) continue;
         const rawText = convo.raw_text || convo.text;
         const title = convo.title || `Bee Conversation ${convo.date || new Date().toLocaleDateString()}`;
-
-        const existing = await query(
-          `SELECT id FROM transcripts WHERE title = $1 AND source = 'bee'`,
-          [title]
-        );
+        const existing = await query(`SELECT id FROM transcripts WHERE title = $1 AND source = 'bee'`, [title]);
         if (existing.rows.length > 0) { results.skipped++; continue; }
-
-        const result = await query(`
-          INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, tags, metadata)
-          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8)
-          RETURNING id
-        `, [
+        const result = await query(`INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, tags, metadata) VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8) RETURNING id`, [
           title, rawText, convo.summary || null,
           JSON.stringify(convo.speakers || []), convo.duration_seconds || null,
           convo.date || convo.recorded_at || null,
           JSON.stringify(convo.tags || ['bee', 'conversation']),
           JSON.stringify({ bee_id: convo.id || null })
         ]);
-
-        await query(`
-          INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata)
-          VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)
-        `, [
+        await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
           title, (convo.summary || rawText).substring(0, 5000),
           JSON.stringify(convo.tags || ['bee', 'conversation']),
           JSON.stringify({ transcript_id: result.rows[0].id, bee_id: convo.id || null })
@@ -693,10 +800,8 @@ router.post('/import', async (req, res) => {
       }
     }
 
-    await query(`
-      INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-      VALUES ('create', 'bee-import', 'bulk', 'bee', $1)
-    `, [`Bee import: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
+    await query(`INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ('create', 'bee-import', 'bulk', 'bee', $1)`,
+      [`Bee import: ${results.facts} facts, ${results.todos} todos, ${results.conversations} conversations (${results.skipped} skipped)`]);
 
     res.json({ message: 'Bee data imported', imported: results });
   } catch (err) {
@@ -761,39 +866,39 @@ router.get('/test', async (req, res) => {
 
   const results = { token_length: beeToken.length, token_prefix: beeToken.substring(0, 20) + '...' };
 
-  // Test /v1/me (identity)
   try {
     results.me = await beeApiGet('/v1/me', beeToken);
-  } catch (e) {
-    results.me_error = e.message;
-  }
+  } catch (e) { results.me_error = e.message; }
 
-  // Test facts
+  // Test facts — NO extra params (the Bee API may not support limit/page/confirmed as query params)
   try {
-    results.facts_raw = await beeApiGet('/v1/facts?page=1&limit=3&confirmed=true', beeToken);
-  } catch (e) {
-    results.facts_error = e.message;
-  }
+    results.facts_raw = await beeApiGet('/v1/facts', beeToken);
+    const facts = extractArray(results.facts_raw, 'facts');
+    results.facts_count = facts.length;
+    results.facts_response_keys = Array.isArray(results.facts_raw) ? '_array_' : Object.keys(results.facts_raw);
+    if (facts.length > 0) results.facts_first_item = facts[0];
+  } catch (e) { results.facts_error = e.message; }
 
-  // Test todos
+  // Test todos — NO extra params
   try {
-    results.todos_raw = await beeApiGet('/v1/todos?page=1&limit=3', beeToken);
-  } catch (e) {
-    results.todos_error = e.message;
-  }
+    results.todos_raw = await beeApiGet('/v1/todos', beeToken);
+    const todos = extractArray(results.todos_raw, 'todos');
+    results.todos_count = todos.length;
+    results.todos_response_keys = Array.isArray(results.todos_raw) ? '_array_' : Object.keys(results.todos_raw);
+    if (todos.length > 0) results.todos_first_item = todos[0];
+  } catch (e) { results.todos_error = e.message; }
 
-  // Test conversations (list + one detail)
+  // Test conversations
   try {
     const listData = await beeApiGet('/v1/conversations?limit=3&created_after=2024-01-01', beeToken);
     results.conversations_raw = listData;
+    results.conversations_response_keys = Array.isArray(listData) ? '_array_' : Object.keys(listData);
 
-    // Fetch ONE completed conversation detail to see what fields are available
-    const convos = listData.conversations || [];
+    const convos = extractArray(listData, 'conversations');
     const completed = convos.find(c => c.state === 'COMPLETED');
     if (completed) {
       const detail = await beeApiGet(`/v1/conversations/${completed.id}`, beeToken);
       const fullConvo = detail.conversation || detail;
-      // Show all top-level keys and their types/lengths so we know what's available
       const detailShape = {};
       for (const [key, val] of Object.entries(fullConvo)) {
         if (val === null || val === undefined) detailShape[key] = null;
@@ -804,23 +909,26 @@ router.get('/test', async (req, res) => {
       }
       results.conversation_detail_shape = detailShape;
       results.conversation_detail_id = completed.id;
-      results.conversation_detail_full = fullConvo;
-
-      // Try potential transcript sub-endpoints
-      const subEndpoints = ['transcript', 'utterances', 'segments', 'blocks', 'text'];
-      results.sub_endpoints = {};
-      for (const ep of subEndpoints) {
-        try {
-          const sub = await beeApiGet(`/v1/conversations/${completed.id}/${ep}`, beeToken);
-          results.sub_endpoints[ep] = { status: 'ok', shape: typeof sub === 'object' ? Object.keys(sub) : typeof sub, preview: JSON.stringify(sub).substring(0, 500) };
-        } catch (e) {
-          results.sub_endpoints[ep] = { status: 'error', message: e.message };
-        }
-      }
     }
-  } catch (e) {
-    results.conversations_error = e.message;
-  }
+  } catch (e) { results.conversations_error = e.message; }
+
+  // Test journals
+  try {
+    results.journals_raw = await beeApiGet('/v1/journals', beeToken);
+    const journals = extractArray(results.journals_raw, 'journals');
+    results.journals_count = journals.length;
+    results.journals_response_keys = Array.isArray(results.journals_raw) ? '_array_' : Object.keys(results.journals_raw);
+    if (journals.length > 0) results.journals_first_item = journals[0];
+  } catch (e) { results.journals_error = e.message; }
+
+  // Test daily summaries
+  try {
+    results.daily_raw = await beeApiGet('/v1/daily', beeToken);
+    const daily = extractArray(results.daily_raw, 'daily');
+    results.daily_count = daily.length;
+    results.daily_response_keys = Array.isArray(results.daily_raw) ? '_array_' : Object.keys(results.daily_raw);
+    if (daily.length > 0) results.daily_first_item = daily[0];
+  } catch (e) { results.daily_error = e.message; }
 
   res.json(results);
 });
@@ -831,12 +939,16 @@ router.get('/status', async (req, res) => {
     const facts = await query(`SELECT COUNT(*) as count FROM knowledge WHERE ai_source = 'bee'`);
     const tasks = await query(`SELECT COUNT(*) as count FROM tasks WHERE ai_agent = 'bee'`);
     const transcripts = await query(`SELECT COUNT(*) as count FROM transcripts WHERE source = 'bee'`);
+    const journals = await query(`SELECT COUNT(*) as count FROM knowledge WHERE ai_source = 'bee' AND category = 'journal'`);
+    const daily = await query(`SELECT COUNT(*) as count FROM knowledge WHERE ai_source = 'bee' AND category = 'daily-summary'`);
     const lastImport = await query(`SELECT created_at FROM activity_log WHERE entity_type = 'bee-import' ORDER BY created_at DESC LIMIT 1`);
 
     res.json({
       facts: Number(facts.rows[0].count),
       tasks: Number(tasks.rows[0].count),
       transcripts: Number(transcripts.rows[0].count),
+      journals: Number(journals.rows[0].count),
+      daily: Number(daily.rows[0].count),
       last_import: lastImport.rows[0]?.created_at || null,
       bee_token_configured: !!process.env.BEE_API_TOKEN
     });
