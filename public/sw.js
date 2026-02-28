@@ -1,4 +1,4 @@
-const CACHE_NAME = 'abkb-v1';
+const CACHE_NAME = 'abkb-v2';
 const SHELL_FILES = [
   '/',
   '/styles.css',
@@ -28,9 +28,9 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Always go to network for API calls
+  // Always go to network for API calls — pass through without service worker interception
   if (url.pathname.startsWith('/api')) {
-    return e.respondWith(fetch(e.request));
+    return;
   }
 
   // Cache-first for static assets, fallback to network

@@ -119,9 +119,10 @@ body {
   align-items: center;
   gap: 3px;
   cursor: pointer;
-  padding: 8px 12px;
+  padding: 8px 4px;
   min-height: 44px;
-  min-width: 44px;
+  min-width: 0;
+  flex: 1 1 0;
   transition: color 0.2s;
   font-size: 0.65rem;
 }
