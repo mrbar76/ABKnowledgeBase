@@ -148,7 +148,9 @@ router.post('/sync', async (req, res) => {
       while (hasMore) {
         const url = `/v1/facts?limit=250&confirmed=${confirmed}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
         const data = await beeApiGet(url, beeToken);
-        const facts = Array.isArray(data) ? data : (data.facts || data.items || data.data || []);
+        const facts = Array.isArray(data) ? data
+          : (data.facts || data.user_facts || data.results || data.items || data.data
+             || Object.values(data).find(v => Array.isArray(v)) || []);
         cursor = data.next_cursor || null;
         for (const fact of facts) {
           if (!fact.text) continue;
@@ -185,7 +187,9 @@ router.post('/sync', async (req, res) => {
     while (hasMore) {
       const url = `/v1/todos?limit=250` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
-      const todos = Array.isArray(data) ? data : (data.todos || data.items || data.data || []);
+      const todos = Array.isArray(data) ? data
+        : (data.todos || data.todo_items || data.results || data.items || data.data
+           || Object.values(data).find(v => Array.isArray(v)) || []);
       cursor = data.next_cursor || null;
       for (const todo of todos) {
         if (!todo.text) continue;
@@ -218,7 +222,7 @@ router.post('/sync', async (req, res) => {
     let cursor = null;
     let hasMore = true;
     while (hasMore) {
-      const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const url = `/v1/conversations?limit=50&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const convos = Array.isArray(data) ? data : (data.conversations || data.items || data.data || []);
       cursor = data.next_cursor || null;
@@ -780,7 +784,7 @@ router.get('/test', async (req, res) => {
 
   // Test conversations (list + one detail)
   try {
-    const listData = await beeApiGet('/v1/conversations?limit=3', beeToken);
+    const listData = await beeApiGet('/v1/conversations?limit=3&created_after=2024-01-01', beeToken);
     results.conversations_raw = listData;
 
     // Fetch ONE completed conversation detail to see what fields are available
