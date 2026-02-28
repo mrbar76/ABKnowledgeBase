@@ -952,17 +952,18 @@ INSTRUCTIONS:
   }
 
   if (ai === 'chatgpt') {
-    return `You have access to the user's personal knowledge base (AB Brain). Use it to remember things across conversations.
+    return `You have access to the user's personal knowledge base (AB Brain) via Actions. Use it to remember things across conversations.
 
-${shared}
+The Actions are already configured with the API endpoints. You can call them directly.
 
 INSTRUCTIONS:
-1. At the start of each conversation, search the knowledge base for context relevant to the user's question.
-2. When you reach an important insight or decision, save it to the knowledge base.
-3. When the user asks you to do something actionable, create a task.
+1. At the start of each conversation, use the searchKnowledge action to find context relevant to the user's question.
+2. When you reach an important insight or decision, use createKnowledge to save it.
+3. When the user asks you to do something actionable, use createTask to add it.
 4. Always include ai_source: "chatgpt" when saving knowledge.
 5. Categories: general, code, meeting, research, decision, reference, health, personal
-6. Keep titles short and descriptive. Content should capture the full context.`;
+6. Keep titles short and descriptive. Content should capture the full context.
+7. You can also search and create transcripts and manage projects.`;
   }
 
   // gemini
@@ -984,6 +985,9 @@ function renderPrompts() {
     const el = document.getElementById(`prompt-${ai}`);
     if (el) el.textContent = buildPrompt(ai);
   });
+  // Set the OpenAPI spec URL for ChatGPT Actions setup
+  const openapiEl = document.getElementById('openapi-url');
+  if (openapiEl) openapiEl.textContent = `${SITE_URL}/openapi-chatgpt.json`;
 }
 
 function copyPrompt(ai) {

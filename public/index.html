@@ -215,13 +215,39 @@
       <div class="card" style="margin-top:12px">
         <h2>Connect AI (Live)</h2>
         <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
-          Give any AI these instructions so it can read &amp; write to your brain in real time.
+          Connect your AI assistants so they can read &amp; write to your brain.
         </p>
 
         <div class="form-group">
           <label>Your API Key</label>
           <input type="password" id="connect-api-key" placeholder="Paste your API_KEY here" style="font-family:monospace">
           <p style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">This stays in your browser. Never sent anywhere.</p>
+        </div>
+
+        <!-- ChatGPT (most reliable integration) -->
+        <div class="connect-card">
+          <div class="connect-card-header">
+            <span class="connect-card-icon" style="color:var(--green)">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+            </span>
+            <strong>ChatGPT</strong>
+            <span style="font-size:0.75rem;color:var(--green);margin-left:auto">Full Integration</span>
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
+            Uses <strong>Custom GPT + Actions</strong> to call your API directly. This is the most reliable integration.
+          </p>
+          <div style="font-size:0.8rem;line-height:1.6;margin-bottom:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius)">
+            <strong>Setup (one-time):</strong><br>
+            1. Go to <strong>chatgpt.com &rarr; Explore GPTs &rarr; Create</strong><br>
+            2. In the <strong>Configure</strong> tab, scroll to <strong>Actions</strong> &rarr; Create new action<br>
+            3. Click <strong>Import from URL</strong> and paste:<br>
+            <code id="openapi-url" style="background:var(--bg);padding:2px 6px;border-radius:4px;word-break:break-all"></code><br>
+            4. Under <strong>Authentication</strong> &rarr; API Key &rarr; Header name: <code>X-Api-Key</code><br>
+            5. Paste your API key as the value<br>
+            6. Paste the instructions below into the GPT's <strong>Instructions</strong> field
+          </div>
+          <div class="connect-prompt" id="prompt-chatgpt"></div>
+          <button class="btn-copy" onclick="copyPrompt('chatgpt')">Copy Instructions</button>
         </div>
 
         <!-- Claude -->
@@ -231,29 +257,13 @@
               <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             </span>
             <strong>Claude</strong>
-            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Project Instructions</span>
+            <span style="font-size:0.75rem;color:var(--purple);margin-left:auto">Project Instructions</span>
           </div>
           <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            claude.ai &rarr; Projects &rarr; New Project &rarr; paste into <strong>Project Instructions</strong>
+            Paste the instructions below into <strong>Project Instructions</strong>. Claude may be able to call the API from Projects (varies by plan/features). Also works with Claude Code.
           </p>
           <div class="connect-prompt" id="prompt-claude"></div>
           <button class="btn-copy" onclick="copyPrompt('claude')">Copy Instructions</button>
-        </div>
-
-        <!-- ChatGPT -->
-        <div class="connect-card">
-          <div class="connect-card-header">
-            <span class="connect-card-icon" style="color:var(--green)">
-              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
-            </span>
-            <strong>ChatGPT</strong>
-            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Custom GPT / Memory</span>
-          </div>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            chatgpt.com &rarr; Explore GPTs &rarr; Create &rarr; paste into <strong>Instructions</strong>
-          </p>
-          <div class="connect-prompt" id="prompt-chatgpt"></div>
-          <button class="btn-copy" onclick="copyPrompt('chatgpt')">Copy Instructions</button>
         </div>
 
         <!-- Gemini -->
@@ -263,11 +273,18 @@
               <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             </span>
             <strong>Gemini</strong>
-            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Gem Instructions</span>
+            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Import Only</span>
           </div>
           <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            gemini.google.com &rarr; Gem manager &rarr; New Gem &rarr; paste into instructions
+            Gemini Gems <strong>cannot</strong> make external API calls. Use import instead:
           </p>
+          <div style="font-size:0.8rem;line-height:1.6;margin-bottom:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius)">
+            <strong>Import Gemini conversations:</strong><br>
+            1. Go to <strong>takeout.google.com</strong> &rarr; select <strong>Gemini Apps</strong><br>
+            2. Export and download your data<br>
+            3. Upload the conversations file using the Import section above<br><br>
+            <strong>Manual save:</strong> Ask Gemini to format insights as JSON, then paste into the Brain UI
+          </div>
           <div class="connect-prompt" id="prompt-gemini"></div>
           <button class="btn-copy" onclick="copyPrompt('gemini')">Copy Instructions</button>
         </div>
