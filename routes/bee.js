@@ -977,6 +977,43 @@ router.get('/status', async (req, res) => {
 });
 
 // ============================================================
+// EXPORT — dump all Bee-synced data from the database as JSON
+// GET /api/bee/export?since=2025-12-26
+// ============================================================
+router.get('/export', async (req, res) => {
+  try {
+    const since = req.query.since || '2025-01-01';
+
+    const [dailySummaries, conversations, journals, facts, todos] = await Promise.all([
+      query(`SELECT id, title, content, category, tags, metadata, created_at FROM knowledge WHERE ai_source = 'bee' AND category = 'daily-summary' AND created_at >= $1 ORDER BY created_at`, [since]),
+      query(`SELECT id, title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, location, tags, metadata, created_at FROM transcripts WHERE source = 'bee' AND created_at >= $1 ORDER BY recorded_at`, [since]),
+      query(`SELECT id, title, content, category, tags, metadata, created_at FROM knowledge WHERE ai_source = 'bee' AND category = 'journal' AND created_at >= $1 ORDER BY created_at`, [since]),
+      query(`SELECT id, title, content, category, tags, metadata, created_at FROM knowledge WHERE ai_source = 'bee' AND category = 'personal' ORDER BY created_at`),
+      query(`SELECT id, title, status, priority, ai_agent, next_steps, created_at FROM tasks WHERE ai_agent = 'bee' ORDER BY created_at`)
+    ]);
+
+    res.json({
+      exported_at: new Date().toISOString(),
+      since,
+      counts: {
+        daily_summaries: dailySummaries.rows.length,
+        conversations: conversations.rows.length,
+        journals: journals.rows.length,
+        facts: facts.rows.length,
+        todos: todos.rows.length
+      },
+      daily_summaries: dailySummaries.rows,
+      conversations: conversations.rows,
+      journals: journals.rows,
+      facts: facts.rows,
+      todos: todos.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // BEE NEURAL SEARCH — proxy to Bee's semantic search API
 // POST /api/bee/search
 // ============================================================
