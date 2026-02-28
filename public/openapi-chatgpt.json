@@ -369,6 +369,82 @@
         }
       }
     },
+    "/search": {
+      "get": {
+        "operationId": "unifiedSearch",
+        "summary": "Search across ALL data types (knowledge, transcripts, tasks, projects) in one query",
+        "description": "Unified search that queries knowledge entries, transcripts, tasks, and projects simultaneously. Returns results grouped by type with relevance ranking. Use this as the primary search method.",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Search query" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grouped search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": { "type": "string" },
+                    "total": { "type": "integer" },
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "knowledge": { "type": "array", "items": { "type": "object" } },
+                        "transcripts": { "type": "array", "items": { "type": "object" } },
+                        "tasks": { "type": "array", "items": { "type": "object" } },
+                        "projects": { "type": "array", "items": { "type": "object" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/ai": {
+      "post": {
+        "operationId": "aiSearch",
+        "summary": "AI-powered search across the entire knowledge base",
+        "description": "Submit a natural language query to search across all data types. Returns results sorted by relevance with a summary. Designed for AI agents to search and retrieve the user's personal data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                  "query": { "type": "string", "description": "Natural language search query" },
+                  "limit": { "type": "integer", "default": 10 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results with summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": { "type": "string" },
+                    "total": { "type": "integer" },
+                    "summary": { "type": "string" },
+                    "results": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",

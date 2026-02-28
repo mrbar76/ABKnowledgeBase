@@ -139,6 +139,9 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at);
   `);
 
+  // Migrations — add columns safely
+  await pool.query(`ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS location TEXT`);
+
   console.log('Database initialized successfully');
 }
 

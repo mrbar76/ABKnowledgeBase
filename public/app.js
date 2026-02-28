@@ -325,6 +325,7 @@ function renderTranscriptItem(t) {
         <span>${t.source || 'bee'}</span>
         ${t.duration_seconds ? `<span>${Math.round(t.duration_seconds / 60)}min</span>` : ''}
         <span>${timeAgo(t.recorded_at || t.created_at)}</span>
+        ${t.location ? `<span>${esc(t.location)}</span>` : ''}
       </div>
     </div>
   `;
@@ -373,22 +374,83 @@ async function createTranscript(e) {
 async function openTranscriptDetail(id) {
   const t = await api(`/transcripts/${id}`);
   const tags = Array.isArray(t.tags) ? t.tags : [];
+  const messages = parseTranscriptToMessages(t.raw_text || '');
+  const hasSpeakers = messages.some(m => m.speaker);
+  const speakerLabels = Array.isArray(t.speaker_labels) ? t.speaker_labels : [];
+
+  // Determine which speaker is "you" (the user wearing the Bee)
+  // Heuristic: the speaker with the most utterances is typically the wearer
+  const mySpeaker = detectMySpeaker(messages, speakerLabels);
+
+  const chatHtml = hasSpeakers && messages.length > 1
+    ? renderChatBubbles(messages, mySpeaker, id)
+    : `<div style="background:var(--bg-input);padding:10px;border-radius:6px;font-size:0.82rem;max-height:400px;overflow-y:auto;white-space:pre-wrap">${esc(t.raw_text)}</div>`;
+
   openModal('Transcript', `
     <div style="margin-bottom:12px">
       <strong>${esc(t.title)}</strong>
       <div style="font-size:0.75rem;color:var(--text-dim);margin-top:4px">
         ${t.source || 'bee'} &middot; ${t.recorded_at ? new Date(t.recorded_at).toLocaleString() : 'Unknown date'}
         ${t.duration_seconds ? ` &middot; ${Math.round(t.duration_seconds / 60)} minutes` : ''}
+        ${t.location ? ` &middot; ${esc(t.location)}` : ''}
       </div>
       ${tags.length ? `<div class="k-tags" style="margin-top:6px">${tags.map(tg => `<span class="k-tag">${esc(tg)}</span>`).join('')}</div>` : ''}
     </div>
     ${t.summary ? `<div class="form-group"><label>Summary</label><div style="background:var(--bg-input);padding:10px;border-radius:6px;font-size:0.85rem">${esc(t.summary)}</div></div>` : ''}
     <div class="form-group">
-      <label>Full Transcript</label>
-      <div style="background:var(--bg-input);padding:10px;border-radius:6px;font-size:0.82rem;max-height:400px;overflow-y:auto;white-space:pre-wrap">${esc(t.raw_text)}</div>
+      <label>${hasSpeakers ? 'Conversation' : 'Full Transcript'}</label>
+      ${chatHtml}
     </div>
-    <button type="button" class="btn-submit btn-danger" onclick="deleteTranscript('${id}')">Delete Transcript</button>
+    ${hasSpeakers ? `<span class="chat-raw-toggle" onclick="toggleRawText('${id}')">Show raw text</span><div id="raw-text-${id}" style="display:none;background:var(--bg-input);padding:10px;border-radius:6px;font-size:0.82rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;margin-top:8px">${esc(t.raw_text)}</div>` : ''}
+    <button type="button" class="btn-submit btn-danger" style="margin-top:12px" onclick="deleteTranscript('${id}')">Delete Transcript</button>
   `);
+}
+
+function toggleRawText(id) {
+  const el = document.getElementById(`raw-text-${id}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function parseTranscriptToMessages(rawText) {
+  if (!rawText) return [];
+  return rawText.split('\n').filter(l => l.trim()).map(line => {
+    // Format: [HH:MM:SS AM] Speaker: text  OR  Speaker: text
+    const match = line.match(/^(?:\[([^\]]+)\]\s*)?(.+?):\s(.+)$/);
+    if (!match) return { speaker: null, time: null, text: line.trim() };
+    return { time: match[1] || null, speaker: match[2].trim(), text: match[3].trim() };
+  });
+}
+
+function detectMySpeaker(messages, speakerLabels) {
+  // If speaker_labels has a "me" or "self" marker, use that
+  const meLabel = speakerLabels.find(s => s.is_me || s.is_self || s.role === 'self');
+  if (meLabel) return meLabel.name || meLabel.speaker || meLabel.label;
+
+  // Heuristic: the speaker with the most utterances is likely the Bee wearer
+  const counts = {};
+  for (const m of messages) {
+    if (m.speaker) counts[m.speaker] = (counts[m.speaker] || 0) + 1;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return sorted.length > 0 ? sorted[0][0] : null;
+}
+
+function renderChatBubbles(messages, mySpeaker, transcriptId) {
+  let lastSpeaker = null;
+  const html = messages.map(m => {
+    if (!m.speaker && !m.text) return '';
+    const isSelf = m.speaker === mySpeaker;
+    const showSpeaker = m.speaker !== lastSpeaker;
+    lastSpeaker = m.speaker;
+
+    return `<div class="chat-bubble-row ${isSelf ? 'is-self' : 'is-other'}">
+      ${showSpeaker && m.speaker ? `<div class="chat-speaker">${esc(m.speaker)}</div>` : ''}
+      <div class="chat-bubble">${esc(m.text)}</div>
+      ${m.time ? `<div class="chat-timestamp">${esc(m.time)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<div class="chat-transcript">${html}</div>`;
 }
 
 async function deleteTranscript(id) {
@@ -892,6 +954,160 @@ function autoCategory(title, content) {
   return 'general';
 }
 
+// --- Global Search ---
+let searchDebounceTimer = null;
+
+function openGlobalSearch() {
+  document.getElementById('search-overlay').classList.add('open');
+  const input = document.getElementById('global-search-input');
+  input.value = '';
+  input.focus();
+  document.getElementById('search-results').innerHTML = '';
+}
+
+function closeGlobalSearch() {
+  document.getElementById('search-overlay').classList.remove('open');
+}
+
+// Keyboard shortcut: Ctrl+K or Cmd+K
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    openGlobalSearch();
+  }
+  if (e.key === 'Escape' && document.getElementById('search-overlay').classList.contains('open')) {
+    closeGlobalSearch();
+  }
+});
+
+document.getElementById('global-search-input').addEventListener('input', e => {
+  clearTimeout(searchDebounceTimer);
+  const q = e.target.value.trim();
+  if (!q) {
+    document.getElementById('search-results').innerHTML = '';
+    return;
+  }
+  if (q.length < 2) return;
+  searchDebounceTimer = setTimeout(() => runGlobalSearch(q), 300);
+});
+
+document.getElementById('global-search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    clearTimeout(searchDebounceTimer);
+    const q = e.target.value.trim();
+    if (q) runGlobalSearch(q);
+  }
+});
+
+async function runGlobalSearch(q) {
+  const resultsEl = document.getElementById('search-results');
+  resultsEl.innerHTML = '<div class="search-loading">Searching...</div>';
+
+  try {
+    const data = await api(`/search?q=${encodeURIComponent(q)}`);
+    const r = data.results;
+
+    if (data.total === 0) {
+      resultsEl.innerHTML = '<div class="search-empty">No results found</div>';
+      return;
+    }
+
+    let html = '';
+
+    if (r.knowledge.length) {
+      html += renderSearchGroup('Knowledge', 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z', r.knowledge, item => {
+        const badge = item.ai_source ? `<span class="badge source-${item.ai_source}" style="font-size:0.6rem">${item.ai_source}</span>` : '';
+        return `<div class="search-result-item" onclick="closeGlobalSearch();openKnowledgeDetail('${item.id}')">
+          <div class="search-result-title">${badge} ${esc(item.title)}</div>
+          <div class="search-result-preview">${esc(item.preview || '')}</div>
+          <div class="search-result-meta"><span>${item.category || ''}</span><span>${timeAgo(item.updated_at)}</span></div>
+        </div>`;
+      });
+    }
+
+    if (r.transcripts.length) {
+      html += renderSearchGroup('Transcripts', 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z', r.transcripts, item => {
+        return `<div class="search-result-item" onclick="closeGlobalSearch();openTranscriptDetail('${item.id}')">
+          <div class="search-result-title">${esc(item.title)}</div>
+          <div class="search-result-preview">${esc(item.preview || '')}</div>
+          <div class="search-result-meta">
+            <span>${item.source || 'bee'}</span>
+            ${item.duration_seconds ? `<span>${Math.round(item.duration_seconds / 60)}min</span>` : ''}
+            <span>${timeAgo(item.recorded_at)}</span>
+          </div>
+        </div>`;
+      });
+    }
+
+    if (r.tasks.length) {
+      html += renderSearchGroup('Tasks', 'M4 4h4v16H4V4zm6 0h4v12h-4V4zm6 0h4v8h-4V4z', r.tasks, item => {
+        return `<div class="search-result-item" onclick="closeGlobalSearch();openTaskDetail('${item.id}')">
+          <div class="search-result-title">${esc(item.title)}</div>
+          ${item.preview ? `<div class="search-result-preview">${esc(item.preview)}</div>` : ''}
+          <div class="search-result-meta">
+            <span class="badge priority-${item.priority}">${item.priority}</span>
+            <span class="badge" style="background:var(--bg-input)">${(item.status || '').replace('_', ' ')}</span>
+            ${item.project_name ? `<span>${esc(item.project_name)}</span>` : ''}
+          </div>
+        </div>`;
+      });
+    }
+
+    if (r.projects.length) {
+      html += renderSearchGroup('Projects', 'M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z', r.projects, item => {
+        return `<div class="search-result-item" onclick="closeGlobalSearch();openProjectDetail('${item.id}')">
+          <div class="search-result-title">${esc(item.title)}</div>
+          ${item.preview ? `<div class="search-result-preview">${esc(item.preview)}</div>` : ''}
+          <div class="search-result-meta"><span>${item.status || ''}</span></div>
+        </div>`;
+      });
+    }
+
+    resultsEl.innerHTML = html;
+
+    // Also try Bee neural search in background if token is configured
+    tryBeeNeuralSearch(q, resultsEl);
+
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="search-empty">Search failed: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderSearchGroup(label, iconPath, items, renderItem) {
+  return `<div class="search-group-label">
+    <svg class="search-type-icon" viewBox="0 0 24 24"><path fill="currentColor" d="${iconPath}"/></svg>
+    ${label} (${items.length})
+  </div>` + items.map(renderItem).join('');
+}
+
+async function tryBeeNeuralSearch(q, resultsEl) {
+  try {
+    const data = await api('/bee/search', {
+      method: 'POST',
+      body: JSON.stringify({ query: q, limit: 5 })
+    });
+    if (data.results && data.results.length > 0) {
+      const beeHtml = renderSearchGroup('Bee Neural', 'M12 2a3 3 0 0 0-3 3v1H7a2 2 0 0 0-2 2v2a6 6 0 0 0 3.34 5.37A5.98 5.98 0 0 0 12 22a5.98 5.98 0 0 0 3.66-6.63A6 6 0 0 0 19 10V8a2 2 0 0 0-2-2h-2V5a3 3 0 0 0-3-3z', data.results, item => {
+        const onclick = item.local_transcript
+          ? `closeGlobalSearch();openTranscriptDetail('${item.local_transcript.id}')`
+          : '';
+        return `<div class="search-result-item" ${onclick ? `onclick="${onclick}"` : ''} style="${onclick ? '' : 'opacity:0.7;cursor:default'}">
+          <div class="search-result-title">${esc(item.title)}</div>
+          <div class="search-result-preview">${esc(item.preview || '')}</div>
+          <div class="search-result-meta">
+            <span class="badge" style="background:rgba(251,191,36,0.15);color:#fbbf24">neural</span>
+            ${item.start_time ? `<span>${timeAgo(item.start_time)}</span>` : ''}
+            ${item.local_transcript ? '' : '<span>not synced locally</span>'}
+          </div>
+        </div>`;
+      });
+      resultsEl.innerHTML += beeHtml;
+    }
+  } catch (e) {
+    // Bee search is optional — silently fail if token not configured
+  }
+}
+
 // --- Utilities ---
 function esc(str) {
   if (!str) return '';
@@ -927,6 +1143,10 @@ function buildPrompt(ai) {
 Auth: X-Api-Key: ${key}
 
 ENDPOINTS:
+- UNIFIED SEARCH:  POST ${base}/search/ai
+  Body: {"query":"natural language question","limit":10}
+  Returns results from ALL data types (knowledge, transcripts, tasks, projects) sorted by relevance.
+  USE THIS FIRST to search across everything.
 - Search knowledge: GET ${base}/knowledge?q=SEARCH_TERM
 - Get all knowledge: GET ${base}/knowledge
 - Save knowledge:  POST ${base}/knowledge

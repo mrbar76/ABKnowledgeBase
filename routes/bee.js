@@ -302,16 +302,21 @@ router.post('/sync', async (req, res) => {
         const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
           : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
 
+        const location = convo.primary_location?.address || full.primary_location?.address || null;
+        const speakers = full.speakers || convo.speakers || [];
+
         const result = await query(`
-          INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
-          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7) RETURNING id
+          INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, location, tags, metadata)
+          VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8, $9) RETURNING id
         `, [
-          title.substring(0, 200), rawText, summary, durationSec, recordedAt,
+          title.substring(0, 200), rawText, summary,
+          JSON.stringify(speakers), durationSec, recordedAt, location,
           JSON.stringify(['bee', 'conversation']),
           JSON.stringify({
             bee_id: beeId, utterances_count: convo.utterances_count || full.utterances_count || null,
-            location: convo.primary_location?.address || null, state: convo.state || null,
-            start_time: convo.start_time || null, end_time: convo.end_time || null
+            location: location, state: convo.state || null,
+            start_time: convo.start_time || null, end_time: convo.end_time || null,
+            primary_location: convo.primary_location || full.primary_location || null
           })
         ]);
 
@@ -508,16 +513,20 @@ router.post('/sync-chunk', async (req, res) => {
           const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
             : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
 
+          const chunkLocation = convo.primary_location?.address || null;
+
           const result = await query(`
-            INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, metadata)
-            VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7) RETURNING id
+            INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, location, tags, metadata)
+            VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8, $9) RETURNING id
           `, [
-            title.substring(0, 200), rawText, summary, durationSec, recordedAt,
+            title.substring(0, 200), rawText, summary,
+            JSON.stringify(convo.speakers || []), durationSec, recordedAt, chunkLocation,
             JSON.stringify(['bee', 'conversation']),
             JSON.stringify({
               bee_id: beeId, utterances_count: convo.utterances_count || null,
-              location: convo.primary_location?.address || null, state: convo.state || null,
-              start_time: convo.start_time || null, end_time: convo.end_time || null
+              location: chunkLocation, state: convo.state || null,
+              start_time: convo.start_time || null, end_time: convo.end_time || null,
+              primary_location: convo.primary_location || null
             })
           ]);
 
@@ -688,19 +697,29 @@ router.post('/sync-incremental', async (req, res) => {
         const rawText = buildConversationText(c, c);
         if (!rawText) continue;
         const title = c.short_summary || (c.summary ? c.summary.substring(0, 80) : `Bee Conversation ${convoId}`);
+
+        const durationMs = (c.end_time && c.start_time) ? c.end_time - c.start_time : null;
+        const durationSec = durationMs ? Math.round(durationMs / 1000) : (c.duration_seconds || null);
+        const recordedAt = c.start_time ? new Date(c.start_time).toISOString()
+          : (c.created_at ? new Date(c.created_at).toISOString() : null);
+        const incLocation = c.primary_location?.address || null;
+        const incSpeakers = c.speakers || [];
+
         const existing = await query(`SELECT id FROM transcripts WHERE metadata->>'bee_id' = $1 AND source = 'bee'`, [String(convoId)]);
         if (existing.rows.length > 0) {
-          await query(`UPDATE transcripts SET raw_text = $1, summary = $2, title = $3, updated_at = NOW() WHERE metadata->>'bee_id' = $4 AND source = 'bee'`, [
-            rawText, c.summary || null, title.substring(0, 200), String(convoId)
+          await query(`UPDATE transcripts SET raw_text = $1, summary = $2, title = $3, speaker_labels = $4, duration_seconds = COALESCE($5, duration_seconds), recorded_at = COALESCE($6, recorded_at), location = COALESCE($7, location), updated_at = NOW() WHERE metadata->>'bee_id' = $8 AND source = 'bee'`, [
+            rawText, c.summary || null, title.substring(0, 200),
+            JSON.stringify(incSpeakers), durationSec, recordedAt, incLocation, String(convoId)
           ]);
           await query(`UPDATE knowledge SET content = $1, title = $2, updated_at = NOW() WHERE metadata->>'bee_id' = $3 AND ai_source = 'bee' AND category = 'meeting'`, [
             (c.summary || rawText).substring(0, 5000), title.substring(0, 200), String(convoId)
           ]);
         } else {
-          const result = await query(`INSERT INTO transcripts (title, raw_text, summary, source, tags, metadata) VALUES ($1, $2, $3, 'bee', $4, $5) RETURNING id`, [
+          const result = await query(`INSERT INTO transcripts (title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, location, tags, metadata) VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7, $8, $9) RETURNING id`, [
             title.substring(0, 200), rawText, c.summary || null,
+            JSON.stringify(incSpeakers), durationSec, recordedAt, incLocation,
             JSON.stringify(['bee', 'conversation']),
-            JSON.stringify({ bee_id: convoId, state: c.state || null })
+            JSON.stringify({ bee_id: convoId, state: c.state || null, location: incLocation, primary_location: c.primary_location || null })
           ]);
           await query(`INSERT INTO knowledge (title, content, category, tags, source, ai_source, metadata) VALUES ($1, $2, 'meeting', $3, 'bee', 'bee', $4)`, [
             title.substring(0, 200), (c.summary || rawText).substring(0, 5000),
@@ -954,6 +973,127 @@ router.get('/status', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// BEE NEURAL SEARCH — proxy to Bee's semantic search API
+// POST /api/bee/search
+// ============================================================
+function beeApiPost(path, body, beeToken, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, BEE_API);
+    const payload = JSON.stringify(body);
+    const req = https.request(url, {
+      method: 'POST',
+      agent: beeAgent,
+      headers: {
+        'Authorization': `Bearer ${beeToken}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 401) return reject(new Error('Invalid Bee token'));
+        if (res.statusCode !== 200) return reject(new Error(`Bee API ${res.statusCode}: ${data.substring(0, 200)}`));
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('Invalid JSON from Bee API')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error(`Bee API timeout after ${timeoutMs}ms`));
+    });
+    req.write(payload);
+    req.end();
+  });
+}
+
+// Neural (semantic) search over Bee conversations
+router.post('/search', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  const { query: searchQuery, limit = 20 } = req.body;
+  if (!searchQuery) return res.status(400).json({ error: 'query is required' });
+
+  try {
+    const beeResults = await beeApiPost('/v1/search/conversations/neural', {
+      query: searchQuery,
+      limit: Math.min(Number(limit), 50)
+    }, beeToken);
+
+    // Cross-reference with local transcripts to link IDs
+    const conversations = extractArray(beeResults, 'conversations');
+    const enriched = [];
+
+    for (const convo of conversations) {
+      const beeId = convo.id || convo.conversation_id;
+      let localTranscript = null;
+
+      if (beeId) {
+        const local = await query(
+          `SELECT id, title FROM transcripts WHERE metadata->>'bee_id' = $1 OR metadata->>'conversation_id' = $1 LIMIT 1`,
+          [beeId]
+        );
+        if (local.rows.length > 0) {
+          localTranscript = { id: local.rows[0].id, title: local.rows[0].title };
+        }
+      }
+
+      enriched.push({
+        type: 'bee_neural',
+        bee_id: beeId,
+        title: convo.title || convo.summary?.substring(0, 80) || 'Bee Conversation',
+        preview: convo.summary || convo.snippet || '',
+        score: convo.score || convo.relevance || 0,
+        start_time: convo.start_time || convo.created_at,
+        local_transcript: localTranscript
+      });
+    }
+
+    res.json({
+      query: searchQuery,
+      count: enriched.length,
+      results: enriched
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Bee neural search failed: ${err.message}` });
+  }
+});
+
+// BM25 keyword search over Bee conversations
+router.post('/search-keyword', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  const { query: searchQuery, limit = 20 } = req.body;
+  if (!searchQuery) return res.status(400).json({ error: 'query is required' });
+
+  try {
+    const beeResults = await beeApiPost('/v1/search/conversations', {
+      query: searchQuery,
+      limit: Math.min(Number(limit), 50)
+    }, beeToken);
+
+    const conversations = extractArray(beeResults, 'conversations');
+    res.json({
+      query: searchQuery,
+      count: conversations.length,
+      results: conversations.map(c => ({
+        type: 'bee_keyword',
+        bee_id: c.id || c.conversation_id,
+        title: c.title || c.summary?.substring(0, 80) || 'Bee Conversation',
+        preview: c.summary || c.snippet || '',
+        score: c.score || 0,
+        start_time: c.start_time || c.created_at
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Bee keyword search failed: ${err.message}` });
   }
 });
 

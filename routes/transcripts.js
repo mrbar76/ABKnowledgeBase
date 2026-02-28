@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
     if (q) {
       const result = await query(`
         SELECT id, title, summary, source, speaker_labels, duration_seconds,
-               recorded_at, tags, created_at, updated_at,
+               recorded_at, location, tags, created_at, updated_at,
                LEFT(raw_text, 300) as preview,
                ts_rank(
                  to_tsvector('english', coalesce(title,'') || ' ' || coalesce(raw_text,'')),
