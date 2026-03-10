@@ -897,24 +897,48 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) handleImportFile(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files.length) handleImportFiles(e.dataTransfer.files);
 });
 importFile.addEventListener('change', e => {
-  if (e.target.files.length) handleImportFile(e.target.files[0]);
+  if (e.target.files.length) handleImportFiles(e.target.files);
 });
 
-function handleImportFile(file) {
-  const reader = new FileReader();
-  reader.onload = async (e) => {
+function readFileAsJSON(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try { resolve(JSON.parse(e.target.result)); }
+      catch (err) { reject(new Error(`${file.name}: ${err.message}`)); }
+    };
+    reader.onerror = () => reject(new Error(`${file.name}: failed to read`));
+    reader.readAsText(file);
+  });
+}
+
+async function handleImportFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.name.endsWith('.json'));
+  if (!files.length) { updateImportLog('No .json files selected', true); return; }
+
+  const source = document.getElementById('import-source').value;
+  updateImportLog(`Loading ${files.length} file(s)...`);
+
+  // Read and merge all conversations from all files
+  let allConversations = [];
+  for (const file of files) {
     try {
-      const data = JSON.parse(e.target.result);
-      const source = document.getElementById('import-source').value;
-      await runImport(data, source);
+      const data = await readFileAsJSON(file);
+      const convs = Array.isArray(data) ? data : (data.conversations || [data]);
+      allConversations = allConversations.concat(convs);
+      updateImportLog(`Loaded ${file.name} (${convs.length} conversations). Total so far: ${allConversations.length}`);
     } catch (err) {
-      updateImportLog(`Error: ${err.message}`, true);
+      updateImportLog(`Error reading ${err.message}`, true);
     }
-  };
-  reader.readAsText(file);
+  }
+
+  if (allConversations.length) {
+    updateImportLog(`Starting import of ${allConversations.length} conversations from ${files.length} file(s)...`);
+    await runImport(allConversations, source);
+  }
 }
 
 function updateImportLog(text, isError) {
