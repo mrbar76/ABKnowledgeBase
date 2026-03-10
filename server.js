@@ -13,6 +13,7 @@ const activityRoutes = require('./routes/activity');
 const dashboardRoutes = require('./routes/dashboard');
 const beeRoutes = require('./routes/bee');
 const searchRoutes = require('./routes/search');
+const intakeRoutes = require('./routes/intake');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -111,6 +112,7 @@ app.use('/api/activity', activityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/bee', beeRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/intake', intakeRoutes);
 
 // SPA fallback
 app.get('*', (req, res) => {
