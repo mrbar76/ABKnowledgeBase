@@ -1,58 +1,71 @@
 const express = require('express');
-const { query } = require('../db');
+const {
+  queryDatabase, pageToKnowledge, pageToTask, pageToProject,
+  pageToTranscript, pageToHealthMetric, pageToWorkout, pageToActivity
+} = require('../notion');
 const router = express.Router();
 
-// Dashboard stats — all-in-one overview
+// Dashboard stats — aggregated overview
 router.get('/', async (req, res) => {
   try {
-    const [
-      knowledgeCount,
-      projectCount,
-      tasksByStatus,
-      tasksByPriority,
-      recentActivity,
-      knowledgeByCategory,
-      knowledgeBySource,
-      tasksByAgent,
-      transcriptCount,
-      healthMetricCount,
-      workoutCount
-    ] = await Promise.all([
-      query('SELECT COUNT(*)::int as count FROM knowledge'),
-      query("SELECT COUNT(*)::int as count FROM projects WHERE status = 'active'"),
-      query('SELECT status, COUNT(*)::int as count FROM tasks GROUP BY status'),
-      query('SELECT priority, COUNT(*)::int as count FROM tasks GROUP BY priority'),
-      query('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 15'),
-      query('SELECT category, COUNT(*)::int as count FROM knowledge GROUP BY category ORDER BY count DESC'),
-      query('SELECT ai_source, COUNT(*)::int as count FROM knowledge WHERE ai_source IS NOT NULL GROUP BY ai_source ORDER BY count DESC'),
-      query('SELECT ai_agent, COUNT(*)::int as count FROM tasks WHERE ai_agent IS NOT NULL GROUP BY ai_agent ORDER BY count DESC'),
-      query('SELECT COUNT(*)::int as count FROM transcripts'),
-      query('SELECT COUNT(*)::int as count FROM health_metrics'),
-      query('SELECT COUNT(*)::int as count FROM workouts')
+    // Fetch data in parallel (respects rate limit internally)
+    const [knowledgeRes, taskRes, projectRes, transcriptRes, healthRes, workoutRes, activityRes] = await Promise.all([
+      queryDatabase('knowledge', undefined, undefined, 100).catch(() => ({ results: [] })),
+      queryDatabase('tasks', undefined, undefined, 100).catch(() => ({ results: [] })),
+      queryDatabase('projects', { property: 'Status', select: { equals: 'active' } }, undefined, 100).catch(() => ({ results: [] })),
+      queryDatabase('transcripts', undefined, undefined, 100).catch(() => ({ results: [] })),
+      queryDatabase('health_metrics', undefined, undefined, 1).catch(() => ({ results: [] })),
+      queryDatabase('workouts', undefined, undefined, 1).catch(() => ({ results: [] })),
+      queryDatabase('activity_log', undefined, [{ property: 'Created At', direction: 'descending' }], 15).catch(() => ({ results: [] })),
     ]);
+
+    const knowledge = knowledgeRes.results.map(pageToKnowledge);
+    const tasks = taskRes.results.map(pageToTask);
+
+    // Knowledge by category
+    const byCategory = {};
+    for (const k of knowledge) {
+      byCategory[k.category] = (byCategory[k.category] || 0) + 1;
+    }
+
+    // Knowledge by AI source
+    const bySource = {};
+    for (const k of knowledge) {
+      if (k.ai_source) bySource[k.ai_source] = (bySource[k.ai_source] || 0) + 1;
+    }
+
+    // Tasks by status
+    const byStatus = {};
+    for (const t of tasks) { byStatus[t.status] = (byStatus[t.status] || 0) + 1; }
+
+    // Tasks by priority
+    const byPriority = {};
+    for (const t of tasks) { byPriority[t.priority] = (byPriority[t.priority] || 0) + 1; }
+
+    // Tasks by agent
+    const byAgent = {};
+    for (const t of tasks) {
+      if (t.ai_agent) byAgent[t.ai_agent] = (byAgent[t.ai_agent] || 0) + 1;
+    }
 
     res.json({
       knowledge: {
-        total: knowledgeCount.rows[0].count,
-        by_category: knowledgeByCategory.rows,
-        by_ai_source: knowledgeBySource.rows
+        total: knowledge.length,
+        by_category: Object.entries(byCategory).map(([category, count]) => ({ category, count })),
+        by_ai_source: Object.entries(bySource).map(([ai_source, count]) => ({ ai_source, count })),
       },
-      projects: {
-        active: projectCount.rows[0].count
-      },
+      projects: { active: projectRes.results.length },
       tasks: {
-        by_status: Object.fromEntries(tasksByStatus.rows.map(r => [r.status, r.count])),
-        by_priority: Object.fromEntries(tasksByPriority.rows.map(r => [r.priority, r.count])),
-        by_agent: tasksByAgent.rows
+        by_status: byStatus,
+        by_priority: byPriority,
+        by_agent: Object.entries(byAgent).map(([ai_agent, count]) => ({ ai_agent, count })),
       },
-      transcripts: {
-        total: transcriptCount.rows[0].count
-      },
+      transcripts: { total: transcriptRes.results.length },
       health: {
-        total_metrics: healthMetricCount.rows[0].count,
-        total_workouts: workoutCount.rows[0].count
+        total_metrics: healthRes.results.length,
+        total_workouts: workoutRes.results.length,
       },
-      recent_activity: recentActivity.rows
+      recent_activity: activityRes.results.map(pageToActivity),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

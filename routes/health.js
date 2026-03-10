@@ -1,54 +1,70 @@
 const express = require('express');
-const { query } = require('../db');
+const {
+  queryDatabase, createPage, getPage,
+  pageToHealthMetric, pageToWorkout, richText, dateOrNull, selectOrNull, logActivity
+} = require('../notion');
 const router = express.Router();
 
 // ===== HEALTH METRICS =====
 
 // Get health metrics
-// GET /api/health/metrics?type=heart_rate&from=2024-01-01&to=2024-12-31&limit=100
 router.get('/metrics', async (req, res) => {
   try {
-    const { type, from, to, limit = 100, offset = 0 } = req.query;
-    let where = [];
-    let params = [];
-    let idx = 1;
+    const { type, from, to, limit = 100 } = req.query;
+    const filters = [];
 
-    if (type) { where.push(`metric_type = $${idx++}`); params.push(type); }
-    if (from) { where.push(`recorded_at >= $${idx++}`); params.push(from); }
-    if (to) { where.push(`recorded_at <= $${idx++}`); params.push(to); }
+    if (type) {
+      filters.push({ property: 'Metric Type', select: { equals: type } });
+    }
+    if (from) {
+      filters.push({ property: 'Recorded At', date: { on_or_after: from } });
+    }
+    if (to) {
+      filters.push({ property: 'Recorded At', date: { on_or_before: to } });
+    }
 
-    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const result = await query(`
-      SELECT * FROM health_metrics ${clause}
-      ORDER BY recorded_at DESC
-      LIMIT $${idx++} OFFSET $${idx++}
-    `, [...params, Number(limit), Number(offset)]);
+    const filter = filters.length > 1 ? { and: filters }
+      : filters.length === 1 ? filters[0] : undefined;
 
-    res.json({ count: result.rows.length, metrics: result.rows });
+    const result = await queryDatabase('health_metrics', filter,
+      [{ property: 'Recorded At', direction: 'descending' }],
+      Number(limit));
+
+    const metrics = result.results.map(pageToHealthMetric);
+    res.json({ count: metrics.length, metrics });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get metric types summary
+// Metric types summary
 router.get('/metrics/types', async (req, res) => {
   try {
-    const result = await query(`
-      SELECT metric_type, unit, COUNT(*)::int as count,
-             MIN(recorded_at) as earliest, MAX(recorded_at) as latest,
-             ROUND(AVG(value)::numeric, 2) as avg_value
-      FROM health_metrics
-      GROUP BY metric_type, unit
-      ORDER BY count DESC
-    `);
-    res.json(result.rows);
+    const result = await queryDatabase('health_metrics', undefined, undefined, 100);
+    const metrics = result.results.map(pageToHealthMetric);
+
+    const byType = {};
+    for (const m of metrics) {
+      if (!byType[m.metric_type]) {
+        byType[m.metric_type] = { metric_type: m.metric_type, unit: m.unit, values: [] };
+      }
+      byType[m.metric_type].values.push(m.value);
+    }
+
+    const summary = Object.values(byType).map(t => ({
+      metric_type: t.metric_type,
+      unit: t.unit,
+      count: t.values.length,
+      avg_value: +(t.values.reduce((a, b) => a + b, 0) / t.values.length).toFixed(2),
+    }));
+
+    res.json(summary);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // Store health metric(s)
-// POST /api/health/metrics — single or batch
 router.post('/metrics', async (req, res) => {
   try {
     const { metrics } = req.body;
@@ -58,20 +74,21 @@ router.post('/metrics', async (req, res) => {
     for (const m of items) {
       if (!m.metric_type || m.value === undefined || !m.unit || !m.recorded_at) continue;
 
-      const result = await query(`
-        INSERT INTO health_metrics (metric_type, value, unit, source_name, recorded_at, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id
-      `, [m.metric_type, m.value, m.unit, m.source_name || 'apple_health', m.recorded_at, JSON.stringify(m.metadata || {})]);
-
-      ids.push(result.rows[0].id);
+      const now = new Date().toISOString();
+      const page = await createPage('health_metrics', {
+        Title: { title: richText(`${m.metric_type}: ${m.value} ${m.unit}`) },
+        'Metric Type': { select: selectOrNull(m.metric_type) },
+        Value: { number: Number(m.value) },
+        Unit: { rich_text: richText(m.unit) },
+        'Source Name': { rich_text: richText(m.source_name || 'apple_health') },
+        'Recorded At': { date: dateOrNull(m.recorded_at) },
+        'Created At': { date: dateOrNull(now) },
+      });
+      ids.push(page.id);
     }
 
     if (ids.length) {
-      await query(`
-        INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-        VALUES ('create', 'health_metric', $1, 'apple_health', $2)
-      `, [ids[0], `Stored ${ids.length} health metric(s)`]);
+      await logActivity('create', 'health_metric', ids[0], 'apple_health', `Stored ${ids.length} health metric(s)`);
     }
 
     res.status(201).json({ count: ids.length, ids, message: 'Health metrics stored' });
@@ -83,43 +100,58 @@ router.post('/metrics', async (req, res) => {
 // ===== WORKOUTS =====
 
 // List workouts
-// GET /api/health/workouts?type=running&from=2024-01-01&limit=50
 router.get('/workouts', async (req, res) => {
   try {
-    const { type, from, to, limit = 50, offset = 0 } = req.query;
-    let where = [];
-    let params = [];
-    let idx = 1;
+    const { type, from, to, limit = 50 } = req.query;
+    const filters = [];
 
-    if (type) { where.push(`workout_type = $${idx++}`); params.push(type); }
-    if (from) { where.push(`started_at >= $${idx++}`); params.push(from); }
-    if (to) { where.push(`started_at <= $${idx++}`); params.push(to); }
+    if (type) {
+      filters.push({ property: 'Workout Type', select: { equals: type } });
+    }
+    if (from) {
+      filters.push({ property: 'Started At', date: { on_or_after: from } });
+    }
+    if (to) {
+      filters.push({ property: 'Started At', date: { on_or_before: to } });
+    }
 
-    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const result = await query(`
-      SELECT * FROM workouts ${clause}
-      ORDER BY started_at DESC
-      LIMIT $${idx++} OFFSET $${idx++}
-    `, [...params, Number(limit), Number(offset)]);
+    const filter = filters.length > 1 ? { and: filters }
+      : filters.length === 1 ? filters[0] : undefined;
 
-    res.json({ count: result.rows.length, workouts: result.rows });
+    const result = await queryDatabase('workouts', filter,
+      [{ property: 'Started At', direction: 'descending' }],
+      Number(limit));
+
+    const workouts = result.results.map(pageToWorkout);
+    res.json({ count: workouts.length, workouts });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get workout types summary
+// Workout types summary
 router.get('/workouts/types', async (req, res) => {
   try {
-    const result = await query(`
-      SELECT workout_type, COUNT(*)::int as count,
-             ROUND(AVG(duration_minutes)::numeric, 1) as avg_duration,
-             ROUND(SUM(calories_burned)::numeric, 0) as total_calories,
-             ROUND(SUM(distance_km)::numeric, 2) as total_distance
-      FROM workouts
-      GROUP BY workout_type ORDER BY count DESC
-    `);
-    res.json(result.rows);
+    const result = await queryDatabase('workouts', undefined, undefined, 100);
+    const workouts = result.results.map(pageToWorkout);
+
+    const byType = {};
+    for (const w of workouts) {
+      if (!byType[w.workout_type]) {
+        byType[w.workout_type] = { workout_type: w.workout_type, items: [] };
+      }
+      byType[w.workout_type].items.push(w);
+    }
+
+    const summary = Object.values(byType).map(t => ({
+      workout_type: t.workout_type,
+      count: t.items.length,
+      avg_duration: +(t.items.reduce((a, b) => a + (b.duration_minutes || 0), 0) / t.items.length).toFixed(1),
+      total_calories: Math.round(t.items.reduce((a, b) => a + (b.calories_burned || 0), 0)),
+      total_distance: +(t.items.reduce((a, b) => a + (b.distance_km || 0), 0)).toFixed(2),
+    }));
+
+    res.json(summary);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -135,26 +167,25 @@ router.post('/workouts', async (req, res) => {
     for (const w of items) {
       if (!w.workout_type || !w.started_at) continue;
 
-      const result = await query(`
-        INSERT INTO workouts (workout_type, duration_minutes, calories_burned, distance_km,
-                             avg_heart_rate, max_heart_rate, source_name, started_at, ended_at, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id
-      `, [
-        w.workout_type, w.duration_minutes || null, w.calories_burned || null,
-        w.distance_km || null, w.avg_heart_rate || null, w.max_heart_rate || null,
-        w.source_name || 'apple_health', w.started_at, w.ended_at || null,
-        JSON.stringify(w.metadata || {})
-      ]);
-
-      ids.push(result.rows[0].id);
+      const now = new Date().toISOString();
+      const page = await createPage('workouts', {
+        Title: { title: richText(`${w.workout_type} — ${new Date(w.started_at).toLocaleDateString()}`) },
+        'Workout Type': { select: selectOrNull(w.workout_type) },
+        'Duration (min)': { number: w.duration_minutes || null },
+        'Calories Burned': { number: w.calories_burned || null },
+        'Distance (km)': { number: w.distance_km || null },
+        'Avg Heart Rate': { number: w.avg_heart_rate || null },
+        'Max Heart Rate': { number: w.max_heart_rate || null },
+        'Source Name': { rich_text: richText(w.source_name || 'apple_health') },
+        'Started At': { date: dateOrNull(w.started_at) },
+        'Ended At': { date: dateOrNull(w.ended_at) },
+        'Created At': { date: dateOrNull(now) },
+      });
+      ids.push(page.id);
     }
 
     if (ids.length) {
-      await query(`
-        INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-        VALUES ('create', 'workout', $1, 'apple_health', $2)
-      `, [ids[0], `Stored ${ids.length} workout(s)`]);
+      await logActivity('create', 'workout', ids[0], 'apple_health', `Stored ${ids.length} workout(s)`);
     }
 
     res.status(201).json({ count: ids.length, ids, message: 'Workouts stored' });
@@ -166,10 +197,11 @@ router.post('/workouts', async (req, res) => {
 // Get single workout
 router.get('/workouts/:id', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM workouts WHERE id = $1', [req.params.id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
+    const page = await getPage(req.params.id);
+    if (page.archived) return res.status(404).json({ error: 'Not found' });
+    res.json(pageToWorkout(page));
   } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });

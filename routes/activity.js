@@ -1,26 +1,29 @@
 const express = require('express');
-const { query } = require('../db');
+const { queryDatabase, pageToActivity } = require('../notion');
 const router = express.Router();
 
 // Get activity log
 router.get('/', async (req, res) => {
   try {
-    const { limit = 50, offset = 0, entity_type, ai_source } = req.query;
-    let where = [];
-    let params = [];
-    let idx = 1;
+    const { limit = 50, entity_type, ai_source } = req.query;
+    const filters = [];
 
-    if (entity_type) { where.push(`entity_type = $${idx++}`); params.push(entity_type); }
-    if (ai_source) { where.push(`ai_source = $${idx++}`); params.push(ai_source); }
+    if (entity_type) {
+      filters.push({ property: 'Entity Type', select: { equals: entity_type } });
+    }
+    if (ai_source) {
+      filters.push({ property: 'AI Source', select: { equals: ai_source } });
+    }
 
-    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const result = await query(`
-      SELECT * FROM activity_log ${clause}
-      ORDER BY created_at DESC
-      LIMIT $${idx++} OFFSET $${idx++}
-    `, [...params, Number(limit), Number(offset)]);
+    const filter = filters.length > 1 ? { and: filters }
+      : filters.length === 1 ? filters[0] : undefined;
 
-    res.json({ count: result.rows.length, logs: result.rows });
+    const result = await queryDatabase('activity_log', filter,
+      [{ property: 'Created At', direction: 'descending' }],
+      Number(limit));
+
+    const logs = result.results.map(pageToActivity);
+    res.json({ count: logs.length, logs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

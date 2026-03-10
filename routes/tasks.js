@@ -1,31 +1,40 @@
 const express = require('express');
-const { query } = require('../db');
+const {
+  queryDatabase, createPage, getPage, updatePage, archivePage,
+  pageToTask, richText, dateOrNull, selectOrNull, logActivity
+} = require('../notion');
 const router = express.Router();
 
 // List tasks
 router.get('/', async (req, res) => {
   try {
-    const { project_id, status, ai_agent, limit = 100, offset = 0 } = req.query;
-    let where = [];
-    let params = [];
-    let idx = 1;
+    const { project_id, status, ai_agent, limit = 100 } = req.query;
+    const filters = [];
 
-    if (project_id) { where.push(`t.project_id = $${idx++}`); params.push(project_id); }
-    if (status) { where.push(`t.status = $${idx++}`); params.push(status); }
-    if (ai_agent) { where.push(`t.ai_agent = $${idx++}`); params.push(ai_agent); }
+    if (project_id) {
+      filters.push({ property: 'Project', relation: { contains: project_id } });
+    }
+    if (status) {
+      filters.push({ property: 'Status', select: { equals: status } });
+    }
+    if (ai_agent) {
+      filters.push({ property: 'AI Agent', select: { equals: ai_agent } });
+    }
 
-    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const result = await query(`
-      SELECT t.*, p.name as project_name
-      FROM tasks t LEFT JOIN projects p ON t.project_id = p.id
-      ${clause}
-      ORDER BY
-        CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-        t.created_at ASC
-      LIMIT $${idx++} OFFSET $${idx++}
-    `, [...params, Number(limit), Number(offset)]);
+    const filter = filters.length > 1 ? { and: filters }
+      : filters.length === 1 ? filters[0] : undefined;
 
-    res.json({ count: result.rows.length, tasks: result.rows });
+    const result = await queryDatabase('tasks', filter,
+      [{ property: 'Created At', direction: 'ascending' }],
+      Number(limit));
+
+    const tasks = result.results.map(pageToTask);
+
+    // Sort by priority: urgent > high > medium > low
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+    tasks.sort((a, b) => (priorityOrder[a.priority] || 3) - (priorityOrder[b.priority] || 3));
+
+    res.json({ count: tasks.length, tasks });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -35,23 +44,26 @@ router.get('/', async (req, res) => {
 router.get('/kanban', async (req, res) => {
   try {
     const { project_id } = req.query;
-    let sql = `
-      SELECT t.*, p.name as project_name FROM tasks t
-      LEFT JOIN projects p ON t.project_id = p.id
-    `;
-    let params = [];
+    const filter = project_id
+      ? { property: 'Project', relation: { contains: project_id } }
+      : undefined;
 
-    if (project_id) {
-      sql += ' WHERE t.project_id = $1';
-      params.push(project_id);
-    }
-    sql += ' ORDER BY CASE t.priority WHEN \'urgent\' THEN 0 WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 ELSE 3 END, t.created_at ASC';
+    const result = await queryDatabase('tasks', filter, undefined, 100);
+    const tasks = result.results.map(pageToTask);
 
-    const result = await query(sql, params);
     const kanban = { todo: [], in_progress: [], review: [], done: [] };
-    for (const task of result.rows) {
-      kanban[task.status].push(task);
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+    for (const task of tasks) {
+      const col = kanban[task.status] || kanban.todo;
+      col.push(task);
     }
+
+    // Sort each column by priority
+    for (const col of Object.values(kanban)) {
+      col.sort((a, b) => (priorityOrder[a.priority] || 3) - (priorityOrder[b.priority] || 3));
+    }
+
     res.json(kanban);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -61,13 +73,11 @@ router.get('/kanban', async (req, res) => {
 // Get single task
 router.get('/:id', async (req, res) => {
   try {
-    const result = await query(`
-      SELECT t.*, p.name as project_name FROM tasks t
-      LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = $1
-    `, [req.params.id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
+    const page = await getPage(req.params.id);
+    if (page.archived) return res.status(404).json({ error: 'Not found' });
+    res.json(pageToTask(page));
   } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -78,17 +88,24 @@ router.post('/', async (req, res) => {
     const { project_id, title, description, status, priority, ai_agent, next_steps } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
 
-    const result = await query(`
-      INSERT INTO tasks (project_id, title, description, status, priority, ai_agent, next_steps)
-      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
-    `, [project_id || null, title, description || null, status || 'todo', priority || 'medium', ai_agent || null, next_steps || null]);
+    const now = new Date().toISOString();
+    const props = {
+      Title: { title: richText(title) },
+      Description: { rich_text: richText(description || '') },
+      Status: { select: selectOrNull(status || 'todo') },
+      Priority: { select: selectOrNull(priority || 'medium') },
+      'AI Agent': { select: selectOrNull(ai_agent) },
+      'Next Steps': { rich_text: richText(next_steps || '') },
+      'Created At': { date: dateOrNull(now) },
+      'Updated At': { date: dateOrNull(now) },
+    };
+    if (project_id) {
+      props.Project = { relation: [{ id: project_id }] };
+    }
 
-    await query(`
-      INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-      VALUES ('create', 'task', $1, $2, $3)
-    `, [result.rows[0].id, ai_agent || null, `Created task: ${title}`]);
-
-    res.status(201).json({ id: result.rows[0].id, message: 'Task created' });
+    const page = await createPage('tasks', props);
+    await logActivity('create', 'task', page.id, ai_agent, `Created task: ${title}`);
+    res.status(201).json({ id: page.id, message: 'Task created' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -97,38 +114,33 @@ router.post('/', async (req, res) => {
 // Update task
 router.put('/:id', async (req, res) => {
   try {
-    const existing = await query('SELECT * FROM tasks WHERE id = $1', [req.params.id]);
-    if (!existing.rows.length) return res.status(404).json({ error: 'Not found' });
-    const e = existing.rows[0];
+    const existing = await getPage(req.params.id);
+    if (existing.archived) return res.status(404).json({ error: 'Not found' });
+    const e = pageToTask(existing);
 
     const { project_id, title, description, status, priority, ai_agent, next_steps, output_log } = req.body;
+    const props = { 'Updated At': { date: dateOrNull(new Date()) } };
 
-    await query(`
-      UPDATE tasks
-      SET project_id = $1, title = $2, description = $3, status = $4, priority = $5,
-          ai_agent = $6, next_steps = $7, output_log = $8, updated_at = NOW()
-      WHERE id = $9
-    `, [
-      project_id !== undefined ? project_id : e.project_id,
-      title || e.title, description !== undefined ? description : e.description,
-      status || e.status, priority || e.priority,
-      ai_agent !== undefined ? ai_agent : e.ai_agent,
-      next_steps !== undefined ? next_steps : e.next_steps,
-      output_log !== undefined ? output_log : e.output_log,
-      req.params.id
-    ]);
+    if (title) props.Title = { title: richText(title) };
+    if (description !== undefined) props.Description = { rich_text: richText(description) };
+    if (status) props.Status = { select: selectOrNull(status) };
+    if (priority) props.Priority = { select: selectOrNull(priority) };
+    if (ai_agent !== undefined) props['AI Agent'] = { select: selectOrNull(ai_agent) };
+    if (next_steps !== undefined) props['Next Steps'] = { rich_text: richText(next_steps) };
+    if (output_log !== undefined) props['Output Log'] = { rich_text: richText(output_log) };
+    if (project_id !== undefined) {
+      props.Project = project_id ? { relation: [{ id: project_id }] } : { relation: [] };
+    }
+
+    await updatePage(req.params.id, props);
 
     const statusChanged = status && status !== e.status;
-    await query(`
-      INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details)
-      VALUES ('update', 'task', $1, $2, $3)
-    `, [
-      req.params.id, ai_agent || e.ai_agent,
-      statusChanged ? `Task "${title || e.title}" moved to ${status}` : `Updated task: ${title || e.title}`
-    ]);
+    await logActivity('update', 'task', req.params.id, ai_agent || e.ai_agent,
+      statusChanged ? `Task "${title || e.title}" moved to ${status}` : `Updated task: ${title || e.title}`);
 
     res.json({ message: 'Task updated' });
   } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -136,10 +148,10 @@ router.put('/:id', async (req, res) => {
 // Delete task
 router.delete('/:id', async (req, res) => {
   try {
-    const result = await query('DELETE FROM tasks WHERE id = $1', [req.params.id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await archivePage(req.params.id);
     res.json({ message: 'Task deleted' });
   } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });
