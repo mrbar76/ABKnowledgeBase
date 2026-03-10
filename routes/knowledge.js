@@ -80,10 +80,12 @@ router.get('/:id', async (req, res) => {
 // Store knowledge
 router.post('/', async (req, res) => {
   try {
-    const { title, content, category, tags, source, ai_source } = req.body;
+    const { title, content, category, tags, source, ai_source, created_at, metadata } = req.body;
     if (!title || !content) return res.status(400).json({ error: 'title and content are required' });
 
     const now = new Date().toISOString();
+    // Use original date if provided (from imports), otherwise current time
+    const originalDate = created_at || metadata?.created || null;
     const page = await createPage('knowledge', {
       Title: { title: richText(title) },
       Content: { rich_text: richText(content) },
@@ -91,7 +93,7 @@ router.post('/', async (req, res) => {
       Tags: { multi_select: multiSelect(tags || []) },
       Source: { select: selectOrNull(source || 'api') },
       'AI Source': { select: selectOrNull(ai_source) },
-      'Created At': { date: dateOrNull(now) },
+      'Created At': { date: dateOrNull(originalDate || now) },
       'Updated At': { date: dateOrNull(now) },
     });
 

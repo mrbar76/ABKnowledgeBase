@@ -985,6 +985,10 @@ async function runImport(data, source) {
     }
 
     const category = autoCategory(title, content);
+    // Preserve original conversation date
+    const originalDate = conv.create_time ? new Date(conv.create_time * 1000).toISOString()
+      : conv.created_at ? new Date(conv.created_at).toISOString()
+      : conv.updated_at ? new Date(conv.updated_at).toISOString() : null;
 
     try {
       await api('/knowledge', {
@@ -996,9 +1000,10 @@ async function runImport(data, source) {
           tags: [`${source}-import`, 'conversation'],
           source: `${source}-export`,
           ai_source: source === 'chatgpt' ? 'chatgpt' : source === 'claude' ? 'claude' : source,
+          created_at: originalDate,
           metadata: {
             original_id: conv.id || null,
-            created: conv.create_time ? new Date(conv.create_time * 1000).toISOString() : conv.created_at || null,
+            created: originalDate,
             message_count: conv.mapping ? Object.keys(conv.mapping).length : null
           }
         })

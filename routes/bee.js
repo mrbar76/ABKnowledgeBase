@@ -1,7 +1,7 @@
 const express = require('express');
 const https = require('https');
 const {
-  queryDatabase, createPage, updatePage,
+  queryDatabase, createPage, updatePage, archivePage,
   pageToKnowledge, pageToTask, pageToTranscript,
   richText, dateOrNull, selectOrNull, multiSelect,
   logActivity, textToBlocks, richTextToString
@@ -232,6 +232,7 @@ router.post('/sync', async (req, res) => {
           if (existing) { results.skipped++; continue; }
         }
         const now = new Date().toISOString();
+        const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : (fact.updated_at ? new Date(fact.updated_at).toISOString() : now);
         await createPage('knowledge', {
           Title: { title: richText(`Bee Fact: ${factText.substring(0, 80)}`) },
           Content: { rich_text: richText(factText) },
@@ -239,7 +240,7 @@ router.post('/sync', async (req, res) => {
           Tags: { multi_select: multiSelect(['bee', 'fact', fact.confirmed ? 'confirmed' : 'unconfirmed']) },
           Source: { select: selectOrNull('bee') },
           'AI Source': { select: selectOrNull('bee') },
-          'Created At': { date: dateOrNull(now) },
+          'Created At': { date: dateOrNull(factDate) },
           'Updated At': { date: dateOrNull(now) },
         });
         results.facts++;
@@ -267,13 +268,14 @@ router.post('/sync', async (req, res) => {
           if (existing) { results.skipped++; continue; }
         }
         const now = new Date().toISOString();
+        const todoDate = todo.created_at ? new Date(todo.created_at).toISOString() : (todo.updated_at ? new Date(todo.updated_at).toISOString() : now);
         await createPage('tasks', {
           Title: { title: richText(todoText) },
           Status: { select: selectOrNull(todo.completed ? 'done' : 'todo') },
           Priority: { select: selectOrNull('medium') },
           'AI Agent': { select: selectOrNull('bee') },
           'Next Steps': { rich_text: richText(todo.id ? `Bee Todo ID: ${todo.id}` : '') },
-          'Created At': { date: dateOrNull(now) },
+          'Created At': { date: dateOrNull(todoDate) },
           'Updated At': { date: dateOrNull(now) },
         });
         results.todos++;
@@ -345,7 +347,7 @@ router.post('/sync', async (req, res) => {
           Tags: { multi_select: multiSelect(['bee', 'conversation']) },
           Source: { select: selectOrNull('bee') },
           'AI Source': { select: selectOrNull('bee') },
-          'Created At': { date: dateOrNull(now) },
+          'Created At': { date: dateOrNull(recordedAt || now) },
           'Updated At': { date: dateOrNull(now) },
         });
 
@@ -374,6 +376,7 @@ router.post('/sync', async (req, res) => {
           if (existing) { results.skipped++; continue; }
         }
         const now = new Date().toISOString();
+        const journalDate = journal.created_at ? new Date(journal.created_at).toISOString() : (journal.date ? new Date(journal.date).toISOString() : now);
         await createPage('knowledge', {
           Title: { title: richText(jTitle.substring(0, 200)) },
           Content: { rich_text: richText((jText || journal.summary).substring(0, 2000)) },
@@ -381,7 +384,7 @@ router.post('/sync', async (req, res) => {
           Tags: { multi_select: multiSelect(['bee', 'journal']) },
           Source: { select: selectOrNull('bee') },
           'AI Source': { select: selectOrNull('bee') },
-          'Created At': { date: dateOrNull(now) },
+          'Created At': { date: dateOrNull(journalDate) },
           'Updated At': { date: dateOrNull(now) },
         });
         results.journals++;
@@ -410,6 +413,7 @@ router.post('/sync', async (req, res) => {
           if (existing) { results.skipped++; continue; }
         }
         const now = new Date().toISOString();
+        const dailyDate = dDate ? new Date(dDate).toISOString() : now;
         await createPage('knowledge', {
           Title: { title: richText(dTitle.substring(0, 200)) },
           Content: { rich_text: richText(dText.substring(0, 2000)) },
@@ -417,7 +421,7 @@ router.post('/sync', async (req, res) => {
           Tags: { multi_select: multiSelect(['bee', 'daily-summary']) },
           Source: { select: selectOrNull('bee') },
           'AI Source': { select: selectOrNull('bee') },
-          'Created At': { date: dateOrNull(now) },
+          'Created At': { date: dateOrNull(dailyDate) },
           'Updated At': { date: dateOrNull(now) },
         });
         results.daily++;
@@ -439,6 +443,275 @@ router.post('/sync', async (req, res) => {
   });
 
   res.json({ message: `Bee cloud sync complete${force ? ' (full refresh)' : ''}`, imported: results });
+});
+
+// ─── Chunked sync (one page per request, avoids Railway timeout) ──
+
+router.post('/sync-chunk', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  const { type, cursor, force } = req.body;
+  if (!type) return res.status(400).json({ error: 'type required (facts, todos, conversations, journals, daily)' });
+
+  const result = { imported: 0, skipped: 0, errors: [], cursor: null, done: false };
+
+  try {
+    if (type === 'facts') {
+      const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const facts = extractArray(data, 'facts');
+      result.cursor = data.next_cursor || null;
+      result.debug_keys = facts.length > 0 ? Object.keys(facts[0]) : [];
+
+      for (const fact of facts) {
+        const factText = extractFactText(fact);
+        if (!factText) continue;
+        if (!force) {
+          const existing = await findExistingKnowledge(factText, 'bee');
+          if (existing) { result.skipped++; continue; }
+        }
+        const now = new Date().toISOString();
+        const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : (fact.updated_at ? new Date(fact.updated_at).toISOString() : now);
+        await createPage('knowledge', {
+          Title: { title: richText(`Bee Fact: ${factText.substring(0, 80)}`) },
+          Content: { rich_text: richText(factText) },
+          Category: { select: selectOrNull('personal') },
+          Tags: { multi_select: multiSelect(['bee', 'fact', fact.confirmed ? 'confirmed' : 'unconfirmed']) },
+          Source: { select: selectOrNull('bee') },
+          'AI Source': { select: selectOrNull('bee') },
+          'Created At': { date: dateOrNull(factDate) },
+          'Updated At': { date: dateOrNull(now) },
+        });
+        result.imported++;
+      }
+      if (!result.cursor) result.done = true;
+
+    } else if (type === 'todos') {
+      const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const todos = extractArray(data, 'todos');
+      result.cursor = data.next_cursor || null;
+      result.debug_keys = todos.length > 0 ? Object.keys(todos[0]) : [];
+
+      for (const todo of todos) {
+        const todoText = extractTodoText(todo);
+        if (!todoText) continue;
+        if (!force) {
+          const existing = await findExistingTask(todoText);
+          if (existing) { result.skipped++; continue; }
+        }
+        const now = new Date().toISOString();
+        const todoDate = todo.created_at ? new Date(todo.created_at).toISOString() : (todo.updated_at ? new Date(todo.updated_at).toISOString() : now);
+        await createPage('tasks', {
+          Title: { title: richText(todoText) },
+          Status: { select: selectOrNull(todo.completed ? 'done' : 'todo') },
+          Priority: { select: selectOrNull('medium') },
+          'AI Agent': { select: selectOrNull('bee') },
+          'Next Steps': { rich_text: richText(todo.id ? `Bee Todo ID: ${todo.id}` : '') },
+          'Created At': { date: dateOrNull(todoDate) },
+          'Updated At': { date: dateOrNull(now) },
+        });
+        result.imported++;
+      }
+      if (!result.cursor) result.done = true;
+
+    } else if (type === 'conversations') {
+      const url = `/v1/conversations?limit=5&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const convos = extractArray(data, 'conversations');
+      result.cursor = data.next_cursor || null;
+      result.debug_keys = convos.length > 0 ? Object.keys(convos[0]) : [];
+      const skip_reasons = { capturing: 0, duplicate: 0, noId: 0, noText: 0, fetchError: 0 };
+      let dateRange = { earliest: null, latest: null };
+
+      for (const convo of convos) {
+        const beeId = convo.id;
+        if (!beeId) { skip_reasons.noId++; result.skipped++; continue; }
+        if (!force) {
+          const existing = await findExistingTranscript(beeId);
+          if (existing) { skip_reasons.duplicate++; result.skipped++; continue; }
+        }
+        if (convo.state === 'CAPTURING') { skip_reasons.capturing++; result.skipped++; continue; }
+
+        let summary = convo.summary || null;
+        let full = convo;
+        try {
+          const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken);
+          full = detail.conversation || detail;
+          if (full.summary) summary = full.summary;
+        } catch (e) {
+          if (!summary) { skip_reasons.fetchError++; result.errors.push(`Conversation ${beeId}: ${e.message}`); continue; }
+        }
+
+        const rawText = buildConversationText(full, convo);
+        if (!rawText) { skip_reasons.noText++; result.skipped++; continue; }
+
+        const title = full.short_summary || convo.short_summary ||
+          (summary ? summary.substring(0, 80) : null) ||
+          `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`;
+
+        const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
+        const durationSec = durationMs ? Math.round(durationMs / 1000) : (full.duration_seconds || null);
+        const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString()
+          : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
+        const location = convo.primary_location?.address || full.primary_location?.address || null;
+        const now = new Date().toISOString();
+
+        // Track date range
+        if (recordedAt) {
+          if (!dateRange.earliest || recordedAt < dateRange.earliest) dateRange.earliest = recordedAt;
+          if (!dateRange.latest || recordedAt > dateRange.latest) dateRange.latest = recordedAt;
+        }
+
+        await createPage('transcripts', {
+          Title: { title: richText(title.substring(0, 200)) },
+          Summary: { rich_text: richText(summary || rawText.substring(0, 2000)) },
+          Source: { select: selectOrNull('bee') },
+          'Duration (sec)': { number: durationSec },
+          'Recorded At': { date: dateOrNull(recordedAt) },
+          Location: { rich_text: richText(location || '') },
+          Tags: { multi_select: multiSelect(['bee', 'conversation']) },
+          'Bee ID': { rich_text: richText(beeId) },
+          'Created At': { date: dateOrNull(recordedAt || now) },
+          'Updated At': { date: dateOrNull(now) },
+        }, textToBlocks(rawText));
+
+        await createPage('knowledge', {
+          Title: { title: richText(title.substring(0, 200)) },
+          Content: { rich_text: richText((summary || rawText).substring(0, 2000)) },
+          Category: { select: selectOrNull('meeting') },
+          Tags: { multi_select: multiSelect(['bee', 'conversation']) },
+          Source: { select: selectOrNull('bee') },
+          'AI Source': { select: selectOrNull('bee') },
+          'Created At': { date: dateOrNull(recordedAt || now) },
+          'Updated At': { date: dateOrNull(now) },
+        });
+
+        result.imported++;
+      }
+      result.skip_reasons = skip_reasons;
+      result.date_range = dateRange;
+      if (!result.cursor) result.done = true;
+
+    } else if (type === 'journals') {
+      const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const journals = extractArray(data, 'journals');
+      result.cursor = data.next_cursor || null;
+
+      for (const journal of journals) {
+        const jText = journal.text || journal.content || journal.body || journal.markdown || '';
+        const jTitle = journal.title || journal.short_summary || (jText ? jText.substring(0, 80) : `Journal ${journal.id}`);
+        if (!jText && !journal.summary) continue;
+        if (!force) {
+          const existing = await findExistingKnowledge(jText || journal.summary, 'bee');
+          if (existing) { result.skipped++; continue; }
+        }
+        const now = new Date().toISOString();
+        const journalDate = journal.created_at ? new Date(journal.created_at).toISOString() : (journal.date ? new Date(journal.date).toISOString() : now);
+        await createPage('knowledge', {
+          Title: { title: richText(jTitle.substring(0, 200)) },
+          Content: { rich_text: richText((jText || journal.summary).substring(0, 2000)) },
+          Category: { select: selectOrNull('journal') },
+          Tags: { multi_select: multiSelect(['bee', 'journal']) },
+          Source: { select: selectOrNull('bee') },
+          'AI Source': { select: selectOrNull('bee') },
+          'Created At': { date: dateOrNull(journalDate) },
+          'Updated At': { date: dateOrNull(now) },
+        });
+        result.imported++;
+      }
+      if (!result.cursor) result.done = true;
+
+    } else if (type === 'daily') {
+      const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken);
+      const dailies = extractArray(data, 'daily');
+      result.cursor = data.next_cursor || null;
+
+      for (const day of dailies) {
+        const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
+        if (!dText) continue;
+        const dDate = day.date || day.created_at || '';
+        const dTitle = day.title || `Daily Summary ${dDate ? new Date(dDate).toLocaleDateString() : day.id}`;
+        if (!force) {
+          const existing = await findExistingKnowledge(dText, 'bee');
+          if (existing) { result.skipped++; continue; }
+        }
+        const now = new Date().toISOString();
+        const dailyDate = dDate ? new Date(dDate).toISOString() : now;
+        await createPage('knowledge', {
+          Title: { title: richText(dTitle.substring(0, 200)) },
+          Content: { rich_text: richText(dText.substring(0, 2000)) },
+          Category: { select: selectOrNull('daily-summary') },
+          Tags: { multi_select: multiSelect(['bee', 'daily-summary']) },
+          Source: { select: selectOrNull('bee') },
+          'AI Source': { select: selectOrNull('bee') },
+          'Created At': { date: dateOrNull(dailyDate) },
+          'Updated At': { date: dateOrNull(now) },
+        });
+        result.imported++;
+      }
+      if (!result.cursor) result.done = true;
+
+    } else {
+      return res.status(400).json({ error: `Unknown type: ${type}` });
+    }
+  } catch (err) {
+    result.errors.push(err.message);
+  }
+
+  res.json(result);
+});
+
+// ─── Purge all Bee data from Notion ──────────────────────────────
+
+router.post('/purge', async (req, res) => {
+  try {
+    let archived = 0;
+
+    // Purge bee knowledge entries
+    let hasMore = true;
+    while (hasMore) {
+      const result = await queryDatabase('knowledge', {
+        property: 'AI Source', select: { equals: 'bee' }
+      }, undefined, 100);
+      if (!result.results.length) { hasMore = false; break; }
+      for (const page of result.results) {
+        try { await archivePage(page.id); archived++; } catch {}
+      }
+    }
+
+    // Purge bee tasks
+    hasMore = true;
+    while (hasMore) {
+      const result = await queryDatabase('tasks', {
+        property: 'AI Agent', select: { equals: 'bee' }
+      }, undefined, 100);
+      if (!result.results.length) { hasMore = false; break; }
+      for (const page of result.results) {
+        try { await archivePage(page.id); archived++; } catch {}
+      }
+    }
+
+    // Purge bee transcripts
+    hasMore = true;
+    while (hasMore) {
+      const result = await queryDatabase('transcripts', {
+        property: 'Source', select: { equals: 'bee' }
+      }, undefined, 100);
+      if (!result.results.length) { hasMore = false; break; }
+      for (const page of result.results) {
+        try { await archivePage(page.id); archived++; } catch {}
+      }
+    }
+
+    await logActivity('purge', 'bee-import', 'purge', 'bee', `Purged ${archived} Bee entries`);
+    res.json({ message: `Purged ${archived} Bee entries`, archived });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Incremental sync (via /v1/changes) → Notion ─────────────────
