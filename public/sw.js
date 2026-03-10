@@ -1,4 +1,4 @@
-const CACHE_NAME = 'abkb-v7';
+const CACHE_NAME = 'abkb-v8';
 const SHELL_FILES = [
   '/',
   '/styles.css',

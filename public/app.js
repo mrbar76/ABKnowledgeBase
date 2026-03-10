@@ -60,13 +60,25 @@ async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...opts.headers };
   if (key) headers['X-Api-Key'] = key;
 
-  const res = await fetch(API + path, { ...opts, headers });
+  let res;
+  try {
+    res = await fetch(API + path, { ...opts, headers });
+  } catch (e) {
+    throw new Error(`Network error: ${e.message} (${path})`);
+  }
 
   if (res.status === 401) {
     showLogin('Session expired. Please log in again.');
     throw new Error('Unauthorized');
   }
-  return res.json();
+
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(`${res.status} ${res.statusText}: ${body.error || JSON.stringify(body)}`);
+  }
+
+  return body;
 }
 
 // --- Page Load ---
