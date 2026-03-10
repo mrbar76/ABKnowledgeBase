@@ -1,6 +1,6 @@
 const express = require('express');
 const {
-  queryDatabase, pageToKnowledge, pageToTask, pageToProject,
+  queryDatabase, pageToKnowledge, pageToFact, pageToTask, pageToProject,
   pageToTranscript, pageToHealthMetric, pageToWorkout, pageToActivity
 } = require('../notion');
 const router = express.Router();
@@ -9,8 +9,9 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     // Fetch data in parallel (respects rate limit internally)
-    const [knowledgeRes, taskRes, projectRes, transcriptRes, healthRes, workoutRes, activityRes] = await Promise.all([
+    const [knowledgeRes, factsRes, taskRes, projectRes, transcriptRes, healthRes, workoutRes, activityRes] = await Promise.all([
       queryDatabase('knowledge', undefined, undefined, 100).catch(() => ({ results: [] })),
+      queryDatabase('facts', undefined, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('tasks', undefined, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('projects', { property: 'Status', select: { equals: 'active' } }, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('transcripts', undefined, undefined, 100).catch(() => ({ results: [] })),
@@ -48,11 +49,23 @@ router.get('/', async (req, res) => {
       if (t.ai_agent) byAgent[t.ai_agent] = (byAgent[t.ai_agent] || 0) + 1;
     }
 
+    // Facts by category
+    const facts = factsRes.results.map(pageToFact);
+    const factsByCategory = {};
+    for (const f of facts) {
+      factsByCategory[f.category] = (factsByCategory[f.category] || 0) + 1;
+    }
+
     res.json({
       knowledge: {
         total: knowledge.length,
         by_category: Object.entries(byCategory).map(([category, count]) => ({ category, count })),
         by_ai_source: Object.entries(bySource).map(([ai_source, count]) => ({ ai_source, count })),
+      },
+      facts: {
+        total: facts.length,
+        by_category: Object.entries(factsByCategory).map(([category, count]) => ({ category, count })),
+        confirmed: facts.filter(f => f.confirmed).length,
       },
       projects: { active: projectRes.results.length },
       tasks: {

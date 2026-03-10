@@ -2,7 +2,7 @@ const express = require('express');
 const https = require('https');
 const {
   queryDatabase, createPage, updatePage, archivePage,
-  pageToKnowledge, pageToTask, pageToTranscript,
+  pageToKnowledge, pageToFact, pageToTask, pageToTranscript,
   richText, dateOrNull, selectOrNull, multiSelect,
   logActivity, textToBlocks, richTextToString
 } = require('../notion');
@@ -128,6 +128,18 @@ function buildConversationText(detail, listItem) {
 
 // ─── Notion dedup helpers ─────────────────────────────────────────
 
+async function findExistingFact(contentPrefix) {
+  try {
+    const result = await queryDatabase('facts', {
+      and: [
+        { property: 'Source', select: { equals: 'bee' } },
+        { property: 'Content', rich_text: { contains: contentPrefix.substring(0, 100) } },
+      ]
+    }, undefined, 1);
+    return result.results[0] || null;
+  } catch { return null; }
+}
+
 async function findExistingKnowledge(contentPrefix, aiSource) {
   try {
     const result = await queryDatabase('knowledge', {
@@ -228,18 +240,18 @@ router.post('/sync', async (req, res) => {
         const factText = extractFactText(fact);
         if (!factText) continue;
         if (!force) {
-          const existing = await findExistingKnowledge(factText, 'bee');
+          const existing = await findExistingFact(factText);
           if (existing) { results.skipped++; continue; }
         }
         const now = new Date().toISOString();
         const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : (fact.updated_at ? new Date(fact.updated_at).toISOString() : now);
-        await createPage('knowledge', {
-          Title: { title: richText(`Bee Fact: ${factText.substring(0, 80)}`) },
+        await createPage('facts', {
+          Title: { title: richText(factText.substring(0, 80)) },
           Content: { rich_text: richText(factText) },
           Category: { select: selectOrNull('personal') },
-          Tags: { multi_select: multiSelect(['bee', 'fact', fact.confirmed ? 'confirmed' : 'unconfirmed']) },
+          Tags: { multi_select: multiSelect(['bee', fact.confirmed ? 'confirmed' : 'unconfirmed']) },
           Source: { select: selectOrNull('bee') },
-          'AI Source': { select: selectOrNull('bee') },
+          Confirmed: { checkbox: !!fact.confirmed },
           'Created At': { date: dateOrNull(factDate) },
           'Updated At': { date: dateOrNull(now) },
         });
@@ -339,17 +351,6 @@ router.post('/sync', async (req, res) => {
           'Created At': { date: dateOrNull(now) },
           'Updated At': { date: dateOrNull(now) },
         }, textToBlocks(rawText));
-
-        await createPage('knowledge', {
-          Title: { title: richText(title.substring(0, 200)) },
-          Content: { rich_text: richText((summary || rawText).substring(0, 2000)) },
-          Category: { select: selectOrNull('meeting') },
-          Tags: { multi_select: multiSelect(['bee', 'conversation']) },
-          Source: { select: selectOrNull('bee') },
-          'AI Source': { select: selectOrNull('bee') },
-          'Created At': { date: dateOrNull(recordedAt || now) },
-          'Updated At': { date: dateOrNull(now) },
-        });
 
         results.conversations++;
       }
@@ -468,18 +469,18 @@ router.post('/sync-chunk', async (req, res) => {
         const factText = extractFactText(fact);
         if (!factText) continue;
         if (!force) {
-          const existing = await findExistingKnowledge(factText, 'bee');
+          const existing = await findExistingFact(factText);
           if (existing) { result.skipped++; continue; }
         }
         const now = new Date().toISOString();
         const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : (fact.updated_at ? new Date(fact.updated_at).toISOString() : now);
-        await createPage('knowledge', {
-          Title: { title: richText(`Bee Fact: ${factText.substring(0, 80)}`) },
+        await createPage('facts', {
+          Title: { title: richText(factText.substring(0, 80)) },
           Content: { rich_text: richText(factText) },
           Category: { select: selectOrNull('personal') },
-          Tags: { multi_select: multiSelect(['bee', 'fact', fact.confirmed ? 'confirmed' : 'unconfirmed']) },
+          Tags: { multi_select: multiSelect(['bee', fact.confirmed ? 'confirmed' : 'unconfirmed']) },
           Source: { select: selectOrNull('bee') },
-          'AI Source': { select: selectOrNull('bee') },
+          Confirmed: { checkbox: !!fact.confirmed },
           'Created At': { date: dateOrNull(factDate) },
           'Updated At': { date: dateOrNull(now) },
         });
@@ -577,17 +578,6 @@ router.post('/sync-chunk', async (req, res) => {
           'Updated At': { date: dateOrNull(now) },
         }, textToBlocks(rawText));
 
-        await createPage('knowledge', {
-          Title: { title: richText(title.substring(0, 200)) },
-          Content: { rich_text: richText((summary || rawText).substring(0, 2000)) },
-          Category: { select: selectOrNull('meeting') },
-          Tags: { multi_select: multiSelect(['bee', 'conversation']) },
-          Source: { select: selectOrNull('bee') },
-          'AI Source': { select: selectOrNull('bee') },
-          'Created At': { date: dateOrNull(recordedAt || now) },
-          'Updated At': { date: dateOrNull(now) },
-        });
-
         result.imported++;
       }
       result.skip_reasons = skip_reasons;
@@ -671,8 +661,20 @@ router.post('/purge', async (req, res) => {
   try {
     let archived = 0;
 
-    // Purge bee knowledge entries
+    // Purge bee facts
     let hasMore = true;
+    while (hasMore) {
+      const result = await queryDatabase('facts', {
+        property: 'Source', select: { equals: 'bee' }
+      }, undefined, 100);
+      if (!result.results.length) { hasMore = false; break; }
+      for (const page of result.results) {
+        try { await archivePage(page.id); archived++; } catch {}
+      }
+    }
+
+    // Purge bee knowledge entries
+    hasMore = true;
     while (hasMore) {
       const result = await queryDatabase('knowledge', {
         property: 'AI Source', select: { equals: 'bee' }
@@ -760,21 +762,22 @@ router.post('/sync-incremental', async (req, res) => {
         const fText = extractFactText(f);
         if (!fText) continue;
         const now = new Date().toISOString();
-        const existing = await findExistingKnowledge(fText, 'bee');
+        const existing = await findExistingFact(fText);
         if (existing) {
           await updatePage(existing.id, {
             Content: { rich_text: richText(fText) },
             'Updated At': { date: dateOrNull(now) },
           });
         } else {
-          await createPage('knowledge', {
-            Title: { title: richText(`Bee Fact: ${fText.substring(0, 80)}`) },
+          const factDate = f.created_at ? new Date(f.created_at).toISOString() : now;
+          await createPage('facts', {
+            Title: { title: richText(fText.substring(0, 80)) },
             Content: { rich_text: richText(fText) },
             Category: { select: selectOrNull('personal') },
-            Tags: { multi_select: multiSelect(['bee', 'fact']) },
+            Tags: { multi_select: multiSelect(['bee']) },
             Source: { select: selectOrNull('bee') },
-            'AI Source': { select: selectOrNull('bee') },
-            'Created At': { date: dateOrNull(now) },
+            Confirmed: { checkbox: !!f.confirmed },
+            'Created At': { date: dateOrNull(factDate) },
             'Updated At': { date: dateOrNull(now) },
           });
         }
@@ -842,17 +845,6 @@ router.post('/sync-incremental', async (req, res) => {
             'Created At': { date: dateOrNull(now) },
             'Updated At': { date: dateOrNull(now) },
           }, textToBlocks(rawText));
-
-          await createPage('knowledge', {
-            Title: { title: richText(title.substring(0, 200)) },
-            Content: { rich_text: richText((c.summary || rawText).substring(0, 2000)) },
-            Category: { select: selectOrNull('meeting') },
-            Tags: { multi_select: multiSelect(['bee', 'conversation']) },
-            Source: { select: selectOrNull('bee') },
-            'AI Source': { select: selectOrNull('bee') },
-            'Created At': { date: dateOrNull(now) },
-            'Updated At': { date: dateOrNull(now) },
-          });
         }
         results.conversations++;
       } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
@@ -875,15 +867,16 @@ router.post('/sync-incremental', async (req, res) => {
 
 router.get('/status', async (req, res) => {
   try {
-    const [factsRes, tasksRes, transcriptsRes] = await Promise.all([
+    const [factsRes, knowledgeRes, tasksRes, transcriptsRes] = await Promise.all([
+      queryDatabase('facts', { property: 'Source', select: { equals: 'bee' } }, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('knowledge', { property: 'AI Source', select: { equals: 'bee' } }, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('tasks', { property: 'AI Agent', select: { equals: 'bee' } }, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('transcripts', { property: 'Source', select: { equals: 'bee' } }, undefined, 100).catch(() => ({ results: [] })),
     ]);
 
-    const knowledge = factsRes.results.map(pageToKnowledge);
+    const knowledge = knowledgeRes.results.map(pageToKnowledge);
     res.json({
-      facts: knowledge.filter(k => k.category === 'personal').length,
+      facts: factsRes.results.length,
       tasks: tasksRes.results.length,
       transcripts: transcriptsRes.results.length,
       journals: knowledge.filter(k => k.category === 'journal').length,

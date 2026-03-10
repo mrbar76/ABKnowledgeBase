@@ -83,18 +83,6 @@ router.post('/', async (req, res) => {
       'Updated At': { date: dateOrNull(now) },
     }, bodyBlocks);
 
-    // Also create a knowledge entry for cross-search
-    await createPage('knowledge', {
-      Title: { title: richText(autoTitle) },
-      Content: { rich_text: richText(summary || raw_text.substring(0, 2000)) },
-      Category: { select: selectOrNull('transcript') },
-      Tags: { multi_select: multiSelect(tags || []) },
-      Source: { select: selectOrNull(source || 'bee') },
-      'AI Source': { select: selectOrNull(source || 'bee') },
-      'Created At': { date: dateOrNull(now) },
-      'Updated At': { date: dateOrNull(now) },
-    });
-
     await logActivity('create', 'transcript', page.id, source || 'bee', `Uploaded transcript: ${autoTitle}`);
     res.status(201).json({ id: page.id, message: 'Transcript stored successfully' });
   } catch (err) {

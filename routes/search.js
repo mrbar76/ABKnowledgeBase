@@ -1,7 +1,7 @@
 const express = require('express');
 const {
   queryDatabase, searchNotion,
-  pageToKnowledge, pageToTask, pageToProject, pageToTranscript
+  pageToKnowledge, pageToFact, pageToTask, pageToProject, pageToTranscript
 } = require('../notion');
 const router = express.Router();
 
@@ -18,8 +18,9 @@ router.get('/', async (req, res) => {
     const perType = Math.min(Number(limit), 50);
 
     // Search each database in parallel
-    const [knowledge, transcripts, tasks, projects] = await Promise.all([
+    const [knowledge, facts, transcripts, tasks, projects] = await Promise.all([
       searchType('knowledge', term, perType),
+      searchType('facts', term, perType),
       searchType('transcripts', term, perType),
       searchType('tasks', term, perType),
       searchType('projects', term, perType),
@@ -27,8 +28,8 @@ router.get('/', async (req, res) => {
 
     res.json({
       query: term,
-      results: { knowledge, transcripts, tasks, projects },
-      total: knowledge.length + transcripts.length + tasks.length + projects.length,
+      results: { knowledge, facts, transcripts, tasks, projects },
+      total: knowledge.length + facts.length + transcripts.length + tasks.length + projects.length,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -45,8 +46,9 @@ router.post('/ai', async (req, res) => {
     const term = searchQuery.trim();
     const perType = Math.min(Number(limit), 30);
 
-    const [knowledge, transcripts, tasks, projects] = await Promise.all([
+    const [knowledge, facts, transcripts, tasks, projects] = await Promise.all([
       searchType('knowledge', term, perType),
+      searchType('facts', term, perType),
       searchType('transcripts', term, perType),
       searchType('tasks', term, perType),
       searchType('projects', term, perType),
@@ -54,6 +56,7 @@ router.post('/ai', async (req, res) => {
 
     const allResults = [
       ...knowledge.map(r => ({ ...r, type: 'knowledge' })),
+      ...facts.map(r => ({ ...r, type: 'fact' })),
       ...transcripts.map(r => ({ ...r, type: 'transcript' })),
       ...tasks.map(r => ({ ...r, type: 'task' })),
       ...projects.map(r => ({ ...r, type: 'project' })),
@@ -63,7 +66,7 @@ router.post('/ai', async (req, res) => {
       query: term,
       total: allResults.length,
       results: allResults,
-      summary: `Found ${knowledge.length} knowledge entries, ${transcripts.length} transcripts, ${tasks.length} tasks, ${projects.length} projects matching "${term}"`,
+      summary: `Found ${knowledge.length} knowledge, ${facts.length} facts, ${transcripts.length} transcripts, ${tasks.length} tasks, ${projects.length} projects matching "${term}"`,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -86,6 +89,7 @@ async function searchType(dbName, term, limit) {
 
     const converters = {
       knowledge: pageToKnowledge,
+      facts: pageToFact,
       transcripts: pageToTranscript,
       tasks: pageToTask,
       projects: pageToProject,

@@ -117,18 +117,6 @@ router.post('/', async (req, res) => {
       }, bodyBlocks);
       pageId = page.id;
 
-      // Also create a knowledge entry for cross-search
-      await createPage('knowledge', {
-        Title: { title: richText(classification.title || input.substring(0, 80)) },
-        Content: { rich_text: richText(classification.summary || input.substring(0, 2000)) },
-        Category: { select: selectOrNull('transcript') },
-        Tags: { multi_select: multiSelect(classification.tags || []) },
-        Source: { select: selectOrNull(aiSource || 'manual') },
-        'AI Source': { select: selectOrNull(aiSource) },
-        'Created At': { date: dateOrNull(now) },
-        'Updated At': { date: dateOrNull(now) },
-      });
-
     } else {
       // Default: knowledge
       const page = await createPage('knowledge', {
@@ -239,6 +227,127 @@ router.post('/batch', async (req, res) => {
   } catch (err) {
     const errJob = syncStatus.startJob('intake', 'Batch intake failed');
     syncStatus.failJob('intake', errJob, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/intake/distill
+// Extracts facts, decisions, and tasks from a conversation
+// Body: { "title": "...", "content": "...", "source": "chatgpt", "created_at": "..." }
+const DISTILL_PROMPT = `You are a personal knowledge analyst. Given a conversation transcript, extract structured insights.
+
+Return ONLY valid JSON with these fields:
+{
+  "facts": [
+    { "text": "short factual statement about the user", "category": "personal|preference|health|work|relationship|financial|general" }
+  ],
+  "decisions": [
+    { "title": "short title", "content": "what was decided and why", "category": "code|meeting|research|decision|reference|health|personal|general" }
+  ],
+  "tasks": [
+    { "title": "action item", "priority": "low|medium|high|urgent" }
+  ],
+  "project": "detected project name or null if none",
+  "tags": ["topic1", "topic2"]
+}
+
+Rules:
+- Extract ONLY things explicitly stated or clearly implied, never invent
+- Facts should be discrete, reusable truths about the user (preferences, personal info, decisions made)
+- Decisions are conclusions reached during the conversation
+- Tasks are action items the user committed to or was assigned
+- If no items for a category, return an empty array
+- Keep facts short (1 sentence max)
+- Detect project names from context (e.g., "Spartan Training", "Website Redesign")
+- Return 0-10 facts, 0-5 decisions, 0-5 tasks per conversation`;
+
+router.post('/distill', async (req, res) => {
+  try {
+    const { title, content, source, created_at } = req.body;
+    if (!content) return res.status(400).json({ error: 'content is required' });
+
+    const client = getOpenAIClient();
+    const response = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 1500,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: DISTILL_PROMPT },
+        { role: 'user', content: `Title: ${title || 'Untitled'}\nSource: ${source || 'unknown'}\n\n${content.substring(0, 15000)}` },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    let extracted;
+    try {
+      extracted = JSON.parse(text);
+    } catch {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      extracted = jsonMatch ? JSON.parse(jsonMatch[0]) : { facts: [], decisions: [], tasks: [] };
+    }
+
+    const now = new Date().toISOString();
+    const originalDate = created_at || now;
+    const results = { facts: 0, decisions: 0, tasks: 0, project: extracted.project || null };
+
+    // Store extracted facts
+    for (const fact of (extracted.facts || [])) {
+      if (!fact.text) continue;
+      await createPage('facts', {
+        Title: { title: richText(fact.text.substring(0, 80)) },
+        Content: { rich_text: richText(fact.text) },
+        Category: { select: selectOrNull(fact.category || 'general') },
+        Tags: { multi_select: multiSelect(extracted.tags || []) },
+        Source: { select: selectOrNull(source || 'manual') },
+        Confirmed: { checkbox: false },
+        'Created At': { date: dateOrNull(originalDate) },
+        'Updated At': { date: dateOrNull(now) },
+      });
+      results.facts++;
+    }
+
+    // Store extracted decisions as knowledge
+    for (const decision of (extracted.decisions || [])) {
+      if (!decision.title && !decision.content) continue;
+      await createPage('knowledge', {
+        Title: { title: richText(decision.title || decision.content.substring(0, 80)) },
+        Content: { rich_text: richText(decision.content || decision.title) },
+        Category: { select: selectOrNull(decision.category || 'decision') },
+        Tags: { multi_select: multiSelect(extracted.tags || []) },
+        Source: { select: selectOrNull(source || 'manual') },
+        'AI Source': { select: selectOrNull(source) },
+        'Created At': { date: dateOrNull(originalDate) },
+        'Updated At': { date: dateOrNull(now) },
+      });
+      results.decisions++;
+    }
+
+    // Store extracted tasks
+    for (const task of (extracted.tasks || [])) {
+      if (!task.title) continue;
+      await createPage('tasks', {
+        Title: { title: richText(task.title) },
+        Status: { select: selectOrNull('todo') },
+        Priority: { select: selectOrNull(task.priority || 'medium') },
+        'AI Agent': { select: selectOrNull(source) },
+        'Created At': { date: dateOrNull(originalDate) },
+        'Updated At': { date: dateOrNull(now) },
+      });
+      results.tasks++;
+    }
+
+    await logActivity('create', 'intake-distill', 'distill', source,
+      `Distilled "${title}": ${results.facts}F ${results.decisions}D ${results.tasks}T`);
+
+    res.json({
+      message: 'Distillation complete',
+      extracted: results,
+      project: extracted.project,
+      tags: extracted.tags || [],
+    });
+  } catch (err) {
+    console.error('[distill] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

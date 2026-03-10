@@ -78,6 +78,7 @@ function switchView(view) {
   if (view === 'dashboard') loadDashboard();
   else if (view === 'kanban') loadKanban();
   else if (view === 'knowledge') loadKnowledge();
+  else if (view === 'facts') loadFacts();
   else if (view === 'transcripts') loadTranscripts();
   else if (view === 'projects') loadProjects();
 }
@@ -104,10 +105,15 @@ async function loadDashboard() {
 
   const totalTasks = Object.values(data.tasks.by_status).reduce((a, b) => a + b, 0);
   const inProgress = data.tasks.by_status.in_progress || 0;
+  const factsTotal = data.facts?.total || 0;
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card">
       <div class="stat-value">${data.knowledge.total}</div>
-      <div class="stat-label">Knowledge Entries</div>
+      <div class="stat-label">Knowledge</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${factsTotal}</div>
+      <div class="stat-label">Facts</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${data.transcripts.total}</div>
@@ -115,15 +121,11 @@ async function loadDashboard() {
     </div>
     <div class="stat-card">
       <div class="stat-value">${totalTasks}</div>
-      <div class="stat-label">Total Tasks</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${inProgress}</div>
-      <div class="stat-label">In Progress</div>
+      <div class="stat-label">Tasks</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${data.projects.active}</div>
-      <div class="stat-label">Active Projects</div>
+      <div class="stat-label">Projects</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${data.health.total_workouts}</div>
@@ -378,6 +380,73 @@ function renderKnowledgeItem(entry) {
       <div class="k-meta">
         <span>${entry.category}</span>
         <span>${timeAgo(entry.updated_at)}</span>
+      </div>
+      ${tags.length ? `<div class="k-tags">${tags.map(t => `<span class="k-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+    </div>
+  `;
+}
+
+// --- Facts ---
+let currentFactCategory = '';
+
+async function loadFacts() {
+  try {
+    const params = new URLSearchParams();
+    if (currentFactCategory) params.set('category', currentFactCategory);
+    const q = params.toString() ? `?${params}` : '';
+    const data = await api(`/facts${q}`);
+
+    const categories = ['personal', 'preference', 'health', 'work', 'relationship', 'financial', 'general'];
+    document.getElementById('facts-category-chips').innerHTML =
+      `<span class="chip ${!currentFactCategory ? 'active' : ''}" onclick="filterFactCategory('')">All</span>` +
+      categories.map(c => `<span class="chip ${currentFactCategory === c ? 'active' : ''}" onclick="filterFactCategory('${c}')">${c}</span>`).join('');
+
+    document.getElementById('facts-list').innerHTML = data.facts && data.facts.length
+      ? data.facts.map(renderFactItem).join('')
+      : '<div class="empty-state">No facts yet. Import conversations or sync from Bee.</div>';
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      document.getElementById('facts-list').innerHTML = '<div class="empty-state">Failed to load facts.</div>';
+    }
+  }
+}
+
+function filterFactCategory(cat) {
+  currentFactCategory = cat;
+  loadFacts();
+}
+
+async function searchFacts() {
+  const q = document.getElementById('facts-search').value.trim();
+  if (!q) return loadFacts();
+  try {
+    const data = await api(`/facts?q=${encodeURIComponent(q)}`);
+    document.getElementById('facts-list').innerHTML = data.facts && data.facts.length
+      ? data.facts.map(renderFactItem).join('')
+      : '<div class="empty-state">No results found</div>';
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      document.getElementById('facts-list').innerHTML = '<div class="empty-state">Search failed.</div>';
+    }
+  }
+}
+
+document.getElementById('facts-search')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchFacts();
+});
+
+function renderFactItem(fact) {
+  const confirmed = fact.confirmed ? '<span style="color:var(--green);font-size:0.75rem">confirmed</span>' : '<span style="color:var(--yellow);font-size:0.75rem">unconfirmed</span>';
+  const tags = Array.isArray(fact.tags) ? fact.tags : [];
+  return `
+    <div class="knowledge-item" style="border-left:3px solid ${fact.confirmed ? 'var(--green)' : 'var(--yellow)'}">
+      <div class="k-title">${esc(fact.title)}</div>
+      <div class="k-preview">${esc(fact.content)}</div>
+      <div class="k-meta">
+        <span>${fact.category}</span>
+        ${confirmed}
+        <span>${fact.source}</span>
+        <span>${timeAgo(fact.created_at)}</span>
       </div>
       ${tags.length ? `<div class="k-tags">${tags.map(t => `<span class="k-tag">${esc(t)}</span>`).join('')}</div>` : ''}
     </div>
@@ -960,10 +1029,12 @@ async function runImport(data, source) {
     return;
   }
 
-  updateImportLog(`Found ${conversations.length} conversations. Importing...`);
+  const distill = document.getElementById('import-distill')?.checked || false;
+  updateImportLog(`Found ${conversations.length} conversations. Importing${distill ? ' + distilling' : ''}...`);
   updateImportProgress(0);
 
   let imported = 0, skipped = 0, failed = 0;
+  let distilled = { facts: 0, decisions: 0, tasks: 0 };
 
   for (let i = 0; i < conversations.length; i++) {
     const conv = conversations[i];
@@ -984,44 +1055,72 @@ async function runImport(data, source) {
       continue;
     }
 
-    const category = autoCategory(title, content);
     // Preserve original conversation date
     const originalDate = conv.create_time ? new Date(conv.create_time * 1000).toISOString()
       : conv.created_at ? new Date(conv.created_at).toISOString()
       : conv.updated_at ? new Date(conv.updated_at).toISOString() : null;
 
+    const aiSource = source === 'chatgpt' ? 'chatgpt' : source === 'claude' ? 'claude' : source;
+
     try {
-      await api('/knowledge', {
+      // Store as transcript (not knowledge)
+      await api('/transcripts', {
         method: 'POST',
         body: JSON.stringify({
           title,
-          content: content.substring(0, 50000),
-          category,
+          raw_text: content.substring(0, 50000),
+          summary: content.substring(0, 2000),
+          source: aiSource,
           tags: [`${source}-import`, 'conversation'],
-          source: `${source}-export`,
-          ai_source: source === 'chatgpt' ? 'chatgpt' : source === 'claude' ? 'claude' : source,
-          created_at: originalDate,
+          recorded_at: originalDate,
           metadata: {
             original_id: conv.id || null,
-            created: originalDate,
-            message_count: conv.mapping ? Object.keys(conv.mapping).length : null
           }
         })
       });
+
+      // Optionally distill facts/decisions/tasks from the conversation
+      if (distill) {
+        try {
+          const d = await api('/intake/distill', {
+            method: 'POST',
+            body: JSON.stringify({
+              title,
+              content: content.substring(0, 15000),
+              source: aiSource,
+              created_at: originalDate,
+            })
+          });
+          if (d.extracted) {
+            distilled.facts += d.extracted.facts || 0;
+            distilled.decisions += d.extracted.decisions || 0;
+            distilled.tasks += d.extracted.tasks || 0;
+          }
+        } catch (e) { /* distill is best-effort */ }
+      }
+
       imported++;
     } catch (err) {
       failed++;
     }
 
     updateImportProgress(((i + 1) / conversations.length) * 100);
-    updateImportLog(`Importing... ${imported} done, ${skipped} skipped, ${failed} failed (${i + 1}/${conversations.length})`);
+    let statusText = `Importing... ${imported} done, ${skipped} skipped, ${failed} failed (${i + 1}/${conversations.length})`;
+    if (distill && (distilled.facts || distilled.decisions || distilled.tasks)) {
+      statusText += ` | Distilled: ${distilled.facts} facts, ${distilled.decisions} decisions, ${distilled.tasks} tasks`;
+    }
+    updateImportLog(statusText);
 
-    // Small pause every 10 to avoid overwhelming the API
-    if (i % 10 === 9) await new Promise(r => setTimeout(r, 100));
+    // Small pause every 5 to avoid overwhelming the API (more calls now with distill)
+    if (i % 5 === 4) await new Promise(r => setTimeout(r, 200));
   }
 
   updateImportProgress(100);
-  updateImportLog(`Done! Imported ${imported} conversations. ${skipped} skipped, ${failed} failed.`);
+  let doneText = `Done! Imported ${imported} conversations as transcripts. ${skipped} skipped, ${failed} failed.`;
+  if (distill && (distilled.facts || distilled.decisions || distilled.tasks)) {
+    doneText += ` Distilled: ${distilled.facts} facts, ${distilled.decisions} decisions, ${distilled.tasks} tasks.`;
+  }
+  updateImportLog(doneText);
 
   // Notify server of import completion for sync status tracking
   try {
@@ -1147,6 +1246,16 @@ async function runGlobalSearch(q) {
           <div class="search-result-title">${badge} ${esc(item.title)}</div>
           <div class="search-result-preview">${esc(item.preview || '')}</div>
           <div class="search-result-meta"><span>${item.category || ''}</span><span>${timeAgo(item.updated_at)}</span></div>
+        </div>`;
+      });
+    }
+
+    if (r.facts && r.facts.length) {
+      html += renderSearchGroup('Facts', 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L19 8l-9 9z', r.facts, item => {
+        return `<div class="search-result-item">
+          <div class="search-result-title">${esc(item.title)}</div>
+          <div class="search-result-preview">${esc(item.content || '')}</div>
+          <div class="search-result-meta"><span>${item.category || ''}</span><span>${item.confirmed ? 'confirmed' : 'unconfirmed'}</span><span>${timeAgo(item.created_at)}</span></div>
         </div>`;
       });
     }

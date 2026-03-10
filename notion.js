@@ -13,6 +13,7 @@ function init() {
 
   dbIds = {
     knowledge: process.env.NOTION_DB_KNOWLEDGE || '',
+    facts: process.env.NOTION_DB_FACTS || '',
     tasks: process.env.NOTION_DB_TASKS || '',
     projects: process.env.NOTION_DB_PROJECTS || '',
     transcripts: process.env.NOTION_DB_TRANSCRIPTS || '',
@@ -107,6 +108,35 @@ const DB_SCHEMAS = {
         { name: 'chatgpt', color: 'green' },
         { name: 'bee', color: 'yellow' },
       ]}},
+      Project: { relation: { single_property: {} }}, // linked after project DB created
+      'Created At': { date: {} },
+      'Updated At': { date: {} },
+    }
+  },
+  facts: {
+    title: 'AB Brain — Facts',
+    icon: '🧩',
+    properties: {
+      Title: { title: {} },
+      Content: { rich_text: {} },
+      Category: { select: { options: [
+        { name: 'personal', color: 'pink' },
+        { name: 'preference', color: 'purple' },
+        { name: 'health', color: 'red' },
+        { name: 'work', color: 'blue' },
+        { name: 'relationship', color: 'green' },
+        { name: 'financial', color: 'orange' },
+        { name: 'general', color: 'default' },
+      ]}},
+      Tags: { multi_select: { options: [] }},
+      Source: { select: { options: [
+        { name: 'bee', color: 'yellow' },
+        { name: 'chatgpt', color: 'green' },
+        { name: 'claude', color: 'purple' },
+        { name: 'gemini', color: 'blue' },
+        { name: 'manual', color: 'default' },
+      ]}},
+      Confirmed: { checkbox: {} },
       'Created At': { date: {} },
       'Updated At': { date: {} },
     }
@@ -166,13 +196,23 @@ const DB_SCHEMAS = {
       Summary: { rich_text: {} },
       Source: { select: { options: [
         { name: 'bee', color: 'yellow' },
+        { name: 'chatgpt', color: 'green' },
+        { name: 'claude', color: 'purple' },
+        { name: 'gemini', color: 'blue' },
         { name: 'manual', color: 'default' },
+      ]}},
+      'AI Source': { select: { options: [
+        { name: 'claude', color: 'purple' },
+        { name: 'gemini', color: 'blue' },
+        { name: 'chatgpt', color: 'green' },
+        { name: 'bee', color: 'yellow' },
       ]}},
       'Duration (sec)': { number: {} },
       'Recorded At': { date: {} },
       Location: { rich_text: {} },
       Tags: { multi_select: { options: [] }},
       'Bee ID': { rich_text: {} },
+      Project: { relation: { single_property: {} }}, // linked after project DB created
       'Created At': { date: {} },
       'Updated At': { date: {} },
     }
@@ -277,14 +317,19 @@ async function setupDatabases(parentPageId) {
     dbIds[key] = db.id;
   }
 
-  // Add relation from tasks → projects
-  if (created.tasks && created.projects) {
-    await rateLimited(() => n.databases.update({
-      database_id: created.tasks,
-      properties: {
-        Project: { relation: { database_id: created.projects, single_property: {} } }
+  // Add Project relations to tasks, knowledge, transcripts, facts
+  const dbsNeedingProjectRelation = ['tasks', 'knowledge', 'transcripts', 'facts'];
+  if (created.projects) {
+    for (const dbKey of dbsNeedingProjectRelation) {
+      if (created[dbKey]) {
+        await rateLimited(() => n.databases.update({
+          database_id: created[dbKey],
+          properties: {
+            Project: { relation: { database_id: created.projects, single_property: {} } }
+          }
+        }));
       }
-    }));
+    }
   }
 
   return created;
@@ -307,6 +352,22 @@ function pageToKnowledge(page) {
     tags: (p.Tags?.multi_select || []).map(t => t.name),
     source: p.Source?.select?.name || 'manual',
     ai_source: p['AI Source']?.select?.name || null,
+    project_id: p.Project?.relation?.[0]?.id || null,
+    created_at: p['Created At']?.date?.start || page.created_time,
+    updated_at: p['Updated At']?.date?.start || page.last_edited_time,
+  };
+}
+
+function pageToFact(page) {
+  const p = page.properties;
+  return {
+    id: page.id,
+    title: richTextToString(p.Title?.title),
+    content: richTextToString(p.Content?.rich_text),
+    category: p.Category?.select?.name || 'general',
+    tags: (p.Tags?.multi_select || []).map(t => t.name),
+    source: p.Source?.select?.name || 'manual',
+    confirmed: p.Confirmed?.checkbox || false,
     created_at: p['Created At']?.date?.start || page.created_time,
     updated_at: p['Updated At']?.date?.start || page.last_edited_time,
   };
@@ -348,11 +409,13 @@ function pageToTranscript(page) {
     title: richTextToString(p.Title?.title),
     summary: richTextToString(p.Summary?.rich_text),
     source: p.Source?.select?.name || 'bee',
+    ai_source: p['AI Source']?.select?.name || null,
     duration_seconds: p['Duration (sec)']?.number || null,
     recorded_at: p['Recorded At']?.date?.start || null,
     location: richTextToString(p.Location?.rich_text) || null,
     tags: (p.Tags?.multi_select || []).map(t => t.name),
     bee_id: richTextToString(p['Bee ID']?.rich_text) || null,
+    project_id: p.Project?.relation?.[0]?.id || null,
     created_at: p['Created At']?.date?.start || page.created_time,
     updated_at: p['Updated At']?.date?.start || page.last_edited_time,
   };
@@ -551,6 +614,7 @@ module.exports = {
   DB_SCHEMAS,
   // Converters
   pageToKnowledge,
+  pageToFact,
   pageToTask,
   pageToProject,
   pageToTranscript,

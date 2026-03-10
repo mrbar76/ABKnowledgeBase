@@ -6,6 +6,7 @@ const { init: initNotion, setupDatabases } = require('./notion');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
+const factsRoutes = require('./routes/facts');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const transcriptRoutes = require('./routes/transcripts');
@@ -87,6 +88,7 @@ app.post('/api/setup', async (req, res) => {
       next_steps: [
         'Add these database IDs to your environment variables:',
         `NOTION_DB_KNOWLEDGE=${dbIds.knowledge}`,
+        `NOTION_DB_FACTS=${dbIds.facts}`,
         `NOTION_DB_TASKS=${dbIds.tasks}`,
         `NOTION_DB_PROJECTS=${dbIds.projects}`,
         `NOTION_DB_TRANSCRIPTS=${dbIds.transcripts}`,
@@ -105,6 +107,7 @@ app.post('/api/setup', async (req, res) => {
 
 // API Routes
 app.use('/api/knowledge', knowledgeRoutes);
+app.use('/api/facts', factsRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/transcripts', transcriptRoutes);
