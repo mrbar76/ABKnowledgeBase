@@ -76,11 +76,18 @@ function switchView(view) {
   document.getElementById(`view-${view}`).classList.add('active');
 
   if (view === 'dashboard') loadDashboard();
-  else if (view === 'kanban') loadKanban();
-  else if (view === 'knowledge') loadKnowledge();
-  else if (view === 'facts') loadFacts();
-  else if (view === 'transcripts') loadTranscripts();
-  else if (view === 'projects') loadProjects();
+  else if (view === 'tasks') loadKanban();
+  else if (view === 'brain') { loadKnowledge(); loadFacts(); }
+  else if (view === 'conversations') loadTranscripts();
+  else if (view === 'settings') loadProjects();
+}
+
+let currentBrainTab = 'knowledge';
+function switchBrainTab(tab) {
+  currentBrainTab = tab;
+  document.querySelectorAll('.subtab').forEach(b => b.classList.toggle('active', b.dataset.subtab === tab));
+  document.querySelectorAll('.brain-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`brain-tab-${tab}`).classList.add('active');
 }
 
 // --- API helpers ---
@@ -107,23 +114,23 @@ async function loadDashboard() {
   const inProgress = data.tasks.by_status.in_progress || 0;
   const factsTotal = data.facts?.total || 0;
   document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card">
+    <div class="stat-card clickable" onclick="switchView('brain');switchBrainTab('knowledge')">
       <div class="stat-value">${data.knowledge.total}</div>
       <div class="stat-label">Knowledge</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card clickable" onclick="switchView('brain');switchBrainTab('facts')">
       <div class="stat-value">${factsTotal}</div>
       <div class="stat-label">Facts</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card clickable" onclick="switchView('conversations')">
       <div class="stat-value">${data.transcripts.total}</div>
-      <div class="stat-label">Transcripts</div>
+      <div class="stat-label">Conversations</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card clickable" onclick="switchView('tasks')">
       <div class="stat-value">${totalTasks}</div>
       <div class="stat-label">Tasks</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card clickable" onclick="switchView('settings')">
       <div class="stat-value">${data.projects.active}</div>
       <div class="stat-label">Projects</div>
     </div>
@@ -774,7 +781,7 @@ async function updateTask(e, id) {
     })
   });
   closeModal();
-  if (currentView === 'kanban') loadKanban();
+  if (currentView === 'tasks') loadKanban();
   else if (currentView === 'dashboard') loadDashboard();
 }
 
@@ -782,7 +789,7 @@ async function deleteTask(id) {
   if (!confirm('Delete this task?')) return;
   await api(`/tasks/${id}`, { method: 'DELETE' });
   closeModal();
-  if (currentView === 'kanban') loadKanban();
+  if (currentView === 'tasks') loadKanban();
   else if (currentView === 'dashboard') loadDashboard();
 }
 

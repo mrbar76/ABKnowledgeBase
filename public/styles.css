@@ -135,6 +135,37 @@ body {
 .view { display: none; }
 .view.active { display: block; }
 
+/* --- Subtabs (Brain: Knowledge | Facts) --- */
+.subtab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.subtab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.subtab.active {
+  background: var(--accent);
+  color: #fff;
+}
+.subtab:hover:not(.active) {
+  background: var(--bg-input);
+}
+.brain-tab { display: none; }
+.brain-tab.active { display: block; }
+
 /* --- Cards --- */
 .card {
   background: var(--bg-card);
@@ -160,6 +191,8 @@ body {
 }
 .stat-card .stat-value { font-size: 1.8rem; font-weight: 700; }
 .stat-card .stat-label { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+.stat-card.clickable { cursor: pointer; transition: border-color 0.2s; }
+.stat-card.clickable:hover { border-color: var(--accent); }
 
 /* --- Chart bars --- */
 .chart-container { display: flex; flex-direction: column; gap: 8px; }
