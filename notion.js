@@ -17,7 +17,6 @@ function init() {
     tasks: process.env.NOTION_DB_TASKS || '',
     projects: process.env.NOTION_DB_PROJECTS || '',
     transcripts: process.env.NOTION_DB_TRANSCRIPTS || '',
-
     activity_log: process.env.NOTION_DB_ACTIVITY_LOG || '',
   };
 
@@ -230,7 +229,6 @@ const DB_SCHEMAS = {
         { name: 'task', color: 'green' },
         { name: 'project', color: 'blue' },
         { name: 'transcript', color: 'yellow' },
-
         { name: 'bee-import', color: 'yellow' },
       ]}},
       'Entity ID': { rich_text: {} },
@@ -239,7 +237,6 @@ const DB_SCHEMAS = {
         { name: 'gemini', color: 'blue' },
         { name: 'chatgpt', color: 'green' },
         { name: 'bee', color: 'yellow' },
-
       ]}},
       Details: { rich_text: {} },
       'Created At': { date: {} },
@@ -541,7 +538,6 @@ module.exports = {
   pageToTask,
   pageToProject,
   pageToTranscript,
-
   pageToActivity,
   richTextToString,
   // Helpers

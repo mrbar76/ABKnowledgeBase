@@ -81,26 +81,6 @@ body {
 }
 .card h2 { font-size: 0.95rem; margin-bottom: 12px; color: var(--text-dim); }
 
-/* --- Collapsible Sections --- */
-.section-card { padding: 0; }
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 16px;
-  cursor: pointer;
-  user-select: none;
-}
-.section-header h2 { margin-bottom: 0; }
-.section-chevron {
-  color: var(--text-dim);
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-.section-body {
-  padding: 0 16px 16px;
-}
-
 /* --- Stats Grid --- */
 .stats-grid {
   display: grid;
@@ -158,7 +138,6 @@ body {
   font-size: 0.9rem;
   font-family: inherit;
 }
-.form-group textarea { min-height: 100px; resize: vertical; }
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
   outline: none;
   border-color: var(--accent);
@@ -176,80 +155,6 @@ body {
 }
 .btn-submit:hover { background: var(--accent-hover); }
 .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* --- Import / Drop Zone --- */
-.drop-zone {
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 32px 20px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  margin-bottom: 16px;
-}
-.drop-zone:hover, .drop-zone.dragover {
-  border-color: var(--accent);
-  background: rgba(99, 102, 241, 0.05);
-}
-.drop-zone-content p { margin-top: 8px; font-size: 0.85rem; }
-
-.import-progress-bar {
-  height: 6px;
-  background: var(--bg-input);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-top: 12px;
-}
-.import-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-  transition: width 0.3s;
-  width: 0%;
-}
-
-/* --- Connect AI cards --- */
-.connect-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 12px;
-}
-.connect-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 0.95rem;
-}
-.connect-card-icon { display: flex; align-items: center; }
-.connect-prompt {
-  background: var(--bg-input);
-  border-radius: 6px;
-  padding: 12px;
-  font-family: monospace;
-  font-size: 0.72rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
-  color: var(--text-dim);
-  margin-bottom: 10px;
-}
-.btn-copy {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-copy:active { opacity: 0.85; }
 
 /* --- Global Search --- */
 .global-search-btn {
