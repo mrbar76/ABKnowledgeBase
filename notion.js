@@ -271,7 +271,7 @@ async function setupDatabases(parentPageId) {
       parent: { type: 'page_id', page_id: parentPageId },
       title: [{ type: 'text', text: { content: schema.title } }],
       icon: schema.icon ? { type: 'emoji', emoji: schema.icon } : undefined,
-      properties: props,
+      initial_data_source: { properties: props },
     }));
     created[key] = db.id;
     dbIds[key] = db.id;
