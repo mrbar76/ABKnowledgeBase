@@ -120,7 +120,15 @@
   <script src="/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js');
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        // Check for updates on every page load
+        reg.update();
+        // Auto-reload when new SW activates
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) { refreshing = true; window.location.reload(); }
+        });
+      });
     }
   </script>
 </body>
