@@ -206,6 +206,8 @@ function renderActivityItem(log) {
 }
 
 // --- Bee Sync ---
+let syncPollTimer = null;
+
 async function triggerBeeSync(mode) {
   const btnUpdates = document.getElementById('btn-sync-updates');
   const btnFull = document.getElementById('btn-sync-full');
@@ -215,39 +217,101 @@ async function triggerBeeSync(mode) {
   btnFull.disabled = true;
   resultEl.style.display = 'block';
   resultEl.style.color = 'var(--text-dim)';
-  resultEl.textContent = mode === 'full' ? 'Running full sync...' : 'Syncing updates...';
+  resultEl.textContent = mode === 'full' ? 'Starting full sync...' : 'Syncing updates...';
 
-  try {
-    const endpoint = mode === 'full' ? '/bee/sync' : '/bee/sync-incremental';
-    const body = mode === 'full' ? { force: false } : {};
-    const data = await api(endpoint, { method: 'POST', body: JSON.stringify(body) });
+  const endpoint = mode === 'full' ? '/bee/sync' : '/bee/sync-incremental';
+  const body = mode === 'full' ? { force: false } : {};
 
-    const i = data.imported || {};
-    const parts = [];
-    if (i.facts) parts.push(`${i.facts} facts`);
-    if (i.todos) parts.push(`${i.todos} tasks`);
-    if (i.conversations) parts.push(`${i.conversations} conversations`);
-    if (i.journals) parts.push(`${i.journals} journals`);
-    if (i.daily) parts.push(`${i.daily} daily summaries`);
-    const skipped = i.skipped || data.imported?.skipped || 0;
-    const errors = i.errors || data.imported?.errors || [];
+  // Fire the request — don't await for full sync (iOS kills long requests)
+  const fetchPromise = api(endpoint, { method: 'POST', body: JSON.stringify(body) });
 
-    let msg = parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'No new items';
-    if (skipped > 0) msg += ` (${skipped} skipped)`;
-    if (errors.length > 0) msg += `\nErrors: ${errors.join('; ')}`;
-
-    resultEl.style.color = errors.length > 0 ? 'var(--yellow)' : 'var(--green)';
-    resultEl.textContent = msg;
-
-    // Refresh dashboard
-    loadDashboard();
-  } catch (err) {
-    resultEl.style.color = 'var(--red)';
-    resultEl.textContent = `Sync failed: ${err.message}`;
-  } finally {
-    btnUpdates.disabled = false;
-    btnFull.disabled = false;
+  if (mode === 'full') {
+    // Fire-and-forget: poll sync status instead of waiting
+    resultEl.textContent = 'Full sync started. Polling for progress...';
+    fetchPromise.then(data => {
+      showSyncResult(resultEl, data);
+      btnUpdates.disabled = false;
+      btnFull.disabled = false;
+      stopSyncPolling();
+      loadDashboard();
+    }).catch(() => {
+      // Timeout is expected for full sync — poll will pick up results
+    });
+    startSyncPolling(resultEl, btnUpdates, btnFull);
+  } else {
+    // Incremental is fast — await normally
+    try {
+      const data = await fetchPromise;
+      showSyncResult(resultEl, data);
+      loadDashboard();
+    } catch (err) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `Sync failed: ${err.message}`;
+    } finally {
+      btnUpdates.disabled = false;
+      btnFull.disabled = false;
+    }
   }
+}
+
+function showSyncResult(resultEl, data) {
+  const i = data.imported || {};
+  const parts = [];
+  if (i.facts) parts.push(`${i.facts} facts`);
+  if (i.todos) parts.push(`${i.todos} tasks`);
+  if (i.conversations) parts.push(`${i.conversations} conversations`);
+  if (i.journals) parts.push(`${i.journals} journals`);
+  if (i.daily) parts.push(`${i.daily} daily summaries`);
+  const errors = i.errors || [];
+
+  let msg = parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'No new items';
+  if (i.skipped > 0) msg += ` (${i.skipped} skipped)`;
+  if (errors.length > 0) msg += `\nErrors: ${errors.join('; ')}`;
+
+  resultEl.style.color = errors.length > 0 ? 'var(--yellow)' : 'var(--green)';
+  resultEl.textContent = msg;
+}
+
+function startSyncPolling(resultEl, btnUpdates, btnFull) {
+  stopSyncPolling();
+  let polls = 0;
+  syncPollTimer = setInterval(async () => {
+    polls++;
+    try {
+      const data = await api('/sync-status');
+      const bee = data.sources?.find(s => s.label === 'Bee Wearable');
+      if (bee) {
+        if (bee.state === 'syncing') {
+          resultEl.textContent = `Syncing... (${polls * 5}s elapsed)`;
+          loadSyncStatus();
+        } else {
+          // Sync finished
+          stopSyncPolling();
+          btnUpdates.disabled = false;
+          btnFull.disabled = false;
+          const lastJob = data.recent_jobs?.[0];
+          if (lastJob) {
+            const dur = lastJob.duration_ms ? `${(lastJob.duration_ms / 1000).toFixed(1)}s` : '';
+            resultEl.style.color = lastJob.state === 'completed' ? 'var(--green)' : 'var(--red)';
+            resultEl.textContent = `${lastJob.description}: ${lastJob.state}${dur ? ` (${dur})` : ''}${lastJob.items_imported > 0 ? ` — ${lastJob.items_imported} imported` : ''}`;
+          }
+          loadDashboard();
+        }
+      }
+    } catch {}
+    // Stop after 5 minutes
+    if (polls > 60) {
+      stopSyncPolling();
+      btnUpdates.disabled = false;
+      btnFull.disabled = false;
+      resultEl.style.color = 'var(--yellow)';
+      resultEl.textContent = 'Sync may still be running. Refresh to check.';
+    }
+  }, 5000);
+}
+
+function stopSyncPolling() {
+  if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
 }
 
 async function loadBeeStatus() {

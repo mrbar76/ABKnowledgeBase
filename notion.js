@@ -419,18 +419,28 @@ function multiSelect(arr) {
 // ─── CRUD helpers ────────────────────────────────────────────────
 
 async function queryDatabase(dbName, filter, sorts, pageSize = 50, startCursor) {
-  const n = getClient();
-  const params = {
-    database_id: getDbId(dbName),
-    page_size: Math.min(pageSize, 100),
-  };
-  if (filter) params.filter = filter;
-  if (sorts) params.sorts = sorts;
-  if (startCursor) params.start_cursor = startCursor;
-  // SDK v5 moved database querying to dataSources.query
-  const dsParams = { ...params, data_source_id: params.database_id };
-  delete dsParams.database_id;
-  return rateLimited(() => n.dataSources.query(dsParams));
+  const dbId = getDbId(dbName);
+  const body = { page_size: Math.min(pageSize, 100) };
+  if (filter) body.filter = filter;
+  if (sorts) body.sorts = sorts;
+  if (startCursor) body.start_cursor = startCursor;
+  // SDK v5 removed databases.query — call REST API directly
+  return rateLimited(async () => {
+    const res = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Notion API ${res.status}: ${res.statusText}`);
+    }
+    return res.json();
+  });
 }
 
 async function createPage(dbName, properties, children) {
