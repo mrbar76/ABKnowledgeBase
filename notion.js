@@ -427,7 +427,10 @@ async function queryDatabase(dbName, filter, sorts, pageSize = 50, startCursor) 
   if (filter) params.filter = filter;
   if (sorts) params.sorts = sorts;
   if (startCursor) params.start_cursor = startCursor;
-  return rateLimited(() => n.databases.query(params));
+  // SDK v5 moved database querying to dataSources.query
+  const dsParams = { ...params, data_source_id: params.database_id };
+  delete dsParams.database_id;
+  return rateLimited(() => n.dataSources.query(dsParams));
 }
 
 async function createPage(dbName, properties, children) {
