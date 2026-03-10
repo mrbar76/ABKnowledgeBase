@@ -321,6 +321,12 @@ body {
   color: var(--text);
 }
 .btn-action-secondary:hover { border-color: var(--accent); }
+.btn-action-danger {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+.btn-action-danger:hover { background: rgba(239,68,68,0.25); }
 
 /* --- Empty states --- */
 .empty-state {

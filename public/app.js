@@ -283,6 +283,44 @@ async function runCleanup() {
   }
 }
 
+// --- Purge Data ---
+function confirmPurge() {
+  const confirmed = confirm(
+    'This will DELETE ALL entries from Knowledge, Facts, Tasks, Projects, and Transcripts in Notion.\n\n' +
+    'This cannot be undone. Are you sure?'
+  );
+  if (!confirmed) return;
+
+  const doubleConfirm = confirm('Really clear everything? Type OK to confirm.');
+  if (!doubleConfirm) return;
+
+  runPurge();
+}
+
+async function runPurge() {
+  const btn = document.getElementById('btn-purge');
+  const resultEl = document.getElementById('purge-result');
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = 'Purging all data... this may take a while...';
+
+  try {
+    const data = await api('/purge', { method: 'POST', body: JSON.stringify({}) });
+    resultEl.style.color = 'var(--green)';
+    const details = Object.entries(data.results || {})
+      .map(([db, count]) => `${db}: ${count}`)
+      .join(', ');
+    resultEl.textContent = `${data.message}\n${details}`;
+    loadDashboard();
+  } catch (err) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = `Purge failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // --- Global Search ---
 let searchDebounceTimer = null;
 

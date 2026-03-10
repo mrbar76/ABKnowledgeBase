@@ -96,8 +96,12 @@
     <!-- Tools -->
     <div class="card">
       <h2>Tools</h2>
-      <button class="btn-action btn-action-secondary" onclick="runCleanup()" id="btn-cleanup" style="width:100%">Clean Up Notion Databases</button>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn-action btn-action-secondary" onclick="runCleanup()" id="btn-cleanup" style="width:100%">Clean Up Orphaned Databases</button>
+        <button class="btn-action btn-action-danger" onclick="confirmPurge()" id="btn-purge" style="width:100%">Clear All Notion Data</button>
+      </div>
       <div id="cleanup-result" style="display:none;margin-top:10px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+      <div id="purge-result" style="display:none;margin-top:10px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
     </div>
 
   </main>

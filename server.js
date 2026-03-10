@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { init: initNotion, setupDatabases, searchNotion, getClient, rateLimited } = require('./notion');
+const { init: initNotion, setupDatabases, searchNotion, getClient, rateLimited, queryDatabase, archivePage } = require('./notion');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
@@ -148,6 +148,46 @@ app.post('/api/cleanup', async (req, res) => {
       message: `Archived ${archived.length} orphaned database(s)`,
       archived,
       not_found: notFound,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Purge: clear all entries from a Notion database ──────────────
+// POST /api/purge { "databases": ["knowledge", "facts", "tasks", "transcripts"] }
+// Omit "databases" to clear all content databases (excludes activity_log)
+app.post('/api/purge', async (req, res) => {
+  try {
+    initNotion();
+    const allowed = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts'];
+    const requested = req.body.databases || allowed;
+    const targets = requested.filter(d => allowed.includes(d));
+
+    if (!targets.length) {
+      return res.status(400).json({ error: 'No valid databases specified', allowed });
+    }
+
+    let totalArchived = 0;
+    const results = {};
+
+    for (const dbName of targets) {
+      let archived = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const result = await queryDatabase(dbName, undefined, undefined, 100);
+        if (!result.results.length) { hasMore = false; break; }
+        for (const page of result.results) {
+          try { await archivePage(page.id); archived++; } catch {}
+        }
+      }
+      results[dbName] = archived;
+      totalArchived += archived;
+    }
+
+    res.json({
+      message: `Purged ${totalArchived} entries across ${targets.length} database(s)`,
+      results,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'abkb-v6';
+const CACHE_NAME = 'abkb-v7';
 const SHELL_FILES = [
   '/',
   '/styles.css',
@@ -15,7 +15,7 @@ self.addEventListener('install', e => {
   );
 });
 
-// Activate — clean old caches
+// Activate — clean old caches and take control immediately
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -24,34 +24,25 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch — network-first for API, cache-first for static assets
+// Fetch — network-first for everything, cache as fallback (offline support)
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Always go to network for API calls — pass through without service worker interception
+  // Pass through API calls without interception
   if (url.pathname.startsWith('/api')) {
     return;
   }
 
-  // Cache-first for static assets, fallback to network
+  // Network-first: try network, fall back to cache for offline
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) {
-        // Update cache in background
-        fetch(e.request).then(response => {
-          if (response.ok) {
-            caches.open(CACHE_NAME).then(cache => cache.put(e.request, response));
-          }
-        }).catch(() => {});
-        return cached;
+    fetch(e.request).then(response => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
       }
-      return fetch(e.request).then(response => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        }
-        return response;
-      });
+      return response;
+    }).catch(() => {
+      return caches.match(e.request);
     })
   );
 });
