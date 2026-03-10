@@ -17,8 +17,7 @@ function init() {
     tasks: process.env.NOTION_DB_TASKS || '',
     projects: process.env.NOTION_DB_PROJECTS || '',
     transcripts: process.env.NOTION_DB_TRANSCRIPTS || '',
-    health_metrics: process.env.NOTION_DB_HEALTH_METRICS || '',
-    workouts: process.env.NOTION_DB_WORKOUTS || '',
+
     activity_log: process.env.NOTION_DB_ACTIVITY_LOG || '',
   };
 
@@ -90,7 +89,6 @@ const DB_SCHEMAS = {
         { name: 'research', color: 'purple' },
         { name: 'decision', color: 'orange' },
         { name: 'reference', color: 'gray' },
-        { name: 'health', color: 'red' },
         { name: 'personal', color: 'pink' },
         { name: 'transcript', color: 'yellow' },
         { name: 'journal', color: 'brown' },
@@ -122,7 +120,6 @@ const DB_SCHEMAS = {
       Category: { select: { options: [
         { name: 'personal', color: 'pink' },
         { name: 'preference', color: 'purple' },
-        { name: 'health', color: 'red' },
         { name: 'work', color: 'blue' },
         { name: 'relationship', color: 'green' },
         { name: 'financial', color: 'orange' },
@@ -217,49 +214,6 @@ const DB_SCHEMAS = {
       'Updated At': { date: {} },
     }
   },
-  health_metrics: {
-    title: 'AB Brain — Health Metrics',
-    icon: '❤️',
-    properties: {
-      Title: { title: {} },
-      'Metric Type': { select: { options: [
-        { name: 'heart_rate', color: 'red' },
-        { name: 'steps', color: 'green' },
-        { name: 'sleep', color: 'blue' },
-        { name: 'weight', color: 'orange' },
-        { name: 'blood_pressure', color: 'pink' },
-      ]}},
-      Value: { number: {} },
-      Unit: { rich_text: {} },
-      'Source Name': { rich_text: {} },
-      'Recorded At': { date: {} },
-      'Created At': { date: {} },
-    }
-  },
-  workouts: {
-    title: 'AB Brain — Workouts',
-    icon: '🏃',
-    properties: {
-      Title: { title: {} },
-      'Workout Type': { select: { options: [
-        { name: 'running', color: 'green' },
-        { name: 'cycling', color: 'blue' },
-        { name: 'swimming', color: 'default' },
-        { name: 'strength', color: 'red' },
-        { name: 'walking', color: 'yellow' },
-        { name: 'yoga', color: 'purple' },
-      ]}},
-      'Duration (min)': { number: {} },
-      'Calories Burned': { number: {} },
-      'Distance (km)': { number: {} },
-      'Avg Heart Rate': { number: {} },
-      'Max Heart Rate': { number: {} },
-      'Source Name': { rich_text: {} },
-      'Started At': { date: {} },
-      'Ended At': { date: {} },
-      'Created At': { date: {} },
-    }
-  },
   activity_log: {
     title: 'AB Brain — Activity Log',
     icon: '📋',
@@ -276,8 +230,7 @@ const DB_SCHEMAS = {
         { name: 'task', color: 'green' },
         { name: 'project', color: 'blue' },
         { name: 'transcript', color: 'yellow' },
-        { name: 'health_metric', color: 'red' },
-        { name: 'workout', color: 'orange' },
+
         { name: 'bee-import', color: 'yellow' },
       ]}},
       'Entity ID': { rich_text: {} },
@@ -286,7 +239,7 @@ const DB_SCHEMAS = {
         { name: 'gemini', color: 'blue' },
         { name: 'chatgpt', color: 'green' },
         { name: 'bee', color: 'yellow' },
-        { name: 'apple_health', color: 'red' },
+
       ]}},
       Details: { rich_text: {} },
       'Created At': { date: {} },
@@ -418,36 +371,6 @@ function pageToTranscript(page) {
     project_id: p.Project?.relation?.[0]?.id || null,
     created_at: p['Created At']?.date?.start || page.created_time,
     updated_at: p['Updated At']?.date?.start || page.last_edited_time,
-  };
-}
-
-function pageToHealthMetric(page) {
-  const p = page.properties;
-  return {
-    id: page.id,
-    metric_type: p['Metric Type']?.select?.name || '',
-    value: p.Value?.number || 0,
-    unit: richTextToString(p.Unit?.rich_text),
-    source_name: richTextToString(p['Source Name']?.rich_text) || 'apple_health',
-    recorded_at: p['Recorded At']?.date?.start || null,
-    created_at: p['Created At']?.date?.start || page.created_time,
-  };
-}
-
-function pageToWorkout(page) {
-  const p = page.properties;
-  return {
-    id: page.id,
-    workout_type: p['Workout Type']?.select?.name || '',
-    duration_minutes: p['Duration (min)']?.number || null,
-    calories_burned: p['Calories Burned']?.number || null,
-    distance_km: p['Distance (km)']?.number || null,
-    avg_heart_rate: p['Avg Heart Rate']?.number || null,
-    max_heart_rate: p['Max Heart Rate']?.number || null,
-    source_name: richTextToString(p['Source Name']?.rich_text) || 'apple_health',
-    started_at: p['Started At']?.date?.start || null,
-    ended_at: p['Ended At']?.date?.start || null,
-    created_at: p['Created At']?.date?.start || page.created_time,
   };
 }
 
@@ -618,8 +541,7 @@ module.exports = {
   pageToTask,
   pageToProject,
   pageToTranscript,
-  pageToHealthMetric,
-  pageToWorkout,
+
   pageToActivity,
   richTextToString,
   // Helpers

@@ -106,10 +106,6 @@ async function loadDashboard() {
         <div class="stat-value">${data.projects.active}</div>
         <div class="stat-label">Projects</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value">${data.health.total_workouts}</div>
-        <div class="stat-label">Workouts</div>
-      </div>
     `;
 
     // Recent activity

@@ -90,40 +90,6 @@ async function initDB() {
       (to_tsvector('english', coalesce(title,'')) || to_tsvector('english', coalesce(raw_text,'')))
     );
 
-    -- ===== APPLE HEALTH DATA =====
-    CREATE TABLE IF NOT EXISTS health_metrics (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      metric_type TEXT NOT NULL,
-      value NUMERIC NOT NULL,
-      unit TEXT NOT NULL,
-      source_name TEXT DEFAULT 'apple_health',
-      recorded_at TIMESTAMPTZ NOT NULL,
-      metadata JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_health_type ON health_metrics(metric_type);
-    CREATE INDEX IF NOT EXISTS idx_health_recorded ON health_metrics(recorded_at);
-    CREATE INDEX IF NOT EXISTS idx_health_type_date ON health_metrics(metric_type, recorded_at);
-
-    CREATE TABLE IF NOT EXISTS workouts (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      workout_type TEXT NOT NULL,
-      duration_minutes NUMERIC,
-      calories_burned NUMERIC,
-      distance_km NUMERIC,
-      avg_heart_rate NUMERIC,
-      max_heart_rate NUMERIC,
-      source_name TEXT DEFAULT 'apple_health',
-      started_at TIMESTAMPTZ NOT NULL,
-      ended_at TIMESTAMPTZ,
-      metadata JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_workouts_type ON workouts(workout_type);
-    CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(started_at);
-
     -- ===== ACTIVITY LOG =====
     CREATE TABLE IF NOT EXISTS activity_log (
       id SERIAL PRIMARY KEY,

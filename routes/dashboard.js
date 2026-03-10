@@ -1,7 +1,7 @@
 const express = require('express');
 const {
   queryDatabase, pageToKnowledge, pageToFact, pageToTask, pageToProject,
-  pageToTranscript, pageToHealthMetric, pageToWorkout, pageToActivity
+  pageToTranscript, pageToActivity
 } = require('../notion');
 const router = express.Router();
 
@@ -9,14 +9,12 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     // Fetch data in parallel (respects rate limit internally)
-    const [knowledgeRes, factsRes, taskRes, projectRes, transcriptRes, healthRes, workoutRes, activityRes] = await Promise.all([
+    const [knowledgeRes, factsRes, taskRes, projectRes, transcriptRes, activityRes] = await Promise.all([
       queryDatabase('knowledge', undefined, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('facts', undefined, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('tasks', undefined, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('projects', { property: 'Status', select: { equals: 'active' } }, undefined, 100).catch(() => ({ results: [] })),
       queryDatabase('transcripts', undefined, undefined, 100).catch(() => ({ results: [] })),
-      queryDatabase('health_metrics', undefined, undefined, 1).catch(() => ({ results: [] })),
-      queryDatabase('workouts', undefined, undefined, 1).catch(() => ({ results: [] })),
       queryDatabase('activity_log', undefined, [{ property: 'Created At', direction: 'descending' }], 15).catch(() => ({ results: [] })),
     ]);
 
@@ -74,10 +72,6 @@ router.get('/', async (req, res) => {
         by_agent: Object.entries(byAgent).map(([ai_agent, count]) => ({ ai_agent, count })),
       },
       transcripts: { total: transcriptRes.results.length },
-      health: {
-        total_metrics: healthRes.results.length,
-        total_workouts: workoutRes.results.length,
-      },
       recent_activity: activityRes.results.map(pageToActivity),
     });
   } catch (err) {

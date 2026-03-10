@@ -10,7 +10,7 @@ const factsRoutes = require('./routes/facts');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const transcriptRoutes = require('./routes/transcripts');
-const healthRoutes = require('./routes/health');
+
 const activityRoutes = require('./routes/activity');
 const dashboardRoutes = require('./routes/dashboard');
 const beeRoutes = require('./routes/bee');
@@ -92,8 +92,7 @@ app.post('/api/setup', async (req, res) => {
         `NOTION_DB_TASKS=${dbIds.tasks}`,
         `NOTION_DB_PROJECTS=${dbIds.projects}`,
         `NOTION_DB_TRANSCRIPTS=${dbIds.transcripts}`,
-        `NOTION_DB_HEALTH_METRICS=${dbIds.health_metrics}`,
-        `NOTION_DB_WORKOUTS=${dbIds.workouts}`,
+
         `NOTION_DB_ACTIVITY_LOG=${dbIds.activity_log}`,
         '',
         'Then restart the server. Your AIs can now read/write to Notion via the same API.',
@@ -111,7 +110,7 @@ app.use('/api/facts', factsRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/transcripts', transcriptRoutes);
-app.use('/api/healthdata', healthRoutes);
+
 app.use('/api/activity', activityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/bee', beeRoutes);

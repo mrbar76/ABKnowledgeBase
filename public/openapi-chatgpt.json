@@ -55,7 +55,7 @@
                 "properties": {
                   "title": { "type": "string", "description": "Short descriptive title" },
                   "content": { "type": "string", "description": "Full knowledge content" },
-                  "category": { "type": "string", "enum": ["general", "code", "meeting", "research", "decision", "reference", "health", "personal"], "default": "general" },
+                  "category": { "type": "string", "enum": ["general", "code", "meeting", "research", "decision", "reference", "personal"], "default": "general" },
                   "tags": { "type": "array", "items": { "type": "string" } },
                   "ai_source": { "type": "string", "default": "chatgpt" },
                   "metadata": { "type": "object" }
@@ -461,7 +461,7 @@
                     "projects": { "type": "object" },
                     "tasks": { "type": "object" },
                     "transcripts": { "type": "object" },
-                    "health": { "type": "object" },
+
                     "recent_activity": { "type": "array" }
                   }
                 }
