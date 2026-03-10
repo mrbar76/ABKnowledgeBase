@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { init: initNotion, setupDatabases } = require('./notion');
+const { init: initNotion, setupDatabases, searchNotion, getClient, rateLimited } = require('./notion');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
@@ -98,6 +98,58 @@ app.post('/api/setup', async (req, res) => {
     });
   } catch (err) {
     console.error('[setup] Failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Cleanup: archive orphaned Notion databases ───────────────────
+// POST /api/cleanup — finds and archives databases that are no longer used
+app.post('/api/cleanup', async (req, res) => {
+  try {
+    initNotion();
+    const n = getClient();
+    const orphanNames = [
+      'AB Brain — Health Metrics',
+      'AB Brain — Workouts',
+    ];
+    const archived = [];
+    const notFound = [];
+
+    for (const name of orphanNames) {
+      try {
+        const searchRes = await rateLimited(() => n.search({
+          query: name,
+          filter: { value: 'database', property: 'object' },
+          page_size: 5,
+        }));
+
+        const matches = searchRes.results.filter(r =>
+          r.title?.some(t => t.plain_text === name)
+        );
+
+        if (matches.length === 0) {
+          notFound.push(name);
+          continue;
+        }
+
+        for (const db of matches) {
+          await rateLimited(() => n.databases.update({
+            database_id: db.id,
+            archived: true,
+          }));
+          archived.push({ name, id: db.id });
+        }
+      } catch (e) {
+        notFound.push(`${name} (error: ${e.message})`);
+      }
+    }
+
+    res.json({
+      message: `Archived ${archived.length} orphaned database(s)`,
+      archived,
+      not_found: notFound,
+    });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

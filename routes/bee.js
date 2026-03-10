@@ -224,17 +224,18 @@ router.post('/sync', async (req, res) => {
 
   const force = req.body?.force === true;
   const job = syncStatus.startJob('bee', force ? 'Full sync (force refresh)' : 'Full cloud sync');
-  const results = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
+  const results = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [], timings: {} };
 
   // --- Sync Facts ---
   try {
+    console.log('[bee-sync] Starting facts sync...');
     let cursor = null;
     do {
       const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const facts = extractArray(data, 'facts');
       cursor = data.next_cursor || null;
-      console.log(`[bee-sync] Facts: ${facts.length} items`);
+      console.log(`[bee-sync] Facts page: ${facts.length} items, keys: ${facts.length > 0 ? Object.keys(facts[0]).join(',') : 'empty'}`);
 
       for (const fact of facts) {
         const factText = extractFactText(fact);
@@ -259,18 +260,20 @@ router.post('/sync', async (req, res) => {
       }
     } while (cursor);
   } catch (e) {
+    console.error(`[bee-sync] Facts FAILED: ${e.message}`);
     results.errors.push(`Facts: ${e.message}`);
   }
 
   // --- Sync Todos ---
   try {
+    console.log('[bee-sync] Starting todos sync...');
     let cursor = null;
     do {
       const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const todos = extractArray(data, 'todos');
       cursor = data.next_cursor || null;
-      console.log(`[bee-sync] Todos: ${todos.length} items`);
+      console.log(`[bee-sync] Todos page: ${todos.length} items`);
 
       for (const todo of todos) {
         const todoText = extractTodoText(todo);
@@ -294,11 +297,13 @@ router.post('/sync', async (req, res) => {
       }
     } while (cursor);
   } catch (e) {
+    console.error(`[bee-sync] Todos FAILED: ${e.message}`);
     results.errors.push(`Todos: ${e.message}`);
   }
 
   // --- Sync Conversations ---
   try {
+    console.log('[bee-sync] Starting conversations sync...');
     let cursor = null;
     do {
       const url = `/v1/conversations?limit=50&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
@@ -356,11 +361,13 @@ router.post('/sync', async (req, res) => {
       }
     } while (cursor);
   } catch (e) {
+    console.error(`[bee-sync] Conversations FAILED: ${e.message}`);
     results.errors.push(`Conversations: ${e.message}`);
   }
 
   // --- Sync Journals ---
   try {
+    console.log('[bee-sync] Starting journals sync...');
     let cursor = null;
     do {
       const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
@@ -392,11 +399,13 @@ router.post('/sync', async (req, res) => {
       }
     } while (cursor);
   } catch (e) {
+    console.error(`[bee-sync] Journals FAILED: ${e.message}`);
     results.errors.push(`Journals: ${e.message}`);
   }
 
   // --- Sync Daily Summaries ---
   try {
+    console.log('[bee-sync] Starting daily summaries sync...');
     let cursor = null;
     do {
       const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
@@ -429,9 +438,11 @@ router.post('/sync', async (req, res) => {
       }
     } while (cursor);
   } catch (e) {
+    console.error(`[bee-sync] Daily FAILED: ${e.message}`);
     results.errors.push(`Daily: ${e.message}`);
   }
 
+  console.log(`[bee-sync] Complete: ${JSON.stringify(results)}`);
   await logActivity('sync', 'bee-import', 'cloud-sync', 'bee',
     `Cloud sync${force ? ' (full)' : ''}: ${results.facts}F ${results.todos}T ${results.conversations}C ${results.journals}J ${results.daily}D (${results.skipped} skipped)`);
 
@@ -886,6 +897,42 @@ router.get('/status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── Bee API diagnostic — test each endpoint ─────────────────────
+
+router.get('/diagnose', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+
+  const endpoints = [
+    { name: 'facts', path: '/v1/facts?limit=2', key: 'facts' },
+    { name: 'todos', path: '/v1/todos?limit=2', key: 'todos' },
+    { name: 'conversations', path: '/v1/conversations?limit=2&created_after=2024-01-01', key: 'conversations' },
+    { name: 'journals', path: '/v1/journals?limit=2', key: 'journals' },
+    { name: 'daily', path: '/v1/daily?limit=2', key: 'daily' },
+  ];
+
+  const results = {};
+  for (const ep of endpoints) {
+    try {
+      const data = await beeApiGet(ep.path, beeToken, 15000);
+      const items = extractArray(data, ep.key);
+      results[ep.name] = {
+        status: 'ok',
+        total: data.total || data.total_count || data.count || null,
+        items_in_page: items.length,
+        has_cursor: !!data.next_cursor,
+        top_level_keys: Object.keys(data),
+        sample_item_keys: items.length > 0 ? Object.keys(items[0]) : [],
+        sample_item: items.length > 0 ? JSON.stringify(items[0]).substring(0, 500) : null,
+      };
+    } catch (e) {
+      results[ep.name] = { status: 'error', error: e.message };
+    }
+  }
+
+  res.json({ bee_token_configured: !!process.env.BEE_API_TOKEN, token_source: req.headers['x-bee-token'] ? 'header' : (process.env.BEE_API_TOKEN ? 'env' : 'none'), endpoints: results });
 });
 
 // ─── Bee neural search proxy ─────────────────────────────────────
