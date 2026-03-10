@@ -63,8 +63,8 @@ API_KEY=generate-a-random-string-here
 # Notion integration token from Step 1
 NOTION_TOKEN=ntn_your-token-here
 
-# Anthropic API key for smart intake (from console.anthropic.com)
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+# OpenAI API key for smart intake (from platform.openai.com)
+OPENAI_API_KEY=sk-your-key-here
 ```
 
 ## Step 4: Start the Server
@@ -206,7 +206,7 @@ You can customize these views directly in Notion — add filters, sorts, groupin
 # Set these env vars in Railway dashboard:
 API_KEY=your-strong-random-key
 NOTION_TOKEN=ntn_your-token
-ANTHROPIC_API_KEY=sk-ant-your-key
+OPENAI_API_KEY=sk-your-openai-key
 NOTION_DB_KNOWLEDGE=...
 NOTION_DB_TASKS=...
 NOTION_DB_PROJECTS=...

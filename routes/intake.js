@@ -1,19 +1,23 @@
 // Smart intake — AI-powered auto-classification and filing.
-// Accepts any raw input, uses Claude to classify it, then files it
-// into the correct Notion database with proper metadata.
+// Accepts any raw input, uses OpenAI GPT-4o-mini to classify it,
+// then files it into the correct Notion database with proper metadata.
 
 const express = require('express');
-const Anthropic = require('@anthropic-ai/sdk');
 const {
   createPage, richText, dateOrNull, selectOrNull, multiSelect,
   textToBlocks, logActivity
 } = require('../notion');
 const router = express.Router();
 
-function getAnthropicClient() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error('ANTHROPIC_API_KEY not configured — required for smart intake');
-  return new Anthropic({ apiKey: key });
+// Lazy-load OpenAI client
+let openai = null;
+function getOpenAIClient() {
+  if (openai) return openai;
+  const OpenAI = require('openai');
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('OPENAI_API_KEY not configured — required for smart intake');
+  openai = new OpenAI({ apiKey: key });
+  return openai;
 }
 
 const CLASSIFICATION_PROMPT = `You are a personal knowledge organizer. Analyze the following input and classify it for filing into a Notion workspace.
@@ -39,6 +43,30 @@ Rules:
 - If the input already specifies a category or tags, respect those
 - Keep the title descriptive but concise`;
 
+// Classify input using OpenAI GPT-4o-mini
+async function classify(userMessage) {
+  const client = getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    max_tokens: 500,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: CLASSIFICATION_PROMPT },
+      { role: 'user', content: userMessage },
+    ],
+  });
+
+  const text = response.choices[0]?.message?.content || '';
+  try {
+    return JSON.parse(text);
+  } catch {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in classification response');
+    return JSON.parse(jsonMatch[0]);
+  }
+}
+
 // POST /api/intake
 // Body: { "input": "any text", "source": "claude" (optional), "context": "optional context" }
 router.post('/', async (req, res) => {
@@ -48,37 +76,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'input is required' });
     }
 
-    const anthropic = getAnthropicClient();
-
-    // Build the classification prompt
+    // Build the classification input
     let userMessage = input.trim();
     if (context) userMessage = `Context: ${context}\n\n${userMessage}`;
     if (source) userMessage = `[Source: ${source}]\n\n${userMessage}`;
 
-    // Classify with Claude Haiku (fast + cheap)
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
-      messages: [
-        { role: 'user', content: `${CLASSIFICATION_PROMPT}\n\n---\nINPUT:\n${userMessage}` }
-      ],
-    });
-
-    const responseText = response.content[0]?.text || '';
-
-    // Parse JSON from response (handle markdown code blocks)
-    let classification;
-    try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON found in response');
-      classification = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      console.error('[intake] Classification parse error:', responseText);
-      return res.status(500).json({
-        error: 'Failed to classify input',
-        raw_response: responseText
-      });
-    }
+    const classification = await classify(userMessage);
 
     const now = new Date().toISOString();
     const db = classification.database || 'knowledge';
@@ -173,25 +176,11 @@ router.post('/batch', async (req, res) => {
     const results = [];
     for (const item of items) {
       try {
-        // Call ourselves for each item
-        const anthropic = getAnthropicClient();
         let userMessage = (item.input || '').trim();
         if (!userMessage) { results.push({ error: 'empty input', skipped: true }); continue; }
         if (item.source) userMessage = `[Source: ${item.source}]\n\n${userMessage}`;
 
-        const response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 500,
-          messages: [
-            { role: 'user', content: `${CLASSIFICATION_PROMPT}\n\n---\nINPUT:\n${userMessage}` }
-          ],
-        });
-
-        const responseText = response.content[0]?.text || '';
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) { results.push({ error: 'classification failed', input: userMessage.substring(0, 50) }); continue; }
-
-        const classification = JSON.parse(jsonMatch[0]);
+        const classification = await classify(userMessage);
         const now = new Date().toISOString();
         const aiSource = classification.ai_source || item.source || null;
 
