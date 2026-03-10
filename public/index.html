@@ -4,21 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
-  <title>AB Knowledge Base</title>
+  <title>AB Brain</title>
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#6366f1">
 
-  <!-- iOS PWA — makes it full-screen when added to home screen -->
+  <!-- iOS PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="AB Brain">
   <link rel="apple-touch-icon" href="/icons/icon.svg">
 
-  <!-- Prevent iOS text size adjust -->
   <meta name="format-detection" content="telephone=no">
-
   <link rel="stylesheet" href="/styles.css">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 </head>
@@ -27,7 +25,7 @@
   <div id="login-screen" class="login-screen" style="display:none">
     <div class="login-card">
       <svg viewBox="0 0 24 24" width="48" height="48" style="color:var(--accent);margin-bottom:12px"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-      <h1 style="font-size:1.3rem;margin-bottom:4px">AB Knowledge Base</h1>
+      <h1 style="font-size:1.3rem;margin-bottom:4px">AB Brain</h1>
       <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:20px">Enter your API key to continue</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
@@ -41,30 +39,6 @@
       </form>
     </div>
   </div>
-
-  <!-- Bottom Navigation (mobile-first) -->
-  <nav class="bottom-nav">
-    <button class="nav-btn active" data-view="dashboard">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
-      <span>Home</span>
-    </button>
-    <button class="nav-btn" data-view="brain">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-      <span>Brain</span>
-    </button>
-    <button class="nav-btn" data-view="conversations">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
-      <span>Chats</span>
-    </button>
-    <button class="nav-btn" data-view="tasks">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-      <span>Tasks</span>
-    </button>
-    <button class="nav-btn" data-view="settings">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
-      <span>Settings</span>
-    </button>
-  </nav>
 
   <!-- Header -->
   <header class="app-header">
@@ -88,123 +62,27 @@
     </div>
   </div>
 
-  <!-- Pull-to-refresh indicator -->
-  <div id="pull-indicator" class="pull-indicator">
-    <svg class="pull-spinner" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-    <span>Refreshing...</span>
-  </div>
+  <!-- Single Page Content -->
+  <main class="page-content">
 
-  <!-- Views Container -->
-  <main class="views-container">
+    <!-- Stats Overview -->
+    <div class="stats-grid" id="stats-grid"></div>
 
-    <!-- Dashboard View -->
-    <section id="view-dashboard" class="view active">
-      <div class="stats-grid" id="stats-grid"></div>
-      <div class="card">
-        <h2>Tasks by Status</h2>
-        <div class="chart-container" id="chart-tasks-status"></div>
-      </div>
-      <div class="card">
-        <h2>Knowledge by AI Source</h2>
-        <div class="chart-container" id="chart-knowledge-source"></div>
-      </div>
-      <div class="card">
-        <h2>Tasks by Agent</h2>
-        <div class="chart-container" id="chart-tasks-agent"></div>
-      </div>
-      <div class="card">
-        <h2>Sync Status</h2>
-        <div id="sync-status-panel"></div>
-      </div>
-      <div class="card">
-        <h2>Recent Sync Jobs</h2>
-        <div id="sync-job-history"></div>
-      </div>
-      <div class="card">
-        <h2>Recent Activity</h2>
-        <div id="recent-activity"></div>
-      </div>
-    </section>
+    <!-- Recent Activity -->
+    <div class="card" id="activity-card" style="display:none">
+      <h2>Recent Activity</h2>
+      <div id="recent-activity"></div>
+    </div>
 
-    <!-- Brain View (Knowledge + Facts) -->
-    <section id="view-brain" class="view">
-      <div class="subtab-bar">
-        <button class="subtab active" data-subtab="knowledge" onclick="switchBrainTab('knowledge')">Knowledge</button>
-        <button class="subtab" data-subtab="facts" onclick="switchBrainTab('facts')">Facts</button>
+    <!-- Import Section -->
+    <div class="card section-card">
+      <div class="section-header" onclick="toggleSection('import')">
+        <h2>Import Conversations</h2>
+        <svg class="section-chevron" id="chevron-import" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
       </div>
-      <div id="brain-tab-knowledge" class="brain-tab active">
-        <div class="search-bar">
-          <input type="text" id="knowledge-search" placeholder="Search knowledge...">
-          <button onclick="searchKnowledge()">Search</button>
-        </div>
-        <div class="filter-chips" id="source-chips"></div>
-        <div class="filter-chips" id="category-chips"></div>
-        <div id="knowledge-list" class="knowledge-list"></div>
-      </div>
-      <div id="brain-tab-facts" class="brain-tab">
-        <div class="search-bar">
-          <input type="text" id="facts-search" placeholder="Search facts...">
-          <button onclick="searchFacts()">Search</button>
-        </div>
-        <div class="filter-chips" id="facts-category-chips"></div>
-        <div id="facts-list" class="knowledge-list"></div>
-      </div>
-      <button class="fab" onclick="openKnowledgeModal()">+</button>
-    </section>
-
-    <!-- Conversations View (Transcripts) -->
-    <section id="view-conversations" class="view">
-      <div class="search-bar">
-        <input type="text" id="transcript-search" placeholder="Search conversations...">
-        <button onclick="searchTranscripts()">Search</button>
-      </div>
-      <div id="transcript-list" class="knowledge-list"></div>
-      <button class="fab" onclick="openTranscriptModal()">+</button>
-    </section>
-
-    <!-- Tasks View (Kanban) -->
-    <section id="view-tasks" class="view">
-      <div class="kanban-header">
-        <h2>Tasks</h2>
-        <select id="kanban-project-filter">
-          <option value="">All Projects</option>
-        </select>
-      </div>
-      <div class="kanban-board" id="kanban-board">
-        <div class="kanban-column" data-status="todo">
-          <div class="kanban-col-header"><span class="status-dot todo"></span> To Do <span class="count" id="count-todo">0</span></div>
-          <div class="kanban-cards" id="kanban-todo"></div>
-        </div>
-        <div class="kanban-column" data-status="in_progress">
-          <div class="kanban-col-header"><span class="status-dot in_progress"></span> In Progress <span class="count" id="count-in_progress">0</span></div>
-          <div class="kanban-cards" id="kanban-in_progress"></div>
-        </div>
-        <div class="kanban-column" data-status="review">
-          <div class="kanban-col-header"><span class="status-dot review"></span> Review <span class="count" id="count-review">0</span></div>
-          <div class="kanban-cards" id="kanban-review"></div>
-        </div>
-        <div class="kanban-column" data-status="done">
-          <div class="kanban-col-header"><span class="status-dot done"></span> Done <span class="count" id="count-done">0</span></div>
-          <div class="kanban-cards" id="kanban-done"></div>
-        </div>
-      </div>
-      <button class="fab" onclick="openTaskModal()">+</button>
-    </section>
-
-    <!-- Settings View (Import + Connect + Projects) -->
-    <section id="view-settings" class="view">
-      <!-- Projects -->
-      <div class="card">
-        <h2>Projects</h2>
-        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:12px">Group related conversations, knowledge, and tasks by project.</p>
-        <div id="projects-list" class="projects-list"></div>
-        <button class="btn-submit" onclick="openProjectModal()" style="margin-top:12px;width:100%">+ New Project</button>
-      </div>
-
-      <div class="card" style="margin-top:12px">
-        <h2>Import AI Conversations</h2>
+      <div class="section-body" id="section-import">
         <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
-          Upload your exported data from ChatGPT, Claude, or other AIs. Conversations are stored as transcripts. With AI Distill enabled, facts, decisions, and tasks are automatically extracted.
+          Upload ChatGPT or Claude exports. Conversations go to Notion as transcripts. AI Distill extracts facts, decisions, and tasks automatically.
         </p>
 
         <div class="form-group">
@@ -218,15 +96,14 @@
 
         <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;margin-bottom:12px;cursor:pointer">
           <input type="checkbox" id="import-distill" checked>
-          <span>AI Distill — extract facts, decisions &amp; tasks from conversations</span>
-          <span style="font-size:0.7rem;color:var(--text-dim)">(requires OPENAI_API_KEY)</span>
+          <span>AI Distill — extract facts, decisions &amp; tasks</span>
         </label>
 
         <div class="drop-zone" id="drop-zone">
           <div class="drop-zone-content">
-            <svg viewBox="0 0 24 24" width="48" height="48" style="color:var(--accent)"><path fill="currentColor" d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
-            <p>Tap to select files or drag & drop</p>
-            <p style="font-size:0.75rem;color:var(--text-dim)">Select multiple conversations.json files at once</p>
+            <svg viewBox="0 0 24 24" width="40" height="40" style="color:var(--accent)"><path fill="currentColor" d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+            <p>Tap to select files or drag &amp; drop</p>
+            <p style="font-size:0.75rem;color:var(--text-dim)">Multiple .json files supported</p>
           </div>
           <input type="file" id="import-file" accept=".json" multiple style="display:none">
         </div>
@@ -237,36 +114,58 @@
           </div>
           <div id="import-log" style="font-size:0.8rem;color:var(--text-dim);margin-top:8px"></div>
         </div>
-      </div>
 
-      <div class="card" style="margin-top:12px">
-        <h2>How to Export Your Data</h2>
-        <div style="font-size:0.85rem;line-height:1.6">
-          <p style="margin-bottom:12px"><strong style="color:var(--green)">ChatGPT:</strong><br>
-            chatgpt.com &rarr; Profile &rarr; Settings &rarr; Data Controls &rarr; Export Data<br>
-            Unzip the download and upload <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px">conversations.json</code>
-          </p>
-          <p style="margin-bottom:12px"><strong style="color:var(--purple)">Claude:</strong><br>
-            claude.ai &rarr; Settings &rarr; Export Data<br>
-            Upload the conversations file from the export
-          </p>
+        <details style="margin-top:12px;font-size:0.8rem;color:var(--text-dim)">
+          <summary style="cursor:pointer;font-weight:600">How to export your data</summary>
+          <div style="padding:8px 0;line-height:1.6">
+            <p><strong style="color:var(--green)">ChatGPT:</strong> chatgpt.com &rarr; Profile &rarr; Settings &rarr; Data Controls &rarr; Export Data. Upload <code>conversations.json</code></p>
+            <p style="margin-top:8px"><strong style="color:var(--purple)">Claude:</strong> claude.ai &rarr; Settings &rarr; Export Data. Upload the conversations file.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Bee Sync Section -->
+    <div class="card section-card">
+      <div class="section-header" onclick="toggleSection('bee')">
+        <h2>Bee Wearable Sync</h2>
+        <svg class="section-chevron" id="chevron-bee" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </div>
+      <div class="section-body" id="section-bee">
+        <div id="bee-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
+
+        <div class="form-group" style="margin-bottom:12px">
+          <input type="password" id="bee-token-input" placeholder="Bee API Token (optional — for one-time sync)" style="font-family:monospace;font-size:0.85rem">
         </div>
-      </div>
 
-      <!-- Connect AI Section -->
-      <div class="card" style="margin-top:12px">
-        <h2>Connect AI (Live)</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn-submit" onclick="triggerBeeIncrementalSync()" id="bee-incremental-btn">Sync Updates Only</button>
+          <button class="btn-submit" onclick="triggerBeeCloudSync(false)" id="bee-sync-btn" style="background:var(--bg-input);color:var(--text)">Full Sync (chunked)</button>
+          <button class="btn-submit" onclick="triggerBeeCloudSync(true)" id="bee-full-sync-btn" style="background:#d97706;color:#fff">Purge &amp; Re-import All</button>
+        </div>
+
+        <div id="bee-import-result" style="display:none;margin-top:12px;padding:10px;border-radius:var(--radius);font-size:0.8rem"></div>
+      </div>
+    </div>
+
+    <!-- Connect AI Section -->
+    <div class="card section-card">
+      <div class="section-header" onclick="toggleSection('connect')">
+        <h2>Connect Your AIs</h2>
+        <svg class="section-chevron" id="chevron-connect" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </div>
+      <div class="section-body" id="section-connect" style="display:none">
         <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
-          Connect your AI assistants so they can read &amp; write to your brain.
+          Give your AI assistants read/write access to your brain.
         </p>
 
         <div class="form-group">
           <label>Your API Key</label>
           <input type="password" id="connect-api-key" placeholder="Paste your API_KEY here" style="font-family:monospace">
-          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">This stays in your browser. Never sent anywhere.</p>
+          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Stays in your browser. Never sent anywhere.</p>
         </div>
 
-        <!-- ChatGPT (most reliable integration) -->
+        <!-- ChatGPT -->
         <div class="connect-card">
           <div class="connect-card-header">
             <span class="connect-card-icon" style="color:var(--green)">
@@ -275,18 +174,10 @@
             <strong>ChatGPT</strong>
             <span style="font-size:0.75rem;color:var(--green);margin-left:auto">Full Integration</span>
           </div>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            Uses <strong>Custom GPT + Actions</strong> to call your API directly. This is the most reliable integration.
-          </p>
           <div style="font-size:0.8rem;line-height:1.6;margin-bottom:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius)">
-            <strong>Setup (one-time):</strong><br>
-            1. Go to <strong>chatgpt.com &rarr; Explore GPTs &rarr; Create</strong><br>
-            2. In the <strong>Configure</strong> tab, scroll to <strong>Actions</strong> &rarr; Create new action<br>
-            3. Click <strong>Import from URL</strong> and paste:<br>
+            <strong>Setup:</strong> chatgpt.com &rarr; Explore GPTs &rarr; Create &rarr; Actions &rarr; Import from URL:<br>
             <code id="openapi-url" style="background:var(--bg);padding:2px 6px;border-radius:4px;word-break:break-all"></code><br>
-            4. Under <strong>Authentication</strong> &rarr; API Key &rarr; Header name: <code>X-Api-Key</code><br>
-            5. Paste your API key as the value<br>
-            6. Paste the instructions below into the GPT's <strong>Instructions</strong> field
+            Auth: API Key, Header: <code>X-Api-Key</code>
           </div>
           <div class="connect-prompt" id="prompt-chatgpt"></div>
           <button class="btn-copy" onclick="copyPrompt('chatgpt')">Copy Instructions</button>
@@ -301,9 +192,6 @@
             <strong>Claude</strong>
             <span style="font-size:0.75rem;color:var(--purple);margin-left:auto">Project Instructions</span>
           </div>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            Paste the instructions below into <strong>Project Instructions</strong>. Claude may be able to call the API from Projects (varies by plan/features). Also works with Claude Code.
-          </p>
           <div class="connect-prompt" id="prompt-claude"></div>
           <button class="btn-copy" onclick="copyPrompt('claude')">Copy Instructions</button>
         </div>
@@ -317,90 +205,32 @@
             <strong>Gemini</strong>
             <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Import Only</span>
           </div>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            Gemini Gems <strong>cannot</strong> make external API calls. Use import instead:
-          </p>
-          <div style="font-size:0.8rem;line-height:1.6;margin-bottom:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius)">
-            <strong>Import Gemini conversations:</strong><br>
-            1. Go to <strong>takeout.google.com</strong> &rarr; select <strong>Gemini Apps</strong><br>
-            2. Export and download your data<br>
-            3. Upload the conversations file using the Import section above<br><br>
-            <strong>Manual save:</strong> Ask Gemini to format insights as JSON, then paste into the Brain UI
-          </div>
           <div class="connect-prompt" id="prompt-gemini"></div>
           <button class="btn-copy" onclick="copyPrompt('gemini')">Copy Instructions</button>
         </div>
-
-        <!-- Bee Wearable -->
-        <div class="connect-card">
-          <div class="connect-card-header">
-            <span class="connect-card-icon" style="color:var(--yellow)">
-              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a3 3 0 0 0-3 3v1H7a2 2 0 0 0-2 2v2a6 6 0 0 0 3.34 5.37A5.98 5.98 0 0 0 12 22a5.98 5.98 0 0 0 3.66-6.63A6 6 0 0 0 19 10V8a2 2 0 0 0-2-2h-2V5a3 3 0 0 0-3-3z"/></svg>
-            </span>
-            <strong>Bee Wearable</strong>
-            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Sync Script</span>
-          </div>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
-            Syncs facts, todos, and conversations from your Bee wearable into AB Brain.
-          </p>
-          <div class="connect-prompt" style="font-size:0.75rem;white-space:pre-wrap"># Install prerequisites
-npm install -g @beeai/cli
-bee login
-
-# Run sync (from repo root)
-./scripts/bee-to-brain-sync.sh
-
-# Sync only specific data
-./scripts/bee-to-brain-sync.sh --only facts
-./scripts/bee-to-brain-sync.sh --only todos
-./scripts/bee-to-brain-sync.sh --only convos
-
-# Sync last 7 days of conversations
-./scripts/bee-to-brain-sync.sh --recent-days 7
-
-# Schedule daily at 8am (add to crontab -e)
-0 8 * * * /path/to/scripts/bee-to-brain-sync.sh >> ~/bee-sync.log 2>&amp;1</div>
-
-          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-            <h4 style="margin-bottom:8px;font-size:0.9rem">Cloud Sync (runs on server)</h4>
-            <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
-              Syncs automatically every 30 min when <code>BEE_API_TOKEN</code> is set on Railway.<br>
-              Get token: run <code>bee login</code> on Mac, then <code>cat ~/.bee/token-prod</code>
-            </p>
-
-            <div id="bee-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
-
-            <div class="form-group" style="margin-bottom:12px">
-              <input type="password" id="bee-token-input" placeholder="Bee API Token (for one-time sync)" style="font-family:monospace;font-size:0.85rem">
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:8px">
-              <button class="btn-submit" onclick="triggerBeeIncrementalSync()" id="bee-incremental-btn">Sync Updates Only</button>
-              <button class="btn-submit" onclick="triggerBeeCloudSync(false)" id="bee-sync-btn">Sync All New (chunked)</button>
-              <button class="btn-submit" onclick="triggerBeeCloudSync(true)" id="bee-full-sync-btn" style="background:#d97706;color:#fff">Full Sync (purge &amp; re-import all)</button>
-
-              <!-- Upload bee-sync folder -->
-              <label class="btn-submit" style="text-align:center;cursor:pointer;display:block;background:var(--bg-input);color:var(--text)">
-                Upload bee-sync files
-                <input type="file" id="bee-file-upload" multiple accept=".md,.json,.txt" style="display:none" onchange="handleBeeFileUpload(this.files)">
-              </label>
-
-              <!-- Paste JSON -->
-              <button class="btn-submit" style="background:var(--bg-input);color:var(--text)" onclick="showBeeJsonImport()">Paste Bee JSON data</button>
-            </div>
-
-            <div id="bee-import-result" style="display:none;margin-top:12px;padding:10px;border-radius:var(--radius);font-size:0.8rem"></div>
-          </div>
-        </div>
       </div>
-    </section>
+    </div>
+
+    <!-- Sync Status -->
+    <div class="card section-card">
+      <div class="section-header" onclick="toggleSection('sync')">
+        <h2>Sync Status</h2>
+        <svg class="section-chevron" id="chevron-sync" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </div>
+      <div class="section-body" id="section-sync" style="display:none">
+        <div id="sync-status-panel"></div>
+        <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
+        <div id="sync-job-history"></div>
+      </div>
+    </div>
+
   </main>
 
   <!-- Modal overlay -->
   <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3 id="modal-title">Create</h3>
+        <h3 id="modal-title">Detail</h3>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
       <div class="modal-body" id="modal-body"></div>
