@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { init: initNotion, setupDatabases, searchNotion, getClient, rateLimited, queryDatabase, archivePage } = require('./notion');
+const { init: initNotion, setupDatabases, searchNotion, getClient, rateLimited, queryDatabase, archivePage, getDbId, DB_SCHEMAS } = require('./notion');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
@@ -102,6 +102,92 @@ app.post('/api/setup', async (req, res) => {
   }
 });
 
+// ─── Database status: check which databases are configured ────────
+app.get('/api/db-status', (req, res) => {
+  const expected = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts', 'activity_log'];
+  const status = {};
+  for (const name of expected) {
+    try {
+      const id = getDbId(name);
+      status[name] = { configured: true, id };
+    } catch {
+      status[name] = { configured: false };
+    }
+  }
+  const missing = expected.filter(n => !status[n].configured);
+  res.json({ status, missing, all_configured: missing.length === 0 });
+});
+
+// ─── Create missing databases only ───────────────────────────────
+app.post('/api/setup-missing', async (req, res) => {
+  try {
+    const { parent_page_id } = req.body;
+    if (!parent_page_id) {
+      return res.status(400).json({ error: 'parent_page_id is required' });
+    }
+
+    initNotion();
+    const n = getClient();
+    const expected = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts', 'activity_log'];
+    const missing = expected.filter(name => {
+      try { getDbId(name); return false; } catch { return true; }
+    });
+
+    if (!missing.length) {
+      return res.json({ message: 'All databases already configured', created: {} });
+    }
+
+    const created = {};
+    for (const key of missing) {
+      const schema = DB_SCHEMAS[key];
+      if (!schema) continue;
+
+      const props = { ...schema.properties };
+      if (props.Project && props.Project.relation) delete props.Project;
+
+      const db = await rateLimited(() => n.databases.create({
+        parent: { type: 'page_id', page_id: parent_page_id },
+        title: [{ type: 'text', text: { content: schema.title } }],
+        icon: schema.icon ? { type: 'emoji', emoji: schema.icon } : undefined,
+        initial_data_source: { properties: props },
+      }));
+      created[key] = db.id;
+    }
+
+    // Add Project relations if projects DB exists
+    let projectsId;
+    try { projectsId = getDbId('projects'); } catch {}
+    if (projectsId) {
+      for (const dbKey of ['tasks', 'knowledge', 'transcripts', 'facts']) {
+        if (created[dbKey]) {
+          await rateLimited(() => n.databases.update({
+            database_id: created[dbKey],
+            properties: {
+              Project: { relation: { database_id: projectsId, single_property: {} } }
+            }
+          }));
+        }
+      }
+    }
+
+    const envLines = Object.entries(created).map(([k, v]) =>
+      `NOTION_DB_${k.toUpperCase()}=${v}`
+    );
+
+    res.json({
+      message: `Created ${Object.keys(created).length} missing database(s)`,
+      created,
+      env_vars: envLines,
+      next_steps: [
+        'Add these to your environment variables and restart:',
+        ...envLines,
+      ],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Cleanup: archive orphaned Notion databases ───────────────────
 // POST /api/cleanup — finds and archives databases that are no longer used
 app.post('/api/cleanup', async (req, res) => {
@@ -119,7 +205,7 @@ app.post('/api/cleanup', async (req, res) => {
       try {
         const searchRes = await rateLimited(() => n.search({
           query: name,
-          filter: { value: 'database', property: 'object' },
+          filter: { value: 'data_source', property: 'object' },
           page_size: 5,
         }));
 
@@ -171,23 +257,30 @@ app.post('/api/purge', async (req, res) => {
     let totalArchived = 0;
     const results = {};
 
+    const skipped = [];
     for (const dbName of targets) {
       let archived = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const result = await queryDatabase(dbName, undefined, undefined, 100);
-        if (!result.results.length) { hasMore = false; break; }
-        for (const page of result.results) {
-          try { await archivePage(page.id); archived++; } catch {}
+      try {
+        let hasMore = true;
+        while (hasMore) {
+          const result = await queryDatabase(dbName, undefined, undefined, 100);
+          if (!result.results.length) { hasMore = false; break; }
+          for (const page of result.results) {
+            try { await archivePage(page.id); archived++; } catch {}
+          }
         }
+        results[dbName] = archived;
+        totalArchived += archived;
+      } catch (e) {
+        skipped.push(`${dbName}: ${e.message}`);
+        results[dbName] = `skipped`;
       }
-      results[dbName] = archived;
-      totalArchived += archived;
     }
 
     res.json({
-      message: `Purged ${totalArchived} entries across ${targets.length} database(s)`,
+      message: `Purged ${totalArchived} entries${skipped.length ? ` (${skipped.length} skipped)` : ''}`,
       results,
+      skipped,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

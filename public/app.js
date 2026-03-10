@@ -83,7 +83,62 @@ async function api(path, opts = {}) {
 
 // --- Page Load ---
 async function loadPage() {
+  checkDbStatus();
   loadDashboard();
+}
+
+// --- Database Status ---
+async function checkDbStatus() {
+  try {
+    const data = await api('/db-status');
+    const warning = document.getElementById('db-warning');
+    if (data.missing.length > 0) {
+      warning.style.display = '';
+      document.getElementById('db-missing-list').innerHTML =
+        `<p>These databases are not configured:</p>` +
+        data.missing.map(n => `<div style="color:var(--red);padding:2px 0">• ${n}</div>`).join('') +
+        `<p style="margin-top:8px;color:var(--text-dim)">Enter your Notion page ID to create them.</p>`;
+      document.getElementById('db-setup-form').style.display = '';
+    } else {
+      warning.style.display = 'none';
+    }
+  } catch {}
+}
+
+async function createMissingDbs() {
+  const pageId = document.getElementById('db-parent-id').value.trim();
+  const resultEl = document.getElementById('db-setup-result');
+  const btn = document.getElementById('btn-setup-missing');
+
+  if (!pageId) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = 'Please enter a Notion page ID';
+    return;
+  }
+
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = 'Creating databases...';
+
+  try {
+    const data = await api('/setup-missing', {
+      method: 'POST',
+      body: JSON.stringify({ parent_page_id: pageId }),
+    });
+    resultEl.style.color = 'var(--green)';
+    let msg = data.message;
+    if (data.env_vars?.length) {
+      msg += '\n\nAdd to your environment:\n' + data.env_vars.join('\n');
+    }
+    resultEl.textContent = msg;
+  } catch (err) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = `Setup failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function loadDashboard() {

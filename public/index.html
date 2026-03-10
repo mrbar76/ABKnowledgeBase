@@ -65,6 +65,18 @@
   <!-- Single Page Content -->
   <main class="page-content">
 
+    <!-- Database Warning -->
+    <div id="db-warning" class="card" style="display:none;border-color:var(--yellow)">
+      <h2 style="color:var(--yellow)">Missing Databases</h2>
+      <div id="db-missing-list" style="font-size:0.8rem;margin-bottom:12px"></div>
+      <div class="form-group" id="db-setup-form" style="display:none">
+        <label>Notion Parent Page ID</label>
+        <input type="text" id="db-parent-id" placeholder="Paste the 32-char page ID from your Notion page URL">
+      </div>
+      <button class="btn-action" onclick="createMissingDbs()" id="btn-setup-missing" style="width:100%">Create Missing Databases</button>
+      <div id="db-setup-result" style="display:none;margin-top:10px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+    </div>
+
     <!-- Stats Overview -->
     <div class="stats-grid" id="stats-grid"></div>
 
