@@ -68,7 +68,18 @@
     <!-- Stats Overview -->
     <div class="stats-grid" id="stats-grid"></div>
 
-    <!-- Sync Status — always visible -->
+    <!-- Bee Sync -->
+    <div class="card">
+      <h2>Bee Wearable Sync</h2>
+      <div id="bee-sync-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
+      <div class="sync-actions">
+        <button class="btn-action" onclick="triggerBeeSync('incremental')" id="btn-sync-updates">Sync Updates</button>
+        <button class="btn-action btn-action-secondary" onclick="triggerBeeSync('full')" id="btn-sync-full">Full Sync</button>
+      </div>
+      <div id="bee-sync-result" style="display:none;margin-top:12px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+    </div>
+
+    <!-- Sync Status -->
     <div class="card">
       <h2>Sync Status</h2>
       <div id="sync-status-panel"></div>
@@ -80,6 +91,13 @@
     <div class="card" id="activity-card" style="display:none">
       <h2>Recent Activity</h2>
       <div id="recent-activity"></div>
+    </div>
+
+    <!-- Tools -->
+    <div class="card">
+      <h2>Tools</h2>
+      <button class="btn-action btn-action-secondary" onclick="runCleanup()" id="btn-cleanup" style="width:100%">Clean Up Notion Databases</button>
+      <div id="cleanup-result" style="display:none;margin-top:10px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
     </div>
 
   </main>

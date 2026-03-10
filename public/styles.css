@@ -296,6 +296,32 @@ body {
 .source-gemini  { background: rgba(96,165,250,0.15); color: #60a5fa; }
 .source-bee     { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
+/* --- Action buttons --- */
+.sync-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-action {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-action:hover { opacity: 0.9; }
+.btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-action-secondary {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-action-secondary:hover { border-color: var(--accent); }
+
 /* --- Empty states --- */
 .empty-state {
   text-align: center;

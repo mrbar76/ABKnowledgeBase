@@ -112,6 +112,7 @@ async function loadDashboard() {
     }
 
     loadSyncStatus();
+    loadBeeStatus();
   } catch (e) {
     if (e.message !== 'Unauthorized') {
       document.getElementById('stats-grid').innerHTML = '<div class="empty-state">Could not load dashboard</div>';
@@ -190,6 +191,96 @@ function renderActivityItem(log) {
       </div>
     </div>
   `;
+}
+
+// --- Bee Sync ---
+async function triggerBeeSync(mode) {
+  const btnUpdates = document.getElementById('btn-sync-updates');
+  const btnFull = document.getElementById('btn-sync-full');
+  const resultEl = document.getElementById('bee-sync-result');
+
+  btnUpdates.disabled = true;
+  btnFull.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = mode === 'full' ? 'Running full sync...' : 'Syncing updates...';
+
+  try {
+    const endpoint = mode === 'full' ? '/bee/sync' : '/bee/sync-incremental';
+    const body = mode === 'full' ? { force: false } : {};
+    const data = await api(endpoint, { method: 'POST', body: JSON.stringify(body) });
+
+    const i = data.imported || {};
+    const parts = [];
+    if (i.facts) parts.push(`${i.facts} facts`);
+    if (i.todos) parts.push(`${i.todos} tasks`);
+    if (i.conversations) parts.push(`${i.conversations} conversations`);
+    if (i.journals) parts.push(`${i.journals} journals`);
+    if (i.daily) parts.push(`${i.daily} daily summaries`);
+    const skipped = i.skipped || data.imported?.skipped || 0;
+    const errors = i.errors || data.imported?.errors || [];
+
+    let msg = parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'No new items';
+    if (skipped > 0) msg += ` (${skipped} skipped)`;
+    if (errors.length > 0) msg += `\nErrors: ${errors.join('; ')}`;
+
+    resultEl.style.color = errors.length > 0 ? 'var(--yellow)' : 'var(--green)';
+    resultEl.textContent = msg;
+
+    // Refresh dashboard
+    loadDashboard();
+  } catch (err) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = `Sync failed: ${err.message}`;
+  } finally {
+    btnUpdates.disabled = false;
+    btnFull.disabled = false;
+  }
+}
+
+async function loadBeeStatus() {
+  try {
+    const data = await api('/bee/status');
+    const el = document.getElementById('bee-sync-status');
+    const parts = [];
+    if (data.facts > 0) parts.push(`${data.facts} facts`);
+    if (data.tasks > 0) parts.push(`${data.tasks} tasks`);
+    if (data.transcripts > 0) parts.push(`${data.transcripts} transcripts`);
+    if (data.journals > 0) parts.push(`${data.journals} journals`);
+    if (data.daily > 0) parts.push(`${data.daily} daily summaries`);
+    el.textContent = parts.length > 0 ? `Synced: ${parts.join(', ')}` : 'No Bee data synced yet';
+    if (!data.bee_token_configured) {
+      el.textContent += ' (BEE_API_TOKEN not set)';
+    }
+  } catch {}
+}
+
+// --- Notion Cleanup ---
+async function runCleanup() {
+  const btn = document.getElementById('btn-cleanup');
+  const resultEl = document.getElementById('cleanup-result');
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = 'Cleaning up...';
+
+  try {
+    const data = await api('/cleanup', { method: 'POST' });
+    resultEl.style.color = 'var(--green)';
+    let msg = data.message;
+    if (data.archived?.length) {
+      msg += '\n' + data.archived.map(a => `Archived: ${a.name}`).join('\n');
+    }
+    if (data.not_found?.length) {
+      msg += '\nAlready clean: ' + data.not_found.join(', ');
+    }
+    resultEl.textContent = msg;
+  } catch (err) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = `Cleanup failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // --- Global Search ---
