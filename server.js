@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const { init: initNotion, setupDatabases } = require('./notion');
+const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
 const projectRoutes = require('./routes/projects');
@@ -114,6 +115,26 @@ app.use('/api/bee', beeRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/intake', intakeRoutes);
 
+// Sync status — returns state of all data sources and recent job history
+app.get('/api/sync-status', (req, res) => {
+  res.json(syncStatus.getStatus());
+});
+
+// Import notification — frontend calls this after completing a file import
+app.post('/api/sync-status/import-complete', (req, res) => {
+  const { source, imported, skipped, failed, total } = req.body;
+  const srcName = source || 'unknown';
+  syncStatus.initSource(srcName, { label: `${srcName.charAt(0).toUpperCase() + srcName.slice(1)} Import` });
+  const job = syncStatus.startJob(srcName, `File import: ${total || 0} conversations`);
+  syncStatus.completeJob(srcName, job, {
+    imported: imported || 0,
+    skipped: (skipped || 0) + (failed || 0),
+    errors: failed > 0 ? [`${failed} conversations failed to import`] : [],
+    details: { total, imported, skipped, failed },
+  });
+  res.json({ ok: true });
+});
+
 // SPA fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -134,6 +155,12 @@ try {
   console.warn('POST /api/setup to create databases, then set env vars and restart.');
 }
 
+// ─── Initialize sync sources ─────────────────────────────────────
+syncStatus.initSource('bee', { label: 'Bee Wearable', cron_enabled: !!process.env.BEE_API_TOKEN });
+syncStatus.initSource('chatgpt', { label: 'ChatGPT Import' });
+syncStatus.initSource('claude', { label: 'Claude Import' });
+syncStatus.initSource('intake', { label: 'Smart Intake' });
+
 // ─── Cron: scheduled auto-sync ───────────────────────────────────
 // Runs Bee sync on a configurable interval (default 30 min)
 
@@ -142,9 +169,13 @@ const SYNC_INTERVAL = Number(process.env.SYNC_INTERVAL || process.env.BEE_SYNC_I
 
 if (BEE_TOKEN) {
   const http = require('http');
+  const beeSource = syncStatus.getSource('bee');
+  beeSource.cron_enabled = true;
+  beeSource.cron_interval_min = SYNC_INTERVAL / 60000;
 
   async function runScheduledSync() {
     console.log('[cron] Starting scheduled sync...');
+    const job = syncStatus.startJob('bee', 'Scheduled incremental sync');
     const startTime = Date.now();
 
     // Bee incremental sync
@@ -152,10 +183,18 @@ if (BEE_TOKEN) {
       const payload = JSON.stringify({ bee_token: BEE_TOKEN });
       const result = await httpPost(`http://127.0.0.1:${PORT}/api/bee/sync-incremental`, payload);
       const i = result.imported || {};
+      const imported = (i.facts || 0) + (i.todos || 0) + (i.conversations || 0);
       console.log(`[cron] Bee: ${i.facts || 0}F ${i.todos || 0}T ${i.conversations || 0}C (${result.changes_processed || 0} changes, ${Date.now() - startTime}ms)`);
       if (i.errors?.length) console.log(`[cron] Errors: ${i.errors.join(', ')}`);
+      syncStatus.completeJob('bee', job, {
+        imported,
+        skipped: i.skipped || 0,
+        errors: i.errors || [],
+        details: { facts: i.facts || 0, todos: i.todos || 0, conversations: i.conversations || 0, changes_processed: result.changes_processed || 0 },
+      });
     } catch (e) {
       console.error(`[cron] Bee sync failed: ${e.message}`);
+      syncStatus.failJob('bee', job, e.message);
     }
 
     console.log(`[cron] Done (${Date.now() - startTime}ms)`);

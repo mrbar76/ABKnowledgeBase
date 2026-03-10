@@ -7,6 +7,7 @@ const {
   createPage, richText, dateOrNull, selectOrNull, multiSelect,
   textToBlocks, logActivity
 } = require('../notion');
+const syncStatus = require('../sync-status');
 const router = express.Router();
 
 // Lazy-load OpenAI client
@@ -146,6 +147,10 @@ router.post('/', async (req, res) => {
     await logActivity('create', classification.database, pageId, aiSource,
       `Smart intake: ${classification.title || input.substring(0, 60)}`);
 
+    // Track in sync status
+    const intakeJob = syncStatus.startJob('intake', `Intake: ${classification.title || 'item'}`);
+    syncStatus.completeJob('intake', intakeJob, { imported: 1, details: { database: db, ai_source: aiSource } });
+
     res.status(201).json({
       message: 'Filed successfully',
       id: pageId,
@@ -160,6 +165,8 @@ router.post('/', async (req, res) => {
     });
   } catch (err) {
     console.error('[intake] Error:', err.message);
+    const errJob = syncStatus.startJob('intake', 'Intake failed');
+    syncStatus.failJob('intake', errJob, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -214,13 +221,24 @@ router.post('/batch', async (req, res) => {
       }
     }
 
+    const filed = results.filter(r => r.id).length;
+    const errCount = results.filter(r => r.error).length;
+    const batchJob = syncStatus.startJob('intake', `Batch intake: ${items.length} items`);
+    syncStatus.completeJob('intake', batchJob, {
+      imported: filed,
+      skipped: errCount,
+      errors: results.filter(r => r.error).map(r => r.error),
+    });
+
     res.status(201).json({
       message: `Processed ${results.length} items`,
-      filed: results.filter(r => r.id).length,
-      errors: results.filter(r => r.error).length,
+      filed,
+      errors: errCount,
       results,
     });
   } catch (err) {
+    const errJob = syncStatus.startJob('intake', 'Batch intake failed');
+    syncStatus.failJob('intake', errJob, err.message);
     res.status(500).json({ error: err.message });
   }
 });

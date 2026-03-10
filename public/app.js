@@ -173,6 +173,95 @@ async function loadDashboard() {
   document.getElementById('recent-activity').innerHTML = data.recent_activity.length
     ? data.recent_activity.map(a => renderActivityItem(a)).join('')
     : '<div class="empty-state">No activity yet</div>';
+
+  // Load sync status
+  loadSyncStatus();
+}
+
+// --- Sync Status ---
+async function loadSyncStatus() {
+  try {
+    const data = await api('/sync-status');
+    renderSyncSources(data.sources);
+    renderSyncJobs(data.recent_jobs);
+  } catch (e) {
+    document.getElementById('sync-status-panel').innerHTML = '<div class="empty-state">Could not load sync status</div>';
+  }
+}
+
+function renderSyncSources(sources) {
+  if (!sources || !sources.length) {
+    document.getElementById('sync-status-panel').innerHTML = '<div class="empty-state">No sync sources configured</div>';
+    return;
+  }
+
+  const stateColors = { idle: 'var(--green, #22c55e)', syncing: 'var(--blue, #3b82f6)', error: 'var(--red, #ef4444)' };
+  const stateLabels = { idle: 'Idle', syncing: 'Syncing...', error: 'Error' };
+
+  document.getElementById('sync-status-panel').innerHTML = sources.map(s => {
+    const color = stateColors[s.state] || '#8b8fa3';
+    const label = stateLabels[s.state] || s.state;
+    const lastSync = s.last_sync ? timeAgo(s.last_sync) : 'Never';
+    const cronBadge = s.cron_enabled
+      ? `<span style="font-size:0.7rem;background:var(--bg-input);padding:2px 6px;border-radius:10px;margin-left:6px">Cron: ${s.cron_interval_min || '?'}min</span>`
+      : '';
+
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border, #333)">
+        <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;${s.state === 'syncing' ? 'animation:pulse 1.5s infinite' : ''}"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.9rem;font-weight:600">${esc(s.label)}${cronBadge}</div>
+          <div style="font-size:0.75rem;color:var(--text-dim)">
+            ${label} &middot; Last sync: ${lastSync}
+            ${s.items_imported > 0 ? ` &middot; ${s.items_imported} imported` : ''}
+            ${s.total_errors > 0 ? ` &middot; <span style="color:var(--red)">${s.total_errors} errors</span>` : ''}
+          </div>
+          ${s.error_message ? `<div style="font-size:0.7rem;color:var(--red);margin-top:2px">${esc(s.error_message)}</div>` : ''}
+        </div>
+        <span style="font-size:0.75rem;color:var(--text-dim)">${s.total_syncs} syncs</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderSyncJobs(jobs) {
+  if (!jobs || !jobs.length) {
+    document.getElementById('sync-job-history').innerHTML = '<div class="empty-state">No sync jobs yet</div>';
+    return;
+  }
+
+  const stateIcons = { completed: '\u2705', failed: '\u274C', running: '\u23F3' };
+
+  document.getElementById('sync-job-history').innerHTML = jobs.slice(0, 10).map(j => {
+    const icon = stateIcons[j.state] || '\u2022';
+    const dur = j.duration_ms ? `${(j.duration_ms / 1000).toFixed(1)}s` : '...';
+    const time = j.started_at ? timeAgo(j.started_at) : '';
+
+    return `
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border, #333);font-size:0.8rem">
+        <span>${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div>${esc(j.description)}</div>
+          <div style="color:var(--text-dim);font-size:0.7rem">
+            ${time} &middot; ${dur}
+            ${j.items_imported > 0 ? ` &middot; ${j.items_imported} imported` : ''}
+            ${j.items_skipped > 0 ? ` &middot; ${j.items_skipped} skipped` : ''}
+          </div>
+          ${j.errors.length > 0 ? `<div style="color:var(--red);font-size:0.7rem">${esc(j.errors[0])}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function timeAgo(dateStr) {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = now - then;
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
 }
 
 // --- Kanban ---
@@ -904,6 +993,14 @@ async function runImport(data, source) {
 
   updateImportProgress(100);
   updateImportLog(`Done! Imported ${imported} conversations. ${skipped} skipped, ${failed} failed.`);
+
+  // Notify server of import completion for sync status tracking
+  try {
+    await api('/sync-status/import-complete', {
+      method: 'POST',
+      body: JSON.stringify({ source, imported, skipped, failed, total: conversations.length }),
+    });
+  } catch (e) { /* non-critical */ }
 }
 
 function extractChatGPT(conv) {

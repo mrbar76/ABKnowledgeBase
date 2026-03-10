@@ -6,6 +6,7 @@ const {
   richText, dateOrNull, selectOrNull, multiSelect,
   logActivity, textToBlocks, richTextToString
 } = require('../notion');
+const syncStatus = require('../sync-status');
 const router = express.Router();
 
 // --- Bee Cloud API (Amazon-hosted) ---
@@ -210,6 +211,7 @@ router.post('/sync', async (req, res) => {
   }
 
   const force = req.body?.force === true;
+  const job = syncStatus.startJob('bee', force ? 'Full sync (force refresh)' : 'Full cloud sync');
   const results = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
 
   // --- Sync Facts ---
@@ -427,6 +429,14 @@ router.post('/sync', async (req, res) => {
 
   await logActivity('sync', 'bee-import', 'cloud-sync', 'bee',
     `Cloud sync${force ? ' (full)' : ''}: ${results.facts}F ${results.todos}T ${results.conversations}C ${results.journals}J ${results.daily}D (${results.skipped} skipped)`);
+
+  const totalImported = results.facts + results.todos + results.conversations + results.journals + results.daily;
+  syncStatus.completeJob('bee', job, {
+    imported: totalImported,
+    skipped: results.skipped,
+    errors: results.errors,
+    details: { facts: results.facts, todos: results.todos, conversations: results.conversations, journals: results.journals, daily: results.daily },
+  });
 
   res.json({ message: `Bee cloud sync complete${force ? ' (full refresh)' : ''}`, imported: results });
 });
