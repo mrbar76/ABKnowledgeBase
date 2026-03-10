@@ -68,160 +68,18 @@
     <!-- Stats Overview -->
     <div class="stats-grid" id="stats-grid"></div>
 
+    <!-- Sync Status — always visible -->
+    <div class="card">
+      <h2>Sync Status</h2>
+      <div id="sync-status-panel"></div>
+      <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
+      <div id="sync-job-history"></div>
+    </div>
+
     <!-- Recent Activity -->
     <div class="card" id="activity-card" style="display:none">
       <h2>Recent Activity</h2>
       <div id="recent-activity"></div>
-    </div>
-
-    <!-- Import Section -->
-    <div class="card section-card">
-      <div class="section-header" onclick="toggleSection('import')">
-        <h2>Import Conversations</h2>
-        <svg class="section-chevron" id="chevron-import" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-      </div>
-      <div class="section-body" id="section-import">
-        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
-          Upload ChatGPT or Claude exports. Conversations go to Notion as transcripts. AI Distill extracts facts, decisions, and tasks automatically.
-        </p>
-
-        <div class="form-group">
-          <label>Source</label>
-          <select id="import-source">
-            <option value="chatgpt">ChatGPT (conversations.json)</option>
-            <option value="claude">Claude (conversations.json)</option>
-            <option value="generic">Generic JSON</option>
-          </select>
-        </div>
-
-        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;margin-bottom:12px;cursor:pointer">
-          <input type="checkbox" id="import-distill" checked>
-          <span>AI Distill — extract facts, decisions &amp; tasks</span>
-        </label>
-
-        <div class="drop-zone" id="drop-zone">
-          <div class="drop-zone-content">
-            <svg viewBox="0 0 24 24" width="40" height="40" style="color:var(--accent)"><path fill="currentColor" d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
-            <p>Tap to select files or drag &amp; drop</p>
-            <p style="font-size:0.75rem;color:var(--text-dim)">Multiple .json files supported</p>
-          </div>
-          <input type="file" id="import-file" accept=".json" multiple style="display:none">
-        </div>
-
-        <div id="import-status" style="display:none">
-          <div class="import-progress-bar">
-            <div class="import-progress-fill" id="import-progress-fill"></div>
-          </div>
-          <div id="import-log" style="font-size:0.8rem;color:var(--text-dim);margin-top:8px"></div>
-        </div>
-
-        <details style="margin-top:12px;font-size:0.8rem;color:var(--text-dim)">
-          <summary style="cursor:pointer;font-weight:600">How to export your data</summary>
-          <div style="padding:8px 0;line-height:1.6">
-            <p><strong style="color:var(--green)">ChatGPT:</strong> chatgpt.com &rarr; Profile &rarr; Settings &rarr; Data Controls &rarr; Export Data. Upload <code>conversations.json</code></p>
-            <p style="margin-top:8px"><strong style="color:var(--purple)">Claude:</strong> claude.ai &rarr; Settings &rarr; Export Data. Upload the conversations file.</p>
-          </div>
-        </details>
-      </div>
-    </div>
-
-    <!-- Bee Sync Section -->
-    <div class="card section-card">
-      <div class="section-header" onclick="toggleSection('bee')">
-        <h2>Bee Wearable Sync</h2>
-        <svg class="section-chevron" id="chevron-bee" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-      </div>
-      <div class="section-body" id="section-bee">
-        <div id="bee-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
-
-        <div class="form-group" style="margin-bottom:12px">
-          <input type="password" id="bee-token-input" placeholder="Bee API Token (optional — for one-time sync)" style="font-family:monospace;font-size:0.85rem">
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn-submit" onclick="triggerBeeIncrementalSync()" id="bee-incremental-btn">Sync Updates Only</button>
-          <button class="btn-submit" onclick="triggerBeeCloudSync(false)" id="bee-sync-btn" style="background:var(--bg-input);color:var(--text)">Full Sync (chunked)</button>
-          <button class="btn-submit" onclick="triggerBeeCloudSync(true)" id="bee-full-sync-btn" style="background:#d97706;color:#fff">Purge &amp; Re-import All</button>
-        </div>
-
-        <div id="bee-import-result" style="display:none;margin-top:12px;padding:10px;border-radius:var(--radius);font-size:0.8rem"></div>
-      </div>
-    </div>
-
-    <!-- Connect AI Section -->
-    <div class="card section-card">
-      <div class="section-header" onclick="toggleSection('connect')">
-        <h2>Connect Your AIs</h2>
-        <svg class="section-chevron" id="chevron-connect" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-      </div>
-      <div class="section-body" id="section-connect" style="display:none">
-        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px">
-          Give your AI assistants read/write access to your brain.
-        </p>
-
-        <div class="form-group">
-          <label>Your API Key</label>
-          <input type="password" id="connect-api-key" placeholder="Paste your API_KEY here" style="font-family:monospace">
-          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Stays in your browser. Never sent anywhere.</p>
-        </div>
-
-        <!-- ChatGPT -->
-        <div class="connect-card">
-          <div class="connect-card-header">
-            <span class="connect-card-icon" style="color:var(--green)">
-              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
-            </span>
-            <strong>ChatGPT</strong>
-            <span style="font-size:0.75rem;color:var(--green);margin-left:auto">Full Integration</span>
-          </div>
-          <div style="font-size:0.8rem;line-height:1.6;margin-bottom:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius)">
-            <strong>Setup:</strong> chatgpt.com &rarr; Explore GPTs &rarr; Create &rarr; Actions &rarr; Import from URL:<br>
-            <code id="openapi-url" style="background:var(--bg);padding:2px 6px;border-radius:4px;word-break:break-all"></code><br>
-            Auth: API Key, Header: <code>X-Api-Key</code>
-          </div>
-          <div class="connect-prompt" id="prompt-chatgpt"></div>
-          <button class="btn-copy" onclick="copyPrompt('chatgpt')">Copy Instructions</button>
-        </div>
-
-        <!-- Claude -->
-        <div class="connect-card">
-          <div class="connect-card-header">
-            <span class="connect-card-icon" style="color:var(--purple)">
-              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-            </span>
-            <strong>Claude</strong>
-            <span style="font-size:0.75rem;color:var(--purple);margin-left:auto">Project Instructions</span>
-          </div>
-          <div class="connect-prompt" id="prompt-claude"></div>
-          <button class="btn-copy" onclick="copyPrompt('claude')">Copy Instructions</button>
-        </div>
-
-        <!-- Gemini -->
-        <div class="connect-card">
-          <div class="connect-card-header">
-            <span class="connect-card-icon" style="color:var(--blue, #60a5fa)">
-              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            </span>
-            <strong>Gemini</strong>
-            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto">Import Only</span>
-          </div>
-          <div class="connect-prompt" id="prompt-gemini"></div>
-          <button class="btn-copy" onclick="copyPrompt('gemini')">Copy Instructions</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sync Status -->
-    <div class="card section-card">
-      <div class="section-header" onclick="toggleSection('sync')">
-        <h2>Sync Status</h2>
-        <svg class="section-chevron" id="chevron-sync" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-      </div>
-      <div class="section-body" id="section-sync" style="display:none">
-        <div id="sync-status-panel"></div>
-        <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
-        <div id="sync-job-history"></div>
-      </div>
     </div>
 
   </main>
