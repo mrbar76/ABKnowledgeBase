@@ -682,6 +682,22 @@ body {
   background: rgba(99, 102, 241, 0.15);
   color: var(--accent-hover);
 }
+.btn-identify-speakers {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s;
+  vertical-align: middle;
+}
+.btn-identify-speakers:hover { background: var(--accent); color: #fff; }
+.btn-identify-speakers:disabled { opacity: 0.6; cursor: wait;
+}
 .transcript-detail-summary {
   background: var(--bg-input);
   border-radius: 10px;

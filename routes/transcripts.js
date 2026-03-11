@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
     let i = 1;
 
     if (q) {
-      where.push(`(search_vector @@ plainto_tsquery('english', $${i}) OR (title || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) ILIKE '%' || $${i+1} || '%')`);
+      where.push(`(search_vector @@ plainto_tsquery('english', $${i}) OR (title || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'') || ' ' || coalesce(metadata->>'speakers','')) ILIKE '%' || $${i+1} || '%')`);
       params.push(q, q);
       i += 2;
     }
@@ -110,6 +110,119 @@ router.post('/bulk', async (req, res) => {
     await logActivity('create', 'transcript', ids[0] || 'bulk', 'bee', `Bulk uploaded ${ids.length} transcripts`);
     res.status(201).json({ count: ids.length, ids, message: 'Transcripts stored' });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI speaker identification — uses OpenAI to figure out who "Unknown" speakers are
+router.post('/:id/identify-speakers', async (req, res) => {
+  try {
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const t = transcriptResult.rows[0];
+
+    const speakersResult = await query(
+      'SELECT * FROM transcript_speakers WHERE transcript_id = $1 ORDER BY utterance_index',
+      [req.params.id]
+    );
+    const speakers = speakersResult.rows;
+
+    // Build a conversation excerpt for the AI (first 80 utterances to keep token cost low)
+    const excerpt = speakers.slice(0, 80).map(s =>
+      `${s.speaker_name}: ${s.text}`
+    ).join('\n');
+
+    if (!excerpt && !t.raw_text) {
+      return res.status(400).json({ error: 'No transcript content to analyze' });
+    }
+
+    const uniqueSpeakers = [...new Set(speakers.map(s => s.speaker_name))];
+    const OpenAI = require('openai');
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+    const openai = new OpenAI({ apiKey: key });
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 500,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `You are analyzing a conversation transcript to identify speakers.
+
+The conversation has these speaker labels: ${uniqueSpeakers.join(', ')}
+${t.location ? `Location: ${t.location}` : ''}
+${t.title ? `Topic: ${t.title}` : ''}
+
+Based on context clues (names mentioned, relationships, topics discussed, speaking patterns), try to identify who each speaker label actually is.
+
+Return ONLY valid JSON:
+{
+  "identifications": {
+    "<original_label>": {
+      "likely_name": "their real name or best guess",
+      "confidence": "high" | "medium" | "low",
+      "reasoning": "brief reason for identification"
+    }
+  },
+  "relationship_notes": "brief note about the relationship between speakers if apparent"
+}
+
+Rules:
+- If a speaker says their own name or is addressed by name, that's high confidence
+- If you can infer from context (e.g. family member, coworker), that's medium confidence
+- If you truly cannot determine, keep the original label and mark low confidence
+- Do NOT invent names — only use names actually mentioned or clearly implied in the text` },
+        { role: 'user', content: excerpt || t.raw_text.substring(0, 8000) },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    let result;
+    try { result = JSON.parse(text); }
+    catch { const m = text.match(/\{[\s\S]*\}/); result = m ? JSON.parse(m[0]) : { identifications: {} }; }
+
+    const identifications = result.identifications || {};
+    const renames = {};
+
+    // Apply renames for high/medium confidence identifications
+    for (const [original, info] of Object.entries(identifications)) {
+      if (info.likely_name && info.likely_name !== original && (info.confidence === 'high' || info.confidence === 'medium')) {
+        renames[original] = info.likely_name;
+      }
+    }
+
+    // Update speaker names in the database if we have renames
+    if (Object.keys(renames).length > 0) {
+      for (const [oldName, newName] of Object.entries(renames)) {
+        await query(
+          'UPDATE transcript_speakers SET speaker_name = $1 WHERE transcript_id = $2 AND speaker_name = $3',
+          [newName, req.params.id, oldName]
+        );
+      }
+
+      // Update metadata with new speaker names
+      const newSpeakerNames = uniqueSpeakers.map(s => renames[s] || s);
+      const meta = t.metadata || {};
+      meta.speakers = [...new Set(newSpeakerNames)];
+      meta.speaker_count = meta.speakers.length;
+      meta.ai_speaker_identification = identifications;
+      await query(
+        'UPDATE transcripts SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(meta), req.params.id]
+      );
+
+      await logActivity('update', 'transcript', req.params.id, 'openai', `AI identified speakers: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+    }
+
+    res.json({
+      message: Object.keys(renames).length > 0 ? `Identified ${Object.keys(renames).length} speaker(s)` : 'No confident identifications found',
+      identifications,
+      renames,
+      relationship_notes: result.relationship_notes || null,
+    });
+  } catch (err) {
+    console.error('[identify-speakers] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

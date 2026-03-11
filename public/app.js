@@ -658,17 +658,28 @@ async function showTranscriptDetail(id) {
     if (t.duration_seconds) bodyHtml += `<span>${Math.round(t.duration_seconds/60)} min</span>`;
     if (meta.utterance_count) bodyHtml += `<span>${meta.utterance_count} messages</span>`;
     bodyHtml += '</div>';
-    if (speakerNames.length) bodyHtml += `<div class="transcript-speakers" style="margin-top:6px">${speakerNames.map(s => `<span class="speaker-tag">${esc(s)}</span>`).join('')}</div>`;
+    const hasUnknown = speakerNames.some(s => /unknown|speaker/i.test(s));
+    if (speakerNames.length) {
+      bodyHtml += `<div class="transcript-speakers" style="margin-top:6px">${speakerNames.map(s => `<span class="speaker-tag">${esc(s)}</span>`).join('')}`;
+      if (hasUnknown) bodyHtml += ` <button class="btn-identify-speakers" id="btn-identify-${id}" onclick="identifySpeakers('${id}')">Identify</button>`;
+      bodyHtml += '</div>';
+    }
     if (t.location) bodyHtml += `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px">${esc(t.location)}</div>`;
+    bodyHtml += '<div id="identify-result-${id}"></div>';
     bodyHtml += '</div>';
 
-    // Show summary section if available
-    if (t.summary) {
-      bodyHtml += `
-        <div class="transcript-detail-summary">
-          <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);margin-bottom:6px">Summary</div>
-          <div style="font-size:0.88rem;line-height:1.6;color:var(--text)">${esc(t.summary)}</div>
-        </div>`;
+    // Show summary section with speakers listed
+    if (t.summary || speakerNames.length) {
+      bodyHtml += `<div class="transcript-detail-summary">`;
+      if (speakerNames.length) {
+        bodyHtml += `<div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);margin-bottom:4px">Participants</div>`;
+        bodyHtml += `<div style="font-size:0.85rem;margin-bottom:8px;color:var(--text)">${speakerNames.join(', ')}</div>`;
+      }
+      if (t.summary) {
+        bodyHtml += `<div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);margin-bottom:4px">Summary</div>`;
+        bodyHtml += `<div style="font-size:0.88rem;line-height:1.6;color:var(--text)">${esc(t.summary)}</div>`;
+      }
+      bodyHtml += `</div>`;
     }
 
     // Show full transcript (speakers or raw text)
@@ -719,6 +730,35 @@ async function showTranscriptDetail(id) {
 async function deleteTranscript(id) {
   if (!confirm('Delete this transcript?')) return;
   try { await api(`/transcripts/${id}`, { method: 'DELETE' }); closeModal(); loadTranscripts(); } catch {}
+}
+
+async function identifySpeakers(id) {
+  const btn = document.getElementById(`btn-identify-${id}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
+  try {
+    const data = await api(`/transcripts/${id}/identify-speakers`, { method: 'POST' });
+    const renames = data.renames || {};
+    const ids = data.identifications || {};
+    if (Object.keys(renames).length > 0) {
+      // Refresh the detail view to show updated names
+      if (btn) { btn.textContent = 'Done!'; btn.style.background = 'var(--green)'; }
+      setTimeout(() => showTranscriptDetail(id), 800);
+    } else {
+      // Show the AI's analysis even if no renames
+      let msg = 'Could not confidently identify unknown speakers.';
+      const notes = [];
+      for (const [label, info] of Object.entries(ids)) {
+        notes.push(`${label}: ${info.likely_name || '?'} (${info.confidence}) — ${info.reasoning || ''}`);
+      }
+      if (data.relationship_notes) notes.push(data.relationship_notes);
+      if (notes.length) msg += '\n\n' + notes.join('\n');
+      if (btn) { btn.textContent = 'No match'; btn.style.background = 'var(--yellow)'; btn.style.color = '#000'; }
+      alert(msg);
+    }
+  } catch (e) {
+    if (btn) { btn.textContent = 'Error'; btn.style.background = 'var(--red)'; }
+    alert('Speaker identification failed: ' + e.message);
+  }
 }
 
 // ─── Projects ─────────────────────────────────────────────────
