@@ -46,13 +46,26 @@ async function autoIdentifySpeakers(transcriptId) {
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: `You are analyzing a conversation transcript to identify speakers.
+        { role: 'system', content: `You are an expert at identifying who is speaking in a conversation transcript. You must apply careful logical reasoning about HOW names are used.
 
 The conversation has these speaker labels: ${uniqueSpeakers.join(', ')}
 ${t.location ? `Location: ${t.location}` : ''}
 ${t.title ? `Topic: ${t.title}` : ''}
 
-Based on context clues (names mentioned, relationships, topics discussed, speaking patterns), try to identify who each speaker label actually is.
+CRITICAL REASONING RULES for name usage:
+1. If Speaker A says "Hey John, how are you?" — then Speaker A is NOT John. John is the LISTENER (another speaker label).
+2. If Speaker A says "I'm John" or "My name is John" — then Speaker A IS John.
+3. If Speaker A says "John told me..." referring to someone not in the conversation — do NOT assign "John" to any speaker.
+4. If Speaker A says "Thanks Sarah" — Sarah is the person being thanked, NOT Speaker A.
+5. People rarely say their own name. When a name appears, it almost always refers to the OTHER person in the conversation.
+6. In a 2-person conversation: if one speaker uses a name, that name belongs to the OTHER speaker.
+
+ANALYSIS STEPS (follow these in order):
+1. List every name mentioned in the transcript
+2. For each name, identify WHO SAID IT and WHETHER they are addressing someone or referring to themselves
+3. Cross-reference: if Unknown says "John", then the OTHER speaker is likely John
+4. Check for self-introductions ("I'm...", "This is...", "My name is...")
+5. Consider context: workplace vs casual, family dynamics, etc.
 
 Return ONLY valid JSON:
 {
@@ -60,17 +73,18 @@ Return ONLY valid JSON:
     "<original_label>": {
       "likely_name": "their real name or best guess",
       "confidence": "high" | "medium" | "low",
-      "reasoning": "brief reason for identification"
+      "reasoning": "specific quote or evidence from transcript"
     }
   },
   "relationship_notes": "brief note about the relationship between speakers if apparent"
 }
 
 Rules:
-- If a speaker says their own name or is addressed by name, that's high confidence
-- If you can infer from context (e.g. family member, coworker), that's medium confidence
-- If you truly cannot determine, keep the original label and mark low confidence
-- Do NOT invent names — only use names actually mentioned or clearly implied in the text` },
+- Do NOT assign a name to the speaker who SAID that name (unless they said "I'm X" or "my name is X")
+- If Speaker A addresses someone as "John", assign "John" to a DIFFERENT speaker label
+- If you truly cannot determine identity, keep the original label and mark low confidence
+- Do NOT invent names — only use names actually found in the transcript text
+- Provide the specific quote that led to your identification in the reasoning field` },
         { role: 'user', content: excerpt || t.raw_text.substring(0, 8000) },
       ],
     });
