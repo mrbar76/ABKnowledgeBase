@@ -640,6 +640,29 @@ body {
 }
 
 /* --- Brain Search Input --- */
+/* --- Brain Sub-tabs --- */
+.brain-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.brain-tab {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.brain-tab:hover { color: var(--text); }
+.brain-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
 .brain-search {
   width: 100%;
   padding: 10px 14px;

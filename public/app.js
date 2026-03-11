@@ -506,15 +506,23 @@ async function createTask(e) {
   } catch (err) { alert(err.message); }
 }
 
-// ─── Brain (Knowledge) ────────────────────────────────────────
+// ─── Brain (Knowledge + Facts) ────────────────────────────────
+let brainSubTab = 'knowledge';
+
 async function loadBrain(searchQuery) {
   const main = document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
+  main.innerHTML = `
+    <div class="brain-tabs">
+      <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
+      <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
+    </div>
+    <div class="loading">Loading...</div>`;
+  if (brainSubTab === 'facts') return loadFacts(searchQuery);
   try {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
     const data = await api('/knowledge' + qs);
 
-    main.innerHTML = `
+    const listHtml = `
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <input type="text" class="brain-search" placeholder="Search knowledge..." value="${esc(searchQuery || '')}" oninput="debounceBrainSearch(this.value)">
         <button class="btn-action" onclick="showNewKnowledgeModal()" style="flex-shrink:0;padding:8px 14px;font-size:0.8rem">+ Add</button>
@@ -534,7 +542,78 @@ async function loadBrain(searchQuery) {
           </div>`).join('') : '<div class="empty-state">No knowledge entries yet</div>'}
       </div>
     `;
+    main.innerHTML = `
+      <div class="brain-tabs">
+        <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
+        <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
+      </div>` + listHtml;
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function loadFacts(searchQuery) {
+  const main = document.getElementById('main-content');
+  try {
+    const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
+    const data = await api('/facts' + qs);
+
+    main.innerHTML = `
+      <div class="brain-tabs">
+        <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
+        <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" class="brain-search" placeholder="Search facts..." value="${esc(searchQuery || '')}" oninput="debounceFactSearch(this.value)">
+      </div>
+      <div id="facts-list">
+        ${data.facts.length ? data.facts.map(f => `
+          <div class="list-item" onclick="showFactDetail('${f.id}')">
+            <div class="list-item-title">${esc(f.title)}</div>
+            <div class="list-item-preview">${esc((f.content || '').substring(0, 200))}</div>
+            <div class="list-item-meta">
+              <span>${f.category || 'general'}</span>
+              <span>${f.source || ''}</span>
+              ${f.confirmed ? '<span style="color:var(--green)">confirmed</span>' : '<span style="color:var(--text-dim)">unconfirmed</span>'}
+              <span>${timeAgo(f.created_at)}</span>
+            </div>
+          </div>`).join('') : '<div class="empty-state">No facts yet. Facts are captured from Bee sync and AI intake.</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+let factSearchTimer = null;
+function debounceFactSearch(q) { clearTimeout(factSearchTimer); factSearchTimer = setTimeout(() => loadFacts(q), 300); }
+
+async function showFactDetail(id) {
+  try {
+    const f = await api(`/facts/${id}`);
+    openModal(f.title, `
+      <div class="list-item-meta" style="margin-bottom:12px">
+        <span>${f.category || 'general'}</span>
+        <span>${f.source || ''}</span>
+        ${f.confirmed ? '<span style="color:var(--green)">confirmed</span>' : '<span style="color:var(--text-dim)">unconfirmed</span>'}
+        <span>${timeAgo(f.created_at)}</span>
+      </div>
+      ${f.tags?.length ? `<div style="margin-bottom:12px">${(Array.isArray(f.tags) ? f.tags : []).map(t => `<span class="tag-pill">${esc(t)}</span>`).join(' ')}</div>` : ''}
+      <div style="font-size:0.88rem;white-space:pre-wrap;line-height:1.6">${esc(f.content)}</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        ${!f.confirmed ? `<button class="btn-action" onclick="confirmFact('${id}')" style="flex:1;padding:8px">Confirm</button>` : ''}
+        <button class="btn-action btn-action-danger" onclick="deleteFact('${id}')" style="flex:1;padding:8px">Delete</button>
+      </div>
+    `);
+  } catch (e) { openModal('Error', esc(e.message)); }
+}
+
+async function confirmFact(id) {
+  try {
+    await api(`/facts/${id}`, { method: 'PUT', body: JSON.stringify({ confirmed: true }) });
+    closeModal(); loadBrain();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteFact(id) {
+  if (!confirm('Delete this fact?')) return;
+  try { await api(`/facts/${id}`, { method: 'DELETE' }); closeModal(); loadBrain(); } catch {}
 }
 
 let brainSearchTimer = null;
