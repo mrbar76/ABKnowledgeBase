@@ -400,46 +400,101 @@ router.post('/sync-chunk', async (req, res) => {
   const { type, cursor, force } = req.body;
   if (!type) return res.status(400).json({ error: 'type required (facts, todos, conversations, journals, daily)' });
 
-  const result = { imported: 0, skipped: 0, errors: [], cursor: null, done: false };
+  const result = { imported: 0, skipped: 0, errors: [], cursor: null, done: false, type, page_items: 0 };
   try {
     if (type === 'facts') {
       const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken); const facts = extractArray(data, 'facts'); result.cursor = data.next_cursor || null;
-      for (const fact of facts) { const t = extractFactText(fact); if (!t) continue; if (!force && await findExistingFact(t)) { result.skipped++; continue; } await storeFact(t, fact); result.imported++; }
+      const data = await beeApiGet(url, beeToken);
+      const facts = extractArray(data, 'facts');
+      result.cursor = data.next_cursor || null;
+      result.page_items = facts.length;
+      console.log(`[sync-chunk] facts: ${facts.length} items, cursor=${!!result.cursor}`);
+      for (const fact of facts) {
+        const t = extractFactText(fact);
+        if (!t) { result.skipped++; continue; }
+        if (!force && await findExistingFact(t)) { result.skipped++; continue; }
+        await storeFact(t, fact); result.imported++;
+      }
       if (!result.cursor) result.done = true;
+
     } else if (type === 'todos') {
       const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken); const todos = extractArray(data, 'todos'); result.cursor = data.next_cursor || null;
-      for (const todo of todos) { const t = extractTodoText(todo); if (!t) continue; if (!force && await findExistingTask(t)) { result.skipped++; continue; } await storeTodo(t, todo); result.imported++; }
+      const data = await beeApiGet(url, beeToken);
+      const todos = extractArray(data, 'todos');
+      result.cursor = data.next_cursor || null;
+      result.page_items = todos.length;
+      console.log(`[sync-chunk] todos: ${todos.length} items, cursor=${!!result.cursor}`);
+      for (const todo of todos) {
+        const t = extractTodoText(todo);
+        if (!t) { result.skipped++; continue; }
+        if (!force && await findExistingTask(t)) { result.skipped++; continue; }
+        await storeTodo(t, todo); result.imported++;
+      }
       if (!result.cursor) result.done = true;
+
     } else if (type === 'conversations') {
       const url = `/v1/conversations?limit=5&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken); const convos = extractArray(data, 'conversations'); result.cursor = data.next_cursor || null;
+      const data = await beeApiGet(url, beeToken);
+      const convos = extractArray(data, 'conversations');
+      result.cursor = data.next_cursor || null;
+      result.page_items = convos.length;
+      console.log(`[sync-chunk] conversations: ${convos.length} items, cursor=${!!result.cursor}`);
       for (const convo of convos) {
         if (!convo.id) { result.skipped++; continue; }
         if (!force && await findExistingTranscript(convo.id)) { result.skipped++; continue; }
         if (convo.state === 'CAPTURING') { result.skipped++; continue; }
         let full = convo;
-        try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; } catch (e) { if (!convo.summary) { result.errors.push(`Conv ${convo.id}: ${e.message}`); continue; } }
+        try {
+          const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000);
+          full = d.conversation || d;
+        } catch (e) {
+          console.log(`[sync-chunk] conv ${convo.id} detail fetch failed: ${e.message}`);
+          if (!convo.summary) { result.errors.push(`Conv ${convo.id}: ${e.message}`); continue; }
+        }
         const rawResult = extractTranscript(full, convo.start_time || full.start_time || null);
         if (!rawResult.text) { result.skipped++; continue; }
         await storeConversation(convo, full, rawResult); result.imported++;
       }
       if (!result.cursor) result.done = true;
+
     } else if (type === 'journals') {
       const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken); const journals = extractArray(data, 'journals'); result.cursor = data.next_cursor || null;
-      for (const j of journals) { const t = j.text||j.content||j.body||j.markdown||''; if (!t && !j.summary) continue; if (!force && await findExistingKnowledge(t||j.summary,'bee')) { result.skipped++; continue; } await storeJournal(j); result.imported++; }
+      const data = await beeApiGet(url, beeToken);
+      const journals = extractArray(data, 'journals');
+      result.cursor = data.next_cursor || null;
+      result.page_items = journals.length;
+      console.log(`[sync-chunk] journals: ${journals.length} items, cursor=${!!result.cursor}, keys=${journals.length > 0 ? Object.keys(journals[0]).join(',') : 'empty'}`);
+      for (const j of journals) {
+        const t = j.text || j.content || j.body || j.markdown || '';
+        if (!t && !j.summary) { result.skipped++; continue; }
+        if (!force && await findExistingKnowledge(t || j.summary, 'bee')) { result.skipped++; continue; }
+        await storeJournal(j); result.imported++;
+      }
       if (!result.cursor) result.done = true;
+
     } else if (type === 'daily') {
       const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken); const dailies = extractArray(data, 'daily'); result.cursor = data.next_cursor || null;
-      for (const d of dailies) { const t = d.text||d.content||d.body||d.summary||d.markdown||''; if (!t) continue; if (!force && await findExistingKnowledge(t,'bee')) { result.skipped++; continue; } await storeDaily(d); result.imported++; }
+      const data = await beeApiGet(url, beeToken);
+      const dailies = extractArray(data, 'daily');
+      result.cursor = data.next_cursor || null;
+      result.page_items = dailies.length;
+      console.log(`[sync-chunk] daily: ${dailies.length} items, cursor=${!!result.cursor}, keys=${dailies.length > 0 ? Object.keys(dailies[0]).join(',') : 'empty'}`);
+      for (const d of dailies) {
+        const t = d.text || d.content || d.body || d.summary || d.markdown || '';
+        if (!t) { result.skipped++; continue; }
+        if (!force && await findExistingKnowledge(t, 'bee')) { result.skipped++; continue; }
+        await storeDaily(d); result.imported++;
+      }
       if (!result.cursor) result.done = true;
+
     } else {
       return res.status(400).json({ error: `Unknown type: ${type}` });
     }
-  } catch (err) { result.errors.push(err.message); }
+  } catch (err) {
+    console.error(`[sync-chunk] ${type} error:`, err.message);
+    result.errors.push(err.message);
+  }
+  console.log(`[sync-chunk] ${type} result: imported=${result.imported} skipped=${result.skipped} errors=${result.errors.length} done=${result.done}`);
   res.json(result);
 });
 

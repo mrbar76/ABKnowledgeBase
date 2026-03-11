@@ -112,6 +112,7 @@ async function loadDashboard() {
           <div><div style="font-size:0.85rem;font-weight:600">OpenAI (Intake)</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-openai">—</div></div>
         </div>
         <div style="padding-top:8px">
+          <button class="btn-action btn-action-secondary" onclick="showDebugPanel()" style="width:100%;margin-bottom:8px">Diagnostics &amp; Logs</button>
           <button class="btn-action btn-action-secondary" onclick="logout()" style="width:100%;margin-bottom:8px">Log Out</button>
           <button class="btn-action btn-action-danger" onclick="confirmPurge()" style="width:100%">Clear All Data</button>
         </div>
@@ -177,6 +178,98 @@ async function loadSettingsInfo() {
     if (btEl) btEl.textContent = `Error: ${e.message}`;
     const oaEl = document.getElementById('settings-openai');
     if (oaEl) oaEl.textContent = 'Could not check';
+  }
+}
+
+// ─── Debug / Diagnostics Panel ───────────────────────────────
+async function showDebugPanel() {
+  const main = document.getElementById('main-content');
+  // Deselect tabs since this is a non-tab view
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  main.innerHTML = '<div class="loading">Running diagnostics...</div>';
+
+  const results = {};
+
+  // Health check
+  try {
+    const key = getStoredKey();
+    const r = await fetch(API + '/health', { headers: key ? { 'X-Api-Key': key } : {} });
+    results.health = await r.json().catch(() => ({ status: r.status }));
+    results.health._http = r.status;
+  } catch (e) { results.health = { error: e.message }; }
+
+  // Bee status
+  try { results.bee_status = await api('/bee/status'); } catch (e) { results.bee_status = { error: e.message }; }
+
+  // Bee diagnose (tests each Bee API endpoint)
+  try { results.bee_diagnose = await api('/bee/diagnose'); } catch (e) { results.bee_diagnose = { error: e.message }; }
+
+  // Sync status
+  try { results.sync_status = await api('/sync-status'); } catch (e) { results.sync_status = { error: e.message }; }
+
+  // Dashboard (tests all DB tables)
+  try { results.dashboard = await api('/dashboard'); } catch (e) { results.dashboard = { error: e.message }; }
+
+  // Activity log (last 10)
+  try { results.activity = await api('/activity?limit=10'); } catch (e) { results.activity = { error: e.message }; }
+
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="font-size:1rem;font-weight:700">Diagnostics &amp; Logs</h2>
+      <button class="btn-action btn-action-secondary" onclick="switchTab('home')" style="padding:6px 14px;font-size:0.8rem">Back</button>
+    </div>
+    ${renderDebugSection('Health Check', results.health)}
+    ${renderDebugSection('Bee Status', results.bee_status)}
+    ${renderDebugSection('Bee API Endpoints', results.bee_diagnose)}
+    ${renderDebugSection('Sync Status', results.sync_status)}
+    ${renderDebugSection('Dashboard Data', results.dashboard)}
+    ${renderDebugSection('Recent Activity', results.activity)}
+    <div class="card">
+      <h2>Raw JSON (tap to copy)</h2>
+      <pre id="debug-raw" onclick="copyDebugRaw()" style="font-size:0.65rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;padding:8px;background:var(--bg-input);border-radius:6px;cursor:pointer;color:var(--text-dim)">${esc(JSON.stringify(results, null, 2))}</pre>
+    </div>
+  `;
+}
+
+function renderDebugSection(title, data) {
+  if (!data) return '';
+  const isError = data.error || data._http >= 400;
+  const color = isError ? 'var(--red)' : 'var(--green)';
+  let body = '';
+
+  if (data.error) {
+    body = `<div style="color:var(--red);font-size:0.8rem">${esc(data.error)}</div>`;
+  } else {
+    const entries = Object.entries(data).filter(([k]) => !k.startsWith('_'));
+    body = entries.map(([k, v]) => {
+      let val = v;
+      if (typeof v === 'object' && v !== null) val = JSON.stringify(v);
+      if (typeof val === 'string' && val.length > 200) val = val.substring(0, 200) + '...';
+      const valColor = v === false || v === 'error' ? 'var(--red)' : v === true || v === 'idle' || v === 'ok' ? 'var(--green)' : 'var(--text-dim)';
+      return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:0.75rem">
+        <span style="color:var(--text-dim)">${esc(k)}</span>
+        <span style="color:${valColor};max-width:60%;text-align:right;word-break:break-all">${esc(String(val))}</span>
+      </div>`;
+    }).join('');
+  }
+
+  return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin-bottom:0">${esc(title)}</h2>
+        <span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>
+      </div>
+      ${body}
+    </div>`;
+}
+
+function copyDebugRaw() {
+  const el = document.getElementById('debug-raw');
+  if (el) {
+    navigator.clipboard.writeText(el.textContent).then(() => {
+      el.style.borderColor = 'var(--green)';
+      setTimeout(() => { el.style.borderColor = ''; }, 1000);
+    }).catch(() => {});
   }
 }
 
@@ -521,16 +614,36 @@ async function triggerBeeSync(mode) {
 
   if (mode === 'full') {
     // Chunked sync — process each data type page-by-page (5 records at a time)
-    resultEl.textContent = 'Starting chunked sync...';
     const types = ['facts', 'todos', 'conversations', 'journals', 'daily'];
+    const typeLabels = { facts: 'Facts', todos: 'Tasks', conversations: 'Conversations', journals: 'Journals', daily: 'Daily' };
     const totals = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
 
-    for (const type of types) {
+    // Render progress UI
+    resultEl.innerHTML = `
+      <div style="margin-bottom:8px;font-weight:600;font-size:0.85rem">Syncing from Bee...</div>
+      <div id="sync-progress-bar" style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px">
+        <div id="sync-progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:3px;transition:width 0.3s"></div>
+      </div>
+      <div id="sync-progress-text" style="font-size:0.78rem;color:var(--text-dim)">Starting...</div>
+      <div id="sync-progress-detail" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px"></div>
+    `;
+    const progressFill = document.getElementById('sync-progress-fill');
+    const progressText = document.getElementById('sync-progress-text');
+    const progressDetail = document.getElementById('sync-progress-detail');
+
+    for (let ti = 0; ti < types.length; ti++) {
+      const type = types[ti];
+      const baseProgress = (ti / types.length) * 100;
+      const typeProgress = (1 / types.length) * 100;
       let cursor = null;
       let pageNum = 0;
+
+      progressText.textContent = `Syncing ${typeLabels[type]}...`;
+      progressFill.style.width = `${baseProgress}%`;
+
       do {
         pageNum++;
-        resultEl.textContent = `Syncing ${type}... (page ${pageNum})`;
+        progressDetail.textContent = `${typeLabels[type]} page ${pageNum}${totals[type] > 0 ? ` (${totals[type]} imported)` : ''}`;
         try {
           const data = await api('/bee/sync-chunk', {
             method: 'POST',
@@ -540,15 +653,41 @@ async function triggerBeeSync(mode) {
           totals.skipped += (data.skipped || 0);
           if (data.errors?.length) totals.errors.push(...data.errors);
           cursor = data.cursor;
+
+          // Update progress within type
+          if (!cursor || data.done) {
+            progressFill.style.width = `${baseProgress + typeProgress}%`;
+          } else {
+            // Estimate progress within pages (cap at 90% of type slice)
+            progressFill.style.width = `${baseProgress + Math.min(typeProgress * 0.9, typeProgress * pageNum / (pageNum + 2))}%`;
+          }
+          progressDetail.textContent = `${typeLabels[type]}: ${totals[type]} imported, ${data.skipped || 0} skipped${data.errors?.length ? ', ' + data.errors.length + ' errors' : ''}`;
+
           if (data.done || !cursor) break;
         } catch (err) {
           totals.errors.push(`${type}: ${err.message}`);
+          progressDetail.textContent = `${typeLabels[type]}: error — ${err.message}`;
           break;
         }
       } while (cursor);
     }
 
-    showSyncResult(resultEl, { imported: totals });
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Sync complete!';
+
+    // Build summary
+    const parts = [];
+    if (totals.facts) parts.push(`${totals.facts} facts`);
+    if (totals.todos) parts.push(`${totals.todos} tasks`);
+    if (totals.conversations) parts.push(`${totals.conversations} conversations`);
+    if (totals.journals) parts.push(`${totals.journals} journals`);
+    if (totals.daily) parts.push(`${totals.daily} daily`);
+    let summary = parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'No new items';
+    if (totals.skipped > 0) summary += ` (${totals.skipped} skipped)`;
+    if (totals.errors.length > 0) summary += ` — ${totals.errors.length} error(s)`;
+    progressDetail.textContent = summary;
+    progressText.style.color = totals.errors.length > 0 ? 'var(--yellow)' : 'var(--green)';
+
     btnUpdates.disabled = false; btnFull.disabled = false;
     loadDashboardStats(); loadBeeStatus();
   } else {
