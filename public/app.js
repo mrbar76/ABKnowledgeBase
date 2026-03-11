@@ -169,12 +169,14 @@ async function loadSettingsInfo() {
   try {
     const beeData = await api('/bee/status');
     const btEl = document.getElementById('settings-bee-token');
-    if (btEl) btEl.textContent = beeData.bee_token_configured ? 'Configured' : 'Not set';
+    if (btEl) btEl.textContent = beeData.bee_token_configured ? 'Configured' : 'Not set (add BEE_API_TOKEN env var)';
     const oaEl = document.getElementById('settings-openai');
     if (oaEl) oaEl.textContent = beeData.openai_configured !== false ? 'Configured' : 'Not set';
-  } catch {
+  } catch (e) {
     const btEl = document.getElementById('settings-bee-token');
-    if (btEl) btEl.textContent = 'Unknown';
+    if (btEl) btEl.textContent = `Error: ${e.message}`;
+    const oaEl = document.getElementById('settings-openai');
+    if (oaEl) oaEl.textContent = 'Could not check';
   }
 }
 

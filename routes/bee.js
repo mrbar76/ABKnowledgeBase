@@ -530,6 +530,11 @@ router.post('/sync-incremental', async (req, res) => {
 // ─── Status ──────────────────────────────────────────
 
 router.get('/status', async (req, res) => {
+  const result = {
+    facts: 0, tasks: 0, transcripts: 0, journals: 0, daily: 0,
+    bee_token_configured: !!process.env.BEE_API_TOKEN,
+    openai_configured: !!process.env.OPENAI_API_KEY,
+  };
   try {
     const [factsR, knowledgeR, tasksR, transcriptsR] = await Promise.all([
       query("SELECT COUNT(*)::int as c FROM facts WHERE source='bee'"),
@@ -538,15 +543,17 @@ router.get('/status', async (req, res) => {
       query("SELECT COUNT(*)::int as c FROM transcripts WHERE source='bee'"),
     ]);
     const kRows = knowledgeR.rows;
-    res.json({
-      facts: factsR.rows[0].c,
-      tasks: tasksR.rows[0].c,
-      transcripts: transcriptsR.rows[0].c,
-      journals: (kRows.find(r => r.category === 'journal') || {}).c || 0,
-      daily: (kRows.find(r => r.category === 'daily-summary') || {}).c || 0,
-      bee_token_configured: !!process.env.BEE_API_TOKEN,
-    });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    result.facts = factsR.rows[0].c;
+    result.tasks = tasksR.rows[0].c;
+    result.transcripts = transcriptsR.rows[0].c;
+    result.journals = (kRows.find(r => r.category === 'journal') || {}).c || 0;
+    result.daily = (kRows.find(r => r.category === 'daily-summary') || {}).c || 0;
+    res.json(result);
+  } catch (err) {
+    // Still return token config status even if DB queries fail
+    result.db_error = err.message;
+    res.json(result);
+  }
 });
 
 // ─── Diagnose ──────────────────────────────────────────
