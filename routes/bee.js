@@ -1,6 +1,6 @@
 const express = require('express');
 const https = require('https');
-const { query, logActivity } = require('../db');
+const { pool, query, logActivity } = require('../db');
 const syncStatus = require('../sync-status');
 const router = express.Router();
 
@@ -113,6 +113,21 @@ function extractTranscript(detail, convoStartTime) {
   return { text: detail.transcript || detail.full_transcript || detail.text || '', utterances: [] };
 }
 
+// ─── Concurrency helper ──────────────────────────────────────────
+
+async function mapConcurrent(items, concurrency, fn) {
+  const results = [];
+  let i = 0;
+  async function next() {
+    const idx = i++;
+    if (idx >= items.length) return;
+    results[idx] = await fn(items[idx], idx);
+    await next();
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => next()));
+  return results;
+}
+
 // ─── PostgreSQL dedup helpers ─────────────────────────────────────
 
 async function findExistingFact(contentPrefix) {
@@ -134,9 +149,10 @@ async function findExistingKnowledge(contentPrefix, aiSource) {
 
 // ─── Store helpers ─────────────────────────────────────────
 
-async function storeFact(factText, fact) {
+async function storeFact(factText, fact, client) {
+  const q = client || query;
   const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : new Date().toISOString();
-  const r = await query(
+  const r = await q(
     `INSERT INTO facts (title, content, category, tags, source, confirmed, created_at)
      VALUES ($1, $2, 'personal', $3::jsonb, 'bee', $4, $5) RETURNING id`,
     [factText.substring(0, 80), factText, JSON.stringify(['bee', fact.confirmed ? 'confirmed' : 'unconfirmed']),
@@ -145,9 +161,10 @@ async function storeFact(factText, fact) {
   return r.rows[0].id;
 }
 
-async function storeTodo(todoText, todo) {
+async function storeTodo(todoText, todo, client) {
+  const q = client || query;
   const todoDate = todo.created_at ? new Date(todo.created_at).toISOString() : new Date().toISOString();
-  const r = await query(
+  const r = await q(
     `INSERT INTO tasks (title, status, priority, ai_agent, next_steps, created_at)
      VALUES ($1, $2, 'medium', 'bee', $3, $4) RETURNING id`,
     [todoText, todo.completed ? 'done' : 'todo', todo.id ? `Bee Todo ID: ${todo.id}` : '', todoDate]
@@ -155,7 +172,8 @@ async function storeTodo(todoText, todo) {
   return r.rows[0].id;
 }
 
-async function storeConversation(convo, full, rawResult) {
+async function storeConversation(convo, full, rawResult, client) {
+  const q = client || query;
   const title = (full.short_summary || convo.short_summary || (full.summary ? full.summary.substring(0, 80) : null) ||
     `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`).substring(0, 200);
   const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
@@ -163,7 +181,7 @@ async function storeConversation(convo, full, rawResult) {
   const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString() : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
   const location = convo.primary_location?.address || full.primary_location?.address || null;
 
-  const r = await query(
+  const r = await q(
     `INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, location, tags, bee_id, metadata)
      VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7::jsonb, $8, '{}'::jsonb) RETURNING id`,
     [title, rawResult.text, full.summary || (rawResult.text || '').substring(0, 2000),
@@ -171,45 +189,61 @@ async function storeConversation(convo, full, rawResult) {
   );
   const transcriptId = r.rows[0].id;
 
-  // Store speaker utterances
-  if (rawResult.utterances && rawResult.utterances.length > 0) {
-    for (let idx = 0; idx < rawResult.utterances.length && idx < 1500; idx++) {
-      const u = rawResult.utterances[idx];
-      const convoStartTime = convo.start_time || full.start_time || null;
-      const spokenAt = convoStartTime && u.start != null ? new Date(convoStartTime + (u.start * 1000)).toISOString() : null;
-      await query(
+  // Batch-insert speaker utterances (up to 1500, in chunks of 100)
+  const utterances = (rawResult.utterances || []).slice(0, 1500);
+  if (utterances.length > 0) {
+    const CHUNK = 100;
+    for (let off = 0; off < utterances.length; off += CHUNK) {
+      const batch = utterances.slice(off, off + CHUNK);
+      const values = [];
+      const params = [];
+      let pi = 1;
+      for (let i = 0; i < batch.length; i++) {
+        const u = batch[i];
+        const idx = off + i;
+        const convoStartTime = convo.start_time || full.start_time || null;
+        const spokenAt = convoStartTime && u.start != null ? new Date(convoStartTime + (u.start * 1000)).toISOString() : null;
+        values.push(`($${pi},$${pi+1},$${pi+2},$${pi+3},$${pi+4},$${pi+5},$${pi+6},$${pi+7})`);
+        params.push(
+          transcriptId, u.speaker || u.speaker_name || u.label || 'Speaker', idx,
+          u.text || u.content || '', spokenAt,
+          u.start != null ? Math.round(u.start * 1000) : null,
+          u.end != null ? Math.round(u.end * 1000) : null,
+          u.confidence || null
+        );
+        pi += 8;
+      }
+      await q(
         `INSERT INTO transcript_speakers (transcript_id, speaker_name, utterance_index, text, spoken_at, start_offset_ms, end_offset_ms, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [transcriptId, u.speaker || u.speaker_name || u.label || 'Speaker', idx,
-         u.text || u.content || '', spokenAt,
-         u.start != null ? Math.round(u.start * 1000) : null,
-         u.end != null ? Math.round(u.end * 1000) : null,
-         u.confidence || null]
+         VALUES ${values.join(',')}`,
+        params
       );
     }
   }
   return transcriptId;
 }
 
-async function storeJournal(journal) {
+async function storeJournal(journal, client) {
+  const q = client || query;
   const jText = journal.text || journal.content || journal.body || journal.markdown || '';
   const jTitle = (journal.title || journal.short_summary || (jText ? jText.substring(0, 80) : `Journal ${journal.id}`)).substring(0, 200);
   const journalDate = journal.created_at ? new Date(journal.created_at).toISOString() : (journal.date ? new Date(journal.date).toISOString() : new Date().toISOString());
 
-  await query(
+  await q(
     `INSERT INTO knowledge (title, content, category, tags, source, ai_source, created_at)
      VALUES ($1, $2, 'journal', $3::jsonb, 'bee', 'bee', $4)`,
     [jTitle, (jText || journal.summary).substring(0, 50000), JSON.stringify(['bee', 'journal']), journalDate]
   );
 }
 
-async function storeDaily(day) {
+async function storeDaily(day, client) {
+  const q = client || query;
   const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
   const dDate = day.date || day.created_at || '';
   const dTitle = (day.title || `Daily Summary ${dDate ? new Date(dDate).toLocaleDateString() : day.id}`).substring(0, 200);
   const dailyDate = dDate ? new Date(dDate).toISOString() : new Date().toISOString();
 
-  await query(
+  await q(
     `INSERT INTO knowledge (title, content, category, tags, source, ai_source, created_at)
      VALUES ($1, $2, 'daily-summary', $3::jsonb, 'bee', 'bee', $4)`,
     [dTitle, dText.substring(0, 50000), JSON.stringify(['bee', 'daily-summary']), dailyDate]
@@ -239,88 +273,117 @@ router.post('/sync', async (req, res) => {
   const job = syncStatus.startJob('bee', force ? 'Full sync (force refresh)' : 'Full cloud sync');
   const results = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
 
-  // Sync Facts
+  // Use a transaction for the entire sync so partial failures can be rolled back
+  const client = await pool.connect();
+  const cq = client.query.bind(client);
   try {
-    let cursor = null;
-    do {
-      const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
-      const facts = extractArray(data, 'facts'); cursor = data.next_cursor || null;
-      for (const fact of facts) {
-        const t = extractFactText(fact); if (!t) continue;
-        if (!force && await findExistingFact(t)) { results.skipped++; continue; }
-        await storeFact(t, fact); results.facts++;
-      }
-    } while (cursor);
-  } catch (e) { results.errors.push(`Facts: ${e.message}`); }
+    await client.query('BEGIN');
 
-  // Sync Todos
-  try {
-    let cursor = null;
-    do {
-      const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
-      const todos = extractArray(data, 'todos'); cursor = data.next_cursor || null;
-      for (const todo of todos) {
-        const t = extractTodoText(todo); if (!t) continue;
-        if (!force && await findExistingTask(t)) { results.skipped++; continue; }
-        await storeTodo(t, todo); results.todos++;
-      }
-    } while (cursor);
-  } catch (e) { results.errors.push(`Todos: ${e.message}`); }
+    // Sync Facts (paginated, batched inserts per page)
+    try {
+      let cursor = null;
+      do {
+        const url = '/v1/facts' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken);
+        const facts = extractArray(data, 'facts'); cursor = data.next_cursor || null;
+        for (const fact of facts) {
+          const t = extractFactText(fact); if (!t) continue;
+          if (!force && await findExistingFact(t)) { results.skipped++; continue; }
+          await storeFact(t, fact, cq); results.facts++;
+        }
+      } while (cursor);
+    } catch (e) { results.errors.push(`Facts: ${e.message}`); }
 
-  // Sync Conversations
-  try {
-    let cursor = null;
-    do {
-      const url = `/v1/conversations?limit=50&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
-      const convos = extractArray(data, 'conversations'); cursor = data.next_cursor || null;
-      for (const convo of convos) {
-        if (!convo.id) continue;
-        if (!force && await findExistingTranscript(convo.id)) { results.skipped++; continue; }
-        if (convo.state === 'CAPTURING') { results.skipped++; continue; }
-        let full = convo;
-        try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; } catch (e) { if (!convo.summary) { results.errors.push(`Conv ${convo.id}: ${e.message}`); continue; } }
-        const convoStart = convo.start_time || full.start_time || null;
-        const rawResult = extractTranscript(full, convoStart);
-        if (!rawResult.text) continue;
-        await storeConversation(convo, full, rawResult); results.conversations++;
-      }
-    } while (cursor);
-  } catch (e) { results.errors.push(`Conversations: ${e.message}`); }
+    // Sync Todos (paginated, batched)
+    try {
+      let cursor = null;
+      do {
+        const url = '/v1/todos' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken);
+        const todos = extractArray(data, 'todos'); cursor = data.next_cursor || null;
+        for (const todo of todos) {
+          const t = extractTodoText(todo); if (!t) continue;
+          if (!force && await findExistingTask(t)) { results.skipped++; continue; }
+          await storeTodo(t, todo, cq); results.todos++;
+        }
+      } while (cursor);
+    } catch (e) { results.errors.push(`Todos: ${e.message}`); }
 
-  // Sync Journals
-  try {
-    let cursor = null;
-    do {
-      const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
-      const journals = extractArray(data, 'journals'); cursor = data.next_cursor || null;
-      for (const journal of journals) {
-        const jText = journal.text || journal.content || journal.body || journal.markdown || '';
-        if (!jText && !journal.summary) continue;
-        if (!force && await findExistingKnowledge(jText || journal.summary, 'bee')) { results.skipped++; continue; }
-        await storeJournal(journal); results.journals++;
-      }
-    } while (cursor);
-  } catch (e) { results.errors.push(`Journals: ${e.message}`); }
+    // Sync Conversations (paginated, fetch details concurrently 5-at-a-time)
+    try {
+      let cursor = null;
+      do {
+        const url = `/v1/conversations?limit=50&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken);
+        const convos = extractArray(data, 'conversations'); cursor = data.next_cursor || null;
 
-  // Sync Daily
-  try {
-    let cursor = null;
-    do {
-      const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
-      const dailies = extractArray(data, 'daily'); cursor = data.next_cursor || null;
-      for (const day of dailies) {
-        const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
-        if (!dText) continue;
-        if (!force && await findExistingKnowledge(dText, 'bee')) { results.skipped++; continue; }
-        await storeDaily(day); results.daily++;
-      }
-    } while (cursor);
-  } catch (e) { results.errors.push(`Daily: ${e.message}`); }
+        // Filter out already-synced and in-progress convos
+        const toSync = [];
+        for (const convo of convos) {
+          if (!convo.id) continue;
+          if (convo.state === 'CAPTURING') { results.skipped++; continue; }
+          if (!force && await findExistingTranscript(convo.id)) { results.skipped++; continue; }
+          toSync.push(convo);
+        }
+
+        // Fetch conversation details concurrently (5 at a time)
+        const detailed = await mapConcurrent(toSync, 5, async (convo) => {
+          let full = convo;
+          try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; }
+          catch (e) { if (!convo.summary) { results.errors.push(`Conv ${convo.id}: ${e.message}`); return null; } }
+          const rawResult = extractTranscript(full, convo.start_time || full.start_time || null);
+          if (!rawResult.text) return null;
+          return { convo, full, rawResult };
+        });
+
+        // Store sequentially within the transaction
+        for (const item of detailed) {
+          if (!item) { results.skipped++; continue; }
+          await storeConversation(item.convo, item.full, item.rawResult, cq);
+          results.conversations++;
+        }
+      } while (cursor);
+    } catch (e) { results.errors.push(`Conversations: ${e.message}`); }
+
+    // Sync Journals (paginated)
+    try {
+      let cursor = null;
+      do {
+        const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken);
+        const journals = extractArray(data, 'journals'); cursor = data.next_cursor || null;
+        for (const journal of journals) {
+          const jText = journal.text || journal.content || journal.body || journal.markdown || '';
+          if (!jText && !journal.summary) continue;
+          if (!force && await findExistingKnowledge(jText || journal.summary, 'bee')) { results.skipped++; continue; }
+          await storeJournal(journal, cq); results.journals++;
+        }
+      } while (cursor);
+    } catch (e) { results.errors.push(`Journals: ${e.message}`); }
+
+    // Sync Daily (paginated)
+    try {
+      let cursor = null;
+      do {
+        const url = '/v1/daily' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken);
+        const dailies = extractArray(data, 'daily'); cursor = data.next_cursor || null;
+        for (const day of dailies) {
+          const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
+          if (!dText) continue;
+          if (!force && await findExistingKnowledge(dText, 'bee')) { results.skipped++; continue; }
+          await storeDaily(day, cq); results.daily++;
+        }
+      } while (cursor);
+    } catch (e) { results.errors.push(`Daily: ${e.message}`); }
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    results.errors.push(`Transaction failed: ${e.message}`);
+  } finally {
+    client.release();
+  }
 
   const totalImported = results.facts + results.todos + results.conversations + results.journals + results.daily;
   await logActivity('sync', 'bee-import', 'cloud-sync', 'bee',

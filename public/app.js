@@ -516,18 +516,50 @@ async function triggerBeeSync(mode) {
 
   btnUpdates.disabled = true; btnFull.disabled = true;
   resultEl.style.display = 'block'; resultEl.style.color = 'var(--text-dim)';
-  resultEl.textContent = mode === 'full' ? 'Starting full sync...' : 'Syncing updates...';
-
-  const endpoint = mode === 'full' ? '/bee/sync' : '/bee/sync-incremental';
-  const fetchPromise = api(endpoint, { method: 'POST', body: JSON.stringify(mode === 'full' ? { force: false } : {}) });
 
   if (mode === 'full') {
-    fetchPromise.then(data => { showSyncResult(resultEl, data); btnUpdates.disabled = false; btnFull.disabled = false; stopSyncPolling(); loadDashboard(); }).catch(() => {});
-    startSyncPolling(resultEl, btnUpdates, btnFull);
+    // Chunked sync — process each data type page-by-page (5 records at a time)
+    resultEl.textContent = 'Starting chunked sync...';
+    const types = ['facts', 'todos', 'conversations', 'journals', 'daily'];
+    const totals = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
+
+    for (const type of types) {
+      let cursor = null;
+      let pageNum = 0;
+      do {
+        pageNum++;
+        resultEl.textContent = `Syncing ${type}... (page ${pageNum})`;
+        try {
+          const data = await api('/bee/sync-chunk', {
+            method: 'POST',
+            body: JSON.stringify({ type, cursor, force: false })
+          });
+          totals[type] = (totals[type] || 0) + (data.imported || 0);
+          totals.skipped += (data.skipped || 0);
+          if (data.errors?.length) totals.errors.push(...data.errors);
+          cursor = data.cursor;
+          if (data.done || !cursor) break;
+        } catch (err) {
+          totals.errors.push(`${type}: ${err.message}`);
+          break;
+        }
+      } while (cursor);
+    }
+
+    showSyncResult(resultEl, { imported: totals });
+    btnUpdates.disabled = false; btnFull.disabled = false;
+    loadDashboardStats(); loadBeeStatus();
   } else {
-    try { const data = await fetchPromise; showSyncResult(resultEl, data); loadDashboard(); }
-    catch (err) { resultEl.style.color = 'var(--red)'; resultEl.textContent = `Sync failed: ${err.message}`; }
-    finally { btnUpdates.disabled = false; btnFull.disabled = false; }
+    // Incremental — single request (small payload)
+    resultEl.textContent = 'Syncing updates...';
+    try {
+      const data = await api('/bee/sync-incremental', { method: 'POST', body: JSON.stringify({}) });
+      showSyncResult(resultEl, data);
+      loadDashboardStats(); loadBeeStatus();
+    } catch (err) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `Sync failed: ${err.message}`;
+    } finally { btnUpdates.disabled = false; btnFull.disabled = false; }
   }
 }
 
@@ -542,19 +574,6 @@ function showSyncResult(el, data) {
   el.style.color = (i.errors?.length) ? 'var(--yellow)' : 'var(--green)';
   el.textContent = msg;
 }
-
-function startSyncPolling(el, btn1, btn2) {
-  stopSyncPolling(); let polls = 0;
-  syncPollTimer = setInterval(async () => {
-    polls++;
-    try { const data = await api('/sync-status'); const bee = data.sources?.find(s => s.label==='Bee Wearable');
-      if (bee?.state !== 'syncing') { stopSyncPolling(); btn1.disabled=false; btn2.disabled=false; loadDashboard(); }
-      else { el.textContent = `Syncing... (${polls*5}s)`; }
-    } catch {}
-    if (polls > 60) { stopSyncPolling(); btn1.disabled=false; btn2.disabled=false; }
-  }, 5000);
-}
-function stopSyncPolling() { if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; } }
 
 async function loadBeeStatus() {
   try {
