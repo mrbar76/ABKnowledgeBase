@@ -1,19 +1,19 @@
 {
   "name": "ab-knowledge-base",
   "version": "1.0.0",
-  "description": "AI-to-Notion gateway — connects Claude, Gemini, ChatGPT, Bee to your Notion workspace with auto-sync",
+  "description": "Unified AI knowledge base — connects Claude, Gemini, ChatGPT, Bee to a shared PostgreSQL brain",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "setup": "echo 'POST /api/setup with { parent_page_id: your-page-id } to create Notion databases'"
+    "dev": "node --watch server.js"
   },
   "dependencies": {
     "@notionhq/client": "^5.12.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "helmet": "^8.0.0",
-    "openai": "^6.27.0"
+    "openai": "^6.27.0",
+    "pg": "^8.20.0"
   },
   "engines": {
     "node": ">=18.0.0"

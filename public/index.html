@@ -65,47 +65,32 @@
     </div>
   </div>
 
-  <!-- Single Page Content -->
-  <main class="page-content">
+  <!-- Single Page Content — rendered by app.js -->
+  <main id="main-content" class="page-content"></main>
 
-    <!-- Stats Overview -->
-    <div class="stats-grid" id="stats-grid"></div>
-
-    <!-- Bee Sync -->
-    <div class="card">
-      <h2>Bee Wearable Sync</h2>
-      <div id="bee-sync-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
-      <div class="sync-actions">
-        <button class="btn-action" onclick="triggerBeeSync('incremental')" id="btn-sync-updates">Sync Updates</button>
-        <button class="btn-action btn-action-secondary" onclick="triggerBeeSync('full')" id="btn-sync-full">Full Sync</button>
-      </div>
-      <div id="bee-sync-result" style="display:none;margin-top:12px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-    </div>
-
-    <!-- Sync Status -->
-    <div class="card">
-      <h2>Sync Status</h2>
-      <div id="sync-status-panel"></div>
-      <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
-      <div id="sync-job-history"></div>
-    </div>
-
-    <!-- Recent Activity -->
-    <div class="card" id="activity-card" style="display:none">
-      <h2>Recent Activity</h2>
-      <div id="recent-activity"></div>
-    </div>
-
-    <!-- Tools -->
-    <div class="card">
-      <h2>Tools</h2>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button class="btn-action btn-action-danger" onclick="confirmPurge()" id="btn-purge" style="width:100%">Clear All Data</button>
-      </div>
-      <div id="purge-result" style="display:none;margin-top:10px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-    </div>
-
-  </main>
+  <!-- Bottom Tab Navigation -->
+  <nav id="bottom-nav" class="bottom-nav">
+    <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="tab-btn" data-tab="kanban" onclick="switchTab('kanban')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M4 4h4v16H4V4zm6 0h4v12h-4V4zm6 0h4v8h-4V4z"/></svg>
+      <span>Kanban</span>
+    </button>
+    <button class="tab-btn" data-tab="brain" onclick="switchTab('brain')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      <span>Brain</span>
+    </button>
+    <button class="tab-btn" data-tab="transcripts" onclick="switchTab('transcripts')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+      <span>Transcripts</span>
+    </button>
+    <button class="tab-btn" data-tab="projects" onclick="switchTab('projects')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
+      <span>Projects</span>
+    </button>
+  </nav>
 
   <!-- Modal overlay -->
   <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">

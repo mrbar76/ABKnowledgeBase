@@ -1,16 +1,12 @@
 // Smart intake — AI-powered auto-classification and filing.
 // Accepts any raw input, uses OpenAI GPT-4o-mini to classify it,
-// then files it into the correct Notion database with proper metadata.
+// then files it into the correct PostgreSQL table with proper metadata.
 
 const express = require('express');
-const {
-  createPage, richText, dateOrNull, selectOrNull, multiSelect,
-  textToBlocks, logActivity
-} = require('../notion');
+const { query, logActivity } = require('../db');
 const syncStatus = require('../sync-status');
 const router = express.Router();
 
-// Lazy-load OpenAI client
 let openai = null;
 function getOpenAIClient() {
   if (openai) return openai;
@@ -21,7 +17,7 @@ function getOpenAIClient() {
   return openai;
 }
 
-const CLASSIFICATION_PROMPT = `You are a personal knowledge organizer. Analyze the following input and classify it for filing into a Notion workspace.
+const CLASSIFICATION_PROMPT = `You are a personal knowledge organizer. Analyze the following input and classify it for filing.
 
 Return ONLY valid JSON with these fields:
 {
@@ -44,7 +40,6 @@ Rules:
 - If the input already specifies a category or tags, respect those
 - Keep the title descriptive but concise`;
 
-// Classify input using OpenAI GPT-4o-mini
 async function classify(userMessage) {
   const client = getOpenAIClient();
   const response = await client.chat.completions.create({
@@ -68,87 +63,57 @@ async function classify(userMessage) {
   }
 }
 
-// POST /api/intake
-// Body: { "input": "any text", "source": "claude" (optional), "context": "optional context" }
 router.post('/', async (req, res) => {
   try {
     const { input, source, context } = req.body;
-    if (!input || !input.trim()) {
-      return res.status(400).json({ error: 'input is required' });
-    }
+    if (!input || !input.trim()) return res.status(400).json({ error: 'input is required' });
 
-    // Build the classification input
     let userMessage = input.trim();
     if (context) userMessage = `Context: ${context}\n\n${userMessage}`;
     if (source) userMessage = `[Source: ${source}]\n\n${userMessage}`;
 
     const classification = await classify(userMessage);
-
-    const now = new Date().toISOString();
     const db = classification.database || 'knowledge';
     const aiSource = classification.ai_source || source || null;
-    let pageId;
-
-    // ─── File into the correct database ──────────────────────────
+    let rowId;
 
     if (db === 'tasks') {
-      const page = await createPage('tasks', {
-        Title: { title: richText(classification.title || input.substring(0, 80)) },
-        Description: { rich_text: richText(input) },
-        Status: { select: selectOrNull(classification.status || 'todo') },
-        Priority: { select: selectOrNull(classification.priority || 'medium') },
-        'AI Agent': { select: selectOrNull(aiSource) },
-        'Next Steps': { rich_text: richText(classification.summary || '') },
-        'Created At': { date: dateOrNull(now) },
-        'Updated At': { date: dateOrNull(now) },
-      });
-      pageId = page.id;
-
+      const result = await query(
+        `INSERT INTO tasks (title, description, status, priority, ai_agent)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [classification.title || input.substring(0, 80), input,
+         classification.status || 'todo', classification.priority || 'medium', aiSource]
+      );
+      rowId = result.rows[0].id;
     } else if (db === 'transcripts') {
-      const bodyBlocks = textToBlocks(input);
-      const page = await createPage('transcripts', {
-        Title: { title: richText(classification.title || input.substring(0, 80)) },
-        Summary: { rich_text: richText(classification.summary || input.substring(0, 2000)) },
-        Source: { select: selectOrNull(aiSource || 'manual') },
-        Tags: { multi_select: multiSelect(classification.tags || []) },
-        'Recorded At': { date: dateOrNull(now) },
-        'Created At': { date: dateOrNull(now) },
-        'Updated At': { date: dateOrNull(now) },
-      }, bodyBlocks);
-      pageId = page.id;
-
+      const result = await query(
+        `INSERT INTO transcripts (title, raw_text, summary, source, tags)
+         VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id`,
+        [classification.title || input.substring(0, 80), input,
+         classification.summary || input.substring(0, 2000),
+         aiSource || 'manual', JSON.stringify(classification.tags || [])]
+      );
+      rowId = result.rows[0].id;
     } else {
-      // Default: knowledge
-      const page = await createPage('knowledge', {
-        Title: { title: richText(classification.title || input.substring(0, 80)) },
-        Content: { rich_text: richText(input) },
-        Category: { select: selectOrNull(classification.category || 'general') },
-        Tags: { multi_select: multiSelect(classification.tags || []) },
-        Source: { select: selectOrNull(aiSource || 'api') },
-        'AI Source': { select: selectOrNull(aiSource) },
-        'Created At': { date: dateOrNull(now) },
-        'Updated At': { date: dateOrNull(now) },
-      });
-      pageId = page.id;
+      const result = await query(
+        `INSERT INTO knowledge (title, content, category, tags, source, ai_source)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6) RETURNING id`,
+        [classification.title || input.substring(0, 80), input,
+         classification.category || 'general', JSON.stringify(classification.tags || []),
+         aiSource || 'api', aiSource]
+      );
+      rowId = result.rows[0].id;
     }
 
-    await logActivity('create', classification.database, pageId, aiSource,
-      `Smart intake: ${classification.title || input.substring(0, 60)}`);
-
-    // Track in sync status
+    await logActivity('create', db, rowId, aiSource, `Smart intake: ${classification.title || input.substring(0, 60)}`);
     const intakeJob = syncStatus.startJob('intake', `Intake: ${classification.title || 'item'}`);
     syncStatus.completeJob('intake', intakeJob, { imported: 1, details: { database: db, ai_source: aiSource } });
 
     res.status(201).json({
-      message: 'Filed successfully',
-      id: pageId,
+      message: 'Filed successfully', id: rowId,
       classification: {
-        database: db,
-        title: classification.title,
-        category: classification.category,
-        tags: classification.tags,
-        summary: classification.summary,
-        ai_source: aiSource,
+        database: db, title: classification.title, category: classification.category,
+        tags: classification.tags, summary: classification.summary, ai_source: aiSource,
       }
     });
   } catch (err) {
@@ -159,14 +124,10 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST /api/intake/batch
-// Body: { "items": [{ "input": "text", "source": "claude" }, ...] }
 router.post('/batch', async (req, res) => {
   try {
     const { items } = req.body;
-    if (!Array.isArray(items) || !items.length) {
-      return res.status(400).json({ error: 'items array is required' });
-    }
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'items array is required' });
 
     const results = [];
     for (const item of items) {
@@ -176,34 +137,23 @@ router.post('/batch', async (req, res) => {
         if (item.source) userMessage = `[Source: ${item.source}]\n\n${userMessage}`;
 
         const classification = await classify(userMessage);
-        const now = new Date().toISOString();
         const aiSource = classification.ai_source || item.source || null;
+        const db = classification.database || 'knowledge';
 
-        // File into correct database
-        const page = await createPage(classification.database || 'knowledge', {
-          Title: { title: richText(classification.title || userMessage.substring(0, 80)) },
-          ...(classification.database === 'tasks' ? {
-            Description: { rich_text: richText(userMessage) },
-            Status: { select: selectOrNull(classification.status || 'todo') },
-            Priority: { select: selectOrNull(classification.priority || 'medium') },
-            'AI Agent': { select: selectOrNull(aiSource) },
-          } : {
-            Content: { rich_text: richText(userMessage) },
-            Category: { select: selectOrNull(classification.category || 'general') },
-            Tags: { multi_select: multiSelect(classification.tags || []) },
-            Source: { select: selectOrNull(aiSource || 'api') },
-            'AI Source': { select: selectOrNull(aiSource) },
-          }),
-          'Created At': { date: dateOrNull(now) },
-          'Updated At': { date: dateOrNull(now) },
-        });
-
-        results.push({
-          id: page.id,
-          database: classification.database,
-          title: classification.title,
-          tags: classification.tags,
-        });
+        let result;
+        if (db === 'tasks') {
+          result = await query(
+            'INSERT INTO tasks (title, description, status, priority, ai_agent) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [classification.title || userMessage.substring(0, 80), userMessage, classification.status || 'todo', classification.priority || 'medium', aiSource]
+          );
+        } else {
+          result = await query(
+            'INSERT INTO knowledge (title, content, category, tags, source, ai_source) VALUES ($1, $2, $3, $4::jsonb, $5, $6) RETURNING id',
+            [classification.title || userMessage.substring(0, 80), userMessage, classification.category || 'general',
+             JSON.stringify(classification.tags || []), aiSource || 'api', aiSource]
+          );
+        }
+        results.push({ id: result.rows[0].id, database: db, title: classification.title, tags: classification.tags });
       } catch (itemErr) {
         results.push({ error: itemErr.message, input: (item.input || '').substring(0, 50) });
       }
@@ -212,18 +162,9 @@ router.post('/batch', async (req, res) => {
     const filed = results.filter(r => r.id).length;
     const errCount = results.filter(r => r.error).length;
     const batchJob = syncStatus.startJob('intake', `Batch intake: ${items.length} items`);
-    syncStatus.completeJob('intake', batchJob, {
-      imported: filed,
-      skipped: errCount,
-      errors: results.filter(r => r.error).map(r => r.error),
-    });
+    syncStatus.completeJob('intake', batchJob, { imported: filed, skipped: errCount, errors: results.filter(r => r.error).map(r => r.error) });
 
-    res.status(201).json({
-      message: `Processed ${results.length} items`,
-      filed,
-      errors: errCount,
-      results,
-    });
+    res.status(201).json({ message: `Processed ${results.length} items`, filed, errors: errCount, results });
   } catch (err) {
     const errJob = syncStatus.startJob('intake', 'Batch intake failed');
     syncStatus.failJob('intake', errJob, err.message);
@@ -231,34 +172,25 @@ router.post('/batch', async (req, res) => {
   }
 });
 
-// POST /api/intake/distill
-// Extracts facts, decisions, and tasks from a conversation
-// Body: { "title": "...", "content": "...", "source": "chatgpt", "created_at": "..." }
 const DISTILL_PROMPT = `You are a personal knowledge analyst. Given a conversation transcript, extract structured insights.
 
 Return ONLY valid JSON with these fields:
 {
-  "facts": [
-    { "text": "short factual statement about the user", "category": "personal|preference|health|work|relationship|financial|general" }
-  ],
-  "decisions": [
-    { "title": "short title", "content": "what was decided and why", "category": "code|meeting|research|decision|reference|health|personal|general" }
-  ],
-  "tasks": [
-    { "title": "action item", "priority": "low|medium|high|urgent" }
-  ],
+  "facts": [{ "text": "short factual statement about the user", "category": "personal|preference|health|work|relationship|financial|general" }],
+  "decisions": [{ "title": "short title", "content": "what was decided and why", "category": "code|meeting|research|decision|reference|health|personal|general" }],
+  "tasks": [{ "title": "action item", "priority": "low|medium|high|urgent" }],
   "project": "detected project name or null if none",
   "tags": ["topic1", "topic2"]
 }
 
 Rules:
 - Extract ONLY things explicitly stated or clearly implied, never invent
-- Facts should be discrete, reusable truths about the user (preferences, personal info, decisions made)
+- Facts should be discrete, reusable truths about the user
 - Decisions are conclusions reached during the conversation
 - Tasks are action items the user committed to or was assigned
 - If no items for a category, return an empty array
 - Keep facts short (1 sentence max)
-- Detect project names from context (e.g., "Spartan Training", "Website Redesign")
+- Detect project names from context
 - Return 0-10 facts, 0-5 decisions, 0-5 tasks per conversation`;
 
 router.post('/distill', async (req, res) => {
@@ -268,9 +200,7 @@ router.post('/distill', async (req, res) => {
 
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 1500,
-      temperature: 0,
+      model: 'gpt-4o-mini', max_tokens: 1500, temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: DISTILL_PROMPT },
@@ -280,72 +210,46 @@ router.post('/distill', async (req, res) => {
 
     const text = response.choices[0]?.message?.content || '{}';
     let extracted;
-    try {
-      extracted = JSON.parse(text);
-    } catch {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      extracted = jsonMatch ? JSON.parse(jsonMatch[0]) : { facts: [], decisions: [], tasks: [] };
-    }
+    try { extracted = JSON.parse(text); }
+    catch { const m = text.match(/\{[\s\S]*\}/); extracted = m ? JSON.parse(m[0]) : { facts: [], decisions: [], tasks: [] }; }
 
-    const now = new Date().toISOString();
-    const originalDate = created_at || now;
+    const originalDate = created_at || new Date().toISOString();
     const results = { facts: 0, decisions: 0, tasks: 0, project: extracted.project || null };
 
-    // Store extracted facts
     for (const fact of (extracted.facts || [])) {
       if (!fact.text) continue;
-      await createPage('facts', {
-        Title: { title: richText(fact.text.substring(0, 80)) },
-        Content: { rich_text: richText(fact.text) },
-        Category: { select: selectOrNull(fact.category || 'general') },
-        Tags: { multi_select: multiSelect(extracted.tags || []) },
-        Source: { select: selectOrNull(source || 'manual') },
-        Confirmed: { checkbox: false },
-        'Created At': { date: dateOrNull(originalDate) },
-        'Updated At': { date: dateOrNull(now) },
-      });
+      await query(
+        'INSERT INTO facts (title, content, category, tags, source, confirmed, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, false, $6)',
+        [fact.text.substring(0, 80), fact.text, fact.category || 'general',
+         JSON.stringify(extracted.tags || []), source || 'manual', originalDate]
+      );
       results.facts++;
     }
 
-    // Store extracted decisions as knowledge
     for (const decision of (extracted.decisions || [])) {
       if (!decision.title && !decision.content) continue;
-      await createPage('knowledge', {
-        Title: { title: richText(decision.title || decision.content.substring(0, 80)) },
-        Content: { rich_text: richText(decision.content || decision.title) },
-        Category: { select: selectOrNull(decision.category || 'decision') },
-        Tags: { multi_select: multiSelect(extracted.tags || []) },
-        Source: { select: selectOrNull(source || 'manual') },
-        'AI Source': { select: selectOrNull(source) },
-        'Created At': { date: dateOrNull(originalDate) },
-        'Updated At': { date: dateOrNull(now) },
-      });
+      await query(
+        'INSERT INTO knowledge (title, content, category, tags, source, ai_source, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)',
+        [decision.title || (decision.content || '').substring(0, 80), decision.content || decision.title,
+         decision.category || 'decision', JSON.stringify(extracted.tags || []),
+         source || 'manual', source, originalDate]
+      );
       results.decisions++;
     }
 
-    // Store extracted tasks
     for (const task of (extracted.tasks || [])) {
       if (!task.title) continue;
-      await createPage('tasks', {
-        Title: { title: richText(task.title) },
-        Status: { select: selectOrNull('todo') },
-        Priority: { select: selectOrNull(task.priority || 'medium') },
-        'AI Agent': { select: selectOrNull(source) },
-        'Created At': { date: dateOrNull(originalDate) },
-        'Updated At': { date: dateOrNull(now) },
-      });
+      await query(
+        'INSERT INTO tasks (title, status, priority, ai_agent) VALUES ($1, $2, $3, $4)',
+        [task.title, 'todo', task.priority || 'medium', source]
+      );
       results.tasks++;
     }
 
     await logActivity('create', 'intake-distill', 'distill', source,
       `Distilled "${title}": ${results.facts}F ${results.decisions}D ${results.tasks}T`);
 
-    res.json({
-      message: 'Distillation complete',
-      extracted: results,
-      project: extracted.project,
-      tags: extracted.tags || [],
-    });
+    res.json({ message: 'Distillation complete', extracted: results, project: extracted.project, tags: extracted.tags || [] });
   } catch (err) {
     console.error('[distill] Error:', err.message);
     res.status(500).json({ error: err.message });

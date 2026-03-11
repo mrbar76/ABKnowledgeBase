@@ -1,40 +1,27 @@
 const express = require('express');
-const {
-  queryDatabase, createPage, getPage, updatePage, archivePage,
-  pageToProject, pageToTask, richText, dateOrNull, selectOrNull, logActivity
-} = require('../notion');
+const { query, logActivity } = require('../db');
 const router = express.Router();
 
-// List projects
 router.get('/', async (req, res) => {
   try {
     const { status } = req.query;
-    const filter = status
-      ? { property: 'Status', select: { equals: status } }
-      : undefined;
+    const params = status ? [status] : [];
+    const where = status ? 'WHERE p.status = $1' : '';
 
-    const result = await queryDatabase('projects', filter,
-      [{ property: 'Updated At', direction: 'descending' }]);
+    const result = await query(`
+      SELECT p.*,
+        COUNT(CASE WHEN t.status = 'todo' THEN 1 END)::int as todo,
+        COUNT(CASE WHEN t.status = 'in_progress' THEN 1 END)::int as in_progress,
+        COUNT(CASE WHEN t.status = 'review' THEN 1 END)::int as review,
+        COUNT(CASE WHEN t.status = 'done' THEN 1 END)::int as done
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      ${where}
+      GROUP BY p.id ORDER BY p.updated_at DESC`, params);
 
-    const projects = result.results.map(pageToProject);
-
-    // Get task counts per project
-    for (const project of projects) {
-      try {
-        const tasksResult = await queryDatabase('tasks',
-          { property: 'Project', relation: { contains: project.id } },
-          undefined, 100);
-        const tasks = tasksResult.results.map(pageToTask);
-        project.task_counts = {
-          todo: tasks.filter(t => t.status === 'todo').length,
-          in_progress: tasks.filter(t => t.status === 'in_progress').length,
-          review: tasks.filter(t => t.status === 'review').length,
-          done: tasks.filter(t => t.status === 'done').length,
-        };
-      } catch {
-        project.task_counts = { todo: 0, in_progress: 0, review: 0, done: 0 };
-      }
-    }
+    const projects = result.rows.map(r => ({
+      ...r,
+      task_counts: { todo: r.todo, in_progress: r.in_progress, review: r.review, done: r.done }
+    }));
 
     res.json({ count: projects.length, projects });
   } catch (err) {
@@ -42,74 +29,66 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get single project with tasks
 router.get('/:id', async (req, res) => {
   try {
-    const page = await getPage(req.params.id);
-    if (page.archived) return res.status(404).json({ error: 'Not found' });
-    const project = pageToProject(page);
+    const projResult = await query('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+    if (!projResult.rows.length) return res.status(404).json({ error: 'Not found' });
 
-    const tasksResult = await queryDatabase('tasks',
-      { property: 'Project', relation: { contains: req.params.id } },
-      [{ property: 'Created At', direction: 'ascending' }], 100);
+    const tasksResult = await query(
+      `SELECT * FROM tasks WHERE project_id = $1
+       ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at ASC`,
+      [req.params.id]
+    );
 
-    project.tasks = tasksResult.results.map(pageToTask);
-    res.json(project);
+    res.json({ ...projResult.rows[0], tasks: tasksResult.rows });
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });
 
-// Create project
 router.post('/', async (req, res) => {
   try {
     const { name, description, status } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
-    const now = new Date().toISOString();
-    const page = await createPage('projects', {
-      Name: { title: richText(name) },
-      Description: { rich_text: richText(description || '') },
-      Status: { select: selectOrNull(status || 'active') },
-      'Created At': { date: dateOrNull(now) },
-      'Updated At': { date: dateOrNull(now) },
-    });
+    const result = await query(
+      'INSERT INTO projects (name, description, status) VALUES ($1, $2, $3) RETURNING id',
+      [name, description || null, status || 'active']
+    );
 
-    await logActivity('create', 'project', page.id, null, `Created project: ${name}`);
-    res.status(201).json({ id: page.id, message: 'Project created' });
+    await logActivity('create', 'project', result.rows[0].id, null, `Created project: ${name}`);
+    res.status(201).json({ id: result.rows[0].id, message: 'Project created' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Update project
 router.put('/:id', async (req, res) => {
   try {
-    const existing = await getPage(req.params.id);
-    if (existing.archived) return res.status(404).json({ error: 'Not found' });
-
     const { name, description, status } = req.body;
-    const props = { 'Updated At': { date: dateOrNull(new Date()) } };
-    if (name) props.Name = { title: richText(name) };
-    if (description !== undefined) props.Description = { rich_text: richText(description) };
-    if (status) props.Status = { select: selectOrNull(status) };
+    const sets = ['updated_at = NOW()'];
+    const params = [];
+    let i = 1;
 
-    await updatePage(req.params.id, props);
+    if (name !== undefined) { sets.push(`name = $${i++}`); params.push(name); }
+    if (description !== undefined) { sets.push(`description = $${i++}`); params.push(description); }
+    if (status !== undefined) { sets.push(`status = $${i++}`); params.push(status); }
+
+    params.push(req.params.id);
+    const result = await query(`UPDATE projects SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`, params);
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Project updated' });
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delete project
 router.delete('/:id', async (req, res) => {
   try {
-    await archivePage(req.params.id);
+    const result = await query('DELETE FROM projects WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Project deleted' });
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: err.message });
   }
 });
