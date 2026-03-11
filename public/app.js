@@ -393,23 +393,40 @@ async function runCleanup() {
   btn.disabled = true;
   resultEl.style.display = 'block';
   resultEl.style.color = 'var(--text-dim)';
-  resultEl.textContent = 'Cleaning up...';
+  resultEl.textContent = 'Cleaning up orphaned databases...';
 
   try {
-    const data = await api('/cleanup', { method: 'POST' });
-    resultEl.style.color = 'var(--green)';
-    let msg = data.message;
-    if (data.archived?.length) {
-      msg += '\n' + data.archived.map(a => `Archived: ${a.name}`).join('\n');
-    }
-    if (data.not_found?.length) {
-      msg += '\nAlready clean: ' + data.not_found.join(', ');
-    }
-    resultEl.textContent = msg;
+    await api('/cleanup', { method: 'POST' });
+    const poll = async () => {
+      const status = await api('/cleanup/status');
+      if (status.status === 'running') {
+        setTimeout(poll, 1500);
+      } else if (status.status === 'done') {
+        if (status.error) {
+          resultEl.style.color = 'var(--red)';
+          resultEl.textContent = `Cleanup error: ${status.error}`;
+        } else {
+          resultEl.style.color = 'var(--green)';
+          let msg = status.message || 'Cleanup complete';
+          if (status.archived?.length) {
+            msg += '\n' + status.archived.map(a => `Archived: ${a.name}`).join('\n');
+          }
+          if (status.not_found?.length) {
+            msg += '\nAlready clean: ' + status.not_found.join(', ');
+          }
+          resultEl.textContent = msg;
+        }
+        btn.disabled = false;
+      } else {
+        resultEl.style.color = 'var(--green)';
+        resultEl.textContent = 'Cleanup complete.';
+        btn.disabled = false;
+      }
+    };
+    setTimeout(poll, 2000);
   } catch (err) {
     resultEl.style.color = 'var(--red)';
     resultEl.textContent = `Cleanup failed: ${err.message}`;
-  } finally {
     btn.disabled = false;
   }
 }

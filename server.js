@@ -190,7 +190,17 @@ app.post('/api/setup-missing', async (req, res) => {
 
 // ─── Cleanup: archive orphaned Notion databases ───────────────────
 // POST /api/cleanup — finds and archives databases that are no longer used
+const cleanupState = { running: false, result: null };
+
 app.post('/api/cleanup', async (req, res) => {
+  if (cleanupState.running) {
+    return res.json({ status: 'running' });
+  }
+
+  cleanupState.running = true;
+  cleanupState.result = null;
+  res.json({ status: 'started' });
+
   try {
     initNotion();
     const n = getClient();
@@ -205,7 +215,7 @@ app.post('/api/cleanup', async (req, res) => {
       try {
         const searchRes = await rateLimited(() => n.search({
           query: name,
-          filter: { value: 'data_source', property: 'object' },
+          filter: { value: 'database', property: 'object' },
           page_size: 5,
         }));
 
@@ -230,14 +240,26 @@ app.post('/api/cleanup', async (req, res) => {
       }
     }
 
-    res.json({
+    cleanupState.result = {
       message: `Archived ${archived.length} orphaned database(s)`,
       archived,
       not_found: notFound,
-    });
+    };
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    cleanupState.result = { error: err.message };
+  } finally {
+    cleanupState.running = false;
   }
+});
+
+app.get('/api/cleanup/status', (req, res) => {
+  if (cleanupState.running) return res.json({ status: 'running' });
+  if (cleanupState.result) {
+    const result = cleanupState.result;
+    cleanupState.result = null;
+    return res.json({ status: 'done', ...result });
+  }
+  res.json({ status: 'idle' });
 });
 
 // ─── Purge: clear all entries from a Notion database ──────────────
