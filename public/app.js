@@ -601,6 +601,8 @@ async function loadTranscripts(searchQuery) {
         ${data.transcripts.length ? data.transcripts.map(t => {
           const summary = t.summary || t.preview || '';
           const loc = t.location ? t.location.split(',').slice(0,2).join(',') : '';
+          const meta = t.metadata || {};
+          const speakers = meta.speakers || [];
           const rd = t.recorded_at || t.created_at;
           const rdObj = rd ? new Date(rd) : null;
           const dateLabel = rdObj ? rdObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -608,6 +610,7 @@ async function loadTranscripts(searchQuery) {
           return `
           <div class="list-item transcript-card" onclick="showTranscriptDetail('${t.id}')">
             <div class="list-item-title">${esc(t.title)}</div>
+            ${speakers.length ? `<div class="transcript-speakers">${speakers.map(s => `<span class="speaker-tag">${esc(s)}</span>`).join('')}</div>` : ''}
             ${summary ? `<div class="transcript-summary">${esc(summary.substring(0, 300))}</div>` : ''}
             <div class="list-item-meta">
               <span>${t.source || 'bee'}</span>
@@ -643,15 +646,20 @@ async function showTranscriptDetail(id) {
       dateStr += ` &middot; ${startTime}${endTime ? ' – ' + endTime : ''}`;
     }
 
+    // Also get speaker names from the speakers array if metadata doesn't have them
+    const speakerNames = meta.speakers && meta.speakers.length
+      ? meta.speakers
+      : (t.speakers && t.speakers.length ? [...new Set(t.speakers.map(s => s.speaker_name))] : []);
+
     let bodyHtml = '<div class="transcript-detail-meta">';
     if (dateStr) bodyHtml += `<div style="font-size:0.85rem;font-weight:600;margin-bottom:4px">${dateStr}</div>`;
     bodyHtml += '<div class="list-item-meta" style="margin-bottom:2px">';
     bodyHtml += `<span>${t.source || 'bee'}</span>`;
     if (t.duration_seconds) bodyHtml += `<span>${Math.round(t.duration_seconds/60)} min</span>`;
-    if (meta.speaker_count) bodyHtml += `<span>${meta.speaker_count} speakers</span>`;
     if (meta.utterance_count) bodyHtml += `<span>${meta.utterance_count} messages</span>`;
     bodyHtml += '</div>';
-    if (t.location) bodyHtml += `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:2px">${esc(t.location)}</div>`;
+    if (speakerNames.length) bodyHtml += `<div class="transcript-speakers" style="margin-top:6px">${speakerNames.map(s => `<span class="speaker-tag">${esc(s)}</span>`).join('')}</div>`;
+    if (t.location) bodyHtml += `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px">${esc(t.location)}</div>`;
     bodyHtml += '</div>';
 
     // Show summary section if available

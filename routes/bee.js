@@ -184,11 +184,15 @@ async function storeConversation(convo, full, rawResult, client) {
   const location = convo.primary_location?.address || full.primary_location?.address || null;
 
   const endedAt = convo.end_time ? new Date(convo.end_time).toISOString() : null;
+  const speakerNames = rawResult.utterances && rawResult.utterances.length
+    ? [...new Set(rawResult.utterances.map(u => u.speaker || u.speaker_name || u.label || 'Speaker'))]
+    : [];
   const meta = {
     ...(endedAt ? { ended_at: endedAt } : {}),
     ...(full.short_summary ? { short_summary: full.short_summary } : {}),
     ...(convo.short_summary ? { short_summary: convo.short_summary } : {}),
-    speaker_count: rawResult.utterances ? new Set(rawResult.utterances.map(u => u.speaker || u.speaker_name || 'Speaker')).size : 0,
+    speakers: speakerNames,
+    speaker_count: speakerNames.length,
     utterance_count: rawResult.utterances ? rawResult.utterances.length : 0,
   };
 
