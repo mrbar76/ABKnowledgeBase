@@ -308,7 +308,7 @@ body {
   font-size: 0.75rem;
   color: var(--text-dim);
   display: -webkit-box;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -655,7 +655,7 @@ body {
 .brain-search:focus { border-color: var(--accent); }
 .brain-search::placeholder { color: var(--text-dim); }
 
-/* --- Transcript Chat Bubbles --- */
+/* --- Transcript Chat Bubbles (iMessage style) --- */
 .transcript-chat {
   display: flex;
   flex-direction: column;
@@ -665,20 +665,42 @@ body {
   padding: 8px 0;
 }
 .chat-bubble {
-  max-width: 85%;
+  max-width: 78%;
   padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--bg-input);
+  border-radius: 16px;
   font-size: 0.84rem;
   line-height: 1.5;
+  background: var(--bg-input);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.chat-bubble.chat-self {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 4px;
 }
 .chat-speaker {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  color: var(--accent);
-  margin-bottom: 2px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+.chat-speaker.chat-speaker-self {
+  text-align: right;
+  color: rgba(255,255,255,0.6);
 }
 .chat-text { word-break: break-word; }
+
+/* --- Search Highlight --- */
+.search-highlight {
+  background: rgba(234, 179, 8, 0.3);
+  color: var(--yellow);
+  border-radius: 2px;
+  padding: 0 1px;
+}
 
 /* --- Settings Menu (logo tap) --- */
 .settings-menu {

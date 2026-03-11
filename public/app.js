@@ -628,16 +628,22 @@ async function showTranscriptDetail(id) {
       </div>
     `;
 
-    // Show speaker utterances if available
+    // Show speaker utterances if available (iMessage-style: self on right, others on left)
     if (t.speakers && t.speakers.length) {
+      // Detect the primary speaker (most utterances = "self")
+      const speakerCounts = {};
+      for (const s of t.speakers) { speakerCounts[s.speaker_name] = (speakerCounts[s.speaker_name]||0) + 1; }
+      const selfSpeaker = Object.entries(speakerCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+
       bodyHtml += '<div class="transcript-chat">';
       let lastSpeaker = '';
       for (const s of t.speakers) {
         const isNew = s.speaker_name !== lastSpeaker;
         lastSpeaker = s.speaker_name;
+        const isSelf = s.speaker_name === selfSpeaker;
         bodyHtml += `
-          <div class="chat-bubble">
-            ${isNew ? `<div class="chat-speaker">${esc(s.speaker_name)}</div>` : ''}
+          ${isNew ? `<div class="chat-speaker${isSelf?' chat-speaker-self':''}">${esc(s.speaker_name)}</div>` : ''}
+          <div class="chat-bubble${isSelf?' chat-self':''}">
             <div class="chat-text">${esc(s.text)}</div>
           </div>`;
       }
@@ -801,15 +807,43 @@ async function runGlobalSearch(q) {
     const r = data.results;
     if (data.total === 0) { el.innerHTML = '<div class="search-empty">No results</div>'; return; }
     let html = '';
-    if (r.knowledge?.length) html += renderSearchGroup('Knowledge', r.knowledge, i => `<div class="search-result-item"><div class="search-result-title">${i.ai_source?`<span class="k-source-badge source-${i.ai_source}">${i.ai_source}</span>`:''}${esc(i.title)}</div><div class="search-result-preview">${esc((i.content||'').substring(0,200))}</div></div>`);
-    if (r.facts?.length) html += renderSearchGroup('Facts', r.facts, i => `<div class="search-result-item"><div class="search-result-title">${esc(i.title)}</div><div class="search-result-preview">${esc((i.content||'').substring(0,200))}</div></div>`);
-    if (r.transcripts?.length) html += renderSearchGroup('Transcripts', r.transcripts, i => `<div class="search-result-item"><div class="search-result-title">${esc(i.title)}</div><div class="search-result-preview">${esc((i.summary||'').substring(0,200))}</div></div>`);
-    if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${esc(i.title)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
-    if (r.projects?.length) html += renderSearchGroup('Projects', r.projects, i => `<div class="search-result-item"><div class="search-result-title">${esc(i.title||i.name)}</div></div>`);
+    if (r.knowledge?.length) html += renderSearchGroup('Knowledge', r.knowledge, i => `<div class="search-result-item"><div class="search-result-title">${i.ai_source?`<span class="k-source-badge source-${i.ai_source}">${i.ai_source}</span>`:''}${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.content||'',q)}</div></div>`);
+    if (r.facts?.length) html += renderSearchGroup('Facts', r.facts, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.content||'',q)}</div></div>`);
+    if (r.transcripts?.length) html += renderSearchGroup('Transcripts', r.transcripts, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.summary||'',q)}</div></div>`);
+    if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
+    if (r.projects?.length) html += renderSearchGroup('Projects', r.projects, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title||i.name,q)}</div></div>`);
     el.innerHTML = html || '<div class="search-empty">No results</div>';
   } catch (e) { el.innerHTML = `<div class="search-empty">${esc(e.message)}</div>`; }
 }
 function renderSearchGroup(label, items, fn) { return `<div class="search-group-label">${label} (${items.length})</div>` + items.map(fn).join(''); }
+
+// Highlight search terms in text (safe: escapes HTML first, then wraps matches)
+function highlightText(text, query) {
+  if (!text || !query) return esc(text);
+  const escaped = esc(text);
+  const words = query.trim().split(/\s+/).filter(w => w.length > 1);
+  if (!words.length) return escaped;
+  const re = new RegExp('(' + words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+  return escaped.replace(re, '<span class="search-highlight">$1</span>');
+}
+
+// Show a snippet of text centered around the first match, with highlighting
+function searchSnippet(text, query, maxLen) {
+  maxLen = maxLen || 200;
+  if (!text || !query) return esc((text||'').substring(0, maxLen));
+  const lower = text.toLowerCase();
+  const words = query.trim().split(/\s+/).filter(w => w.length > 1);
+  let matchIdx = -1;
+  for (const w of words) { const idx = lower.indexOf(w.toLowerCase()); if (idx !== -1) { matchIdx = idx; break; } }
+  let snippet;
+  if (matchIdx === -1) {
+    snippet = text.substring(0, maxLen);
+  } else {
+    const start = Math.max(0, matchIdx - 60);
+    snippet = (start > 0 ? '...' : '') + text.substring(start, start + maxLen) + (start + maxLen < text.length ? '...' : '');
+  }
+  return highlightText(snippet, query);
+}
 
 // ─── Modal ────────────────────────────────────────────────────
 function openModal(title, bodyHtml) { document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-overlay').classList.add('open'); }
