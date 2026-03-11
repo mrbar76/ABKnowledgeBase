@@ -419,7 +419,10 @@ function multiSelect(arr) {
 // ─── CRUD helpers ────────────────────────────────────────────────
 
 async function queryDatabase(dbName, filter, sorts, pageSize = 50, startCursor) {
-  const dbId = getDbId(dbName);
+  let dbId;
+  try { dbId = getDbId(dbName); } catch {
+    return { results: [], has_more: false }; // DB not configured — return empty
+  }
   const body = { page_size: Math.min(pageSize, 100) };
   if (filter) body.filter = filter;
   if (sorts) body.sorts = sorts;
@@ -437,6 +440,8 @@ async function queryDatabase(dbName, filter, sorts, pageSize = 50, startCursor) 
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      // Return empty for 404 (database doesn't exist) instead of crashing
+      if (res.status === 404) return { results: [], has_more: false };
       throw new Error(err.message || `Notion API ${res.status}: ${res.statusText}`);
     }
     return res.json();
@@ -444,9 +449,13 @@ async function queryDatabase(dbName, filter, sorts, pageSize = 50, startCursor) 
 }
 
 async function createPage(dbName, properties, children) {
+  let dbId;
+  try { dbId = getDbId(dbName); } catch (e) {
+    throw new Error(`Cannot create page: ${dbName} database not configured`);
+  }
   const n = getClient();
   const params = {
-    parent: { database_id: getDbId(dbName) },
+    parent: { database_id: dbId },
     properties,
   };
   if (children) params.children = children;
