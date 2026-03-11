@@ -159,18 +159,46 @@ CRITICAL REASONING RULES for name usage:
 2. If Speaker A says "I'm John" or "My name is John" — then Speaker A IS John.
 3. If Speaker A says "John told me..." referring to someone not in the conversation — do NOT assign "John" to any speaker.
 4. If Speaker A says "Thanks Sarah" — Sarah is the person being thanked, NOT Speaker A.
-5. People rarely say their own name. When a name appears, it almost always refers to the OTHER person in the conversation.
+5. People rarely say their own name. When a name appears, it almost always refers to someone ELSE.
 6. In a 2-person conversation: if one speaker uses a name, that name belongs to the OTHER speaker.
+7. In a multi-speaker conversation (3+ people): a name used by Speaker A could belong to ANY of the other speakers — use surrounding context to determine which one.
+8. In meetings with many speakers: look for introductions, roll calls, or "as [Name] mentioned" patterns to map names to speakers.
 
-ANALYSIS STEPS (follow these in order):
+FIRST — CLASSIFY THE CONTENT:
+Before identifying speakers, determine what type of content this is:
+- "conversation" — a real conversation between people present together
+- "meeting" — a work/business meeting with multiple participants
+- "phone_call" — a phone or video call
+- "movie" — dialogue from a movie being watched
+- "tv_show" — dialogue from a TV show being watched
+- "youtube" — audio from a YouTube video being watched
+- "podcast" — a podcast being listened to
+- "music" — song lyrics or music playing
+- "media_other" — other non-conversation media
+
+Clues for MEDIA (not a real conversation):
+- Dramatic/scripted-sounding dialogue, sound effects described
+- Famous character or actor names
+- Narration or voiceover style speech
+- Background music mentions, laugh tracks
+- Repetitive/lyrical content (music)
+- Very polished/rehearsed speaking (podcast/YouTube)
+- One speaker doing most of the talking in a presentation style (YouTube/podcast)
+- Content that sounds like it's being watched/listened to rather than participated in
+
+THEN — IDENTIFY SPEAKERS (follow these steps):
 1. List every name mentioned in the transcript
 2. For each name, identify WHO SAID IT and WHETHER they are addressing someone or referring to themselves
-3. Cross-reference: if Unknown says "John", then the OTHER speaker is likely John
+3. Cross-reference: if Speaker A says "John", then a DIFFERENT speaker is likely John
 4. Check for self-introductions ("I'm...", "This is...", "My name is...")
-5. Consider context: workplace vs casual, family dynamics, etc.
+5. In multi-speaker scenarios, use process of elimination
+6. Consider context: workplace meeting vs casual, family dynamics, etc.
 
 Return ONLY valid JSON:
 {
+  "content_type": "conversation" | "meeting" | "phone_call" | "movie" | "tv_show" | "youtube" | "podcast" | "music" | "media_other",
+  "content_type_confidence": "high" | "medium" | "low",
+  "content_type_reasoning": "why you classified it this way",
   "identifications": {
     "<original_label>": {
       "likely_name": "their real name or best guess",
@@ -186,7 +214,8 @@ Rules:
 - If Speaker A addresses someone as "John", assign "John" to a DIFFERENT speaker label
 - If you truly cannot determine identity, keep the original label and mark low confidence
 - Do NOT invent names — only use names actually found in the transcript text
-- Provide the specific quote that led to your identification in the reasoning field` },
+- Provide the specific quote that led to your identification in the reasoning field
+- For media content (movie, tv_show, youtube, podcast, music): use character/host names if identifiable` },
         { role: 'user', content: excerpt || t.raw_text.substring(0, 8000) },
       ],
     });
@@ -206,8 +235,15 @@ Rules:
       }
     }
 
+    // Store content type classification
+    const contentType = result.content_type || 'conversation';
+    const isMedia = ['movie', 'tv_show', 'youtube', 'podcast', 'music', 'media_other'].includes(contentType);
+    const existingTags = Array.isArray(t.tags) ? t.tags : [];
+    const newTags = [...new Set([...existingTags, contentType])];
+    if (isMedia && !existingTags.includes('media')) newTags.push('media');
+
     // Update speaker names in the database if we have renames
-    if (Object.keys(renames).length > 0) {
+    if (Object.keys(renames).length > 0 || contentType !== 'conversation') {
       for (const [oldName, newName] of Object.entries(renames)) {
         await query(
           'UPDATE transcript_speakers SET speaker_name = $1 WHERE transcript_id = $2 AND speaker_name = $3',
@@ -215,18 +251,25 @@ Rules:
         );
       }
 
-      // Update metadata with new speaker names
+      // Update metadata with new speaker names and content type
       const newSpeakerNames = uniqueSpeakers.map(s => renames[s] || s);
       const meta = t.metadata || {};
       meta.speakers = [...new Set(newSpeakerNames)];
       meta.speaker_count = meta.speakers.length;
       meta.ai_speaker_identification = identifications;
+      meta.content_type = contentType;
+      meta.content_type_confidence = result.content_type_confidence || null;
+      meta.content_type_reasoning = result.content_type_reasoning || null;
+      meta.is_media = isMedia;
       await query(
-        'UPDATE transcripts SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
-        [JSON.stringify(meta), req.params.id]
+        'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
+        [JSON.stringify(meta), JSON.stringify(newTags), req.params.id]
       );
 
-      await logActivity('update', 'transcript', req.params.id, 'openai', `AI identified speakers: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+      const logParts = [];
+      if (Object.keys(renames).length > 0) logParts.push(`speakers: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+      logParts.push(`type: ${contentType}`);
+      await logActivity('update', 'transcript', req.params.id, 'openai', `AI identified ${logParts.join('; ')}`);
     }
 
     res.json({
@@ -325,18 +368,33 @@ CRITICAL REASONING RULES for name usage:
 2. If Speaker A says "I'm John" or "My name is John" — then Speaker A IS John.
 3. If Speaker A says "John told me..." referring to someone not present — do NOT assign "John" to any speaker from that reference alone.
 4. If Speaker A says "Thanks Sarah" — Sarah is the person being thanked, NOT Speaker A.
-5. People rarely say their own name. When a name appears, it almost always refers to the OTHER person.
+5. People rarely say their own name. When a name appears, it almost always refers to someone ELSE.
 6. In a 2-person conversation: if one speaker uses a name, that name belongs to the OTHER speaker.
+7. In a multi-speaker conversation (3+ people): a name used by Speaker A could belong to ANY of the other speakers — use surrounding context to determine which one.
+8. In meetings with many speakers: look for introductions, roll calls, or "as [Name] mentioned" patterns.
 
-ANALYSIS STEPS:
+FIRST — CLASSIFY THE CONTENT TYPE:
+- "conversation" — real conversation between people present together
+- "meeting" — a work/business meeting with multiple participants
+- "phone_call" — a phone or video call
+- "movie" — dialogue from a movie being watched
+- "tv_show" — dialogue from a TV show
+- "youtube" — audio from a YouTube video
+- "podcast" — a podcast being listened to
+- "music" — song lyrics or music
+- "media_other" — other non-conversation media
+
+THEN — IDENTIFY SPEAKERS:
 1. List every name from the known list that appears in the transcript
-2. For each mention, note WHO SAID the name and whether they are addressing someone or referring to themselves
+2. For each mention, note WHO SAID the name and whether they are addressing someone or themselves
 3. Cross-reference: if Speaker A says "John", then a DIFFERENT speaker is John
 4. Check for self-introductions ("I'm...", "This is...", "My name is...")
 5. Use process of elimination with the known participant list
 
 Return ONLY valid JSON:
 {
+  "content_type": "conversation" | "meeting" | "phone_call" | "movie" | "tv_show" | "youtube" | "podcast" | "music" | "media_other",
+  "content_type_confidence": "high" | "medium" | "low",
   "identifications": {
     "<original_label>": {
       "likely_name": "name from the known list",
@@ -371,7 +429,14 @@ Rules:
       }
     }
 
-    if (Object.keys(renames).length > 0) {
+    // Store content type classification
+    const contentType = result.content_type || 'conversation';
+    const isMedia = ['movie', 'tv_show', 'youtube', 'podcast', 'music', 'media_other'].includes(contentType);
+    const existingTags = Array.isArray(t.tags) ? t.tags : [];
+    const newTags = [...new Set([...existingTags, contentType])];
+    if (isMedia && !existingTags.includes('media')) newTags.push('media');
+
+    if (Object.keys(renames).length > 0 || contentType !== 'conversation') {
       for (const [oldName, newName] of Object.entries(renames)) {
         await query(
           'UPDATE transcript_speakers SET speaker_name = $1 WHERE transcript_id = $2 AND speaker_name = $3',
@@ -384,12 +449,17 @@ Rules:
       meta.speaker_count = meta.speakers.length;
       meta.ai_speaker_identification = identifications;
       meta.known_participants = known_names;
+      meta.content_type = contentType;
+      meta.content_type_confidence = result.content_type_confidence || null;
+      meta.is_media = isMedia;
       await query(
-        'UPDATE transcripts SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
-        [JSON.stringify(meta), req.params.id]
+        'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
+        [JSON.stringify(meta), JSON.stringify(newTags), req.params.id]
       );
-      await logActivity('update', 'transcript', req.params.id, 'openai',
-        `AI re-identified with hints [${known_names.join(',')}]: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+      const logParts = [`hints: [${known_names.join(',')}]`];
+      if (Object.keys(renames).length > 0) logParts.push(Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', '));
+      logParts.push(`type: ${contentType}`);
+      await logActivity('update', 'transcript', req.params.id, 'openai', `AI re-identified: ${logParts.join('; ')}`);
     }
 
     res.json({
