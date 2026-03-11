@@ -659,102 +659,67 @@ router.post('/sync-chunk', async (req, res) => {
   res.json(result);
 });
 
-// ─── Sync conversations by date range (batch import) ──────────────────
+// ─── Sync conversations by date range (chunked — one page per request) ──────
 
 router.post('/sync-conversations', async (req, res) => {
   const beeToken = getBeeToken(req);
   if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
-  const { start_date, end_date, force } = req.body;
-  // Default: last 6 months if no dates specified
-  const endDt = end_date ? new Date(end_date) : new Date();
-  const startDt = start_date ? new Date(start_date) : new Date(endDt.getTime() - 180 * 24 * 60 * 60 * 1000);
+  const { start_date, end_date, force, cursor } = req.body;
+  // Default: Dec 2025 to now
+  const endStr = end_date || new Date().toISOString().split('T')[0];
+  const startStr = start_date || '2025-12-01';
 
-  const result = { imported: 0, skipped: 0, errors: [], months_processed: 0, total_found: 0 };
-  const allTranscriptIds = [];
+  const result = { imported: 0, skipped: 0, errors: [], total_found: 0, cursor: null, done: false };
+  const newTranscriptIds = [];
 
   try {
-    // Generate month ranges from startDt to endDt
-    const months = [];
-    let cur = new Date(startDt.getFullYear(), startDt.getMonth(), 1);
-    while (cur <= endDt) {
-      const monthStart = cur.toISOString().split('T')[0];
-      const nextMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-      const monthEnd = nextMonth > endDt ? endDt.toISOString().split('T')[0] : nextMonth.toISOString().split('T')[0];
-      months.push({ start: monthStart, end: monthEnd });
-      cur = nextMonth;
-    }
+    let url = `/v1/conversations?limit=50&created_after=${startStr}&created_before=${endStr}`;
+    if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
 
-    for (const month of months) {
-      let cursor = null;
-      let monthImported = 0;
-      do {
-        try {
-          let url = `/v1/conversations?limit=50&created_after=${month.start}&created_before=${month.end}`;
-          if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
-          const data = await beeApiGet(url, beeToken, 60000);
-          const convos = extractArray(data, 'conversations');
-          cursor = data.next_cursor || null;
-          result.total_found += convos.length;
+    console.log(`[sync-conv] Fetching: ${url}`);
+    const data = await beeApiGet(url, beeToken, 60000);
+    const convos = extractArray(data, 'conversations');
+    result.cursor = data.next_cursor || null;
+    result.total_found = convos.length;
+    if (!result.cursor) result.done = true;
 
-          for (const convo of convos) {
-            if (!convo.id) continue;
-            if (convo.state === 'CAPTURING') { result.skipped++; continue; }
-            if (!force && await findExistingTranscript(convo.id)) { result.skipped++; continue; }
+    for (const convo of convos) {
+      if (!convo.id) continue;
+      if (convo.state === 'CAPTURING') { result.skipped++; continue; }
+      if (!force && await findExistingTranscript(convo.id)) { result.skipped++; continue; }
 
-            let full = convo;
-            try {
-              const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000);
-              full = d.conversation || d;
-            } catch (e) {
-              console.log(`[sync-conv] detail fetch failed for ${convo.id}: ${e.message}`);
-              // Continue with list-level data
-            }
-            const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
-            if (!rawResult.text) {
-              console.log(`[sync-conv] ${convo.id} no text, detail keys: ${Object.keys(full).join(',')}`);
-              result.skipped++;
-              continue;
-            }
-            const tid = await storeConversation(convo, full, rawResult);
-            allTranscriptIds.push(tid);
-            result.imported++;
-            monthImported++;
-          }
-        } catch (e) {
-          result.errors.push(`${month.start}: ${e.message}`);
-          break; // Move to next month on error
-        }
-      } while (cursor);
-
-      result.months_processed++;
-      console.log(`[sync-conv] ${month.start}: ${monthImported} imported`);
+      let full = convo;
+      try {
+        const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000);
+        full = d.conversation || d;
+      } catch (e) {
+        console.log(`[sync-conv] detail fetch failed for ${convo.id}: ${e.message}`);
+      }
+      const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
+      if (!rawResult.text) {
+        console.log(`[sync-conv] ${convo.id} no text, detail keys: ${Object.keys(full).join(',')}`);
+        result.skipped++;
+        continue;
+      }
+      const tid = await storeConversation(convo, full, rawResult);
+      newTranscriptIds.push(tid);
+      result.imported++;
     }
   } catch (e) {
-    result.errors.push(`Overall: ${e.message}`);
+    result.errors.push(e.message);
   }
 
-  await logActivity('sync', 'bee-import', 'conversations-by-date', 'bee',
-    `Conv date sync: ${result.imported} imported, ${result.skipped} skipped, ${result.months_processed} months`);
+  console.log(`[sync-conv] page: imported=${result.imported} skipped=${result.skipped} done=${result.done}`);
+  res.json({ ...result, date_range: { start: startStr, end: endStr } });
 
-  res.json({
-    message: `Synced conversations from ${startDt.toISOString().split('T')[0]} to ${endDt.toISOString().split('T')[0]}`,
-    ...result,
-    autoIdentifyQueued: allTranscriptIds.length,
-    date_range: { start: startDt.toISOString().split('T')[0], end: endDt.toISOString().split('T')[0] }
-  });
-
-  // Fire-and-forget: auto-identify speakers on all new transcripts
-  if (allTranscriptIds.length > 0) {
-    console.log(`[sync-conv] Queuing auto-identify for ${allTranscriptIds.length} transcripts`);
-    (async () => {
-      let identified = 0;
-      for (const tid of allTranscriptIds) {
-        await autoIdentifySpeakers(tid);
-        identified++;
-        if (identified % 10 === 0) console.log(`[sync-conv] Auto-identify progress: ${identified}/${allTranscriptIds.length}`);
-      }
-      console.log(`[sync-conv] Auto-identify complete: ${identified} transcripts processed`);
-    })().catch(e => console.error('[sync-conv] Auto-identify batch error:', e.message));
+  // Fire-and-forget: auto-identify speakers on new transcripts from this page
+  if (newTranscriptIds.length > 0) {
+    setImmediate(() => {
+      (async () => {
+        for (const tid of newTranscriptIds) await autoIdentifySpeakers(tid);
+        console.log(`[sync-conv] Auto-identify done for ${newTranscriptIds.length} transcripts`);
+      })().catch(e => console.error('[sync-conv] Auto-identify error:', e.message));
+    });
   }
 });
 

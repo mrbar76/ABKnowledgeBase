@@ -227,6 +227,155 @@ Rules:
   }
 });
 
+// ─── Manual speaker rename ──────────────────────────────────
+router.post('/:id/rename-speaker', async (req, res) => {
+  try {
+    const { old_name, new_name } = req.body;
+    if (!old_name || !new_name) return res.status(400).json({ error: 'old_name and new_name required' });
+
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const t = transcriptResult.rows[0];
+
+    // Update speaker utterances
+    const updateResult = await query(
+      'UPDATE transcript_speakers SET speaker_name = $1 WHERE transcript_id = $2 AND speaker_name = $3',
+      [new_name.trim(), req.params.id, old_name]
+    );
+
+    // Update metadata speakers array
+    const meta = t.metadata || {};
+    if (meta.speakers && Array.isArray(meta.speakers)) {
+      meta.speakers = [...new Set(meta.speakers.map(s => s === old_name ? new_name.trim() : s))];
+      meta.speaker_count = meta.speakers.length;
+    }
+    await query(
+      'UPDATE transcripts SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(meta), req.params.id]
+    );
+
+    await logActivity('update', 'transcript', req.params.id, 'manual',
+      `Renamed speaker: ${old_name} → ${new_name.trim()}`);
+
+    res.json({
+      message: `Renamed "${old_name}" to "${new_name.trim()}"`,
+      utterances_updated: updateResult.rowCount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Re-identify speakers with hints ──────────────────────────
+router.post('/:id/identify-speakers-with-hints', async (req, res) => {
+  try {
+    const { known_names } = req.body;
+    if (!known_names || !known_names.length) return res.status(400).json({ error: 'known_names array required (e.g. ["Tyler", "Gregg", "Craig"])' });
+
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const t = transcriptResult.rows[0];
+
+    const speakersResult = await query(
+      'SELECT * FROM transcript_speakers WHERE transcript_id = $1 ORDER BY utterance_index',
+      [req.params.id]
+    );
+    const speakers = speakersResult.rows;
+    if (!speakers.length && !t.raw_text) return res.status(400).json({ error: 'No transcript content' });
+
+    const uniqueSpeakers = [...new Set(speakers.map(s => s.speaker_name))];
+    const excerpt = speakers.slice(0, 120).map(s => `${s.speaker_name}: ${s.text}`).join('\n');
+
+    const OpenAI = require('openai');
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+    const openai = new OpenAI({ apiKey: key });
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 800,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `You are analyzing a conversation transcript to identify speakers.
+
+The conversation has these speaker labels: ${uniqueSpeakers.join(', ')}
+${t.location ? `Location: ${t.location}` : ''}
+${t.title ? `Topic: ${t.title}` : ''}
+
+IMPORTANT: The user has confirmed these people were in the conversation: ${known_names.join(', ')}
+
+Your job is to match each speaker label to the correct person from the known list. Analyze speaking patterns, topics, who addresses whom, and any name mentions to make the best assignment.
+
+Return ONLY valid JSON:
+{
+  "identifications": {
+    "<original_label>": {
+      "likely_name": "name from the known list or original if truly unidentifiable",
+      "confidence": "high" | "medium" | "low",
+      "reasoning": "brief reason"
+    }
+  },
+  "relationship_notes": "brief note about the conversation dynamics"
+}
+
+Rules:
+- Try to assign every speaker label to someone from the known list: ${known_names.join(', ')}
+- Use conversation clues: who speaks first, who is addressed by name, speaking style
+- If a label already matches a known name, confirm it as high confidence
+- If you cannot determine, mark as low confidence but still try your best guess` },
+        { role: 'user', content: excerpt || t.raw_text.substring(0, 10000) },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    let result;
+    try { result = JSON.parse(text); }
+    catch { const m = text.match(/\{[\s\S]*\}/); result = m ? JSON.parse(m[0]) : { identifications: {} }; }
+
+    const identifications = result.identifications || {};
+    const renames = {};
+    for (const [original, info] of Object.entries(identifications)) {
+      if (info.likely_name && info.likely_name !== original && (info.confidence === 'high' || info.confidence === 'medium')) {
+        renames[original] = info.likely_name;
+      }
+    }
+
+    if (Object.keys(renames).length > 0) {
+      for (const [oldName, newName] of Object.entries(renames)) {
+        await query(
+          'UPDATE transcript_speakers SET speaker_name = $1 WHERE transcript_id = $2 AND speaker_name = $3',
+          [newName, req.params.id, oldName]
+        );
+      }
+      const newSpeakerNames = uniqueSpeakers.map(s => renames[s] || s);
+      const meta = t.metadata || {};
+      meta.speakers = [...new Set(newSpeakerNames)];
+      meta.speaker_count = meta.speakers.length;
+      meta.ai_speaker_identification = identifications;
+      meta.known_participants = known_names;
+      await query(
+        'UPDATE transcripts SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(meta), req.params.id]
+      );
+      await logActivity('update', 'transcript', req.params.id, 'openai',
+        `AI re-identified with hints [${known_names.join(',')}]: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+    }
+
+    res.json({
+      message: Object.keys(renames).length > 0
+        ? `Identified ${Object.keys(renames).length} speaker(s) using hints`
+        : 'No confident matches found even with hints',
+      identifications,
+      renames,
+      relationship_notes: result.relationship_notes || null,
+    });
+  } catch (err) {
+    console.error('[identify-speakers-with-hints] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     const result = await query('DELETE FROM transcripts WHERE id = $1 RETURNING id', [req.params.id]);

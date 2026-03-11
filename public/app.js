@@ -294,7 +294,7 @@ function confirmPurgeFromMenu() {
   });
 }
 
-// ─── Sync Conversations by Date Range ────────────────────────
+// ─── Sync Conversations by Date Range (chunked — page by page) ────────────
 async function syncConversationsByDate() {
   const btn = document.getElementById('sm-btn-sync-convos');
   const resultEl = document.getElementById('sm-conv-sync-result');
@@ -302,37 +302,47 @@ async function syncConversationsByDate() {
   const endInput = document.getElementById('sm-conv-end');
   if (!resultEl) return;
 
-  const body = {};
-  if (startInput && startInput.value) body.start_date = startInput.value;
-  if (endInput && endInput.value) body.end_date = endInput.value;
-  // Default: if no start date, go back to Dec 2025
-  if (!body.start_date) body.start_date = '2025-12-01';
+  const baseBody = {
+    start_date: (startInput && startInput.value) || '2025-12-01',
+    end_date: (endInput && endInput.value) || new Date().toISOString().split('T')[0],
+  };
 
   if (btn) btn.disabled = true;
   resultEl.style.display = 'block';
   resultEl.style.color = 'var(--text-dim)';
   resultEl.textContent = 'Syncing conversations...';
 
-  try {
-    const data = await api('/bee/sync-conversations', { method: 'POST', body: JSON.stringify(body) });
-    const parts = [];
-    if (data.imported) parts.push(`${data.imported} imported`);
-    if (data.skipped) parts.push(`${data.skipped} skipped`);
-    if (data.total_found) parts.push(`${data.total_found} found`);
-    let msg = parts.length ? parts.join(', ') : 'No conversations found';
-    msg += ` (${data.months_processed || 0} months)`;
-    if (data.errors?.length) msg += ` — ${data.errors.length} error(s)`;
-    if (data.autoIdentifyQueued) msg += `\nAI identifying speakers on ${data.autoIdentifyQueued} transcripts...`;
-    resultEl.innerHTML = msg.replace(/\n/g, '<br>');
-    resultEl.style.color = data.errors?.length ? 'var(--yellow)' : 'var(--green)';
-    loadSettingsMenuInfo();
-    if (currentTab === 'home') loadDashboardStats();
-    if (currentTab === 'transcripts') loadTranscripts();
-  } catch (err) {
-    resultEl.textContent = `Failed: ${err.message}`;
-    resultEl.style.color = 'var(--red)';
-  }
+  let cursor = null, totalImported = 0, totalSkipped = 0, pageNum = 0, errors = [];
+  do {
+    pageNum++;
+    try {
+      const body = { ...baseBody };
+      if (cursor) body.cursor = cursor;
+      const data = await api('/bee/sync-conversations', { method: 'POST', body: JSON.stringify(body) });
+      totalImported += (data.imported || 0);
+      totalSkipped += (data.skipped || 0);
+      if (data.errors?.length) errors.push(...data.errors);
+      cursor = data.cursor;
+      resultEl.textContent = `Page ${pageNum}: ${totalImported} imported, ${totalSkipped} skipped...`;
+      if (data.done || !cursor) break;
+    } catch (err) {
+      errors.push(err.message);
+      resultEl.textContent = `Page ${pageNum}: error — ${err.message}`;
+      break;
+    }
+  } while (cursor);
+
+  let msg = totalImported ? `${totalImported} conversations imported` : 'No new conversations';
+  if (totalSkipped) msg += `, ${totalSkipped} skipped`;
+  msg += ` (${pageNum} page${pageNum > 1 ? 's' : ''})`;
+  if (errors.length) msg += ` — ${errors.length} error(s)`;
+  if (totalImported > 0) msg += '\nAI identifying speakers in background...';
+  resultEl.innerHTML = msg.replace(/\n/g, '<br>');
+  resultEl.style.color = errors.length ? 'var(--yellow)' : 'var(--green)';
   if (btn) btn.disabled = false;
+  loadSettingsMenuInfo();
+  if (currentTab === 'home') loadDashboardStats();
+  if (currentTab === 'transcripts') loadTranscripts();
 }
 
 // ─── Debug / Diagnostics Panel ───────────────────────────────
@@ -781,8 +791,13 @@ async function showTranscriptDetail(id) {
     bodyHtml += '</div>';
     const hasUnknown = speakerNames.some(s => /unknown|speaker/i.test(s));
     if (speakerNames.length) {
-      bodyHtml += `<div class="transcript-speakers" style="margin-top:6px">${speakerNames.map(s => `<span class="speaker-tag">${esc(s)}</span>`).join('')}`;
-      if (hasUnknown) bodyHtml += ` <button class="btn-identify-speakers" id="btn-identify-${id}" onclick="identifySpeakers('${id}')">Identify</button>`;
+      bodyHtml += `<div class="transcript-speakers" style="margin-top:6px">${speakerNames.map(s =>
+        `<span class="speaker-tag" style="cursor:pointer" onclick="renameSpeaker('${id}','${esc(s).replace(/'/g, "\\'")}')" title="Tap to rename">${esc(s)}</span>`
+      ).join('')}`;
+      if (hasUnknown) {
+        bodyHtml += ` <button class="btn-identify-speakers" id="btn-identify-${id}" onclick="identifySpeakers('${id}')">Auto-ID</button>`;
+        bodyHtml += ` <button class="btn-identify-speakers" id="btn-rehint-${id}" onclick="reIdentifyWithHints('${id}')" style="background:var(--accent)">ID with names</button>`;
+      }
       bodyHtml += '</div>';
     }
     if (t.location) bodyHtml += `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px">${esc(t.location)}</div>`;
@@ -864,12 +879,10 @@ async function identifySpeakers(id) {
     const renames = data.renames || {};
     const ids = data.identifications || {};
     if (Object.keys(renames).length > 0) {
-      // Refresh the detail view to show updated names
       if (btn) { btn.textContent = 'Done!'; btn.style.background = 'var(--green)'; }
       setTimeout(() => showTranscriptDetail(id), 800);
     } else {
-      // Show the AI's analysis even if no renames
-      let msg = 'Could not confidently identify unknown speakers.';
+      let msg = 'Could not confidently identify unknown speakers.\nTry "Re-identify with names" and provide the names of people in this conversation.';
       const notes = [];
       for (const [label, info] of Object.entries(ids)) {
         notes.push(`${label}: ${info.likely_name || '?'} (${info.confidence}) — ${info.reasoning || ''}`);
@@ -882,6 +895,45 @@ async function identifySpeakers(id) {
   } catch (e) {
     if (btn) { btn.textContent = 'Error'; btn.style.background = 'var(--red)'; }
     alert('Speaker identification failed: ' + e.message);
+  }
+}
+
+async function reIdentifyWithHints(id) {
+  const names = prompt('Enter the names of people in this conversation (comma-separated):\ne.g. "Tyler, Gregg, Daniel, Craig"');
+  if (!names) return;
+  const known_names = names.split(',').map(n => n.trim()).filter(Boolean);
+  if (!known_names.length) return;
+
+  const btn = document.getElementById(`btn-rehint-${id}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
+  try {
+    const data = await api(`/transcripts/${id}/identify-speakers-with-hints`, {
+      method: 'POST', body: JSON.stringify({ known_names })
+    });
+    const renames = data.renames || {};
+    if (Object.keys(renames).length > 0) {
+      if (btn) { btn.textContent = 'Done!'; btn.style.background = 'var(--green)'; }
+      setTimeout(() => showTranscriptDetail(id), 800);
+    } else {
+      if (btn) { btn.textContent = 'No match'; btn.style.background = 'var(--yellow)'; btn.style.color = '#000'; }
+      alert('Could not match speakers to those names. You can manually rename speakers by tapping their name tags.');
+    }
+  } catch (e) {
+    if (btn) { btn.textContent = 'Error'; btn.style.background = 'var(--red)'; }
+    alert('Re-identification failed: ' + e.message);
+  }
+}
+
+async function renameSpeaker(id, oldName) {
+  const newName = prompt(`Rename "${oldName}" to:`, oldName);
+  if (!newName || newName === oldName) return;
+  try {
+    await api(`/transcripts/${id}/rename-speaker`, {
+      method: 'POST', body: JSON.stringify({ old_name: oldName, new_name: newName })
+    });
+    showTranscriptDetail(id); // Refresh
+  } catch (e) {
+    alert('Rename failed: ' + e.message);
   }
 }
 
