@@ -16,11 +16,21 @@ async function query(text, params) {
   return pool.query(text, params);
 }
 
-async function initDB() {
-  await query(`
-    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+// Run a query, log errors but don't throw (for init resilience)
+async function safeQuery(label, text, params) {
+  try {
+    await query(text, params);
+  } catch (err) {
+    console.error(`[initDB] ${label} failed: ${err.message}`);
+  }
+}
 
-    -- ===== KNOWLEDGE BASE =====
+async function initDB() {
+  // Extension (needed for trigram indexes)
+  await safeQuery('pg_trgm', `CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+
+  // ===== KNOWLEDGE BASE =====
+  await safeQuery('knowledge table', `
     CREATE TABLE IF NOT EXISTS knowledge (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
@@ -34,17 +44,18 @@ async function initDB() {
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('knowledge indexes', `
     CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge(category);
     CREATE INDEX IF NOT EXISTS idx_knowledge_ai_source ON knowledge(ai_source);
     CREATE INDEX IF NOT EXISTS idx_knowledge_tags ON knowledge USING gin(tags);
     CREATE INDEX IF NOT EXISTS idx_knowledge_search ON knowledge USING gin(search_vector);
     CREATE INDEX IF NOT EXISTS idx_knowledge_trgm ON knowledge USING gin(
       (coalesce(title,'') || ' ' || coalesce(content,'')) gin_trgm_ops
-    );
+    )`);
 
-    -- ===== FACTS =====
+  // ===== FACTS =====
+  await safeQuery('facts table', `
     CREATE TABLE IF NOT EXISTS facts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
@@ -56,16 +67,17 @@ async function initDB() {
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('facts indexes', `
     CREATE INDEX IF NOT EXISTS idx_facts_category ON facts(category);
     CREATE INDEX IF NOT EXISTS idx_facts_source ON facts(source);
     CREATE INDEX IF NOT EXISTS idx_facts_search ON facts USING gin(search_vector);
     CREATE INDEX IF NOT EXISTS idx_facts_trgm ON facts USING gin(
       (coalesce(title,'') || ' ' || coalesce(content,'')) gin_trgm_ops
-    );
+    )`);
 
-    -- ===== PROJECTS =====
+  // ===== PROJECTS =====
+  await safeQuery('projects table', `
     CREATE TABLE IF NOT EXISTS projects (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
@@ -73,9 +85,10 @@ async function initDB() {
       status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','completed','archived')),
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
+    )`);
 
-    -- ===== TASKS =====
+  // ===== TASKS =====
+  await safeQuery('tasks table', `
     CREATE TABLE IF NOT EXISTS tasks (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
@@ -88,13 +101,14 @@ async function initDB() {
       output_log TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('tasks indexes', `
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_tasks_ai_agent ON tasks(ai_agent);
+    CREATE INDEX IF NOT EXISTS idx_tasks_ai_agent ON tasks(ai_agent)`);
 
-    -- ===== TRANSCRIPTS (Bee + other sources) =====
+  // ===== TRANSCRIPTS =====
+  await safeQuery('transcripts table', `
     CREATE TABLE IF NOT EXISTS transcripts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
@@ -112,17 +126,18 @@ async function initDB() {
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('transcripts indexes', `
     CREATE INDEX IF NOT EXISTS idx_transcripts_source ON transcripts(source);
     CREATE INDEX IF NOT EXISTS idx_transcripts_bee_id ON transcripts(bee_id);
     CREATE INDEX IF NOT EXISTS idx_transcripts_recorded ON transcripts(recorded_at);
     CREATE INDEX IF NOT EXISTS idx_transcripts_search ON transcripts USING gin(search_vector);
     CREATE INDEX IF NOT EXISTS idx_transcripts_trgm ON transcripts USING gin(
       (coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) gin_trgm_ops
-    );
+    )`);
 
-    -- ===== TRANSCRIPT SPEAKERS (granular person-by-person Bee data) =====
+  // ===== TRANSCRIPT SPEAKERS =====
+  await safeQuery('transcript_speakers table', `
     CREATE TABLE IF NOT EXISTS transcript_speakers (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       transcript_id UUID NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
@@ -134,13 +149,14 @@ async function initDB() {
       end_offset_ms INTEGER,
       confidence REAL,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('transcript_speakers indexes', `
     CREATE INDEX IF NOT EXISTS idx_speakers_transcript ON transcript_speakers(transcript_id);
     CREATE INDEX IF NOT EXISTS idx_speakers_name ON transcript_speakers(speaker_name);
-    CREATE INDEX IF NOT EXISTS idx_speakers_trgm ON transcript_speakers USING gin(text gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_speakers_trgm ON transcript_speakers USING gin(text gin_trgm_ops)`);
 
-    -- ===== CONVERSATIONS (full AI chat threads — full + summary) =====
+  // ===== CONVERSATIONS =====
+  await safeQuery('conversations table', `
     CREATE TABLE IF NOT EXISTS conversations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
@@ -154,13 +170,14 @@ async function initDB() {
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('conversations indexes', `
     CREATE INDEX IF NOT EXISTS idx_conversations_ai_source ON conversations(ai_source);
     CREATE INDEX IF NOT EXISTS idx_conversations_search ON conversations USING gin(search_vector);
-    CREATE INDEX IF NOT EXISTS idx_conversations_tags ON conversations USING gin(tags);
+    CREATE INDEX IF NOT EXISTS idx_conversations_tags ON conversations USING gin(tags)`);
 
-    -- ===== ACTIVITY LOG =====
+  // ===== ACTIVITY LOG =====
+  await safeQuery('activity_log table', `
     CREATE TABLE IF NOT EXISTS activity_log (
       id SERIAL PRIMARY KEY,
       action TEXT NOT NULL,
@@ -169,14 +186,13 @@ async function initDB() {
       ai_source TEXT,
       details TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
+    )`);
+  await safeQuery('activity_log indexes', `
     CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity_log(entity_type, entity_id);
-    CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at DESC);
-  `);
+    CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at DESC)`);
 
-  // Auto-update search vectors via triggers
-  await query(`
+  // ===== SEARCH TRIGGERS =====
+  await safeQuery('search triggers', `
     CREATE OR REPLACE FUNCTION update_knowledge_search() RETURNS TRIGGER AS $$
     BEGIN
       NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.content,''));
@@ -227,10 +243,10 @@ async function initDB() {
   `);
 
   // Backfill search vectors for any existing rows
-  await query(`UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
-  await query(`UPDATE facts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
-  await query(`UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
-  await query(`UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill facts search', `UPDATE facts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill conversations search', `UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
 
   console.log('PostgreSQL database initialized successfully');
 }
