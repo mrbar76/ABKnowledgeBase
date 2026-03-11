@@ -228,7 +228,8 @@ async function triggerBeeSyncFromMenu(mode) {
     let summary = parts.length ? `Imported: ${parts.join(', ')}` : 'No new items';
     if (totals.skipped > 0) summary += ` (${totals.skipped} skipped)`;
     if (totals.errors.length) summary += ` — ${totals.errors.length} error(s)`;
-    if (text) { text.textContent = summary; text.style.color = totals.errors.length ? 'var(--yellow)' : 'var(--green)'; }
+    if (totals.conversations > 0) summary += '\nAI identifying speakers in background...';
+    if (text) { text.innerHTML = summary.replace(/\n/g, '<br>'); text.style.color = totals.errors.length ? 'var(--yellow)' : 'var(--green)'; }
   } else {
     resultEl.textContent = 'Syncing updates...';
     try {
@@ -321,7 +322,8 @@ async function syncConversationsByDate() {
     let msg = parts.length ? parts.join(', ') : 'No conversations found';
     msg += ` (${data.months_processed || 0} months)`;
     if (data.errors?.length) msg += ` — ${data.errors.length} error(s)`;
-    resultEl.textContent = msg;
+    if (data.autoIdentifyQueued) msg += `\nAI identifying speakers on ${data.autoIdentifyQueued} transcripts...`;
+    resultEl.innerHTML = msg.replace(/\n/g, '<br>');
     resultEl.style.color = data.errors?.length ? 'var(--yellow)' : 'var(--green)';
     loadSettingsMenuInfo();
     if (currentTab === 'home') loadDashboardStats();

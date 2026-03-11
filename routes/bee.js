@@ -4,6 +4,119 @@ const { pool, query, logActivity } = require('../db');
 const syncStatus = require('../sync-status');
 const router = express.Router();
 
+// ─── Lazy-loaded OpenAI client ──────────────────────────────
+let _openai = null;
+function getOpenAI() {
+  if (_openai) return _openai;
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  const OpenAI = require('openai');
+  _openai = new OpenAI({ apiKey: key });
+  return _openai;
+}
+
+// ─── Auto AI speaker identification ──────────────────────────
+async function autoIdentifySpeakers(transcriptId) {
+  try {
+    const openai = getOpenAI();
+    if (!openai) return; // No OpenAI key configured
+
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [transcriptId]);
+    if (!transcriptResult.rows.length) return;
+    const t = transcriptResult.rows[0];
+
+    const speakersResult = await query(
+      'SELECT * FROM transcript_speakers WHERE transcript_id = $1 ORDER BY utterance_index',
+      [transcriptId]
+    );
+    const speakers = speakersResult.rows;
+    if (!speakers.length) return;
+
+    const uniqueSpeakers = [...new Set(speakers.map(s => s.speaker_name))];
+    // Only run if there are generic/unknown speaker labels
+    const hasGeneric = uniqueSpeakers.some(s => /^(speaker|unknown)/i.test(s));
+    if (!hasGeneric) return; // All speakers already named
+
+    const excerpt = speakers.slice(0, 80).map(s => `${s.speaker_name}: ${s.text}`).join('\n');
+    if (!excerpt && !t.raw_text) return;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 500,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `You are analyzing a conversation transcript to identify speakers.
+
+The conversation has these speaker labels: ${uniqueSpeakers.join(', ')}
+${t.location ? `Location: ${t.location}` : ''}
+${t.title ? `Topic: ${t.title}` : ''}
+
+Based on context clues (names mentioned, relationships, topics discussed, speaking patterns), try to identify who each speaker label actually is.
+
+Return ONLY valid JSON:
+{
+  "identifications": {
+    "<original_label>": {
+      "likely_name": "their real name or best guess",
+      "confidence": "high" | "medium" | "low",
+      "reasoning": "brief reason for identification"
+    }
+  },
+  "relationship_notes": "brief note about the relationship between speakers if apparent"
+}
+
+Rules:
+- If a speaker says their own name or is addressed by name, that's high confidence
+- If you can infer from context (e.g. family member, coworker), that's medium confidence
+- If you truly cannot determine, keep the original label and mark low confidence
+- Do NOT invent names — only use names actually mentioned or clearly implied in the text` },
+        { role: 'user', content: excerpt || t.raw_text.substring(0, 8000) },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    let result;
+    try { result = JSON.parse(text); }
+    catch { const m = text.match(/\{[\s\S]*\}/); result = m ? JSON.parse(m[0]) : { identifications: {} }; }
+
+    const identifications = result.identifications || {};
+    const renames = {};
+    for (const [original, info] of Object.entries(identifications)) {
+      if (info.likely_name && info.likely_name !== original && (info.confidence === 'high' || info.confidence === 'medium')) {
+        renames[original] = info.likely_name;
+      }
+    }
+
+    if (Object.keys(renames).length > 0) {
+      for (const [oldName, newName] of Object.entries(renames)) {
+        await query(
+          'UPDATE transcript_speakers SET speaker_name = $1 WHERE transcript_id = $2 AND speaker_name = $3',
+          [newName, transcriptId, oldName]
+        );
+      }
+      const newSpeakerNames = uniqueSpeakers.map(s => renames[s] || s);
+      const meta = t.metadata || {};
+      meta.speakers = [...new Set(newSpeakerNames)];
+      meta.speaker_count = meta.speakers.length;
+      meta.ai_speaker_identification = identifications;
+      meta.relationship_notes = result.relationship_notes || null;
+      await query(
+        'UPDATE transcripts SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(meta), transcriptId]
+      );
+      await logActivity('update', 'transcript', transcriptId, 'openai',
+        `Auto-identified speakers: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+      console.log(`[auto-identify] transcript ${transcriptId}: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+    } else {
+      console.log(`[auto-identify] transcript ${transcriptId}: no confident identifications`);
+    }
+  } catch (e) {
+    console.log(`[auto-identify] transcript ${transcriptId} failed: ${e.message}`);
+    // Non-fatal — don't block sync
+  }
+}
+
 // --- Bee Cloud API (Amazon-hosted) ---
 const BEE_API = 'https://app-api-developer.ce.bee.amazon.dev';
 
@@ -288,6 +401,7 @@ router.post('/sync', async (req, res) => {
   const force = req.body?.force === true;
   const job = syncStatus.startJob('bee', force ? 'Full sync (force refresh)' : 'Full cloud sync');
   const results = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
+  const newTranscriptIds = []; // Track for auto-identify after commit
 
   // Use a transaction for the entire sync so partial failures can be rolled back
   const client = await pool.connect();
@@ -358,7 +472,8 @@ router.post('/sync', async (req, res) => {
         // Store sequentially within the transaction
         for (const item of detailed) {
           if (!item) { results.skipped++; continue; }
-          await storeConversation(item.convo, item.full, item.rawResult, cq);
+          const tid = await storeConversation(item.convo, item.full, item.rawResult, cq);
+          newTranscriptIds.push(tid);
           results.conversations++;
         }
       } while (cursor);
@@ -409,6 +524,17 @@ router.post('/sync', async (req, res) => {
     `Cloud sync${force ? ' (full)' : ''}: ${results.facts}F ${results.todos}T ${results.conversations}C ${results.journals}J ${results.daily}D (${results.skipped} skipped)`);
   syncStatus.completeJob('bee', job, { imported: totalImported, skipped: results.skipped, errors: results.errors, details: results });
   res.json({ message: `Bee cloud sync complete${force ? ' (full refresh)' : ''}`, imported: results });
+
+  // Fire-and-forget: auto-identify speakers on new transcripts (after response sent)
+  if (newTranscriptIds.length > 0) {
+    console.log(`[sync] Queuing auto-identify for ${newTranscriptIds.length} new transcripts`);
+    (async () => {
+      for (const tid of newTranscriptIds) {
+        await autoIdentifySpeakers(tid);
+      }
+      console.log(`[sync] Auto-identify complete for ${newTranscriptIds.length} transcripts`);
+    })().catch(e => console.error('[sync] Auto-identify batch error:', e.message));
+  }
 });
 
 // ─── Chunked sync ──────────────────────────────────────────
@@ -457,6 +583,7 @@ router.post('/sync-chunk', async (req, res) => {
       const convos = extractArray(data, 'conversations');
       result.cursor = data.next_cursor || null;
       result.page_items = convos.length;
+      const chunkTranscriptIds = [];
       console.log(`[sync-chunk] conversations: ${convos.length} items, cursor=${!!result.cursor}`);
       for (const convo of convos) {
         if (!convo.id) { result.skipped++; continue; }
@@ -475,9 +602,21 @@ router.post('/sync-chunk', async (req, res) => {
           console.log(`[sync-chunk] conv ${convo.id} no transcript text, detail keys: ${Object.keys(full).join(',')}, list keys: ${Object.keys(convo).join(',')}`);
           result.skipped++; continue;
         }
-        await storeConversation(convo, full, rawResult); result.imported++;
+        const tid = await storeConversation(convo, full, rawResult);
+        chunkTranscriptIds.push(tid);
+        result.imported++;
       }
       if (!result.cursor) result.done = true;
+      // Fire-and-forget auto-identify after response
+      if (chunkTranscriptIds.length > 0) {
+        result._autoIdentifyQueued = chunkTranscriptIds.length;
+        setImmediate(() => {
+          (async () => {
+            for (const tid of chunkTranscriptIds) await autoIdentifySpeakers(tid);
+            console.log(`[sync-chunk] Auto-identify done for ${chunkTranscriptIds.length} transcripts`);
+          })().catch(e => console.error('[sync-chunk] Auto-identify error:', e.message));
+        });
+      }
 
     } else if (type === 'journals') {
       const url = '/v1/journals' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '');
@@ -531,6 +670,7 @@ router.post('/sync-conversations', async (req, res) => {
   const startDt = start_date ? new Date(start_date) : new Date(endDt.getTime() - 180 * 24 * 60 * 60 * 1000);
 
   const result = { imported: 0, skipped: 0, errors: [], months_processed: 0, total_found: 0 };
+  const allTranscriptIds = [];
 
   try {
     // Generate month ranges from startDt to endDt
@@ -575,7 +715,8 @@ router.post('/sync-conversations', async (req, res) => {
               result.skipped++;
               continue;
             }
-            await storeConversation(convo, full, rawResult);
+            const tid = await storeConversation(convo, full, rawResult);
+            allTranscriptIds.push(tid);
             result.imported++;
             monthImported++;
           }
@@ -598,8 +739,23 @@ router.post('/sync-conversations', async (req, res) => {
   res.json({
     message: `Synced conversations from ${startDt.toISOString().split('T')[0]} to ${endDt.toISOString().split('T')[0]}`,
     ...result,
+    autoIdentifyQueued: allTranscriptIds.length,
     date_range: { start: startDt.toISOString().split('T')[0], end: endDt.toISOString().split('T')[0] }
   });
+
+  // Fire-and-forget: auto-identify speakers on all new transcripts
+  if (allTranscriptIds.length > 0) {
+    console.log(`[sync-conv] Queuing auto-identify for ${allTranscriptIds.length} transcripts`);
+    (async () => {
+      let identified = 0;
+      for (const tid of allTranscriptIds) {
+        await autoIdentifySpeakers(tid);
+        identified++;
+        if (identified % 10 === 0) console.log(`[sync-conv] Auto-identify progress: ${identified}/${allTranscriptIds.length}`);
+      }
+      console.log(`[sync-conv] Auto-identify complete: ${identified} transcripts processed`);
+    })().catch(e => console.error('[sync-conv] Auto-identify batch error:', e.message));
+  }
 });
 
 // ─── Purge ──────────────────────────────────────────
@@ -668,6 +824,7 @@ router.post('/sync-incremental', async (req, res) => {
       } catch (e) { results.errors.push(`todo ${todoId}: ${e.message}`); }
     }
 
+    const incrTranscriptIds = [];
     for (const convoId of changedConvos) {
       try {
         const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken);
@@ -677,7 +834,7 @@ router.post('/sync-incremental', async (req, res) => {
         if (!rawResult.text) continue;
         const existing = await findExistingTranscript(convoId);
         if (existing) { await query('UPDATE transcripts SET summary=$1, updated_at=NOW() WHERE id=$2', [c.summary || rawResult.text.substring(0, 2000), existing.id]); }
-        else { await storeConversation(c, c, rawResult); }
+        else { const tid = await storeConversation(c, c, rawResult); incrTranscriptIds.push(tid); }
         results.conversations++;
       } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
     }
@@ -685,6 +842,13 @@ router.post('/sync-incremental', async (req, res) => {
     if (newCursor) { await logActivity('bee-change-cursor', 'bee-import', 'cursor', 'bee', `cursor:${newCursor}`); }
     await logActivity('sync', 'bee-import', 'incremental', 'bee', `Incremental: ${results.facts}F ${results.todos}T ${results.conversations}C`);
     res.json({ message: 'Incremental sync complete', imported: results, changes_processed: changes.length, had_cursor: !!lastCursor });
+    // Fire-and-forget auto-identify on new transcripts
+    if (incrTranscriptIds.length > 0) {
+      (async () => {
+        for (const tid of incrTranscriptIds) await autoIdentifySpeakers(tid);
+        console.log(`[incremental] Auto-identify done for ${incrTranscriptIds.length} transcripts`);
+      })().catch(e => console.error('[incremental] Auto-identify error:', e.message));
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
