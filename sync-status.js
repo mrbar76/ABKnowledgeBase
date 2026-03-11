@@ -61,9 +61,13 @@ function completeJob(sourceName, job, results = {}) {
   job.errors = results.errors || [];
   job.details = results.details || {};
 
-  src.state = job.errors.length > 0 ? 'error' : 'idle';
+  // Only mark as 'error' if nothing was imported and there were errors (total failure)
+  // Partial errors (some items imported, some failed) count as 'idle' (success with warnings)
+  const hasErrors = job.errors.length > 0;
+  const hasImports = job.items_imported > 0;
+  src.state = (hasErrors && !hasImports) ? 'error' : 'idle';
   src.last_sync = job.finished_at;
-  src.last_success = job.errors.length === 0 ? job.finished_at : src.last_success;
+  src.last_success = (!hasErrors || hasImports) ? job.finished_at : src.last_success;
   src.items_imported += job.items_imported;
   src.items_skipped += job.items_skipped;
   src.total_syncs++;

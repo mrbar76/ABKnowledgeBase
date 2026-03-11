@@ -599,11 +599,13 @@ async function loadSyncStatus() {
 function renderSyncSources(sources) {
   const el = document.getElementById('sync-status-panel'); if (!el || !sources?.length) return;
   const colors = { idle: 'var(--green)', syncing: 'var(--blue)', error: 'var(--red)' };
+  const labels = { idle: 'ok', syncing: 'syncing', error: 'error' };
   el.innerHTML = sources.map(s => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="width:8px;height:8px;border-radius:50%;background:${colors[s.state]||'#8b8fa3'};flex-shrink:0;${s.state==='syncing'?'animation:pulse 1.5s infinite':''}"></span>
       <div style="flex:1"><div style="font-size:0.85rem;font-weight:600">${esc(s.label)}</div>
-      <div style="font-size:0.7rem;color:var(--text-dim)">${s.state} &middot; Last: ${s.last_sync?timeAgo(s.last_sync):'Never'}</div></div>
+      <div style="font-size:0.7rem;color:var(--text-dim)">${labels[s.state]||s.state}${s.items_imported ? ' \u00B7 '+s.items_imported+' imported' : ''} \u00B7 Last: ${s.last_sync?timeAgo(s.last_sync):'Never'}</div>
+      ${s.state==='error'&&s.error_message ? `<div style="font-size:0.65rem;color:var(--red);margin-top:2px">${esc(s.error_message.substring(0,120))}</div>` : ''}</div>
     </div>`).join('');
 }
 
