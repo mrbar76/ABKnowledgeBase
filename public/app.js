@@ -2,6 +2,7 @@
 
 const API = '/api';
 let currentTab = 'home';
+let cachedProjects = []; // cached for dropdowns
 
 // ─── Auth ─────────────────────────────────────────────────────
 function getStoredKey() { return sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key') || ''; }
@@ -425,6 +426,7 @@ async function loadKanban() {
 async function showTaskDetail(id) {
   try {
     const task = await api(`/tasks/${id}`);
+    await ensureProjectsCache();
     openModal(task.title, `
       <div class="form-group"><label>Status</label>
         <select onchange="updateTask('${id}', 'status', this.value)">
@@ -434,6 +436,11 @@ async function showTaskDetail(id) {
       <div class="form-group"><label>Priority</label>
         <select onchange="updateTask('${id}', 'priority', this.value)">
           ${['low','medium','high','urgent'].map(p => `<option value="${p}" ${task.priority===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Project</label>
+        <select onchange="updateTask('${id}', 'project_id', this.value||null)">
+          ${projectDropdownHtml(task.project_id)}
         </select>
       </div>
       ${task.description ? `<div class="form-group"><label>Description</label><div style="font-size:0.85rem;white-space:pre-wrap">${esc(task.description)}</div></div>` : ''}
@@ -454,17 +461,34 @@ async function deleteTask(id) {
   try { await api(`/tasks/${id}`, { method: 'DELETE' }); closeModal(); loadKanban(); } catch {}
 }
 
-function showNewTaskModal() {
-  openModal('New Task', `
-    <form onsubmit="createTask(event)">
-      <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
-      <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="3"></textarea></div>
-      <div class="form-group"><label>Priority</label>
-        <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-      </div>
-      <button type="submit" class="btn-submit">Create Task</button>
-    </form>
-  `);
+async function ensureProjectsCache() {
+  if (!cachedProjects.length) {
+    try { const d = await api('/projects'); cachedProjects = d.projects || []; } catch {}
+  }
+  return cachedProjects;
+}
+
+function projectDropdownHtml(selectedId) {
+  return `<option value="">No project</option>` +
+    cachedProjects.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+}
+
+function showNewTaskModal(defaultProjectId) {
+  ensureProjectsCache().then(() => {
+    openModal('New Task', `
+      <form onsubmit="createTask(event)">
+        <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
+        <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="3"></textarea></div>
+        <div class="form-group"><label>Priority</label>
+          <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+        </div>
+        <div class="form-group"><label>Project</label>
+          <select id="new-task-project">${projectDropdownHtml(defaultProjectId)}</select>
+        </div>
+        <button type="submit" class="btn-submit">Create Task</button>
+      </form>
+    `);
+  });
 }
 
 async function createTask(e) {
@@ -474,8 +498,11 @@ async function createTask(e) {
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
       priority: document.getElementById('new-task-priority').value,
+      project_id: document.getElementById('new-task-project').value || null,
     }) });
-    closeModal(); loadKanban();
+    closeModal();
+    if (currentTab === 'kanban') loadKanban();
+    else if (currentTab === 'projects') loadProjects();
   } catch (err) { alert(err.message); }
 }
 
@@ -670,19 +697,46 @@ async function showProjectDetail(id) {
   try {
     const p = await api(`/projects/${id}`);
     const tasks = p.tasks || [];
+    const statuses = ['active', 'paused', 'completed', 'archived'];
+    const doneTasks = tasks.filter(t => t.status === 'done').length;
+    const pct = tasks.length ? Math.round(doneTasks / tasks.length * 100) : 0;
+
     openModal(p.name, `
-      <div class="list-item-meta" style="margin-bottom:8px"><span class="status-badge status-${p.status}">${p.status}</span><span>${timeAgo(p.created_at)}</span></div>
-      ${p.description ? `<div style="font-size:0.85rem;margin-bottom:12px">${esc(p.description)}</div>` : ''}
-      <h4 style="font-size:0.85rem;color:var(--text-dim);margin-bottom:8px">Tasks (${tasks.length})</h4>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <select onchange="updateProject('${id}', 'status', this.value)" style="background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.8rem">
+          ${statuses.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <span style="font-size:0.75rem;color:var(--text-dim)">${timeAgo(p.created_at)}</span>
+        ${tasks.length ? `<span style="font-size:0.75rem;color:var(--text-dim)">${pct}% done</span>` : ''}
+      </div>
+      ${p.description ? `<div style="font-size:0.85rem;margin-bottom:12px;color:var(--text-dim)">${esc(p.description)}</div>` : ''}
+      ${tasks.length ? `<div class="progress-bar" style="margin-bottom:12px"><div class="progress-fill" style="width:${pct}%"></div></div>` : ''}
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h4 style="font-size:0.85rem;color:var(--text-dim)">Tasks (${tasks.length})</h4>
+        <button class="btn-action" onclick="closeModal();showNewTaskModal('${id}')" style="padding:4px 12px;font-size:0.75rem">+ Task</button>
+      </div>
       ${tasks.length ? tasks.map(t => `
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.82rem">
+        <div onclick="closeModal();showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;cursor:pointer">
+          <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();toggleTaskDone('${t.id}','${t.status}','${id}')" style="cursor:pointer">
+          <span style="flex:1;${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</span>
           <span class="priority-badge priority-${t.priority}">${t.priority[0].toUpperCase()}</span>
-          <span style="flex:1">${esc(t.title)}</span>
-          <span style="color:var(--text-dim)">${(t.status||'').replace('_',' ')}</span>
-        </div>`).join('') : '<div class="empty-state">No tasks</div>'}
-      <div style="margin-top:16px"><button class="btn-action btn-action-danger" onclick="deleteProject('${id}')" style="width:100%">Delete Project</button></div>
+        </div>`).join('') : '<div class="empty-state" style="padding:12px">No tasks yet — add one above</div>'}
+
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="btn-action btn-action-danger" onclick="deleteProject('${id}')" style="flex:1">Delete Project</button>
+      </div>
     `);
   } catch (e) { openModal('Error', esc(e.message)); }
+}
+
+async function updateProject(id, field, value) {
+  try { await api(`/projects/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) }); cachedProjects = []; } catch {}
+}
+
+async function toggleTaskDone(taskId, currentStatus, projectId) {
+  const newStatus = currentStatus === 'done' ? 'todo' : 'done';
+  try { await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }); showProjectDetail(projectId); } catch {}
 }
 
 function showNewProjectModal() {
