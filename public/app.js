@@ -796,7 +796,7 @@ async function showTranscriptDetail(id) {
       }
       if (t.summary) {
         bodyHtml += `<div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);margin-bottom:4px">Summary</div>`;
-        bodyHtml += `<div style="font-size:0.88rem;line-height:1.6;color:var(--text)">${esc(t.summary)}</div>`;
+        bodyHtml += `<div style="font-size:0.88rem;line-height:1.6;color:var(--text)">${formatBeeSummary(t.summary)}</div>`;
       }
       bodyHtml += `</div>`;
     }
@@ -814,10 +814,13 @@ async function showTranscriptDetail(id) {
         <div id="transcript-full-${id}" style="display:none;margin-top:10px">`;
 
       if (t.speakers && t.speakers.length) {
-        // Detect the primary speaker (most utterances = "self")
+        // Detect the primary speaker ("self") — prefer a named speaker over generic "Speaker"
         const speakerCounts = {};
         for (const s of t.speakers) { speakerCounts[s.speaker_name] = (speakerCounts[s.speaker_name]||0) + 1; }
-        const selfSpeaker = Object.entries(speakerCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+        const sorted = Object.entries(speakerCounts).sort((a,b) => b[1]-a[1]);
+        // If most-frequent is "Speaker"/"Unknown", pick the next named one as self
+        const namedSpeakers = sorted.filter(([name]) => !/^(speaker|unknown)/i.test(name));
+        const selfSpeaker = namedSpeakers.length > 0 ? namedSpeakers[0][0] : (sorted[0]?.[0] || '');
 
         bodyHtml += '<div class="transcript-chat">';
         let lastSpeaker = '';
@@ -1067,6 +1070,16 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 
 // ─── Utilities ────────────────────────────────────────────────
 function esc(str) { if(!str)return''; const d=document.createElement('div'); d.textContent=String(str); return d.innerHTML; }
+
+function formatBeeSummary(text) {
+  if (!text) return '';
+  // Convert Bee markdown-style summaries into formatted HTML sections
+  return esc(text)
+    .replace(/^# (.+)$/gm, '<div style="font-weight:700;font-size:0.9rem;margin-top:12px;margin-bottom:4px;color:var(--accent)">$1</div>')
+    .replace(/^- (.+)$/gm, '<div style="padding-left:12px;margin:2px 0">• $1</div>')
+    .replace(/\n\n/g, '<div style="height:8px"></div>')
+    .replace(/\n/g, '<br>');
+}
 function timeAgo(dateStr) {
   if(!dateStr)return'';
   const diff=(new Date()-new Date(dateStr))/1000;
