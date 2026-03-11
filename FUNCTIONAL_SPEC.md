@@ -1,17 +1,18 @@
-# AB Knowledge Base — Functional Specification
+# AB Brain — Functional Specification
 
-**Version:** 1.0
-**Date:** 2026-03-08
-**Purpose:** Complete rebuild specification for the AB Knowledge Base ("AB Brain") platform — a unified personal AI knowledge base and task management system.
+**Version:** 2.0
+**Date:** 2026-03-11
+**Purpose:** Complete specification for AB Brain — a unified personal AI knowledge base and task management system.
 
 ---
 
 ## 1. SYSTEM OVERVIEW
 
-AB Brain is a **single-user personal knowledge management system** that serves as a shared memory layer across multiple AI assistants (Claude, ChatGPT, Gemini) and the Bee wearable device. It is a Node.js/Express backend with PostgreSQL storage and a vanilla JavaScript single-page application (SPA) frontend designed as a mobile-first Progressive Web App (PWA).
+AB Brain is a **single-user personal knowledge management system** that serves as a shared memory layer across multiple AI assistants (Claude, ChatGPT, Gemini) and the Bee wearable device. It is a Node.js/Express backend with PostgreSQL as the primary data store, an optional one-way mirror to Notion, and a vanilla JavaScript single-page application (SPA) frontend designed as a mobile-first Progressive Web App (PWA).
 
 ### Core Value Proposition
-A single person uses multiple AI assistants daily. Each AI has no memory of what the others said. AB Brain solves this by giving every AI read/write access to a shared database via REST API. The user also gets a phone-friendly dashboard to browse, search, and manage everything.
+
+A single person uses multiple AI assistants daily. Each AI has no memory of what the others said. AB Brain solves this by giving every AI read/write access to a shared PostgreSQL database via REST API. The user also gets a phone-friendly dashboard to browse, search, and manage everything.
 
 ### Architecture Summary
 
@@ -25,25 +26,29 @@ A single person uses multiple AI assistants daily. Each AI has no memory of what
 ┌──────────────▼───────────────────────────────┐
 │         Express.js REST API (Node 20)         │
 │  Auth: X-Api-Key header (static key)          │
-│  9 route modules, ~40 endpoints               │
+│  10+ route modules, ~50 endpoints             │
+│  Smart Intake: GPT-4o-mini classification     │
 │  Bee Cloud API proxy (HTTPS w/ custom CA)     │
 │  Scheduled auto-sync (setInterval)            │
-└──────────────┬───────────────────────────────┘
-               │
-┌──────────────▼───────────────────────────────┐
-│         PostgreSQL 16 (Railway-managed)        │
-│  7 tables, full-text search (tsvector/GIN)    │
-│  pg_trgm extension                            │
-└───────────────────────────────────────────────┘
+└──────┬───────────────────┬───────────────────┘
+       │                   │ (optional)
+┌──────▼──────────┐  ┌────▼─────────────────┐
+│  PostgreSQL 16   │  │  Notion Workspace     │
+│  (Railway)       │  │  (read-only mirror)   │
+│  8 tables        │  │  One-way sync from PG │
+│  tsvector + trgm │  └──────────────────────┘
+└─────────────────┘
 
 External integrations (via REST):
-  - Claude (Project Instructions → HTTP calls)
+  - Claude (Project Instructions -> HTTP calls)
   - ChatGPT (Custom GPT + Actions via OpenAPI spec)
   - Gemini (import-only; no outbound API capability)
   - Bee Cloud API (Amazon-hosted, private CA cert)
+  - OpenAI GPT-4o-mini (smart intake classification)
 ```
 
 ### Deployment Target
+
 - **Railway.app** (Docker container + managed Postgres)
 - Dockerfile: `node:20-slim`, `npm ci --omit=dev`
 - Railway config limits Node heap to 384 MB (`--max-old-space-size=384`)
@@ -54,22 +59,24 @@ External integrations (via REST):
 
 ## 2. DATABASE SCHEMA
 
-PostgreSQL with the `pg_trgm` extension enabled. All tables use `gen_random_uuid()` for primary keys (except `activity_log` which uses `SERIAL`). All timestamps are `TIMESTAMPTZ`.
+PostgreSQL 16 with the `pg_trgm` extension enabled. All tables use `gen_random_uuid()` for primary keys (except `activity_log` which uses `SERIAL`). All timestamps are `TIMESTAMPTZ`. Full-text search via `tsvector` columns with auto-update triggers.
 
 ### 2.1 `knowledge` — Shared AI Memory
 
-The core table. Every AI writes here. Transcripts also get mirrored here for unified search.
+The core table. Every AI writes here.
 
 | Column | Type | Default | Notes |
 |--------|------|---------|-------|
 | `id` | UUID PK | `gen_random_uuid()` | |
 | `title` | TEXT NOT NULL | | Short descriptive title |
-| `content` | TEXT NOT NULL | | Full content body (can be very long) |
-| `category` | TEXT | `'general'` | One of: `general`, `transcript`, `meeting`, `code`, `research`, `decision`, `reference`, `health`, `personal`, `journal`, `daily-summary` |
+| `content` | TEXT NOT NULL | | Full content body (unlimited length) |
+| `category` | TEXT | `'general'` | `general`, `transcript`, `meeting`, `code`, `research`, `decision`, `reference`, `health`, `personal`, `journal`, `daily-summary` |
 | `tags` | JSONB | `'[]'` | Array of string tags |
-| `source` | TEXT | `'manual'` | How data entered: `api`, `bee`, `chatgpt-export`, `claude-export`, `manual` |
-| `ai_source` | TEXT | NULL | Which AI wrote it: `claude`, `chatgpt`, `gemini`, `bee`, `bee-sync` |
-| `metadata` | JSONB | `'{}'` | Flexible extra data (e.g., `transcript_id`, `bee_id`, `bee_journal_id`, `bee_daily_id`, `original_id`) |
+| `source` | TEXT | `'manual'` | `api`, `bee`, `chatgpt-export`, `claude-export`, `manual` |
+| `ai_source` | TEXT | NULL | `claude`, `chatgpt`, `gemini`, `bee`, `bee-sync` |
+| `project_id` | UUID FK | NULL | References `projects(id)` |
+| `metadata` | JSONB | `'{}'` | Flexible extra data |
+| `search_vector` | TSVECTOR | NULL | Auto-populated by trigger |
 | `created_at` | TIMESTAMPTZ | `NOW()` | |
 | `updated_at` | TIMESTAMPTZ | `NOW()` | |
 
@@ -77,9 +84,31 @@ The core table. Every AI writes here. Transcripts also get mirrored here for uni
 - `idx_knowledge_category` — B-tree on `category`
 - `idx_knowledge_ai_source` — B-tree on `ai_source`
 - `idx_knowledge_tags` — GIN on `tags`
-- `idx_knowledge_search` — GIN full-text on `to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,''))`
+- `idx_knowledge_search` — GIN on `search_vector`
+- `idx_knowledge_trgm` — GIN trigram on `title || content`
 
-### 2.2 `projects` — Project Containers
+**Trigger:** `trg_knowledge_search` — auto-updates `search_vector` on INSERT/UPDATE of title or content.
+
+### 2.2 `facts` — Extracted Personal Facts
+
+Discrete truths about the user, extracted from conversations or synced from Bee.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | UUID PK | `gen_random_uuid()` | |
+| `title` | TEXT NOT NULL | | Short fact title |
+| `content` | TEXT NOT NULL | | Full fact text |
+| `category` | TEXT | `'general'` | `personal`, `preference`, `work`, `relationship`, `financial`, `general` |
+| `tags` | JSONB | `'[]'` | |
+| `source` | TEXT | `'manual'` | `bee`, `chatgpt`, `claude`, `gemini`, `manual` |
+| `confirmed` | BOOLEAN | `false` | User-verified fact |
+| `search_vector` | TSVECTOR | NULL | Auto-populated |
+| `created_at` | TIMESTAMPTZ | `NOW()` | |
+| `updated_at` | TIMESTAMPTZ | `NOW()` | |
+
+**Indexes:** `idx_facts_category`, `idx_facts_source`, `idx_facts_search` (GIN), `idx_facts_trgm` (GIN trigram)
+
+### 2.3 `projects` — Project Containers
 
 | Column | Type | Default | Constraint |
 |--------|------|---------|------------|
@@ -90,109 +119,120 @@ The core table. Every AI writes here. Transcripts also get mirrored here for uni
 | `created_at` | TIMESTAMPTZ | `NOW()` | |
 | `updated_at` | TIMESTAMPTZ | `NOW()` | |
 
-### 2.3 `tasks` — Work Items (Kanban)
+### 2.4 `tasks` — Work Items (Kanban)
 
 | Column | Type | Default | Constraint |
 |--------|------|---------|------------|
 | `id` | UUID PK | `gen_random_uuid()` | |
-| `project_id` | UUID FK → `projects(id)` | NULL | `ON DELETE SET NULL` |
+| `project_id` | UUID FK | NULL | `ON DELETE SET NULL` -> `projects(id)` |
 | `title` | TEXT NOT NULL | | |
 | `description` | TEXT | NULL | |
 | `status` | TEXT | `'todo'` | CHECK: `todo`, `in_progress`, `review`, `done` |
 | `priority` | TEXT | `'medium'` | CHECK: `low`, `medium`, `high`, `urgent` |
-| `ai_agent` | TEXT | NULL | Which AI created/owns: `claude`, `chatgpt`, `gemini`, `bee` |
-| `next_steps` | TEXT | NULL | Free-text next steps (also stores Bee Todo IDs) |
-| `output_log` | TEXT | NULL | Execution output/notes |
+| `ai_agent` | TEXT | NULL | `claude`, `chatgpt`, `gemini`, `bee` |
+| `next_steps` | TEXT | NULL | |
+| `output_log` | TEXT | NULL | |
 | `created_at` | TIMESTAMPTZ | `NOW()` | |
 | `updated_at` | TIMESTAMPTZ | `NOW()` | |
 
-**Indexes:**
-- `idx_tasks_project` — B-tree on `project_id`
-- `idx_tasks_status` — B-tree on `status`
+**Indexes:** `idx_tasks_project`, `idx_tasks_status`, `idx_tasks_ai_agent`
 
-**Sorting convention:** Tasks are always ordered by priority (urgent→high→medium→low), then `created_at ASC`.
+**Sorting:** priority (urgent first), then `created_at ASC`.
 
-### 2.4 `transcripts` — Bee Conversations & Other Audio
+### 2.5 `transcripts` — Bee Conversations & Other Audio
 
 | Column | Type | Default | Notes |
 |--------|------|---------|-------|
 | `id` | UUID PK | `gen_random_uuid()` | |
 | `title` | TEXT NOT NULL | | Auto-generated if blank |
-| `raw_text` | TEXT NOT NULL | | Full transcript. Format: `[HH:MM:SS AM] Speaker: text` (one line per utterance) |
-| `summary` | TEXT | NULL | AI-generated or Bee-provided summary |
+| `raw_text` | TEXT | NULL | Full transcript (unlimited) |
+| `summary` | TEXT | NULL | AI-generated or Bee-provided |
 | `source` | TEXT | `'bee'` | `bee`, `manual`, `zoom`, `meet`, `teams` |
-| `speaker_labels` | JSONB | `'[]'` | Array of speaker objects from Bee (may include `is_me`, `role`, `name`) |
+| `ai_source` | TEXT | NULL | |
 | `duration_seconds` | INTEGER | NULL | |
-| `recorded_at` | TIMESTAMPTZ | NULL | When the conversation happened |
-| `location` | TEXT | NULL | Added via migration; physical location string |
+| `recorded_at` | TIMESTAMPTZ | NULL | |
+| `location` | TEXT | NULL | Physical location |
 | `tags` | JSONB | `'[]'` | |
-| `metadata` | JSONB | `'{}'` | Stores `bee_id`, `utterances_count`, `primary_location` object, `state`, `start_time`, `end_time` |
+| `bee_id` | TEXT | NULL | Bee conversation ID for dedup |
+| `project_id` | UUID FK | NULL | -> `projects(id)` |
+| `metadata` | JSONB | `'{}'` | `bee_id`, `utterances_count`, `primary_location`, etc. |
+| `search_vector` | TSVECTOR | NULL | |
 | `created_at` | TIMESTAMPTZ | `NOW()` | |
 | `updated_at` | TIMESTAMPTZ | `NOW()` | |
 
-**Indexes:**
-- `idx_transcripts_source` — B-tree on `source`
-- `idx_transcripts_recorded` — B-tree on `recorded_at`
-- `idx_transcripts_search` — GIN full-text on `to_tsvector('english', coalesce(title,'') || ' ' || coalesce(raw_text,''))`
+**Indexes:** `idx_transcripts_source`, `idx_transcripts_bee_id`, `idx_transcripts_recorded`, `idx_transcripts_search` (GIN), `idx_transcripts_trgm` (GIN trigram on title+summary+raw_text)
 
-**Migration:** `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS location TEXT` runs at init.
+### 2.6 `transcript_speakers` — Granular Speaker Data
 
-### 2.5 `health_metrics` — Apple Health Vitals
+Person-by-person utterance data from Bee transcripts.
 
 | Column | Type | Default | Notes |
 |--------|------|---------|-------|
 | `id` | UUID PK | `gen_random_uuid()` | |
-| `metric_type` | TEXT NOT NULL | | e.g., `heart_rate`, `steps`, `blood_pressure` |
-| `value` | NUMERIC NOT NULL | | |
-| `unit` | TEXT NOT NULL | | e.g., `bpm`, `count`, `mmHg` |
-| `source_name` | TEXT | `'apple_health'` | |
-| `recorded_at` | TIMESTAMPTZ NOT NULL | | |
-| `metadata` | JSONB | `'{}'` | |
+| `transcript_id` | UUID FK NOT NULL | | -> `transcripts(id)` ON DELETE CASCADE |
+| `speaker_name` | TEXT NOT NULL | | Raw name from Bee |
+| `utterance_index` | INTEGER NOT NULL | | Order in conversation |
+| `text` | TEXT NOT NULL | | What they said |
+| `spoken_at` | TIMESTAMPTZ | NULL | |
+| `start_offset_ms` | INTEGER | NULL | |
+| `end_offset_ms` | INTEGER | NULL | |
+| `confidence` | REAL | NULL | |
 | `created_at` | TIMESTAMPTZ | `NOW()` | |
 
-**Indexes:**
-- `idx_health_type` — B-tree on `metric_type`
-- `idx_health_recorded` — B-tree on `recorded_at`
-- `idx_health_type_date` — Composite on `(metric_type, recorded_at)`
+**Indexes:** `idx_speakers_transcript`, `idx_speakers_name`, `idx_speakers_trgm` (GIN trigram on text)
 
-### 2.6 `workouts` — Apple Health Workouts
+### 2.7 `conversations` — Full AI Chat Threads
 
-| Column | Type | Default |
-|--------|------|---------|
-| `id` | UUID PK | `gen_random_uuid()` |
-| `workout_type` | TEXT NOT NULL | |
-| `duration_minutes` | NUMERIC | NULL |
-| `calories_burned` | NUMERIC | NULL |
-| `distance_km` | NUMERIC | NULL |
-| `avg_heart_rate` | NUMERIC | NULL |
-| `max_heart_rate` | NUMERIC | NULL |
-| `source_name` | TEXT | `'apple_health'` |
-| `started_at` | TIMESTAMPTZ NOT NULL | |
-| `ended_at` | TIMESTAMPTZ | NULL |
-| `metadata` | JSONB | `'{}'` |
-| `created_at` | TIMESTAMPTZ | `NOW()` |
+Stores complete AI conversation threads (Claude, ChatGPT, Gemini) with both the full message history and an AI-generated summary.
 
-**Indexes:**
-- `idx_workouts_type` — B-tree on `workout_type`
-- `idx_workouts_date` — B-tree on `started_at`
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | UUID PK | `gen_random_uuid()` | |
+| `title` | TEXT NOT NULL | | |
+| `ai_source` | TEXT NOT NULL | | `claude`, `chatgpt`, `gemini` |
+| `full_thread` | JSONB NOT NULL | `'[]'` | Array of `{role, content, timestamp}` |
+| `summary` | TEXT | NULL | AI-generated summary |
+| `tags` | JSONB | `'[]'` | |
+| `project_id` | UUID FK | NULL | -> `projects(id)` |
+| `message_count` | INTEGER | `0` | |
+| `metadata` | JSONB | `'{}'` | `chatgpt_id` for dedup, etc. |
+| `search_vector` | TSVECTOR | NULL | |
+| `created_at` | TIMESTAMPTZ | `NOW()` | |
+| `updated_at` | TIMESTAMPTZ | `NOW()` | |
 
-### 2.7 `activity_log` — Audit Trail
+**Indexes:** `idx_conversations_ai_source`, `idx_conversations_search` (GIN), `idx_conversations_tags` (GIN)
+
+### 2.8 `activity_log` — Audit Trail
 
 | Column | Type | Default | Notes |
 |--------|------|---------|-------|
 | `id` | SERIAL PK | | Auto-increment |
 | `action` | TEXT NOT NULL | | `create`, `update`, `delete`, `bee-change-cursor` |
-| `entity_type` | TEXT | NULL | `knowledge`, `task`, `project`, `transcript`, `health_metric`, `workout`, `bee-import`, `bee-sync` |
-| `entity_id` | TEXT | NULL | UUID or special value like `cloud-sync`, `incremental`, `bulk`, `cursor` |
-| `ai_source` | TEXT | NULL | Which AI or system triggered the action |
-| `details` | TEXT | NULL | Human-readable description; also stores the incremental sync cursor for Bee |
+| `entity_type` | TEXT | NULL | `knowledge`, `task`, `project`, `transcript`, `fact`, `conversation`, `bee-import`, `bee-sync` |
+| `entity_id` | TEXT | NULL | |
+| `ai_source` | TEXT | NULL | |
+| `details` | TEXT | NULL | Also stores Bee sync cursors |
 | `created_at` | TIMESTAMPTZ | `NOW()` | |
 
-**Indexes:**
-- `idx_activity_entity` — Composite on `(entity_type, entity_id)`
-- `idx_activity_time` — B-tree on `created_at`
+**Indexes:** `idx_activity_entity` (composite), `idx_activity_time` (DESC)
 
-**Special usage:** Rows with `action = 'bee-change-cursor'` store the Bee incremental sync cursor in the `details` column. The most recent such row is queried to resume incremental sync.
+### Search Strategy
+
+- **Primary:** `tsvector` full-text search with `plainto_tsquery` and `ts_rank` scoring
+- **Fallback:** `pg_trgm` similarity matching via `ILIKE` for partial/fuzzy matches
+- **Auto-update:** Triggers on INSERT/UPDATE automatically rebuild `search_vector` columns
+- **Backfill:** On startup, backfills any rows with NULL `search_vector`
+
+### Data Relationships
+
+```
+projects <-- tasks.project_id
+  |      <-- knowledge.project_id
+  |      <-- transcripts.project_id
+  |      <-- conversations.project_id
+
+transcripts <-- transcript_speakers.transcript_id (CASCADE)
+```
 
 ---
 
@@ -200,17 +240,17 @@ The core table. Every AI writes here. Transcripts also get mirrored here for uni
 
 ### 3.1 Authentication
 
-All `/api/*` routes (except `/api/health-check`) require authentication via:
+All `/api/*` routes (except `/api/health-check`) require:
 - Header: `X-Api-Key: <key>`
 - OR query parameter: `?api_key=<key>`
 
-The key is compared against the `API_KEY` environment variable. If `API_KEY` is unset, auth is skipped (development mode). Returns `401` on mismatch.
+Compared against `API_KEY` env var. If unset, auth is skipped (dev mode). Returns `401` on mismatch.
 
 ### 3.2 Global Configuration
 
 - `Content-Type: application/json` for all request/response bodies
-- Request body size limit: `50 MB` (for large transcript imports)
-- CORS: permissive (all origins allowed)
+- Request body size limit: 50 MB (for large transcript imports)
+- CORS: permissive (all origins)
 - Security: Helmet with `contentSecurityPolicy: false`
 
 ### 3.3 Public Routes (No Auth)
@@ -218,504 +258,368 @@ The key is compared against the `API_KEY` environment variable. If `API_KEY` is 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/health-check` | Returns `{ status: 'ok', timestamp }` |
-| GET | `/openapi.json` | Serves the OpenAPI spec for ChatGPT Actions |
-| GET | `/privacy` | Static HTML privacy policy page |
-| GET | `*` (catch-all) | SPA fallback → serves `index.html` |
+| GET | `/openapi.json` | OpenAPI spec for ChatGPT Actions |
+| GET | `/privacy` | Static HTML privacy policy |
+| GET | `*` (catch-all) | SPA fallback -> `index.html` |
 
 ### 3.4 Knowledge Routes (`/api/knowledge`)
 
-#### `GET /` — List/Search Knowledge
-- Query params: `q` (full-text search), `category`, `ai_source`, `tag`, `limit` (default 50), `offset` (default 0)
-- **Search logic:** If `q` is provided, tries PostgreSQL full-text search (`plainto_tsquery`) first. If zero results, falls back to `ILIKE %q%` on title and content.
+**`GET /`** — List/Search
+- Query params: `q` (full-text search), `category`, `ai_source`, `tag`, `limit` (default 50), `offset`
+- Search: tsvector first, ILIKE fallback if zero results
 - Returns: `{ count, entries: [...] }`
 
-#### `GET /meta/categories` — List Distinct Categories
-- Returns: array of category strings
+**`GET /meta/categories`** — List distinct categories
 
-#### `GET /:id` — Get Single Entry
-- Returns full knowledge object or `404`
+**`GET /:id`** — Get single entry (full content)
 
-#### `POST /` — Create Knowledge Entry
-- Required body: `{ title, content }`
-- Optional: `category`, `tags` (array), `source`, `ai_source`, `metadata` (object)
-- Creates an `activity_log` entry
-- Returns: `{ id, message }` with status `201`
+**`POST /`** — Create entry
+- Required: `{ title, content }`
+- Optional: `category`, `tags`, `source`, `ai_source`, `metadata`
+- Returns: `{ id, message }` (201)
 
-#### `PUT /:id` — Update Knowledge Entry
-- Merges provided fields with existing values (partial update)
-- Updates `updated_at`
-- Creates an `activity_log` entry
+**`PUT /:id`** — Partial update
 
-#### `DELETE /:id` — Delete Knowledge Entry
-- Creates an `activity_log` entry
+**`DELETE /:id`** — Delete entry
 
-### 3.5 Task Routes (`/api/tasks`)
+### 3.5 Facts Routes (`/api/facts`)
 
-#### `GET /` — List Tasks
-- Query params: `project_id`, `status`, `ai_agent`, `limit` (default 100), `offset`
-- Joins with `projects` to include `project_name`
-- Ordered by priority (urgent first), then `created_at ASC`
+**`GET /`** — List/search with `q`, `category`, `source`, `confirmed`, `limit`
 
-#### `GET /kanban` — Kanban View
-- Optional: `project_id` filter
-- Returns: `{ todo: [...], in_progress: [...], review: [...], done: [...] }`
+**`GET /:id`** — Get single fact
 
-#### `GET /:id` — Get Single Task
-- Includes `project_name` via JOIN
+**`POST /`** — Create fact (required: `title`, `content`)
 
-#### `POST /` — Create Task
-- Required: `{ title }`
-- Optional: `project_id`, `description`, `status`, `priority`, `ai_agent`, `next_steps`
-- Creates `activity_log` entry
+**`PUT /:id`** — Update fact
 
-#### `PUT /:id` — Update Task
-- Partial update (merges with existing)
-- If status changed, activity log says "moved to [status]"
+**`DELETE /:id`** — Delete fact
 
-#### `DELETE /:id` — Delete Task
+### 3.6 Task Routes (`/api/tasks`)
 
-### 3.6 Project Routes (`/api/projects`)
+**`GET /`** — List tasks with `project_id`, `status`, `ai_agent`, `limit` filters
 
-#### `GET /` — List Projects
-- Optional: `status` filter
-- Returns projects with `task_counts` per status: `{ todo: N, in_progress: N, review: N, done: N }`
+**`GET /kanban`** — Returns `{ todo: [...], in_progress: [...], review: [...], done: [...] }`
 
-#### `GET /:id` — Get Project with Tasks
-- Returns project object with nested `tasks` array
+**`GET /:id`** — Get single task
 
-#### `POST /` — Create Project
-- Required: `{ name }`
-- Optional: `description`, `status`
+**`POST /`** — Create task (required: `title`)
 
-#### `PUT /:id` — Update Project
-#### `DELETE /:id` — Delete Project
-- Tasks with this `project_id` get `SET NULL` (not deleted)
+**`PUT /:id`** — Update task (logs status changes)
 
-### 3.7 Transcript Routes (`/api/transcripts`)
+**`DELETE /:id`** — Delete task
 
-#### `GET /` — List/Search Transcripts
-- Query params: `q` (full-text), `source`, `limit` (default 50), `offset`
-- Returns `preview` (first 300 chars of raw_text) instead of full text for list view
-- **Important:** When `q` is provided, also includes `location` in the SELECT fields
+### 3.7 Project Routes (`/api/projects`)
 
-#### `GET /:id` — Get Full Transcript
-- Returns complete object including full `raw_text`
+**`GET /`** — List projects with `task_counts` per status
 
-#### `POST /` — Upload Transcript
-- Required: `{ raw_text }`
-- Auto-generates title from date if not provided
-- **Dual write:** Also creates a `knowledge` entry (category: `transcript`) with the summary or first 2000 chars of raw_text. This ensures transcripts are searchable in the unified knowledge view.
+**`GET /:id`** — Get project with tasks
 
-#### `POST /bulk` — Bulk Upload
-- Body: `{ transcripts: [...] }`
-- Iterates and inserts each
+**`POST /`** — Create project (required: `name`)
 
-#### `DELETE /:id` — Delete Transcript
+**`PUT /:id`** — Update project
 
-### 3.8 Health Routes (`/api/healthdata`)
+**`DELETE /:id`** — Delete project (tasks get `SET NULL`)
 
-**Note:** Mounted at `/api/healthdata` (not `/api/health`) to avoid collision with `/api/health-check`.
+### 3.8 Transcript Routes (`/api/transcripts`)
 
-#### `GET /metrics` — Query Metrics
-- Params: `type`, `from`, `to`, `limit` (default 100), `offset`
+**`GET /`** — List/search with `q`, `source`, `limit`. Returns preview (300 chars).
 
-#### `GET /metrics/types` — Summary by Type
-- Returns: metric_type, unit, count, earliest, latest, avg_value
+**`GET /:id`** — Full transcript including `raw_text` and speaker utterances
 
-#### `POST /metrics` — Store Metrics
-- Accepts single metric or `{ metrics: [...] }` array
-- Required per item: `metric_type`, `value`, `unit`, `recorded_at`
+**`POST /`** — Upload transcript (required: `raw_text`)
+- Auto-generates title if not provided
+- Stores speaker utterances in `transcript_speakers` if `speaker_labels` provided
 
-#### `GET /workouts` — List Workouts
-- Params: `type`, `from`, `to`, `limit` (default 50), `offset`
+**`POST /bulk`** — Bulk upload
 
-#### `GET /workouts/types` — Summary by Type
-- Returns: workout_type, count, avg_duration, total_calories, total_distance
+**`DELETE /:id`** — Delete transcript (cascades to speakers)
 
-#### `POST /workouts` — Store Workouts
-- Accepts single or `{ workouts: [...] }` array
+### 3.9 Conversation Routes (`/api/conversations`)
 
-#### `GET /workouts/:id` — Get Single Workout
+**`GET /`** — List/search conversations
 
-### 3.9 Activity Log (`/api/activity`)
+**`GET /:id`** — Full conversation thread
 
-#### `GET /` — List Activity
-- Params: `entity_type`, `ai_source`, `limit` (default 50), `offset`
-- Ordered by `created_at DESC`
+**`POST /`** — Store conversation with `full_thread` JSONB
 
-### 3.10 Dashboard (`/api/dashboard`)
+**`PUT /:id`** — Update
 
-#### `GET /` — Aggregated Stats
-Returns a single object with 11 parallel queries:
+**`DELETE /:id`** — Delete
+
+### 3.10 Smart Intake Routes (`/api/intake`)
+
+AI-powered auto-classification using OpenAI GPT-4o-mini.
+
+**`POST /`** — Classify and file any input
+- Required: `{ input }`
+- Optional: `source`, `context`
+- GPT-4o-mini determines: database, title, category, tags, priority, status, summary
+- Returns: `{ id, classification }`
+
+**`POST /batch`** — Batch auto-classify multiple items
+
+**`POST /distill`** — Extract insights from a conversation
+- Required: `{ content }`
+- Extracts: facts -> `facts` table, decisions -> `knowledge` table, tasks -> `tasks` table
+- Returns: `{ extracted: { facts, decisions, tasks }, project, tags }`
+
+### 3.11 Activity Log (`/api/activity`)
+
+**`GET /`** — List with `entity_type`, `ai_source`, `limit` filters. Ordered by `created_at DESC`.
+
+### 3.12 Dashboard (`/api/dashboard`)
+
+**`GET /`** — Parallel SQL aggregate queries returning:
 
 ```json
 {
-  "knowledge": {
-    "total": 150,
-    "by_category": [{ "category": "general", "count": 50 }, ...],
-    "by_ai_source": [{ "ai_source": "claude", "count": 30 }, ...]
-  },
-  "projects": { "active": 5 },
-  "tasks": {
-    "by_status": { "todo": 10, "in_progress": 3, "review": 2, "done": 15 },
-    "by_priority": { "low": 5, "medium": 12, "high": 6, "urgent": 2 },
-    "by_agent": [{ "ai_agent": "claude", "count": 10 }, ...]
-  },
-  "transcripts": { "total": 200 },
-  "health": { "total_metrics": 500, "total_workouts": 30 },
-  "recent_activity": [/* last 15 activity_log entries */]
+  "knowledge": { "total", "by_category", "by_ai_source" },
+  "facts": { "total", "by_category", "confirmed", "unconfirmed" },
+  "projects": { "active" },
+  "tasks": { "by_status", "by_priority", "by_agent" },
+  "transcripts": { "total" },
+  "recent_activity": [/* last 15 entries */]
 }
 ```
 
-### 3.11 Unified Search (`/api/search`)
+### 3.13 Unified Search (`/api/search`)
 
-#### `GET /` — Search All Types
-- Required: `q` param
-- Runs 4 searches in parallel: knowledge, transcripts, tasks, projects
-- Knowledge and transcripts use full-text search with ILIKE fallback
-- Tasks and projects use ILIKE only
-- Returns: `{ query, results: { knowledge, transcripts, tasks, projects }, total }`
+**`GET /`** — Search all types in parallel
+- Required: `q`, optional: `limit` (max 50)
+- Returns: `{ query, results: { knowledge, facts, transcripts, tasks, projects }, total }`
 
-#### `POST /ai` — AI-Optimized Search
-- Body: `{ query, limit }`
-- Same search logic but flattens results into a single array sorted by relevance
-- Returns: `{ query, total, results: [...], summary: "Found X knowledge..." }`
-- Intended for ChatGPT/Claude to call programmatically
+**`POST /ai`** — AI-optimized flattened results for programmatic access
 
-### 3.12 Bee Integration (`/api/bee`) — The Largest Module
+### 3.14 Bee Integration (`/api/bee`)
 
-The Bee (by Amazon) is a wearable device that records conversations, extracts facts, and manages todos. This module proxies to the Bee Cloud API.
+The Bee (by Amazon) is a wearable that records conversations.
 
-#### Bee Cloud API Details
+**Bee Cloud API Details:**
 - Base URL: `https://app-api-developer.ce.bee.amazon.dev`
-- TLS: Uses a **private CA certificate** (embedded in source code). You must create an `https.Agent` with `ca: BEE_CA_CERT`.
-- Auth: `Authorization: Bearer <token>` header
-- Token source (priority): `X-Bee-Token` header → `req.body.bee_token` → `BEE_API_TOKEN` env var
-- Response size guard: Rejects responses > 5 MB
-- Timeout: 30 seconds per request
-- Pagination: cursor-based (`?cursor=...`, response has `next_cursor`)
+- TLS: Private CA certificate (embedded in source code)
+- Auth: Bearer token from `X-Bee-Token` header / `req.body.bee_token` / `BEE_API_TOKEN` env
+- Timeout: 30s, max response: 5 MB
+- Pagination: cursor-based
 
-#### Bee API Endpoints Used
-| Bee Endpoint | Purpose | Data Format |
-|---|---|---|
-| `GET /v1/me` | User profile (debug) | `{ ... }` |
-| `GET /v1/facts[?cursor=]` | User's learned facts | `{ facts: [{ id, text, confirmed }], next_cursor }` |
-| `GET /v1/todos[?cursor=]` | User's todo items | `{ todos: [{ id, text, completed }], next_cursor }` |
-| `GET /v1/conversations?limit=N&created_after=DATE[&cursor=]` | Conversation list | `{ conversations: [{ id, summary, short_summary, state, start_time, end_time, speakers, primary_location, utterances_count, created_at }], next_cursor }` |
-| `GET /v1/conversations/:id` | Full conversation detail | `{ conversation: { ..., transcriptions: [{ utterances: [{ speaker, text, start, spoken_at }], realtime }], summary, short_summary } }` |
-| `GET /v1/journals[?cursor=]` | Journal entries | `{ journals: [...], next_cursor }` |
-| `GET /v1/daily[?cursor=]` | Daily summaries | `{ daily: [...], next_cursor }` |
-| `GET /v1/changes[?cursor=]` | Incremental change feed | `{ changes: [{ type, id }], next_cursor }` |
-| `GET /v1/facts/:id` | Single fact detail | `{ fact: {...} }` |
-| `GET /v1/todos/:id` | Single todo detail | `{ todo: {...} }` |
-| `POST /v1/search` | Neural search | `{ results: [...] }` |
+**Endpoints:**
 
-**Response parsing is defensive:** The `extractArray(data, primaryKey)` function tries `data[primaryKey]`, then `data.items`, `data.results`, `data.data`, then auto-detects the first array value.
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /status` | Sync status and local counts |
+| `GET /counts` | Live Bee API item counts |
+| `POST /sync` | Full sync (blocks) |
+| `POST /sync-chunk` | Chunked sync (frontend-driven, primary method) |
+| `POST /sync-incremental` | Delta sync via change feed (used by auto-sync) |
+| `POST /purge` | Delete all Bee data |
+| `POST /import` | Import from JSON |
+| `POST /search` | Neural search via Bee API |
+| `GET /diagnose` | Test Bee API connectivity |
 
-#### AB Brain Bee Endpoints
+**Scheduled Auto-Sync:** When `BEE_API_TOKEN` is set, runs incremental sync 10s after startup, then every `BEE_SYNC_INTERVAL` minutes (default 30).
 
-**`GET /api/bee/status`** — Current sync status
-- Returns counts of bee facts, tasks, transcripts, journals, daily summaries stored locally
-- Indicates whether `BEE_API_TOKEN` is configured (auto-sync active)
-- Returns timestamp of last import activity
+### 3.15 Sync Status (`/api/sync-status`)
 
-**`GET /api/bee/counts`** — Live Bee API item counts
-- Fetches first page of each type with `limit=1` to get totals
-
-**`POST /api/bee/sync`** — Full sync (single request, blocks until done)
-- Optional body: `{ force: true }` purges all bee data first
-- Paginates through all facts, todos, conversations, journals, daily summaries
-- For each conversation: fetches detail to get full transcript with utterances
-- Deduplication: checks by content ILIKE (facts), title match (todos), metadata bee_id (conversations/journals/daily)
-- Dual writes conversations: `transcripts` table AND `knowledge` table (category: `meeting`)
-
-**`POST /api/bee/sync-chunk`** — Chunked sync (one page at a time)
-- Body: `{ type: 'facts'|'todos'|'conversations'|'journals'|'daily', cursor, force }`
-- Frontend calls this in a loop, advancing cursor until `done: true`
-- Conversations limited to 5 per chunk (each requires a detail fetch)
-- Returns: `{ imported, skipped, cursor, done, page_size, debug_keys, skip_reasons, date_range, errors }`
-- **This is the primary sync method used by the frontend** — it allows progress reporting between chunks
-
-**`POST /api/bee/sync-incremental`** — Delta sync via change feed
-- Reads last cursor from `activity_log` (action: `bee-change-cursor`)
-- Calls Bee `/v1/changes` API
-- For each changed entity: fetches full detail, upserts into DB
-- Updates cursor in `activity_log` for next run
-- **This is the method used by the scheduled auto-sync** (runs every 30 min by default)
-
-**`POST /api/bee/purge`** — Delete all bee data
-- Deletes from knowledge (ai_source='bee'), tasks (ai_agent='bee'), transcripts (source='bee')
-
-**`POST /api/bee/import`** — Import from JSON
-- Body: `{ facts: [...], todos: [...], conversations: [...] }`
-- Same dedup logic as sync
-
-**`POST /api/bee/import-markdown`** — Import from markdown files
-- Parses `facts_md` (lines starting with `- `), `todos_md` (lines with `- [ ]` or `- [x]`), and conversation markdown files
-
-**`POST /api/bee/search`** — Neural search via Bee API
-- Proxies to `POST /v1/search` on Bee Cloud API
-- Cross-references results with local transcripts by matching `bee_id` in metadata
-- Returns results with `local_transcript` link if found
-
-**`GET /api/bee/test`** — Debug endpoint
-- Tests Bee API connectivity, dumps raw response shapes
-
-#### Transcript Text Extraction Logic
-
-The `extractTranscript(detail, convoStartTime)` function extracts readable transcript text from Bee's conversation detail response:
-
-1. Check `detail.transcriptions` array → prefer the non-realtime (finalized) transcription
-2. From the transcription, extract `utterances`, sort by `start` time, limit to 1500 utterances
-3. Format each as: `[HH:MM:SS AM] Speaker: text`
-4. Timestamps calculated from `convoStartTime + utterance.start` (seconds offset) or `utterance.spoken_at`
-5. Fallback: `detail.utterances`, then `detail.transcript`, `detail.full_transcript`, `detail.text`
-
-#### Scheduled Auto-Sync
-
-After DB init in `server.js`:
-1. If `BEE_API_TOKEN` env var is set:
-   - Run incremental sync 10 seconds after startup
-   - Then repeat every `BEE_SYNC_INTERVAL` minutes (default: 30, configurable via env)
-   - Calls its own `/api/bee/sync-incremental` endpoint internally via `http.request` to `127.0.0.1`
+In-memory tracker for all data sources (bee, chatgpt, claude, intake). Returns source states and recent job history.
 
 ---
 
-## 4. FRONTEND SPECIFICATION
+## 4. NOTION MIRROR (OPTIONAL)
 
-### 4.1 Technology
+When `NOTION_TOKEN` and `NOTION_DB_*` environment variables are configured, a background sync pushes data one-way from PostgreSQL to Notion.
+
+### How It Works
+
+- PostgreSQL is the **source of truth** — all API reads and writes go to PostgreSQL
+- A background job periodically mirrors new/updated records to corresponding Notion databases
+- Notion databases have matching schemas (Title, Content, Category, Tags, etc.)
+- The mirror is **read-only** from Notion's perspective — edits in Notion are NOT synced back
+- Rate limited to ~3 requests/second (Notion API constraint)
+
+### Notion Databases
+
+| Notion Database | Mirrors From |
+|----------------|--------------|
+| Knowledge | `knowledge` table |
+| Facts | `facts` table |
+| Tasks | `tasks` table |
+| Projects | `projects` table |
+| Transcripts | `transcripts` table |
+| Activity Log | `activity_log` table |
+
+### Why Keep Notion?
+
+- Browse data in the Notion app (nice mobile experience)
+- Built-in views, filters, grouping, and sharing
+- No frontend code to maintain for the mirror — it's just API calls
+- If Notion goes down or is removed, nothing breaks — PostgreSQL has everything
+
+---
+
+## 5. FRONTEND SPECIFICATION
+
+### 5.1 Technology
 
 - **Vanilla JavaScript** — no framework, no build step
 - Single HTML file (`index.html`) + one CSS file (`styles.css`) + one JS file (`app.js`)
-- Dark theme by default (background: `#0f1117`, text: `#e4e6f0`, accent: `#6366f1`)
-- Mobile-first responsive design with bottom tab navigation
+- Dark theme (background: `#0f1117`, text: `#e4e6f0`, accent: `#6366f1`)
+- Mobile-first responsive design
 - PWA: Service worker (`sw.js`) + web manifest (`manifest.json`)
-- iOS-optimized: `apple-mobile-web-app-capable`, safe area insets, no text size adjust
+- iOS-optimized: `apple-mobile-web-app-capable`, safe area insets
 
-### 4.2 Authentication Flow
+### 5.2 What is a PWA?
 
-1. On page load, check `sessionStorage` then `localStorage` for `ab_api_key`
-2. If no key found, show full-screen login overlay
-3. On login: test key against `GET /api/dashboard`. If 401, show error. If success, store key.
-4. "Remember me" checkbox → store in `localStorage` (persistent) vs. `sessionStorage` (tab only)
-5. All API calls include `X-Api-Key` header via `api()` helper function
-6. If any API call returns 401, redirect to login screen with "Session expired" message
+A **Progressive Web App** means the website can be installed on a phone's home screen:
+- Opens full-screen (no browser chrome)
+- Has its own app icon (AB Brain logo)
+- Works offline for cached content (app shell)
+- Auto-refreshes data when resumed from background
+- No app store required — "Add to Home Screen" from browser
 
-### 4.3 Navigation & Views
+### 5.3 Authentication Flow
 
-Bottom tab bar with 6 tabs. Only one view visible at a time. CSS class `active` controls visibility.
+1. Check `sessionStorage` then `localStorage` for `ab_api_key`
+2. If missing, show login overlay with AB Brain logo
+3. Test key against `GET /api/dashboard` — 401 = invalid, success = store and proceed
+4. "Remember me" -> `localStorage` (persistent) vs. `sessionStorage` (tab only)
+5. All API calls include `X-Api-Key` header via `api()` helper
+6. Any 401 response redirects to login
 
-| Tab | View ID | Load Function |
-|-----|---------|---------------|
-| Home | `view-dashboard` | `loadDashboard()` |
-| Kanban | `view-kanban` | `loadKanban()` |
-| Brain | `view-knowledge` | `loadKnowledge()` |
-| Transcripts | `view-transcripts` | `loadTranscripts()` |
-| Projects | `view-projects` | `loadProjects()` |
-| Import | `view-import` | (static content + dynamic prompts) |
+### 5.4 Header & Branding
 
-### 4.4 Dashboard View
+- Header shows AB Brain logo (SVG), title with gradient text (indigo to purple), and subtitle
+- Logo is a stylized brain with "AB" initials, using the app's color palette
+- Same logo used in: login screen, header, favicon, PWA icon
 
-Displays:
-1. **Stats grid** (2 cols on mobile, 4 on desktop): Knowledge Entries, Transcripts, Total Tasks, In Progress, Active Projects, Workouts
-2. **Tasks by Status** chart — horizontal bar chart (custom CSS, no chart library)
-3. **Knowledge by AI Source** chart — horizontal bars with color-coded fills
-4. **Tasks by Agent** chart — horizontal bars
-5. **Recent Activity** — last 15 items from activity log, each showing action icon (+/~/x), description, AI source, and relative time
+### 5.5 Dashboard View
 
-### 4.5 Kanban View
+- Stats grid (3 cols mobile, responsive): Knowledge, Transcripts, Tasks, In Progress, Active Projects, Facts
+- Bee Wearable Sync card with sync buttons
+- Sync Status card with per-source indicators and job history
+- Recent Activity (last 15 items)
+- Tools section
 
-- 4 columns: To Do, In Progress, Review, Done
-- Horizontal scroll with `scroll-snap-type: x mandatory` on mobile
-- Column headers show count badge
-- Cards show: title, priority badge (color-coded), AI agent badge, project name, truncated next_steps
-- Project filter dropdown (fetched from `/api/projects`)
-- Click card → opens edit modal (status, priority, ai_agent, next_steps, output_log)
-- FAB (+) button → opens new task modal
+### 5.6 Global Search (Ctrl+K / Cmd+K)
 
-### 4.6 Brain (Knowledge) View
-
-- **Search bar** with enter-to-search
-- **Source filter chips:** All Sources, claude, chatgpt, gemini, bee-sync (horizontal scroll)
-- **Category filter chips:** dynamically loaded from `/api/knowledge/meta/categories`
-- **Knowledge list:** cards with colored left border by category, showing:
-  - AI source badge (color-coded: purple=claude, green=chatgpt, blue=gemini, yellow=bee)
-  - Title, content preview (2-line clamp), category, relative time, tags
-- Click item → opens detail/edit modal with all fields
-- FAB (+) → new knowledge entry modal
-
-### 4.7 Transcripts View
-
-- Search bar with full-text search
-- List items show: title, summary/preview, source, duration (minutes), relative time, location
-- Yellow left border (category: transcript)
-- Click → opens transcript detail modal with:
-  - **Chat-bubble conversation view:** If raw_text has `Speaker: text` format, renders as iMessage-style chat bubbles
-  - Speaker detection: `detectMySpeaker()` heuristic — speaker with most utterances = the Bee wearer (shown on right/blue bubbles)
-  - Other speakers shown on left with border styling
-  - Timestamps shown per message
-  - "Show raw text" toggle to see unformatted transcript
-  - Summary section if available
-  - Location and duration metadata
-  - Delete button
-
-**Transcript parsing:** `parseTranscriptToMessages(rawText)` splits on newlines, regex matches `[timestamp] Speaker: text` or `Speaker: text` format.
-
-### 4.8 Projects View
-
-- List of project cards showing: name, description, task count dots (todo/in_progress/review/done), progress bar (% done)
-- Click → edit modal (name, description, status)
-- FAB (+) → new project modal
-
-### 4.9 Import View
-
-Three sections:
-
-**1. Import AI Conversations**
-- File drop zone (drag-and-drop or click-to-select)
-- Source selector: ChatGPT, Claude, Generic JSON
-- Progress bar and log during import
-- **ChatGPT extraction:** Traverses `conv.mapping` nodes, sorts by `create_time`, extracts `content.parts` per message, formats as `**You/ChatGPT:** text`
-- **Claude extraction:** Reads `chat_messages` or `messages` array, maps `sender` to `You`/`Claude`
-- **Auto-categorization:** Keyword analysis on title+content to assign category (code, meeting, research, decision, general)
-- Each conversation → stored as a knowledge entry with tags `[source-import, conversation]`
-
-**2. Connect AI (Live)**
-- Shows API key input (stays in browser)
-- **ChatGPT card:** Step-by-step instructions for creating Custom GPT with Actions. Links to OpenAPI spec URL. Copy-able instruction prompt.
-- **Claude card:** Instructions for pasting into Project Instructions. Copy-able prompt.
-- **Gemini card:** Import-only instructions (Gemini cannot make outbound API calls). Google Takeout instructions.
-- **Bee Wearable card:** Shows sync status, manual sync buttons, file upload for bee-sync exports, JSON paste option
-
-**3. Bee Cloud Sync UI**
-- Status indicator: auto-sync active/off, data counts, last sync time
-- "Sync Updates Only" button → calls `/api/bee/sync-incremental`
-- "Sync All New (chunked)" button → loops `/api/bee/sync-chunk` for all 5 types with progress bar
-- "Full Sync (purge & re-import)" button → confirms, purges, then full chunked sync
-- "Upload bee-sync files" → reads .md/.json files, sends to import endpoints
-- "Paste Bee JSON data" → prompt for JSON, auto-detects type
-- Progress reporting: 5-phase weighted progress bar (facts: 5%, todos: 5%, conversations: 70%, journals: 10%, daily: 10%)
-
-### 4.10 Global Search (Ctrl+K / Cmd+K)
-
-- Full-screen overlay with search input
-- 300ms debounce, minimum 2 characters
+- Full-screen overlay with debounced search (300ms, min 2 chars)
 - Calls `GET /api/search?q=term`
-- Results grouped by type: Knowledge, Transcripts, Tasks, Projects — each with icon
-- Click result → closes search, navigates to detail modal
-- **Bonus:** After local search completes, also fires `POST /api/bee/search` in background for neural search results (appended with "Bee Neural" group label)
+- Results grouped by type with icons
+- Also fires Bee neural search in background
 
-### 4.11 Pull-to-Refresh
-
-- Touch gesture detection on `.views-container`
-- Threshold: 80px pull distance
-- Shows animated refresh indicator at top
-- Calls `refreshCurrentView()` which reloads the current tab's data
-
-### 4.12 Auto-Refresh
-
-- On `visibilitychange` (tab switch back / app resume), if >30 seconds since last refresh, reload current view
-- Prevents stale data on mobile where the PWA sits in background
-
-### 4.13 Service Worker
+### 5.7 Service Worker
 
 - Cache name: `abkb-v2`
 - Caches app shell: `/`, `/styles.css`, `/app.js`, `/manifest.json`
-- Strategy: **Cache-first** for static assets (with background update), **network-only** for `/api/*` calls
-- Installs immediately (`skipWaiting`), claims clients on activate
-
-### 4.14 OpenAPI Spec for ChatGPT
-
-A `public/openapi-chatgpt.json` file defines the API in OpenAPI 3.1 format for ChatGPT Custom GPT Actions. It documents endpoints for knowledge CRUD, task CRUD, project CRUD, transcript search/upload, health metrics, dashboard, and unified search — all with the `X-Api-Key` security scheme.
+- Cache-first for static assets, network-only for `/api/*`
+- `skipWaiting` + `clients.claim` on activate
 
 ---
 
-## 5. ENVIRONMENT VARIABLES
+## 6. ENVIRONMENT VARIABLES
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PORT` | No | `3000` | Server listen port |
-| `API_KEY` | Yes (prod) | None | Static API key for authentication |
-| `DATABASE_URL` | Yes | None | PostgreSQL connection string. Railway provides this automatically. SSL auto-enabled for non-localhost URLs. |
-| `BEE_API_TOKEN` | No | None | Bee wearable API token for automatic cloud sync. Obtained by running `bee login` on Mac then reading `~/.bee/token-prod`. |
-| `BEE_SYNC_INTERVAL` | No | `30` | Minutes between automatic Bee sync runs |
+| `API_KEY` | Yes (prod) | None | Static API key for auth |
+| `DATABASE_URL` | Yes | None | PostgreSQL connection string (Railway auto-sets) |
+| `OPENAI_API_KEY` | Yes | None | OpenAI key for smart intake (GPT-4o-mini) |
+| `BEE_API_TOKEN` | No | None | Bee API token for auto-sync |
+| `BEE_SYNC_INTERVAL` | No | `30` | Minutes between auto-syncs |
+| `NOTION_TOKEN` | No | None | Notion integration secret (enables mirror) |
+| `NOTION_DB_KNOWLEDGE` | No | None | Notion database ID |
+| `NOTION_DB_FACTS` | No | None | Notion database ID |
+| `NOTION_DB_TASKS` | No | None | Notion database ID |
+| `NOTION_DB_PROJECTS` | No | None | Notion database ID |
+| `NOTION_DB_TRANSCRIPTS` | No | None | Notion database ID |
+| `NOTION_DB_ACTIVITY_LOG` | No | None | Notion database ID |
 
 ---
 
-## 6. SCRIPTS & UTILITIES
+## 7. SCRIPTS & UTILITIES
 
-### 6.1 `scripts/import-chatgpt.js`
-CLI script to bulk-import ChatGPT conversations from `conversations.json` directly into the database (bypasses the API). Reads `DATABASE_URL` from env.
+### 7.1 `scripts/import-chatgpt.js`
+CLI script to bulk-import ChatGPT conversations from `conversations.json` directly into PostgreSQL.
 
-### 6.2 `scripts/bee-live-sync.js`
-Node.js script for syncing Bee data from the local `~/.bee` directory on a Mac. Runs as a cron job. Reads facts, todos, and recent conversations from the Bee CLI's local cache.
+### 7.2 `scripts/bee-live-sync.js`
+Node.js script for syncing Bee data from the local `~/.bee` directory on a Mac.
 
-### 6.3 `scripts/bee-to-brain-sync.sh`
-Bash wrapper script for Bee sync. Supports `--only facts|todos|convos` and `--recent-days N` flags. Can be scheduled via cron.
+### 7.3 `scripts/bee-to-brain-sync.sh`
+Bash wrapper with `--only` and `--recent-days` flags.
 
-### 6.4 `scripts/com.abbrain.bee-sync.plist`
-macOS LaunchAgent plist file for scheduling `bee-live-sync.js` to run automatically on Mac.
+### 7.4 `scripts/com.abbrain.bee-sync.plist`
+macOS LaunchAgent for scheduling bee-live-sync.js.
 
 ---
 
-## 7. KEY DESIGN DECISIONS & IMPLEMENTATION NOTES
+## 8. KEY DESIGN DECISIONS
 
-### 7.1 No Framework Frontend
-The entire frontend is vanilla JS with DOM manipulation via `innerHTML`. No React, Vue, or any framework. This keeps the bundle tiny (~67KB JS, ~21KB CSS, ~21KB HTML) and eliminates build tooling. The tradeoff is verbose DOM code and XSS-safe string escaping via a manual `esc()` function.
+### 8.1 PostgreSQL as Primary, Notion as Mirror
+PostgreSQL handles all reads, writes, and search. It offers millisecond queries, unlimited text storage, full-text search with ranking, and no rate limits. Notion serves as an optional read-only mirror for users who want to browse data in the Notion app. If Notion is removed, nothing breaks.
 
-### 7.2 Dual-Write Pattern for Transcripts
-Every transcript is written to BOTH `transcripts` (with full raw_text) AND `knowledge` (with summary/truncated text). This ensures the unified search and Brain view include transcript content without needing cross-table queries.
+### 8.2 Full-Text Search with Trigram Fallback
+Every searchable table has a `search_vector` TSVECTOR column auto-updated by triggers on INSERT/UPDATE. Primary search uses `plainto_tsquery` with `ts_rank` scoring. If zero results, falls back to `ILIKE` (powered by `pg_trgm` GIN indexes) for fuzzy/partial matching.
 
-### 7.3 Full-Text Search with Fallback
-PostgreSQL `to_tsvector` + `plainto_tsquery` is the primary search mechanism for knowledge and transcripts. If it returns zero results (common with short/unusual terms), falls back to `ILIKE %term%`. Tasks and projects use ILIKE only.
+### 8.3 Speaker-Level Transcript Storage
+The `transcript_speakers` table stores individual utterances with speaker names, timestamps, and text. This enables searching by speaker ("what did Andrew say?"), building conversation timelines, and rendering chat-bubble UIs.
 
-### 7.4 Chunked Bee Sync
-The initial design had a single `/sync` endpoint that would block for minutes. The chunked approach (`/sync-chunk`) lets the frontend drive pagination, show real-time progress, and survive Railway's request timeouts. Conversations are limited to 5 per chunk because each requires a separate API call to Bee for the full transcript.
+### 8.4 AI Conversation Archive
+The `conversations` table stores full AI chat threads as JSONB arrays alongside AI-generated summaries. This preserves the complete context of every AI interaction while making them searchable.
 
-### 7.5 Incremental Sync via Change Feed
-The Bee `/v1/changes` API returns a stream of entity-level changes since a cursor. The cursor is stored in `activity_log` (not a separate table). This enables efficient periodic sync — the scheduled auto-sync only processes new/modified items.
+### 8.5 Smart Intake with GPT-4o-mini
+The cheapest OpenAI model classifies raw input into the correct table with proper metadata. Costs fractions of a cent per classification. The distill endpoint extracts structured facts, decisions, and tasks from full conversations.
 
-### 7.6 Activity Log as Audit Trail + State Store
-The `activity_log` table serves dual purposes: user-visible audit trail AND system state storage (Bee sync cursors). Any action by any AI or the user creates a log entry.
+### 8.6 No Framework Frontend
+Vanilla JS with DOM manipulation via `innerHTML`. Keeps the bundle tiny and eliminates build tooling. XSS prevention via manual `esc()` function.
 
-### 7.7 Custom CA Certificate for Bee API
-Bee (now owned by Amazon) uses a private Certificate Authority. The root CA certificate is embedded directly in the source code and passed to Node's `https.Agent`. Without this, all Bee API calls would fail with TLS errors.
+### 8.7 Chunked Bee Sync
+`/sync-chunk` lets the frontend drive pagination and show real-time progress. Conversations limited to 5 per chunk (each needs a separate Bee API call for the full transcript).
 
-### 7.8 Project-Task Relationship
-Tasks have an optional `project_id` FK with `ON DELETE SET NULL`. Deleting a project orphans its tasks rather than cascading deletion. The frontend shows this as "None" in the project dropdown.
+### 8.8 Custom CA Certificate for Bee API
+Bee (Amazon) uses a private Certificate Authority. The root CA cert is embedded in source code.
 
-### 7.9 Mobile PWA Optimization
-- Bottom nav bar with safe-area padding for iPhone notch
+### 8.9 Mobile PWA Optimization
+- Bottom nav with safe-area padding for iPhone notch
 - `overscroll-behavior: none` prevents bounce scrolling
-- `scroll-snap-type` for horizontal Kanban scrolling
-- `100dvh` for proper viewport on mobile browsers
+- `100dvh` for proper mobile viewport
 - Pull-to-refresh gesture detection
 - Auto-refresh on app resume (visibility change)
 
 ---
 
-## 8. REBUILD RECOMMENDATIONS
+## 9. FUTURE ROADMAP
 
-If rebuilding this application from scratch:
+### Planned Features
+1. **People directory** — Normalized person table with aliases, speaker resolution for Bee transcripts
+2. **Health & fitness** — Workout logs (Fitbod/Strava/Apple Fitness), daily health metrics
+3. **AI query endpoints** — Fast single endpoint for AIs to search the entire knowledge base
+4. **Decisions table** — Executive decision log extracted from conversations
+5. **Bee task filtering** — Suggested vs. confirmed tasks from Bee todos
+6. **Persistent sync jobs** — Replace in-memory tracker with database table
+7. **Security** — Proper authentication beyond static API key
+8. **Backup** — Automated PostgreSQL exports
+9. **Cost tracking** — Monitor AI API spend across providers
 
-1. **Start with the database schema** (Section 2). Run the exact `CREATE TABLE` and `CREATE INDEX` statements. The `knowledge` table is central — everything cross-references it.
+---
 
-2. **Build the API layer next** (Section 3). The routes are stateless REST — any framework works. The key complexity is in the Bee integration (Section 3.12). Start with knowledge, tasks, projects, then add transcripts, health, and Bee last.
+## 10. REBUILD GUIDE
 
-3. **The Bee integration is 55KB of code** for a reason — the Bee Cloud API has undocumented quirks:
-   - Response shapes vary (sometimes array, sometimes `{ items: [...] }`, sometimes `{ facts: [...] }`)
-   - The `extractArray()` function handles all variants
+If rebuilding from scratch:
+
+1. **Start with `db.js`** — Run `initDB()` to create all tables, indexes, and triggers. The `knowledge` table is central.
+
+2. **Build the API layer** — Routes are stateless REST. Start with knowledge, tasks, projects. Add transcripts, facts, intake, then Bee last.
+
+3. **The Bee integration is the most complex module:**
+   - Response shapes vary (array, `{ items }`, `{ facts }`)
    - Conversation transcripts require a second API call per conversation
    - The private CA cert is mandatory
-   - Rate limiting may apply — the 5-per-chunk limit on conversations is deliberate
+   - 5-per-chunk limit on conversations is deliberate
 
-4. **The frontend can be rebuilt in any framework** (React, Vue, etc.) but preserve:
-   - The bottom-tab navigation pattern (not sidebar — this is phone-first)
-   - The chat-bubble transcript viewer with speaker detection
-   - The Ctrl+K global search overlay
-   - The chunked sync progress UI for Bee imports
-   - The inline AI connection instructions with copyable prompts
+4. **The frontend can be rebuilt in any framework** but preserve:
+   - Bottom-tab navigation (phone-first, not sidebar)
+   - Chat-bubble transcript viewer with speaker detection
+   - Ctrl+K global search overlay
+   - Chunked sync progress UI for Bee imports
 
-5. **The OpenAPI spec** (`openapi-chatgpt.json`) must be kept in sync with the API. ChatGPT fetches it during Custom GPT setup.
+5. **The OpenAPI spec** must stay in sync with the API for ChatGPT Custom GPT setup.
 
-6. **Test with real Bee data.** The user has daily summaries, locations, and transcription details dating back to December 26, 2025. The system must handle hundreds of conversations with full utterance-level transcripts.
+6. **The Notion mirror** is a separate concern — build it last, as a background job.

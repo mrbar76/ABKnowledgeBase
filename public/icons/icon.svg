@@ -1,16 +1,68 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0f1117"/>
-  <rect x="24" y="24" width="464" height="464" rx="80" fill="#1a1d27"/>
-  <circle cx="256" cy="220" r="120" fill="none" stroke="#6366f1" stroke-width="16"/>
-  <circle cx="256" cy="220" r="60" fill="#6366f1" opacity="0.3"/>
-  <circle cx="256" cy="220" r="20" fill="#6366f1"/>
-  <line x1="180" y1="300" x2="140" y2="380" stroke="#a855f7" stroke-width="10" stroke-linecap="round"/>
-  <line x1="332" y1="300" x2="372" y2="380" stroke="#22c55e" stroke-width="10" stroke-linecap="round"/>
-  <line x1="256" y1="340" x2="256" y2="420" stroke="#06b6d4" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="140" cy="390" r="16" fill="#a855f7"/>
-  <circle cx="372" cy="390" r="16" fill="#22c55e"/>
-  <circle cx="256" cy="430" r="16" fill="#06b6d4"/>
-  <text x="140" y="460" font-family="sans-serif" font-size="28" fill="#a855f7" text-anchor="middle">C</text>
-  <text x="372" y="460" font-family="sans-serif" font-size="28" fill="#22c55e" text-anchor="middle">G</text>
-  <text x="256" y="480" font-family="sans-serif" font-size="28" fill="#06b6d4" text-anchor="middle">AI</text>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1117"/>
+      <stop offset="100%" stop-color="#1a1d27"/>
+    </linearGradient>
+    <linearGradient id="brain-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="100" fill="none" stroke="#2d3148" stroke-width="2"/>
+
+  <!-- Subtle glow behind brain -->
+  <ellipse cx="256" cy="210" rx="130" ry="120" fill="url(#glow)"/>
+
+  <!-- Brain - left hemisphere -->
+  <path d="M256 120 C220 120, 160 140, 150 195 C142 240, 160 265, 175 280 C165 290, 155 310, 165 330 C175 350, 200 355, 215 350 C225 365, 245 370, 256 365"
+    fill="none" stroke="url(#brain-grad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Brain - right hemisphere -->
+  <path d="M256 120 C292 120, 352 140, 362 195 C370 240, 352 265, 337 280 C347 290, 357 310, 347 330 C337 350, 312 355, 297 350 C287 365, 267 370, 256 365"
+    fill="none" stroke="url(#brain-grad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Brain center line -->
+  <line x1="256" y1="125" x2="256" y2="360" stroke="#6366f1" stroke-width="4" stroke-dasharray="8 12" opacity="0.5"/>
+
+  <!-- Brain wrinkle details - left -->
+  <path d="M185 180 C200 175, 220 185, 240 178" fill="none" stroke="#a855f7" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <path d="M175 230 C195 222, 215 235, 245 225" fill="none" stroke="#a855f7" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M180 275 C200 268, 225 278, 250 270" fill="none" stroke="#a855f7" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Brain wrinkle details - right -->
+  <path d="M327 180 C312 175, 292 185, 272 178" fill="none" stroke="#a855f7" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <path d="M337 230 C317 222, 297 235, 267 225" fill="none" stroke="#a855f7" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M332 275 C312 268, 287 278, 262 270" fill="none" stroke="#a855f7" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Neural connection dots -->
+  <circle cx="195" cy="200" r="5" fill="#22c55e" opacity="0.8"/>
+  <circle cx="317" cy="200" r="5" fill="#22c55e" opacity="0.8"/>
+  <circle cx="210" cy="250" r="4" fill="#06b6d4" opacity="0.7"/>
+  <circle cx="302" cy="250" r="4" fill="#06b6d4" opacity="0.7"/>
+  <circle cx="230" cy="310" r="4" fill="#22c55e" opacity="0.6"/>
+  <circle cx="282" cy="310" r="4" fill="#22c55e" opacity="0.6"/>
+  <circle cx="256" cy="195" r="6" fill="#6366f1"/>
+
+  <!-- Connection lines between dots -->
+  <line x1="195" y1="200" x2="210" y2="250" stroke="#22c55e" stroke-width="2" opacity="0.3"/>
+  <line x1="317" y1="200" x2="302" y2="250" stroke="#22c55e" stroke-width="2" opacity="0.3"/>
+  <line x1="210" y1="250" x2="230" y2="310" stroke="#06b6d4" stroke-width="2" opacity="0.3"/>
+  <line x1="302" y1="250" x2="282" y2="310" stroke="#06b6d4" stroke-width="2" opacity="0.3"/>
+  <line x1="256" y1="195" x2="195" y2="200" stroke="#6366f1" stroke-width="2" opacity="0.3"/>
+  <line x1="256" y1="195" x2="317" y2="200" stroke="#6366f1" stroke-width="2" opacity="0.3"/>
+
+  <!-- "AB" text -->
+  <text x="256" y="455" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="800" fill="#e4e6f0" text-anchor="middle" letter-spacing="8">AB</text>
+
+  <!-- Subtle underline accent -->
+  <line x1="195" y1="468" x2="317" y2="468" stroke="url(#brain-grad)" stroke-width="4" stroke-linecap="round"/>
 </svg>

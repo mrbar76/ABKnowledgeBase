@@ -34,11 +34,32 @@
 .login-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 32px 24px;
+  border-radius: 16px;
+  padding: 40px 28px 32px;
   text-align: center;
   width: 100%;
   max-width: 360px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.login-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 18px;
+  margin-bottom: 16px;
+}
+.login-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.login-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 24px;
 }
 
 body {
@@ -56,13 +77,38 @@ body {
 
 /* --- Header --- */
 .app-header {
-  padding: 16px 20px 8px;
+  padding: 14px 16px 10px;
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
 }
-.app-header h1 { font-size: 1.3rem; font-weight: 700; }
-.app-header .subtitle { font-size: 0.8rem; color: var(--text-dim); }
+.header-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.header-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.app-header h1 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.2;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.app-header .subtitle {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
 
 /* --- Page Content --- */
 .page-content {
