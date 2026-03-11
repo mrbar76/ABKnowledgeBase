@@ -434,20 +434,41 @@ async function runPurge() {
   btn.disabled = true;
   resultEl.style.display = 'block';
   resultEl.style.color = 'var(--text-dim)';
-  resultEl.textContent = 'Purging all data... this may take a while...';
+  resultEl.textContent = 'Starting purge...';
 
   try {
-    const data = await api('/purge', { method: 'POST', body: JSON.stringify({}) });
-    resultEl.style.color = 'var(--green)';
-    const details = Object.entries(data.results || {})
-      .map(([db, count]) => `${db}: ${count}`)
-      .join(', ');
-    resultEl.textContent = `${data.message}\n${details}`;
-    loadDashboard();
+    await api('/purge', { method: 'POST', body: JSON.stringify({}) });
+    // Poll for completion
+    const poll = async () => {
+      const status = await api('/purge/status');
+      if (status.status === 'running') {
+        const p = status.progress || {};
+        resultEl.textContent = `Purging ${p.currentDb || '...'}  (${p.current || 0} archived so far)`;
+        setTimeout(poll, 1500);
+      } else if (status.status === 'done') {
+        if (status.error) {
+          resultEl.style.color = 'var(--red)';
+          resultEl.textContent = `Purge error: ${status.error}`;
+        } else {
+          resultEl.style.color = 'var(--green)';
+          const details = Object.entries(status.results || {})
+            .map(([db, count]) => `${db}: ${count}`)
+            .join(', ');
+          resultEl.textContent = `${status.message}\n${details}`;
+        }
+        btn.disabled = false;
+        loadDashboard();
+      } else {
+        resultEl.style.color = 'var(--green)';
+        resultEl.textContent = 'Purge complete.';
+        btn.disabled = false;
+        loadDashboard();
+      }
+    };
+    setTimeout(poll, 1500);
   } catch (err) {
     resultEl.style.color = 'var(--red)';
     resultEl.textContent = `Purge failed: ${err.message}`;
-  } finally {
     btn.disabled = false;
   }
 }

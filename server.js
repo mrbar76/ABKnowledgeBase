@@ -243,7 +243,13 @@ app.post('/api/cleanup', async (req, res) => {
 // ─── Purge: clear all entries from a Notion database ──────────────
 // POST /api/purge { "databases": ["knowledge", "facts", "tasks", "transcripts"] }
 // Omit "databases" to clear all content databases (excludes activity_log)
+// Purge runs as a background job so it doesn't timeout
+const purgeState = { running: false, progress: null, result: null };
+
 app.post('/api/purge', async (req, res) => {
+  if (purgeState.running) {
+    return res.json({ status: 'running', progress: purgeState.progress });
+  }
   try {
     initNotion();
     const allowed = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts'];
@@ -254,11 +260,20 @@ app.post('/api/purge', async (req, res) => {
       return res.status(400).json({ error: 'No valid databases specified', allowed });
     }
 
+    purgeState.running = true;
+    purgeState.progress = { current: 0, currentDb: targets[0], databases: targets };
+    purgeState.result = null;
+
+    // Respond immediately — client will poll /api/purge/status
+    res.json({ status: 'started', databases: targets });
+
+    // Run purge in background
     let totalArchived = 0;
     const results = {};
-
     const skipped = [];
+
     for (const dbName of targets) {
+      purgeState.progress.currentDb = dbName;
       let archived = 0;
       try {
         let hasMore = true;
@@ -266,25 +281,39 @@ app.post('/api/purge', async (req, res) => {
           const result = await queryDatabase(dbName, undefined, undefined, 100);
           if (!result.results.length) { hasMore = false; break; }
           for (const page of result.results) {
-            try { await archivePage(page.id); archived++; } catch {}
+            try { await archivePage(page.id); archived++; purgeState.progress.current++; } catch {}
           }
         }
         results[dbName] = archived;
         totalArchived += archived;
       } catch (e) {
         skipped.push(`${dbName}: ${e.message}`);
-        results[dbName] = `skipped`;
+        results[dbName] = 'skipped';
       }
     }
 
-    res.json({
+    purgeState.result = {
       message: `Purged ${totalArchived} entries${skipped.length ? ` (${skipped.length} skipped)` : ''}`,
       results,
       skipped,
-    });
+    };
+    purgeState.running = false;
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    purgeState.result = { error: err.message };
+    purgeState.running = false;
   }
+});
+
+app.get('/api/purge/status', (req, res) => {
+  if (purgeState.running) {
+    return res.json({ status: 'running', progress: purgeState.progress });
+  }
+  if (purgeState.result) {
+    const result = purgeState.result;
+    purgeState.result = null; // Clear after reading
+    return res.json({ status: 'done', ...result });
+  }
+  res.json({ status: 'idle' });
 });
 
 // API Routes
