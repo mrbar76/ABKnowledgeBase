@@ -65,7 +65,6 @@ function switchTab(tab) {
 async function loadDashboard() {
   const main = document.getElementById('main-content');
 
-  // Always render the full layout — stats get filled async
   main.innerHTML = `
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Knowledge</div></div>
@@ -76,56 +75,13 @@ async function loadDashboard() {
       <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Facts</div></div>
     </div>
 
-    <div class="card">
-      <h2>Bee Wearable Sync</h2>
-      <div id="bee-sync-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
-      <div class="sync-actions">
-        <button class="btn-action" onclick="triggerBeeSync('incremental')" id="btn-sync-updates">Sync Updates</button>
-        <button class="btn-action btn-action-secondary" onclick="triggerBeeSync('full')" id="btn-sync-full">Full Sync</button>
-      </div>
-      <div id="bee-sync-result" style="display:none;margin-top:12px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-    </div>
-
-    <div class="card">
-      <h2>Sync Status</h2>
-      <div id="sync-status-panel"></div>
-      <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
-      <div id="sync-job-history"></div>
-    </div>
-
     <div class="card" id="activity-card" style="display:none">
       <h2>Recent Activity</h2>
       <div id="recent-activity"></div>
     </div>
-
-    <div class="card">
-      <h2>Settings</h2>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:0.85rem;font-weight:600">Backend</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-backend">PostgreSQL</div></div>
-          <span style="font-size:0.7rem;padding:2px 8px;border-radius:4px;background:rgba(34,197,94,0.15);color:var(--green)" id="settings-health">checking...</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:0.85rem;font-weight:600">Bee Token</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-bee-token">—</div></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:0.85rem;font-weight:600">OpenAI (Intake)</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-openai">—</div></div>
-        </div>
-        <div style="padding-top:8px">
-          <button class="btn-action btn-action-secondary" onclick="showDebugPanel()" style="width:100%;margin-bottom:8px">Diagnostics &amp; Logs</button>
-          <button class="btn-action btn-action-secondary" onclick="logout()" style="width:100%;margin-bottom:8px">Log Out</button>
-          <button class="btn-action btn-action-danger" onclick="confirmPurge()" style="width:100%">Clear All Data</button>
-        </div>
-        <div id="purge-result" style="display:none;margin-top:4px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-      </div>
-    </div>
   `;
 
-  // Load stats async — doesn't block sync/settings rendering
   loadDashboardStats();
-  loadSyncStatus();
-  loadBeeStatus();
-  loadSettingsInfo();
 }
 
 async function loadDashboardStats() {
@@ -154,31 +110,186 @@ async function loadDashboardStats() {
   }
 }
 
-async function loadSettingsInfo() {
+// ─── Settings Menu (logo tap) ────────────────────────────────
+function toggleSettingsMenu() {
+  const menu = document.getElementById('settings-menu');
+  if (menu.classList.contains('open')) { closeSettingsMenu(); return; }
+  menu.classList.add('open');
+  loadSettingsMenuInfo();
+}
+function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
+
+async function loadSettingsMenuInfo() {
+  const bkEl = document.getElementById('sm-backend-val');
+  const beeEl = document.getElementById('sm-bee-val');
+  const oaEl = document.getElementById('sm-openai-val');
+  const syncEl = document.getElementById('sm-synced-val');
+
+  // Health / backend
   try {
     const key = getStoredKey();
     const res = await fetch(API + '/health', { headers: key ? { 'X-Api-Key': key } : {} });
     const data = await res.json().catch(() => ({}));
-    const hEl = document.getElementById('settings-health');
-    if (hEl) { hEl.textContent = res.ok ? 'connected' : 'error'; hEl.style.background = res.ok ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'; hEl.style.color = res.ok ? 'var(--green)' : 'var(--red)'; }
-    const bEl = document.getElementById('settings-backend');
-    if (bEl && data.backend) bEl.textContent = data.backend;
+    if (bkEl) {
+      bkEl.textContent = res.ok ? (data.backend || 'PostgreSQL') + ' — connected' : 'error';
+      bkEl.style.color = res.ok ? 'var(--green)' : 'var(--red)';
+    }
   } catch {
-    const hEl = document.getElementById('settings-health');
-    if (hEl) { hEl.textContent = 'offline'; hEl.style.background = 'rgba(239,68,68,0.15)'; hEl.style.color = 'var(--red)'; }
+    if (bkEl) { bkEl.textContent = 'offline'; bkEl.style.color = 'var(--red)'; }
   }
+
+  // Bee status
   try {
     const beeData = await api('/bee/status');
-    const btEl = document.getElementById('settings-bee-token');
-    if (btEl) btEl.textContent = beeData.bee_token_configured ? 'Configured' : 'Not set (add BEE_API_TOKEN env var)';
-    const oaEl = document.getElementById('settings-openai');
-    if (oaEl) oaEl.textContent = beeData.openai_configured !== false ? 'Configured' : 'Not set';
+    if (beeEl) {
+      beeEl.textContent = beeData.bee_token_configured ? 'Configured' : 'Not set';
+      beeEl.style.color = beeData.bee_token_configured ? 'var(--green)' : 'var(--yellow)';
+    }
+    if (oaEl) {
+      oaEl.textContent = beeData.openai_configured ? 'Configured' : 'Not set';
+      oaEl.style.color = beeData.openai_configured ? 'var(--green)' : 'var(--yellow)';
+    }
+    // Synced counts
+    if (syncEl) {
+      const parts = [];
+      if (beeData.facts > 0) parts.push(`${beeData.facts} facts`);
+      if (beeData.tasks > 0) parts.push(`${beeData.tasks} tasks`);
+      if (beeData.transcripts > 0) parts.push(`${beeData.transcripts} transcripts`);
+      syncEl.textContent = parts.length ? parts.join(', ') : 'None';
+    }
   } catch (e) {
-    const btEl = document.getElementById('settings-bee-token');
-    if (btEl) btEl.textContent = `Error: ${e.message}`;
-    const oaEl = document.getElementById('settings-openai');
-    if (oaEl) oaEl.textContent = 'Could not check';
+    if (beeEl) { beeEl.textContent = 'Error'; beeEl.style.color = 'var(--red)'; }
+    if (oaEl) { oaEl.textContent = 'Error'; oaEl.style.color = 'var(--red)'; }
   }
+}
+
+async function triggerBeeSyncFromMenu(mode) {
+  const btnUp = document.getElementById('sm-btn-sync-updates');
+  const btnFull = document.getElementById('sm-btn-sync-full');
+  const resultEl = document.getElementById('sm-sync-result');
+  if (!resultEl) return;
+
+  if (btnUp) btnUp.disabled = true;
+  if (btnFull) btnFull.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+
+  if (mode === 'full') {
+    const types = ['facts', 'todos', 'conversations', 'journals', 'daily'];
+    const typeLabels = { facts: 'Facts', todos: 'Tasks', conversations: 'Conversations', journals: 'Journals', daily: 'Daily' };
+    const totals = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
+
+    resultEl.innerHTML = `
+      <div style="margin-bottom:6px;font-weight:600;font-size:0.82rem">Syncing from Bee...</div>
+      <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:6px">
+        <div id="sm-sync-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:3px;transition:width 0.3s"></div>
+      </div>
+      <div id="sm-sync-text" style="font-size:0.75rem;color:var(--text-dim)">Starting...</div>
+    `;
+    const fill = document.getElementById('sm-sync-fill');
+    const text = document.getElementById('sm-sync-text');
+
+    for (let ti = 0; ti < types.length; ti++) {
+      const type = types[ti];
+      const basePct = (ti / types.length) * 100;
+      const typePct = (1 / types.length) * 100;
+      let cursor = null, pageNum = 0;
+
+      if (text) text.textContent = `Syncing ${typeLabels[type]}...`;
+      if (fill) fill.style.width = `${basePct}%`;
+
+      do {
+        pageNum++;
+        try {
+          const data = await api('/bee/sync-chunk', { method: 'POST', body: JSON.stringify({ type, cursor, force: false }) });
+          totals[type] += (data.imported || 0);
+          totals.skipped += (data.skipped || 0);
+          if (data.errors?.length) totals.errors.push(...data.errors);
+          cursor = data.cursor;
+          if (fill) fill.style.width = `${basePct + (data.done || !cursor ? typePct : typePct * 0.8 * pageNum / (pageNum + 2))}%`;
+          if (text) text.textContent = `${typeLabels[type]}: ${totals[type]} imported`;
+          if (data.done || !cursor) break;
+        } catch (err) {
+          totals.errors.push(`${type}: ${err.message}`);
+          if (text) text.textContent = `${typeLabels[type]}: error`;
+          break;
+        }
+      } while (cursor);
+    }
+
+    if (fill) fill.style.width = '100%';
+    const parts = [];
+    if (totals.facts) parts.push(`${totals.facts} facts`);
+    if (totals.todos) parts.push(`${totals.todos} tasks`);
+    if (totals.conversations) parts.push(`${totals.conversations} conversations`);
+    if (totals.journals) parts.push(`${totals.journals} journals`);
+    if (totals.daily) parts.push(`${totals.daily} daily`);
+    let summary = parts.length ? `Imported: ${parts.join(', ')}` : 'No new items';
+    if (totals.skipped > 0) summary += ` (${totals.skipped} skipped)`;
+    if (totals.errors.length) summary += ` — ${totals.errors.length} error(s)`;
+    if (text) { text.textContent = summary; text.style.color = totals.errors.length ? 'var(--yellow)' : 'var(--green)'; }
+  } else {
+    resultEl.textContent = 'Syncing updates...';
+    try {
+      const data = await api('/bee/sync-incremental', { method: 'POST', body: JSON.stringify({}) });
+      const i = data.imported || {};
+      const parts = [];
+      if (i.facts) parts.push(`${i.facts} facts`);
+      if (i.todos) parts.push(`${i.todos} tasks`);
+      if (i.conversations) parts.push(`${i.conversations} conversations`);
+      resultEl.style.color = 'var(--green)';
+      resultEl.textContent = parts.length ? `Imported: ${parts.join(', ')}` : 'No new items';
+    } catch (err) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `Sync failed: ${err.message}`;
+    }
+  }
+
+  if (btnUp) btnUp.disabled = false;
+  if (btnFull) btnFull.disabled = false;
+  loadSettingsMenuInfo();
+  // Refresh dashboard if visible
+  if (currentTab === 'home') loadDashboardStats();
+}
+
+function confirmPurgeFromMenu() {
+  const btn = document.getElementById('btn-purge-settings');
+  const resultEl = document.getElementById('purge-menu-result');
+
+  if (!btn._confirmStep) {
+    btn._confirmStep = 1;
+    btn.textContent = 'Are you sure? Tap again to confirm';
+    btn.style.background = 'rgba(239,68,68,0.3)';
+    setTimeout(() => { if (btn._confirmStep === 1) { btn._confirmStep = 0; btn.textContent = 'Purge All Data'; btn.style.background = ''; } }, 4000);
+    return;
+  }
+  if (btn._confirmStep === 1) {
+    btn._confirmStep = 2;
+    btn.textContent = 'LAST CHANCE — This deletes EVERYTHING';
+    btn.style.background = 'rgba(239,68,68,0.5)';
+    setTimeout(() => { if (btn._confirmStep === 2) { btn._confirmStep = 0; btn.textContent = 'Purge All Data'; btn.style.background = ''; } }, 4000);
+    return;
+  }
+
+  // Actually purge
+  btn._confirmStep = 0;
+  btn.disabled = true;
+  btn.textContent = 'Purging...';
+  if (resultEl) { resultEl.style.display = 'block'; resultEl.textContent = 'Purging all data...'; resultEl.style.color = 'var(--text-dim)'; }
+
+  api('/purge', { method: 'POST', body: JSON.stringify({}) }).then(() => {
+    const poll = async () => {
+      try {
+        const s = await api('/purge/status');
+        if (s.status === 'running') { if (resultEl) resultEl.textContent = `Purging... (${s.progress?.current || 0} deleted)`; setTimeout(poll, 1500); }
+        else { if (resultEl) { resultEl.style.color = 'var(--green)'; resultEl.textContent = s.message || 'All data purged.'; } btn.disabled = false; btn.textContent = 'Purge All Data'; btn.style.background = ''; if (currentTab === 'home') loadDashboard(); loadSettingsMenuInfo(); }
+      } catch { if (resultEl) { resultEl.style.color = 'var(--green)'; resultEl.textContent = 'Purge complete.'; } btn.disabled = false; btn.textContent = 'Purge All Data'; btn.style.background = ''; }
+    };
+    setTimeout(poll, 1500);
+  }).catch(e => {
+    if (resultEl) { resultEl.style.display = 'block'; resultEl.style.color = 'var(--red)'; resultEl.textContent = e.message; }
+    btn.disabled = false; btn.textContent = 'Purge All Data'; btn.style.background = '';
+  });
 }
 
 // ─── Debug / Diagnostics Panel ───────────────────────────────
@@ -600,164 +711,7 @@ async function deleteProject(id) {
   try { await api(`/projects/${id}`, { method: 'DELETE' }); closeModal(); loadProjects(); } catch {}
 }
 
-// ─── Sync & Bee (reused from dashboard) ───────────────────────
-let syncPollTimer = null;
-
-async function triggerBeeSync(mode) {
-  const btnUpdates = document.getElementById('btn-sync-updates');
-  const btnFull = document.getElementById('btn-sync-full');
-  const resultEl = document.getElementById('bee-sync-result');
-  if (!btnUpdates) return;
-
-  btnUpdates.disabled = true; btnFull.disabled = true;
-  resultEl.style.display = 'block'; resultEl.style.color = 'var(--text-dim)';
-
-  if (mode === 'full') {
-    // Chunked sync — process each data type page-by-page (5 records at a time)
-    const types = ['facts', 'todos', 'conversations', 'journals', 'daily'];
-    const typeLabels = { facts: 'Facts', todos: 'Tasks', conversations: 'Conversations', journals: 'Journals', daily: 'Daily' };
-    const totals = { facts: 0, todos: 0, conversations: 0, journals: 0, daily: 0, skipped: 0, errors: [] };
-
-    // Render progress UI
-    resultEl.innerHTML = `
-      <div style="margin-bottom:8px;font-weight:600;font-size:0.85rem">Syncing from Bee...</div>
-      <div id="sync-progress-bar" style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px">
-        <div id="sync-progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:3px;transition:width 0.3s"></div>
-      </div>
-      <div id="sync-progress-text" style="font-size:0.78rem;color:var(--text-dim)">Starting...</div>
-      <div id="sync-progress-detail" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px"></div>
-    `;
-    const progressFill = document.getElementById('sync-progress-fill');
-    const progressText = document.getElementById('sync-progress-text');
-    const progressDetail = document.getElementById('sync-progress-detail');
-
-    for (let ti = 0; ti < types.length; ti++) {
-      const type = types[ti];
-      const baseProgress = (ti / types.length) * 100;
-      const typeProgress = (1 / types.length) * 100;
-      let cursor = null;
-      let pageNum = 0;
-
-      progressText.textContent = `Syncing ${typeLabels[type]}...`;
-      progressFill.style.width = `${baseProgress}%`;
-
-      do {
-        pageNum++;
-        progressDetail.textContent = `${typeLabels[type]} page ${pageNum}${totals[type] > 0 ? ` (${totals[type]} imported)` : ''}`;
-        try {
-          const data = await api('/bee/sync-chunk', {
-            method: 'POST',
-            body: JSON.stringify({ type, cursor, force: false })
-          });
-          totals[type] = (totals[type] || 0) + (data.imported || 0);
-          totals.skipped += (data.skipped || 0);
-          if (data.errors?.length) totals.errors.push(...data.errors);
-          cursor = data.cursor;
-
-          // Update progress within type
-          if (!cursor || data.done) {
-            progressFill.style.width = `${baseProgress + typeProgress}%`;
-          } else {
-            // Estimate progress within pages (cap at 90% of type slice)
-            progressFill.style.width = `${baseProgress + Math.min(typeProgress * 0.9, typeProgress * pageNum / (pageNum + 2))}%`;
-          }
-          progressDetail.textContent = `${typeLabels[type]}: ${totals[type]} imported, ${data.skipped || 0} skipped${data.errors?.length ? ', ' + data.errors.length + ' errors' : ''}`;
-
-          if (data.done || !cursor) break;
-        } catch (err) {
-          totals.errors.push(`${type}: ${err.message}`);
-          progressDetail.textContent = `${typeLabels[type]}: error — ${err.message}`;
-          break;
-        }
-      } while (cursor);
-    }
-
-    progressFill.style.width = '100%';
-    progressText.textContent = 'Sync complete!';
-
-    // Build summary
-    const parts = [];
-    if (totals.facts) parts.push(`${totals.facts} facts`);
-    if (totals.todos) parts.push(`${totals.todos} tasks`);
-    if (totals.conversations) parts.push(`${totals.conversations} conversations`);
-    if (totals.journals) parts.push(`${totals.journals} journals`);
-    if (totals.daily) parts.push(`${totals.daily} daily`);
-    let summary = parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'No new items';
-    if (totals.skipped > 0) summary += ` (${totals.skipped} skipped)`;
-    if (totals.errors.length > 0) summary += ` — ${totals.errors.length} error(s)`;
-    progressDetail.textContent = summary;
-    progressText.style.color = totals.errors.length > 0 ? 'var(--yellow)' : 'var(--green)';
-
-    btnUpdates.disabled = false; btnFull.disabled = false;
-    loadDashboardStats(); loadBeeStatus();
-  } else {
-    // Incremental — single request (small payload)
-    resultEl.textContent = 'Syncing updates...';
-    try {
-      const data = await api('/bee/sync-incremental', { method: 'POST', body: JSON.stringify({}) });
-      showSyncResult(resultEl, data);
-      loadDashboardStats(); loadBeeStatus();
-    } catch (err) {
-      resultEl.style.color = 'var(--red)';
-      resultEl.textContent = `Sync failed: ${err.message}`;
-    } finally { btnUpdates.disabled = false; btnFull.disabled = false; }
-  }
-}
-
-function showSyncResult(el, data) {
-  const i = data.imported || {};
-  const parts = [];
-  if (i.facts) parts.push(`${i.facts} facts`); if (i.todos) parts.push(`${i.todos} tasks`);
-  if (i.conversations) parts.push(`${i.conversations} conversations`);
-  if (i.journals) parts.push(`${i.journals} journals`); if (i.daily) parts.push(`${i.daily} daily`);
-  let msg = parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'No new items';
-  if (i.skipped > 0) msg += ` (${i.skipped} skipped)`;
-  el.style.color = (i.errors?.length) ? 'var(--yellow)' : 'var(--green)';
-  el.textContent = msg;
-}
-
-async function loadBeeStatus() {
-  try {
-    const data = await api('/bee/status');
-    const el = document.getElementById('bee-sync-status'); if (!el) return;
-    const parts = [];
-    if (data.facts > 0) parts.push(`${data.facts} facts`); if (data.tasks > 0) parts.push(`${data.tasks} tasks`);
-    if (data.transcripts > 0) parts.push(`${data.transcripts} transcripts`);
-    el.textContent = parts.length > 0 ? `Synced: ${parts.join(', ')}` : 'No Bee data synced yet';
-    if (!data.bee_token_configured) el.textContent += ' (BEE_API_TOKEN not set)';
-  } catch {}
-}
-
-async function loadSyncStatus() {
-  try {
-    const data = await api('/sync-status');
-    renderSyncSources(data.sources); renderSyncJobs(data.recent_jobs);
-  } catch {}
-}
-
-function renderSyncSources(sources) {
-  const el = document.getElementById('sync-status-panel'); if (!el || !sources?.length) return;
-  const colors = { idle: 'var(--green)', syncing: 'var(--blue)', error: 'var(--red)' };
-  const labels = { idle: 'ok', syncing: 'syncing', error: 'error' };
-  el.innerHTML = sources.map(s => `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="width:8px;height:8px;border-radius:50%;background:${colors[s.state]||'#8b8fa3'};flex-shrink:0;${s.state==='syncing'?'animation:pulse 1.5s infinite':''}"></span>
-      <div style="flex:1"><div style="font-size:0.85rem;font-weight:600">${esc(s.label)}</div>
-      <div style="font-size:0.7rem;color:var(--text-dim)">${labels[s.state]||s.state}${s.items_imported ? ' \u00B7 '+s.items_imported+' imported' : ''} \u00B7 Last: ${s.last_sync?timeAgo(s.last_sync):'Never'}</div>
-      ${s.state==='error'&&s.error_message ? `<div style="font-size:0.65rem;color:var(--red);margin-top:2px">${esc(s.error_message.substring(0,120))}</div>` : ''}</div>
-    </div>`).join('');
-}
-
-function renderSyncJobs(jobs) {
-  const el = document.getElementById('sync-job-history'); if (!el) return;
-  if (!jobs?.length) { el.innerHTML = '<div style="font-size:0.8rem;color:var(--text-dim)">No jobs yet</div>'; return; }
-  el.innerHTML = jobs.slice(0,8).map(j => `
-    <div style="display:flex;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.75rem">
-      <span>${j.state==='completed'?'\u2705':j.state==='failed'?'\u274C':'\u23F3'}</span>
-      <div style="flex:1"><div>${esc(j.description)}</div>
-      <div style="color:var(--text-dim)">${timeAgo(j.started_at)}${j.items_imported>0?' \u00B7 '+j.items_imported+' imported':''}</div></div>
-    </div>`).join('');
-}
+// ─── Sync helpers ─────────────────────────────────────────────
 
 function renderActivityItem(log) {
   const icons = { create: '+', update: '~', delete: 'x', sync: '\u21BB' };
@@ -768,26 +722,7 @@ function renderActivityItem(log) {
   </div>`;
 }
 
-function confirmPurge() {
-  if (!confirm('DELETE ALL data? This cannot be undone.')) return;
-  if (!confirm('Really? All knowledge, tasks, transcripts, facts — everything?')) return;
-  runPurge();
-}
-
-async function runPurge() {
-  const btn = document.querySelector('[onclick*="confirmPurge"]');
-  const el = document.getElementById('purge-result');
-  if (btn) btn.disabled = true; if (el) { el.style.display='block'; el.textContent='Purging...'; el.style.color='var(--text-dim)'; }
-  try {
-    await api('/purge', { method: 'POST', body: JSON.stringify({}) });
-    const poll = async () => {
-      const s = await api('/purge/status');
-      if (s.status==='running') { if(el) el.textContent=`Purging... (${s.progress?.current||0} deleted)`; setTimeout(poll,1500); }
-      else { if(el){el.style.color='var(--green)';el.textContent=s.message||'Done';} if(btn)btn.disabled=false; loadDashboard(); }
-    };
-    setTimeout(poll, 1500);
-  } catch(e) { if(el){el.style.color='var(--red)';el.textContent=e.message;} if(btn)btn.disabled=false; }
-}
+// (Purge moved to confirmPurgeFromMenu in settings menu section)
 
 // ─── Global Search ────────────────────────────────────────────
 let searchDebounceTimer = null;

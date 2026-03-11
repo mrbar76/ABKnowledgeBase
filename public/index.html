@@ -42,7 +42,7 @@
 
   <!-- Header -->
   <header class="app-header">
-    <img src="/icons/icon.svg" alt="AB" class="header-logo">
+    <img src="/icons/icon.svg" alt="AB" class="header-logo" onclick="toggleSettingsMenu()" style="cursor:pointer">
     <div class="header-text">
       <h1>AB Brain</h1>
       <span class="subtitle">Unified AI Knowledge Base</span>
@@ -52,6 +52,50 @@
       <span class="search-hint">Ctrl+K</span>
     </button>
   </header>
+
+  <!-- Settings Menu (tap logo to open) -->
+  <div id="settings-menu" class="settings-menu" onclick="if(event.target===this)closeSettingsMenu()">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h3>Settings</h3>
+        <button class="modal-close" onclick="closeSettingsMenu()">&times;</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-row">
+          <div class="settings-row-label">Backend</div>
+          <div class="settings-row-value" id="sm-backend-val">checking...</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Bee Token</div>
+          <div class="settings-row-value" id="sm-bee-val">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">OpenAI (Intake)</div>
+          <div class="settings-row-value" id="sm-openai-val">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Bee Synced</div>
+          <div class="settings-row-value" id="sm-synced-val">—</div>
+        </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:4px">
+          <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">Bee Sync</div>
+          <div class="sync-actions" style="margin-bottom:8px">
+            <button class="btn-action" onclick="triggerBeeSyncFromMenu('incremental')" id="sm-btn-sync-updates">Sync Updates</button>
+            <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('full')" id="sm-btn-sync-full">Full Sync</button>
+          </div>
+          <div id="sm-sync-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
+          <button class="btn-action btn-action-secondary" onclick="closeSettingsMenu();showDebugPanel()" style="width:100%">Diagnostics &amp; Logs</button>
+          <button class="btn-action btn-action-secondary" onclick="closeSettingsMenu();logout()" style="width:100%">Log Out</button>
+          <button class="btn-action btn-action-danger" id="btn-purge-settings" onclick="confirmPurgeFromMenu()" style="width:100%">Purge All Data</button>
+          <div id="purge-menu-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Global Search Overlay -->
   <div id="search-overlay" class="search-overlay" onclick="closeGlobalSearch()">
