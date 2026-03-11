@@ -110,7 +110,9 @@ function extractTranscript(detail, convoStartTime) {
   if (detail.utterances && Array.isArray(detail.utterances)) {
     return { text: detail.utterances.map(u => `${u.speaker || 'Speaker'}: ${u.text || ''}`).join('\n'), utterances: detail.utterances };
   }
-  return { text: detail.transcript || detail.full_transcript || detail.text || '', utterances: [] };
+  // Fallback: use any available text field, including summary
+  const text = detail.transcript || detail.full_transcript || detail.text || detail.summary || detail.short_summary || '';
+  return { text, utterances: [] };
 }
 
 // ─── Concurrency helper ──────────────────────────────────────────
@@ -330,9 +332,12 @@ router.post('/sync', async (req, res) => {
         const detailed = await mapConcurrent(toSync, 5, async (convo) => {
           let full = convo;
           try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; }
-          catch (e) { if (!convo.summary) { results.errors.push(`Conv ${convo.id}: ${e.message}`); return null; } }
+          catch (e) { results.errors.push(`Conv ${convo.id}: ${e.message}`); }
           const rawResult = extractTranscript(full, convo.start_time || full.start_time || null);
-          if (!rawResult.text) return null;
+          if (!rawResult.text) {
+            console.log(`[sync] conv ${convo.id} no transcript text, keys: ${Object.keys(full).join(',')}`);
+            return null;
+          }
           return { convo, full, rawResult };
         });
 
@@ -433,7 +438,7 @@ router.post('/sync-chunk', async (req, res) => {
       if (!result.cursor) result.done = true;
 
     } else if (type === 'conversations') {
-      const url = `/v1/conversations?limit=5&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const url = `/v1/conversations?limit=25&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const convos = extractArray(data, 'conversations');
       result.cursor = data.next_cursor || null;
@@ -449,10 +454,13 @@ router.post('/sync-chunk', async (req, res) => {
           full = d.conversation || d;
         } catch (e) {
           console.log(`[sync-chunk] conv ${convo.id} detail fetch failed: ${e.message}`);
-          if (!convo.summary) { result.errors.push(`Conv ${convo.id}: ${e.message}`); continue; }
+          // Still try to store with whatever data we have from the list endpoint
         }
         const rawResult = extractTranscript(full, convo.start_time || full.start_time || null);
-        if (!rawResult.text) { result.skipped++; continue; }
+        if (!rawResult.text) {
+          console.log(`[sync-chunk] conv ${convo.id} no transcript text, keys: ${Object.keys(full).join(',')}`);
+          result.skipped++; continue;
+        }
         await storeConversation(convo, full, rawResult); result.imported++;
       }
       if (!result.cursor) result.done = true;

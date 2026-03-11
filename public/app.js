@@ -598,16 +598,21 @@ async function loadTranscripts(searchQuery) {
       <input type="text" class="brain-search" placeholder="Search transcripts..." value="${esc(searchQuery || '')}"
         oninput="debounceTranscriptSearch(this.value)" style="margin-bottom:12px">
       <div id="transcript-list">
-        ${data.transcripts.length ? data.transcripts.map(t => `
-          <div class="list-item" onclick="showTranscriptDetail('${t.id}')">
+        ${data.transcripts.length ? data.transcripts.map(t => {
+          const summary = t.summary || t.preview || '';
+          const loc = t.location ? `<span>${esc(t.location.split(',')[0])}</span>` : '';
+          return `
+          <div class="list-item transcript-card" onclick="showTranscriptDetail('${t.id}')">
             <div class="list-item-title">${esc(t.title)}</div>
-            <div class="list-item-preview">${esc((t.preview || t.summary || '').substring(0, 150))}</div>
+            ${summary ? `<div class="transcript-summary">${esc(summary.substring(0, 300))}</div>` : ''}
             <div class="list-item-meta">
               <span>${t.source || 'bee'}</span>
-              ${t.duration_seconds ? `<span>${Math.round(t.duration_seconds/60)}m</span>` : ''}
+              ${t.duration_seconds ? `<span>${Math.round(t.duration_seconds/60)} min</span>` : ''}
+              ${loc}
               <span>${timeAgo(t.recorded_at || t.created_at)}</span>
             </div>
-          </div>`).join('') : '<div class="empty-state">No transcripts yet</div>'}
+          </div>`;
+        }).join('') : '<div class="empty-state">No transcripts yet</div>'}
       </div>
     `;
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
@@ -620,7 +625,7 @@ async function showTranscriptDetail(id) {
   try {
     const t = await api(`/transcripts/${id}`);
     let bodyHtml = `
-      <div class="list-item-meta" style="margin-bottom:8px">
+      <div class="list-item-meta" style="margin-bottom:10px">
         <span>${t.source || 'bee'}</span>
         ${t.duration_seconds ? `<span>${Math.round(t.duration_seconds/60)} min</span>` : ''}
         ${t.location ? `<span>${esc(t.location)}</span>` : ''}
@@ -628,30 +633,51 @@ async function showTranscriptDetail(id) {
       </div>
     `;
 
-    // Show speaker utterances if available (iMessage-style: self on right, others on left)
-    if (t.speakers && t.speakers.length) {
-      // Detect the primary speaker (most utterances = "self")
-      const speakerCounts = {};
-      for (const s of t.speakers) { speakerCounts[s.speaker_name] = (speakerCounts[s.speaker_name]||0) + 1; }
-      const selfSpeaker = Object.entries(speakerCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+    // Show summary section if available
+    if (t.summary) {
+      bodyHtml += `
+        <div class="transcript-detail-summary">
+          <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);margin-bottom:6px">Summary</div>
+          <div style="font-size:0.88rem;line-height:1.6;color:var(--text)">${esc(t.summary)}</div>
+        </div>`;
+    }
 
-      bodyHtml += '<div class="transcript-chat">';
-      let lastSpeaker = '';
-      for (const s of t.speakers) {
-        const isNew = s.speaker_name !== lastSpeaker;
-        lastSpeaker = s.speaker_name;
-        const isSelf = s.speaker_name === selfSpeaker;
-        bodyHtml += `
-          ${isNew ? `<div class="chat-speaker${isSelf?' chat-speaker-self':''}">${esc(s.speaker_name)}</div>` : ''}
-          <div class="chat-bubble${isSelf?' chat-self':''}">
-            <div class="chat-text">${esc(s.text)}</div>
-          </div>`;
+    // Show full transcript (speakers or raw text)
+    const hasTranscript = (t.speakers && t.speakers.length) || t.raw_text;
+    if (hasTranscript) {
+      bodyHtml += `
+        <div style="margin-top:12px">
+          <button class="btn-action" onclick="this.style.display='none';document.getElementById('transcript-full-${id}').style.display='block'" style="width:100%;padding:10px;font-size:0.82rem">
+            View Full Transcript
+          </button>
+        </div>
+        <div id="transcript-full-${id}" style="display:none;margin-top:10px">`;
+
+      if (t.speakers && t.speakers.length) {
+        // Detect the primary speaker (most utterances = "self")
+        const speakerCounts = {};
+        for (const s of t.speakers) { speakerCounts[s.speaker_name] = (speakerCounts[s.speaker_name]||0) + 1; }
+        const selfSpeaker = Object.entries(speakerCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+
+        bodyHtml += '<div class="transcript-chat">';
+        let lastSpeaker = '';
+        for (const s of t.speakers) {
+          const isNew = s.speaker_name !== lastSpeaker;
+          lastSpeaker = s.speaker_name;
+          const isSelf = s.speaker_name === selfSpeaker;
+          bodyHtml += `
+            ${isNew ? `<div class="chat-speaker${isSelf?' chat-speaker-self':''}">${esc(s.speaker_name)}</div>` : ''}
+            <div class="chat-bubble${isSelf?' chat-self':''}">
+              <div class="chat-text">${esc(s.text)}</div>
+            </div>`;
+        }
+        bodyHtml += '</div>';
+      } else if (t.raw_text) {
+        bodyHtml += `<div style="font-size:0.85rem;white-space:pre-wrap;line-height:1.6;max-height:60vh;overflow-y:auto">${esc(t.raw_text)}</div>`;
       }
       bodyHtml += '</div>';
-    } else if (t.raw_text) {
-      bodyHtml += `<div style="font-size:0.85rem;white-space:pre-wrap;line-height:1.6;max-height:60vh;overflow-y:auto">${esc(t.raw_text)}</div>`;
-    } else if (t.summary) {
-      bodyHtml += `<div style="font-size:0.85rem">${esc(t.summary)}</div>`;
+    } else if (!t.summary) {
+      bodyHtml += `<div style="font-size:0.85rem;color:var(--text-dim);padding:16px 0">No transcript content available</div>`;
     }
 
     bodyHtml += `<div style="margin-top:16px"><button class="btn-action btn-action-danger" onclick="deleteTranscript('${id}')" style="width:100%">Delete</button></div>`;
