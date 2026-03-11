@@ -64,57 +64,118 @@ function switchTab(tab) {
 // ─── Dashboard (Home) ─────────────────────────────────────────
 async function loadDashboard() {
   const main = document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
+
+  // Always render the full layout — stats get filled async
+  main.innerHTML = `
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Knowledge</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Transcripts</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Tasks</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">In Progress</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Projects</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Facts</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Bee Wearable Sync</h2>
+      <div id="bee-sync-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
+      <div class="sync-actions">
+        <button class="btn-action" onclick="triggerBeeSync('incremental')" id="btn-sync-updates">Sync Updates</button>
+        <button class="btn-action btn-action-secondary" onclick="triggerBeeSync('full')" id="btn-sync-full">Full Sync</button>
+      </div>
+      <div id="bee-sync-result" style="display:none;margin-top:12px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+    </div>
+
+    <div class="card">
+      <h2>Sync Status</h2>
+      <div id="sync-status-panel"></div>
+      <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
+      <div id="sync-job-history"></div>
+    </div>
+
+    <div class="card" id="activity-card" style="display:none">
+      <h2>Recent Activity</h2>
+      <div id="recent-activity"></div>
+    </div>
+
+    <div class="card">
+      <h2>Settings</h2>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:0.85rem;font-weight:600">Backend</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-backend">PostgreSQL</div></div>
+          <span style="font-size:0.7rem;padding:2px 8px;border-radius:4px;background:rgba(34,197,94,0.15);color:var(--green)" id="settings-health">checking...</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:0.85rem;font-weight:600">Bee Token</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-bee-token">—</div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:0.85rem;font-weight:600">OpenAI (Intake)</div><div style="font-size:0.7rem;color:var(--text-dim)" id="settings-openai">—</div></div>
+        </div>
+        <div style="padding-top:8px">
+          <button class="btn-action btn-action-secondary" onclick="logout()" style="width:100%;margin-bottom:8px">Log Out</button>
+          <button class="btn-action btn-action-danger" onclick="confirmPurge()" style="width:100%">Clear All Data</button>
+        </div>
+        <div id="purge-result" style="display:none;margin-top:4px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+      </div>
+    </div>
+  `;
+
+  // Load stats async — doesn't block sync/settings rendering
+  loadDashboardStats();
+  loadSyncStatus();
+  loadBeeStatus();
+  loadSettingsInfo();
+}
+
+async function loadDashboardStats() {
   try {
     const data = await api('/dashboard');
     const totalTasks = Object.values(data.tasks.by_status).reduce((a, b) => a + b, 0);
     const inProgress = data.tasks.by_status.in_progress || 0;
-
-    main.innerHTML = `
-      <div class="stats-grid">
-        <div class="stat-card"><div class="stat-value">${data.knowledge.total}</div><div class="stat-label">Knowledge</div></div>
-        <div class="stat-card"><div class="stat-value">${data.transcripts.total}</div><div class="stat-label">Transcripts</div></div>
-        <div class="stat-card"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
-        <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
-        <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
-        <div class="stat-card"><div class="stat-value">${data.facts.total}</div><div class="stat-label">Facts</div></div>
-      </div>
-
-      <div class="card">
-        <h2>Bee Wearable Sync</h2>
-        <div id="bee-sync-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px"></div>
-        <div class="sync-actions">
-          <button class="btn-action" onclick="triggerBeeSync('incremental')" id="btn-sync-updates">Sync Updates</button>
-          <button class="btn-action btn-action-secondary" onclick="triggerBeeSync('full')" id="btn-sync-full">Full Sync</button>
-        </div>
-        <div id="bee-sync-result" style="display:none;margin-top:12px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-      </div>
-
-      <div class="card">
-        <h2>Sync Status</h2>
-        <div id="sync-status-panel"></div>
-        <h3 style="font-size:0.85rem;color:var(--text-dim);margin:12px 0 8px">Recent Jobs</h3>
-        <div id="sync-job-history"></div>
-      </div>
-
-      <div class="card" id="activity-card" style="display:none">
-        <h2>Recent Activity</h2>
-        <div id="recent-activity"></div>
-      </div>
-
-      <div class="card">
-        <h2>Tools</h2>
-        <button class="btn-action btn-action-danger" onclick="confirmPurge()" style="width:100%">Clear All Data</button>
-        <div id="purge-result" style="display:none;margin-top:10px;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-      </div>
+    const grid = document.getElementById('stats-grid');
+    if (!grid) return;
+    grid.innerHTML = `
+      <div class="stat-card"><div class="stat-value">${data.knowledge.total}</div><div class="stat-label">Knowledge</div></div>
+      <div class="stat-card"><div class="stat-value">${data.transcripts.total}</div><div class="stat-label">Transcripts</div></div>
+      <div class="stat-card"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
+      <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
+      <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
+      <div class="stat-card"><div class="stat-value">${data.facts.total}</div><div class="stat-label">Facts</div></div>
     `;
-
     if (data.recent_activity?.length) {
-      document.getElementById('activity-card').style.display = '';
-      document.getElementById('recent-activity').innerHTML = data.recent_activity.map(renderActivityItem).join('');
+      const ac = document.getElementById('activity-card');
+      if (ac) { ac.style.display = ''; document.getElementById('recent-activity').innerHTML = data.recent_activity.map(renderActivityItem).join(''); }
     }
-    loadSyncStatus(); loadBeeStatus();
-  } catch (e) { if (e.message !== 'Unauthorized') main.innerHTML = '<div class="empty-state">Could not load dashboard</div>'; }
+  } catch (e) {
+    if (e.message === 'Unauthorized') return;
+    const grid = document.getElementById('stats-grid');
+    if (grid) grid.innerHTML = '<div class="stat-card" style="grid-column:1/-1"><div class="stat-value" style="font-size:0.85rem;color:var(--text-dim)">Could not load stats</div></div>';
+  }
+}
+
+async function loadSettingsInfo() {
+  try {
+    const key = getStoredKey();
+    const res = await fetch(API + '/health', { headers: key ? { 'X-Api-Key': key } : {} });
+    const data = await res.json().catch(() => ({}));
+    const hEl = document.getElementById('settings-health');
+    if (hEl) { hEl.textContent = res.ok ? 'connected' : 'error'; hEl.style.background = res.ok ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'; hEl.style.color = res.ok ? 'var(--green)' : 'var(--red)'; }
+    const bEl = document.getElementById('settings-backend');
+    if (bEl && data.backend) bEl.textContent = data.backend;
+  } catch {
+    const hEl = document.getElementById('settings-health');
+    if (hEl) { hEl.textContent = 'offline'; hEl.style.background = 'rgba(239,68,68,0.15)'; hEl.style.color = 'var(--red)'; }
+  }
+  try {
+    const beeData = await api('/bee/status');
+    const btEl = document.getElementById('settings-bee-token');
+    if (btEl) btEl.textContent = beeData.bee_token_configured ? 'Configured' : 'Not set';
+    const oaEl = document.getElementById('settings-openai');
+    if (oaEl) oaEl.textContent = beeData.openai_configured !== false ? 'Configured' : 'Not set';
+  } catch {
+    const btEl = document.getElementById('settings-bee-token');
+    if (btEl) btEl.textContent = 'Unknown';
+  }
 }
 
 // ─── Kanban ───────────────────────────────────────────────────
