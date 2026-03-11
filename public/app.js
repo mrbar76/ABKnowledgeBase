@@ -293,6 +293,46 @@ function confirmPurgeFromMenu() {
   });
 }
 
+// ─── Sync Conversations by Date Range ────────────────────────
+async function syncConversationsByDate() {
+  const btn = document.getElementById('sm-btn-sync-convos');
+  const resultEl = document.getElementById('sm-conv-sync-result');
+  const startInput = document.getElementById('sm-conv-start');
+  const endInput = document.getElementById('sm-conv-end');
+  if (!resultEl) return;
+
+  const body = {};
+  if (startInput && startInput.value) body.start_date = startInput.value;
+  if (endInput && endInput.value) body.end_date = endInput.value;
+  // Default: if no start date, go back to Dec 2025
+  if (!body.start_date) body.start_date = '2025-12-01';
+
+  if (btn) btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = 'Syncing conversations...';
+
+  try {
+    const data = await api('/bee/sync-conversations', { method: 'POST', body: JSON.stringify(body) });
+    const parts = [];
+    if (data.imported) parts.push(`${data.imported} imported`);
+    if (data.skipped) parts.push(`${data.skipped} skipped`);
+    if (data.total_found) parts.push(`${data.total_found} found`);
+    let msg = parts.length ? parts.join(', ') : 'No conversations found';
+    msg += ` (${data.months_processed || 0} months)`;
+    if (data.errors?.length) msg += ` — ${data.errors.length} error(s)`;
+    resultEl.textContent = msg;
+    resultEl.style.color = data.errors?.length ? 'var(--yellow)' : 'var(--green)';
+    loadSettingsMenuInfo();
+    if (currentTab === 'home') loadDashboardStats();
+    if (currentTab === 'transcripts') loadTranscripts();
+  } catch (err) {
+    resultEl.textContent = `Failed: ${err.message}`;
+    resultEl.style.color = 'var(--red)';
+  }
+  if (btn) btn.disabled = false;
+}
+
 // ─── Debug / Diagnostics Panel ───────────────────────────────
 async function showDebugPanel() {
   const main = document.getElementById('main-content');
@@ -1045,6 +1085,12 @@ function timeAgo(dateStr) {
   } catch {}
   hideLogin();
   switchTab('home');
+
+  // Set default dates for conversation sync
+  const convStart = document.getElementById('sm-conv-start');
+  const convEnd = document.getElementById('sm-conv-end');
+  if (convStart) convStart.value = '2025-12-01';
+  if (convEnd) convEnd.value = new Date().toISOString().split('T')[0];
 
   // Auto-refresh on app resume
   document.addEventListener('visibilitychange', () => { if (!document.hidden && getStoredKey()) switchTab(currentTab); });

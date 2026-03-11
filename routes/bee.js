@@ -90,7 +90,7 @@ function extractArray(data, primaryKey) {
   return found || [];
 }
 
-function extractTranscript(detail, convoStartTime) {
+function extractTranscript(detail, convoStartTime, listItem) {
   if (detail.transcriptions && Array.isArray(detail.transcriptions) && detail.transcriptions.length > 0) {
     const finalized = detail.transcriptions.find(t => t.realtime === false) || detail.transcriptions[0];
     if (finalized.utterances && finalized.utterances.length > 0) {
@@ -110,8 +110,9 @@ function extractTranscript(detail, convoStartTime) {
   if (detail.utterances && Array.isArray(detail.utterances)) {
     return { text: detail.utterances.map(u => `${u.speaker || 'Speaker'}: ${u.text || ''}`).join('\n'), utterances: detail.utterances };
   }
-  // Fallback: use any available text field, including summary
-  const text = detail.transcript || detail.full_transcript || detail.text || detail.summary || detail.short_summary || '';
+  // Fallback: use any available text field, including summary — also check the list-level item
+  const text = detail.transcript || detail.full_transcript || detail.text || detail.summary || detail.short_summary
+    || (listItem && (listItem.summary || listItem.short_summary)) || '';
   return { text, utterances: [] };
 }
 
@@ -328,7 +329,7 @@ router.post('/sync', async (req, res) => {
     try {
       let cursor = null;
       do {
-        const url = `/v1/conversations?limit=50&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
         const data = await beeApiGet(url, beeToken);
         const convos = extractArray(data, 'conversations'); cursor = data.next_cursor || null;
 
@@ -346,9 +347,9 @@ router.post('/sync', async (req, res) => {
           let full = convo;
           try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; }
           catch (e) { results.errors.push(`Conv ${convo.id}: ${e.message}`); }
-          const rawResult = extractTranscript(full, convo.start_time || full.start_time || null);
+          const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
           if (!rawResult.text) {
-            console.log(`[sync] conv ${convo.id} no transcript text, keys: ${Object.keys(full).join(',')}`);
+            console.log(`[sync] conv ${convo.id} no transcript text, detail keys: ${Object.keys(full).join(',')}, list keys: ${Object.keys(convo).join(',')}`);
             return null;
           }
           return { convo, full, rawResult };
@@ -451,7 +452,7 @@ router.post('/sync-chunk', async (req, res) => {
       if (!result.cursor) result.done = true;
 
     } else if (type === 'conversations') {
-      const url = `/v1/conversations?limit=25&created_after=2024-01-01` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
       const data = await beeApiGet(url, beeToken);
       const convos = extractArray(data, 'conversations');
       result.cursor = data.next_cursor || null;
@@ -469,9 +470,9 @@ router.post('/sync-chunk', async (req, res) => {
           console.log(`[sync-chunk] conv ${convo.id} detail fetch failed: ${e.message}`);
           // Still try to store with whatever data we have from the list endpoint
         }
-        const rawResult = extractTranscript(full, convo.start_time || full.start_time || null);
+        const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
         if (!rawResult.text) {
-          console.log(`[sync-chunk] conv ${convo.id} no transcript text, keys: ${Object.keys(full).join(',')}`);
+          console.log(`[sync-chunk] conv ${convo.id} no transcript text, detail keys: ${Object.keys(full).join(',')}, list keys: ${Object.keys(convo).join(',')}`);
           result.skipped++; continue;
         }
         await storeConversation(convo, full, rawResult); result.imported++;
@@ -519,6 +520,88 @@ router.post('/sync-chunk', async (req, res) => {
   res.json(result);
 });
 
+// ─── Sync conversations by date range (batch import) ──────────────────
+
+router.post('/sync-conversations', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+  const { start_date, end_date, force } = req.body;
+  // Default: last 6 months if no dates specified
+  const endDt = end_date ? new Date(end_date) : new Date();
+  const startDt = start_date ? new Date(start_date) : new Date(endDt.getTime() - 180 * 24 * 60 * 60 * 1000);
+
+  const result = { imported: 0, skipped: 0, errors: [], months_processed: 0, total_found: 0 };
+
+  try {
+    // Generate month ranges from startDt to endDt
+    const months = [];
+    let cur = new Date(startDt.getFullYear(), startDt.getMonth(), 1);
+    while (cur <= endDt) {
+      const monthStart = cur.toISOString().split('T')[0];
+      const nextMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      const monthEnd = nextMonth > endDt ? endDt.toISOString().split('T')[0] : nextMonth.toISOString().split('T')[0];
+      months.push({ start: monthStart, end: monthEnd });
+      cur = nextMonth;
+    }
+
+    for (const month of months) {
+      let cursor = null;
+      let monthImported = 0;
+      do {
+        try {
+          let url = `/v1/conversations?limit=50&created_after=${month.start}&created_before=${month.end}`;
+          if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+          const data = await beeApiGet(url, beeToken, 60000);
+          const convos = extractArray(data, 'conversations');
+          cursor = data.next_cursor || null;
+          result.total_found += convos.length;
+
+          for (const convo of convos) {
+            if (!convo.id) continue;
+            if (convo.state === 'CAPTURING') { result.skipped++; continue; }
+            if (!force && await findExistingTranscript(convo.id)) { result.skipped++; continue; }
+
+            let full = convo;
+            try {
+              const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000);
+              full = d.conversation || d;
+            } catch (e) {
+              console.log(`[sync-conv] detail fetch failed for ${convo.id}: ${e.message}`);
+              // Continue with list-level data
+            }
+            const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
+            if (!rawResult.text) {
+              console.log(`[sync-conv] ${convo.id} no text, detail keys: ${Object.keys(full).join(',')}`);
+              result.skipped++;
+              continue;
+            }
+            await storeConversation(convo, full, rawResult);
+            result.imported++;
+            monthImported++;
+          }
+        } catch (e) {
+          result.errors.push(`${month.start}: ${e.message}`);
+          break; // Move to next month on error
+        }
+      } while (cursor);
+
+      result.months_processed++;
+      console.log(`[sync-conv] ${month.start}: ${monthImported} imported`);
+    }
+  } catch (e) {
+    result.errors.push(`Overall: ${e.message}`);
+  }
+
+  await logActivity('sync', 'bee-import', 'conversations-by-date', 'bee',
+    `Conv date sync: ${result.imported} imported, ${result.skipped} skipped, ${result.months_processed} months`);
+
+  res.json({
+    message: `Synced conversations from ${startDt.toISOString().split('T')[0]} to ${endDt.toISOString().split('T')[0]}`,
+    ...result,
+    date_range: { start: startDt.toISOString().split('T')[0], end: endDt.toISOString().split('T')[0] }
+  });
+});
+
 // ─── Purge ──────────────────────────────────────────
 
 router.post('/purge', async (req, res) => {
@@ -526,6 +609,8 @@ router.post('/purge', async (req, res) => {
     const r1 = await query("DELETE FROM facts WHERE source = 'bee'");
     const r2 = await query("DELETE FROM knowledge WHERE ai_source = 'bee'");
     const r3 = await query("DELETE FROM tasks WHERE ai_agent = 'bee'");
+    // Delete speaker utterances first (FK dependency), then transcripts
+    await query("DELETE FROM transcript_speakers WHERE transcript_id IN (SELECT id FROM transcripts WHERE source = 'bee')");
     const r4 = await query("DELETE FROM transcripts WHERE source = 'bee'");
     const total = (r1.rowCount||0) + (r2.rowCount||0) + (r3.rowCount||0) + (r4.rowCount||0);
     await logActivity('purge', 'bee-import', 'purge', 'bee', `Purged ${total} Bee entries`);
@@ -588,7 +673,7 @@ router.post('/sync-incremental', async (req, res) => {
         const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken);
         const c = detail.conversation || detail;
         if (c.state === 'CAPTURING') continue;
-        const rawResult = extractTranscript(c, c.start_time || null);
+        const rawResult = extractTranscript(c, c.start_time || null, c);
         if (!rawResult.text) continue;
         const existing = await findExistingTranscript(convoId);
         if (existing) { await query('UPDATE transcripts SET summary=$1, updated_at=NOW() WHERE id=$2', [c.summary || rawResult.text.substring(0, 2000), existing.id]); }

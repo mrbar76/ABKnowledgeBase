@@ -85,6 +85,16 @@
             <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('full')" id="sm-btn-sync-full">Full Sync</button>
           </div>
           <div id="sm-sync-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+          <div style="margin-top:10px">
+            <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:4px">Sync conversations by date range:</div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <input type="date" id="sm-conv-start" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:0.75rem">
+              <span style="color:var(--text-dim);font-size:0.75rem">to</span>
+              <input type="date" id="sm-conv-end" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:0.75rem">
+            </div>
+            <button class="btn-action btn-action-secondary" onclick="syncConversationsByDate()" id="sm-btn-sync-convos" style="width:100%">Sync Conversations</button>
+            <div id="sm-conv-sync-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:6px"></div>
+          </div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
