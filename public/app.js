@@ -600,7 +600,11 @@ async function loadTranscripts(searchQuery) {
       <div id="transcript-list">
         ${data.transcripts.length ? data.transcripts.map(t => {
           const summary = t.summary || t.preview || '';
-          const loc = t.location ? `<span>${esc(t.location.split(',')[0])}</span>` : '';
+          const loc = t.location ? t.location.split(',').slice(0,2).join(',') : '';
+          const rd = t.recorded_at || t.created_at;
+          const rdObj = rd ? new Date(rd) : null;
+          const dateLabel = rdObj ? rdObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+          const timeLabel = rdObj ? rdObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
           return `
           <div class="list-item transcript-card" onclick="showTranscriptDetail('${t.id}')">
             <div class="list-item-title">${esc(t.title)}</div>
@@ -608,8 +612,8 @@ async function loadTranscripts(searchQuery) {
             <div class="list-item-meta">
               <span>${t.source || 'bee'}</span>
               ${t.duration_seconds ? `<span>${Math.round(t.duration_seconds/60)} min</span>` : ''}
-              ${loc}
-              <span>${timeAgo(t.recorded_at || t.created_at)}</span>
+              ${loc ? `<span>${esc(loc)}</span>` : ''}
+              ${dateLabel ? `<span>${dateLabel} ${timeLabel}</span>` : ''}
             </div>
           </div>`;
         }).join('') : '<div class="empty-state">No transcripts yet</div>'}
@@ -624,14 +628,31 @@ function debounceTranscriptSearch(q) { clearTimeout(transcriptSearchTimer); tran
 async function showTranscriptDetail(id) {
   try {
     const t = await api(`/transcripts/${id}`);
-    let bodyHtml = `
-      <div class="list-item-meta" style="margin-bottom:10px">
-        <span>${t.source || 'bee'}</span>
-        ${t.duration_seconds ? `<span>${Math.round(t.duration_seconds/60)} min</span>` : ''}
-        ${t.location ? `<span>${esc(t.location)}</span>` : ''}
-        <span>${timeAgo(t.recorded_at || t.created_at)}</span>
-      </div>
-    `;
+    const meta = t.metadata || {};
+
+    // Format date/time info
+    const startDate = t.recorded_at ? new Date(t.recorded_at) : null;
+    const endDate = meta.ended_at ? new Date(meta.ended_at) : null;
+    const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+    const timeOpts = { hour: 'numeric', minute: '2-digit', hour12: true };
+    let dateStr = '';
+    if (startDate) {
+      dateStr = startDate.toLocaleDateString('en-US', dateOpts);
+      const startTime = startDate.toLocaleTimeString('en-US', timeOpts);
+      const endTime = endDate ? endDate.toLocaleTimeString('en-US', timeOpts) : '';
+      dateStr += ` &middot; ${startTime}${endTime ? ' – ' + endTime : ''}`;
+    }
+
+    let bodyHtml = '<div class="transcript-detail-meta">';
+    if (dateStr) bodyHtml += `<div style="font-size:0.85rem;font-weight:600;margin-bottom:4px">${dateStr}</div>`;
+    bodyHtml += '<div class="list-item-meta" style="margin-bottom:2px">';
+    bodyHtml += `<span>${t.source || 'bee'}</span>`;
+    if (t.duration_seconds) bodyHtml += `<span>${Math.round(t.duration_seconds/60)} min</span>`;
+    if (meta.speaker_count) bodyHtml += `<span>${meta.speaker_count} speakers</span>`;
+    if (meta.utterance_count) bodyHtml += `<span>${meta.utterance_count} messages</span>`;
+    bodyHtml += '</div>';
+    if (t.location) bodyHtml += `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:2px">${esc(t.location)}</div>`;
+    bodyHtml += '</div>';
 
     // Show summary section if available
     if (t.summary) {
@@ -645,10 +666,11 @@ async function showTranscriptDetail(id) {
     // Show full transcript (speakers or raw text)
     const hasTranscript = (t.speakers && t.speakers.length) || t.raw_text;
     if (hasTranscript) {
+      const utteranceCount = t.speakers?.length || 0;
       bodyHtml += `
         <div style="margin-top:12px">
           <button class="btn-action" onclick="this.style.display='none';document.getElementById('transcript-full-${id}').style.display='block'" style="width:100%;padding:10px;font-size:0.82rem">
-            View Full Transcript
+            View Full Transcript${utteranceCount ? ` (${utteranceCount} messages)` : ''}
           </button>
         </div>
         <div id="transcript-full-${id}" style="display:none;margin-top:10px">`;
@@ -665,8 +687,9 @@ async function showTranscriptDetail(id) {
           const isNew = s.speaker_name !== lastSpeaker;
           lastSpeaker = s.speaker_name;
           const isSelf = s.speaker_name === selfSpeaker;
+          const timeLabel = s.spoken_at ? new Date(s.spoken_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
           bodyHtml += `
-            ${isNew ? `<div class="chat-speaker${isSelf?' chat-speaker-self':''}">${esc(s.speaker_name)}</div>` : ''}
+            ${isNew ? `<div class="chat-speaker${isSelf?' chat-speaker-self':''}">${esc(s.speaker_name)}${timeLabel ? ` <span class="chat-time">${timeLabel}</span>` : ''}</div>` : ''}
             <div class="chat-bubble${isSelf?' chat-self':''}">
               <div class="chat-text">${esc(s.text)}</div>
             </div>`;

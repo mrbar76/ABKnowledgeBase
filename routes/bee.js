@@ -94,7 +94,7 @@ function extractTranscript(detail, convoStartTime) {
   if (detail.transcriptions && Array.isArray(detail.transcriptions) && detail.transcriptions.length > 0) {
     const finalized = detail.transcriptions.find(t => t.realtime === false) || detail.transcriptions[0];
     if (finalized.utterances && finalized.utterances.length > 0) {
-      const sorted = [...finalized.utterances].sort((a, b) => (a.start || 0) - (b.start || 0)).slice(0, 1500);
+      const sorted = [...finalized.utterances].sort((a, b) => (a.start || 0) - (b.start || 0));
       return { text: sorted.map(u => {
         const speaker = u.speaker || u.speaker_name || u.label || 'Speaker';
         const text = u.text || u.content || '';
@@ -183,16 +183,25 @@ async function storeConversation(convo, full, rawResult, client) {
   const recordedAt = convo.start_time ? new Date(convo.start_time).toISOString() : (convo.created_at ? new Date(convo.created_at).toISOString() : null);
   const location = convo.primary_location?.address || full.primary_location?.address || null;
 
+  const endedAt = convo.end_time ? new Date(convo.end_time).toISOString() : null;
+  const meta = {
+    ...(endedAt ? { ended_at: endedAt } : {}),
+    ...(full.short_summary ? { short_summary: full.short_summary } : {}),
+    ...(convo.short_summary ? { short_summary: convo.short_summary } : {}),
+    speaker_count: rawResult.utterances ? new Set(rawResult.utterances.map(u => u.speaker || u.speaker_name || 'Speaker')).size : 0,
+    utterance_count: rawResult.utterances ? rawResult.utterances.length : 0,
+  };
+
   const r = await q(
     `INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, location, tags, bee_id, metadata)
-     VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7::jsonb, $8, '{}'::jsonb) RETURNING id`,
+     VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7::jsonb, $8, $9::jsonb) RETURNING id`,
     [title, rawResult.text, full.summary || (rawResult.text || '').substring(0, 2000),
-     durationSec, recordedAt, location, JSON.stringify(['bee', 'conversation']), convo.id]
+     durationSec, recordedAt, location, JSON.stringify(['bee', 'conversation']), convo.id, JSON.stringify(meta)]
   );
   const transcriptId = r.rows[0].id;
 
-  // Batch-insert speaker utterances (up to 1500, in chunks of 100)
-  const utterances = (rawResult.utterances || []).slice(0, 1500);
+  // Batch-insert speaker utterances in chunks of 100
+  const utterances = rawResult.utterances || [];
   if (utterances.length > 0) {
     const CHUNK = 100;
     for (let off = 0; off < utterances.length; off += CHUNK) {

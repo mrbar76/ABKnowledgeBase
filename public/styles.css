@@ -712,6 +712,14 @@ body {
   color: rgba(255,255,255,0.6);
 }
 .chat-text { word-break: break-word; }
+.chat-time {
+  font-weight: 400;
+  color: var(--text-dim);
+  opacity: 0.7;
+  margin-left: 6px;
+}
+.chat-speaker-self .chat-time { color: rgba(255,255,255,0.4); }
+.transcript-detail-meta { margin-bottom: 10px; }
 
 /* --- Search Highlight --- */
 .search-highlight {
