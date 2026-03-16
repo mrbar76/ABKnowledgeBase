@@ -532,6 +532,127 @@ Rules:
   }
 });
 
+// ─── Batch re-identify speakers ──────────────────────────────
+router.post('/batch-identify', async (req, res) => {
+  try {
+    const { autoIdentifySpeakers } = require('./bee');
+    const { ids, filter } = req.body;
+
+    // Option 1: explicit list of transcript IDs
+    // Option 2: filter criteria to find transcripts
+    let transcriptIds = [];
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      transcriptIds = ids;
+    } else if (filter) {
+      // Build query from filter criteria
+      const conditions = ['1=1'];
+      const params = [];
+      let paramIdx = 1;
+
+      if (filter.source) {
+        conditions.push(`source = $${paramIdx++}`);
+        params.push(filter.source);
+      }
+
+      if (filter.unidentified) {
+        // Only transcripts with generic speaker labels still present
+        conditions.push(`EXISTS (
+          SELECT 1 FROM transcript_speakers ts
+          WHERE ts.transcript_id = transcripts.id
+          AND ts.speaker_name ~* '^(speaker|unknown)'
+        )`);
+      }
+
+      if (filter.content_type) {
+        conditions.push(`metadata->>'content_type' = $${paramIdx++}`);
+        params.push(filter.content_type);
+      }
+
+      if (filter.no_content_type) {
+        // Transcripts that haven't been classified yet
+        conditions.push(`(metadata->>'content_type') IS NULL`);
+      }
+
+      if (filter.is_media !== undefined) {
+        conditions.push(`(metadata->>'is_media')::boolean = $${paramIdx++}`);
+        params.push(filter.is_media);
+      }
+
+      if (filter.since) {
+        conditions.push(`COALESCE(recorded_at, created_at) >= $${paramIdx++}`);
+        params.push(filter.since);
+      }
+
+      if (filter.before) {
+        conditions.push(`COALESCE(recorded_at, created_at) < $${paramIdx++}`);
+        params.push(filter.before);
+      }
+
+      const limit = Math.min(filter.limit || 100, 500);
+      const result = await query(
+        `SELECT id FROM transcripts WHERE ${conditions.join(' AND ')} ORDER BY COALESCE(recorded_at, created_at) DESC LIMIT ${limit}`,
+        params
+      );
+      transcriptIds = result.rows.map(r => r.id);
+    } else {
+      return res.status(400).json({
+        error: 'Provide either "ids" (array of transcript IDs) or "filter" (criteria object)',
+        filter_options: {
+          source: 'e.g. "bee"',
+          unidentified: 'true — only transcripts with Unknown/Speaker labels',
+          content_type: 'e.g. "conversation", "movie", "youtube"',
+          no_content_type: 'true — transcripts not yet classified',
+          is_media: 'true/false',
+          since: 'ISO date string',
+          before: 'ISO date string',
+          limit: 'max transcripts to process (default 100, max 500)',
+        },
+        examples: [
+          { ids: ['uuid1', 'uuid2'] },
+          { filter: { unidentified: true, source: 'bee' } },
+          { filter: { no_content_type: true, limit: 200 } },
+          { filter: { since: '2025-01-01', source: 'bee' } },
+        ]
+      });
+    }
+
+    if (!transcriptIds.length) {
+      return res.json({ message: 'No transcripts matched', processed: 0, results: [] });
+    }
+
+    // Return immediately, process in background
+    const jobId = `batch-identify-${Date.now()}`;
+    res.json({
+      message: `Processing ${transcriptIds.length} transcripts in background`,
+      job_id: jobId,
+      transcript_count: transcriptIds.length,
+      transcript_ids: transcriptIds,
+    });
+
+    // Process in background
+    (async () => {
+      const results = [];
+      for (const tid of transcriptIds) {
+        try {
+          await autoIdentifySpeakers(tid);
+          results.push({ id: tid, status: 'ok' });
+        } catch (err) {
+          results.push({ id: tid, status: 'error', error: err.message });
+        }
+      }
+      const succeeded = results.filter(r => r.status === 'ok').length;
+      const failed = results.filter(r => r.status === 'error').length;
+      await logActivity('update', 'transcript', null, 'openai',
+        `Batch re-identified ${succeeded}/${transcriptIds.length} transcripts (${failed} failed), job: ${jobId}`);
+      console.log(`[batch-identify] job ${jobId}: ${succeeded} ok, ${failed} failed`);
+    })().catch(err => console.error(`[batch-identify] job ${jobId} fatal:`, err.message));
+  } catch (err) {
+    console.error('[batch-identify] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     const result = await query('DELETE FROM transcripts WHERE id = $1 RETURNING id', [req.params.id]);
