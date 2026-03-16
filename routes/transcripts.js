@@ -155,14 +155,36 @@ ${t.location ? `Location: ${t.location}` : ''}
 ${t.title ? `Topic: ${t.title}` : ''}
 
 CRITICAL REASONING RULES for name usage:
-1. If Speaker A says "Hey John, how are you?" — then Speaker A is NOT John. John is the LISTENER (another speaker label).
-2. If Speaker A says "I'm John" or "My name is John" — then Speaker A IS John.
-3. If Speaker A says "John told me..." referring to someone not in the conversation — do NOT assign "John" to any speaker.
-4. If Speaker A says "Thanks Sarah" — Sarah is the person being thanked, NOT Speaker A.
-5. People rarely say their own name. When a name appears, it almost always refers to someone ELSE.
-6. In a 2-person conversation: if one speaker uses a name, that name belongs to the OTHER speaker.
-7. In a multi-speaker conversation (3+ people): a name used by Speaker A could belong to ANY of the other speakers — use surrounding context to determine which one.
-8. In meetings with many speakers: look for introductions, roll calls, or "as [Name] mentioned" patterns to map names to speakers.
+
+PRIORITY 1 — DIRECT ADDRESS (strongest evidence, use these first):
+These patterns mean the name belongs to the person being SPOKEN TO, not the speaker:
+- "Hey Chris, how are you?" → Chris is the LISTENER
+- "Thanks Sarah" → Sarah is the LISTENER
+- "What do you think, Mike?" → Mike is the LISTENER
+- "Chris, can you..." / "So Chris..." / "Right, Chris?" → Chris is the LISTENER
+- Any name used as a greeting, sign-off, or mid-sentence address = that person is the OTHER speaker
+
+PRIORITY 2 — SELF-IDENTIFICATION (strong evidence):
+- "I'm John" / "My name is John" / "This is John calling" → the speaker IS John
+
+PRIORITY 3 — CASUAL MENTION (WEAK evidence — DO NOT use for speaker identification):
+These are about a THIRD PERSON not in the conversation. IGNORE these for labeling:
+- "Kyle told me yesterday..." → Kyle is probably NOT a speaker, just being talked about
+- "I was with Kyle and..." → Kyle is being referenced, not addressed
+- "Kyle's project is..." → talking ABOUT Kyle
+- "Did you talk to Kyle?" → asking about Kyle, Kyle is absent
+
+HOW TO TELL THE DIFFERENCE:
+- DIRECT ADDRESS: the name is used TO someone ("Hey Chris", "Chris, what do you think")
+- CASUAL MENTION: the name is used ABOUT someone ("Chris said...", "I told Chris...", "Chris's idea")
+- KEY TEST: Could you replace the name with "you"? If yes → direct address. If you'd replace with "he/she/they" → casual mention.
+
+Additional rules:
+1. People rarely say their own name. When a name appears, it almost always refers to someone ELSE.
+2. In a 2-person conversation: if one speaker directly addresses someone by name, that name belongs to the OTHER speaker.
+3. In a multi-speaker conversation (3+ people): a name used in direct address by Speaker A could belong to ANY of the other speakers — use surrounding context.
+4. In meetings: look for introductions, roll calls, or "as [Name] mentioned" patterns.
+5. NEVER assign a name to a speaker based solely on a casual mention. Only use direct address or self-identification.
 
 FIRST — CLASSIFY THE CONTENT:
 Before identifying speakers, determine what type of content this is:
@@ -188,11 +210,13 @@ Clues for MEDIA (not a real conversation):
 
 THEN — IDENTIFY SPEAKERS (follow these steps):
 1. List every name mentioned in the transcript
-2. For each name, identify WHO SAID IT and WHETHER they are addressing someone or referring to themselves
-3. Cross-reference: if Speaker A says "John", then a DIFFERENT speaker is likely John
-4. Check for self-introductions ("I'm...", "This is...", "My name is...")
-5. In multi-speaker scenarios, use process of elimination
-6. Consider context: workplace meeting vs casual, family dynamics, etc.
+2. For EACH name, classify the usage:
+   - DIRECT ADDRESS? (name used TO someone: "Hey Chris", "Thanks Chris") → HIGH value for identification
+   - SELF-ID? ("I'm Chris", "This is Chris") → HIGH value
+   - CASUAL MENTION? ("Chris told me", "I saw Chris") → IGNORE for speaker labeling
+3. Using ONLY direct address and self-ID evidence: if Speaker A directly addresses "Chris", then a DIFFERENT speaker label is Chris
+4. In multi-speaker scenarios, use process of elimination after direct-address mapping
+5. Only if no direct address or self-ID evidence exists, consider casual mentions as very low confidence guesses
 
 Return ONLY valid JSON:
 {
@@ -206,8 +230,15 @@ Return ONLY valid JSON:
       "reasoning": "specific quote or evidence from transcript"
     }
   },
+  "people_mentioned": ["names of people TALKED ABOUT but NOT present as speakers"],
   "relationship_notes": "brief note about the relationship between speakers if apparent"
 }
+
+IMPORTANT — "people_mentioned" vs "identifications":
+- "identifications" = people who ARE speakers (identified via direct address or self-ID)
+- "people_mentioned" = people TALKED ABOUT but NOT speakers (casual mentions like "Kyle said...")
+- A name should appear in ONE list or the other, never both
+- If unsure whether someone is a speaker or just mentioned, default to "people_mentioned"
 
 Rules:
 - Do NOT assign a name to the speaker who SAID that name (unless they said "I'm X" or "my name is X")
@@ -215,7 +246,8 @@ Rules:
 - If you truly cannot determine identity, keep the original label and mark low confidence
 - Do NOT invent names — only use names actually found in the transcript text
 - Provide the specific quote that led to your identification in the reasoning field
-- For media content (movie, tv_show, youtube, podcast, music): use character/host names if identifiable` },
+- For media content (movie, tv_show, youtube, podcast, music): use character/host names if identifiable
+- In conference calls/meetings: carefully separate who is PRESENT vs who is DISCUSSED` },
         { role: 'user', content: excerpt || t.raw_text.substring(0, 8000) },
       ],
     });
@@ -261,6 +293,7 @@ Rules:
       meta.content_type_confidence = result.content_type_confidence || null;
       meta.content_type_reasoning = result.content_type_reasoning || null;
       meta.is_media = isMedia;
+      meta.people_mentioned = Array.isArray(result.people_mentioned) ? result.people_mentioned : [];
       await query(
         'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
         [JSON.stringify(meta), JSON.stringify(newTags), req.params.id]
@@ -268,6 +301,7 @@ Rules:
 
       const logParts = [];
       if (Object.keys(renames).length > 0) logParts.push(`speakers: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
+      if (meta.people_mentioned.length > 0) logParts.push(`mentioned: ${meta.people_mentioned.join(', ')}`);
       logParts.push(`type: ${contentType}`);
       await logActivity('update', 'transcript', req.params.id, 'openai', `AI identified ${logParts.join('; ')}`);
     }
@@ -364,14 +398,27 @@ CONFIRMED PARTICIPANTS: ${known_names.join(', ')}
 Your job is to match each speaker label to the correct person from this list.
 
 CRITICAL REASONING RULES for name usage:
-1. If Speaker A says "Hey John, how are you?" — then Speaker A is NOT John. John is the LISTENER (another speaker label).
-2. If Speaker A says "I'm John" or "My name is John" — then Speaker A IS John.
-3. If Speaker A says "John told me..." referring to someone not present — do NOT assign "John" to any speaker from that reference alone.
-4. If Speaker A says "Thanks Sarah" — Sarah is the person being thanked, NOT Speaker A.
-5. People rarely say their own name. When a name appears, it almost always refers to someone ELSE.
-6. In a 2-person conversation: if one speaker uses a name, that name belongs to the OTHER speaker.
-7. In a multi-speaker conversation (3+ people): a name used by Speaker A could belong to ANY of the other speakers — use surrounding context to determine which one.
-8. In meetings with many speakers: look for introductions, roll calls, or "as [Name] mentioned" patterns.
+
+PRIORITY 1 — DIRECT ADDRESS (strongest evidence, use these first):
+These patterns mean the name belongs to the person being SPOKEN TO, not the speaker:
+- "Hey Chris, how are you?" → Chris is the LISTENER
+- "Thanks Sarah" → Sarah is the LISTENER
+- "What do you think, Mike?" → Mike is the LISTENER
+- Any name used as a greeting, sign-off, or mid-sentence address = that person is the OTHER speaker
+
+PRIORITY 2 — SELF-IDENTIFICATION (strong evidence):
+- "I'm John" / "My name is John" / "This is John calling" → the speaker IS John
+
+PRIORITY 3 — CASUAL MENTION (WEAK — DO NOT use for speaker identification):
+These refer to a THIRD PERSON not present. IGNORE for labeling:
+- "Kyle told me yesterday..." → Kyle is probably NOT a speaker
+- "I was with Kyle and..." → Kyle is being referenced, not addressed
+- KEY TEST: Could you replace the name with "you"? If yes → direct address. If "he/she/they" → casual mention, IGNORE it.
+
+Additional rules:
+1. In a 2-person conversation: if one speaker directly addresses by name, that name belongs to the OTHER speaker.
+2. In multi-speaker conversations: use direct address evidence + process of elimination from the known list.
+3. NEVER assign a name to a speaker based solely on a casual mention.
 
 FIRST — CLASSIFY THE CONTENT TYPE:
 - "conversation" — real conversation between people present together
@@ -384,11 +431,11 @@ FIRST — CLASSIFY THE CONTENT TYPE:
 - "music" — song lyrics or music
 - "media_other" — other non-conversation media
 
-THEN — IDENTIFY SPEAKERS:
+THEN — IDENTIFY SPEAKERS AND MENTIONED PEOPLE:
 1. List every name from the known list that appears in the transcript
-2. For each mention, note WHO SAID the name and whether they are addressing someone or themselves
-3. Cross-reference: if Speaker A says "John", then a DIFFERENT speaker is John
-4. Check for self-introductions ("I'm...", "This is...", "My name is...")
+2. For EACH name, classify: DIRECT ADDRESS vs SELF-ID vs CASUAL MENTION
+3. Using ONLY direct address and self-ID: map names to speaker labels
+4. Collect all casually mentioned names separately — these are people TALKED ABOUT, not speakers
 5. Use process of elimination with the known participant list
 
 Return ONLY valid JSON:
@@ -402,8 +449,15 @@ Return ONLY valid JSON:
       "reasoning": "specific quote and logic"
     }
   },
+  "people_mentioned": ["names of people TALKED ABOUT but NOT present as speakers"],
   "relationship_notes": "brief note about the conversation dynamics"
 }
+
+IMPORTANT — "people_mentioned" vs "identifications":
+- "identifications" = people who ARE speakers on the call (matched from known list via direct address or self-ID)
+- "people_mentioned" = people TALKED ABOUT during the call but NOT on the call themselves
+- In conference calls, many names may come up — only assign names to speaker labels if there's direct address evidence
+- Names from the known list that don't match any speaker label should go in people_mentioned if they appear in casual references
 
 Rules:
 - Do NOT assign a name to the speaker who SAID that name (unless they said "I'm X")
@@ -452,12 +506,14 @@ Rules:
       meta.content_type = contentType;
       meta.content_type_confidence = result.content_type_confidence || null;
       meta.is_media = isMedia;
+      meta.people_mentioned = Array.isArray(result.people_mentioned) ? result.people_mentioned : [];
       await query(
         'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
         [JSON.stringify(meta), JSON.stringify(newTags), req.params.id]
       );
       const logParts = [`hints: [${known_names.join(',')}]`];
       if (Object.keys(renames).length > 0) logParts.push(Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', '));
+      if (meta.people_mentioned.length > 0) logParts.push(`mentioned: ${meta.people_mentioned.join(', ')}`);
       logParts.push(`type: ${contentType}`);
       await logActivity('update', 'transcript', req.params.id, 'openai', `AI re-identified: ${logParts.join('; ')}`);
     }
