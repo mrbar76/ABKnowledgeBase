@@ -718,30 +718,70 @@ async function createKnowledge(e) {
 }
 
 // ─── Transcripts ──────────────────────────────────────────────
+let transcriptFilters = {};
+
+function setTranscriptFilter(key, value) {
+  if (value === null || value === undefined || value === '') {
+    delete transcriptFilters[key];
+  } else {
+    transcriptFilters[key] = value;
+  }
+  loadTranscripts(transcriptFilters._q || '');
+}
+
 async function loadTranscripts(searchQuery) {
   const main = document.getElementById('main-content');
   main.innerHTML = '<div class="loading">Loading...</div>';
   try {
-    const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
-    const data = await api('/transcripts' + qs);
+    const params = new URLSearchParams({ limit: '50' });
+    if (searchQuery) params.set('q', searchQuery);
+    for (const [k, v] of Object.entries(transcriptFilters)) {
+      if (k !== '_q' && v) params.set(k, v);
+    }
+    const data = await api('/transcripts?' + params.toString());
+
+    const activeStatus = transcriptFilters.status || '';
+    const activeType = transcriptFilters.content_type || '';
+    const activeMedia = transcriptFilters.is_media || '';
 
     main.innerHTML = `
       <input type="text" class="brain-search" placeholder="Search transcripts..." value="${esc(searchQuery || '')}"
-        oninput="debounceTranscriptSearch(this.value)" style="margin-bottom:12px">
+        oninput="debounceTranscriptSearch(this.value)" style="margin-bottom:8px">
+      <div class="transcript-filters">
+        <div class="filter-row">
+          <button class="filter-btn ${!activeStatus && !activeType && !activeMedia ? 'active' : ''}" onclick="transcriptFilters={};loadTranscripts('')">All</button>
+          <button class="filter-btn ${activeStatus === 'unidentified' ? 'active' : ''}" onclick="setTranscriptFilter('status', '${activeStatus === 'unidentified' ? '' : 'unidentified'}')">Needs ID</button>
+          <button class="filter-btn ${activeStatus === 'unclassified' ? 'active' : ''}" onclick="setTranscriptFilter('status', '${activeStatus === 'unclassified' ? '' : 'unclassified'}')">Unclassified</button>
+          <button class="filter-btn ${activeMedia === 'true' ? 'active' : ''}" onclick="setTranscriptFilter('is_media', '${activeMedia === 'true' ? '' : 'true'}')">Media</button>
+        </div>
+        <div class="filter-row">
+          ${['conversation','meeting','phone_call','movie','tv_show','youtube','podcast'].map(ct =>
+            `<button class="filter-btn filter-btn-sm ${activeType === ct ? 'active' : ''}" onclick="setTranscriptFilter('content_type', '${activeType === ct ? '' : ct}')">${ct.replace('_',' ')}</button>`
+          ).join('')}
+        </div>
+      </div>
+      <div class="transcript-count">${data.total !== undefined ? data.total : data.count} transcript${data.count !== 1 ? 's' : ''}${activeStatus || activeType || activeMedia ? ' matching filters' : ''}</div>
       <div id="transcript-list">
         ${data.transcripts.length ? data.transcripts.map(t => {
           const summary = t.summary || t.preview || '';
           const loc = t.location ? t.location.split(',').slice(0,2).join(',') : '';
           const meta = t.metadata || {};
           const speakers = meta.speakers || [];
+          const contentType = meta.content_type;
+          const isMedia = meta.is_media;
+          const hasGeneric = speakers.some(s => /^(speaker|unknown)/i.test(s));
           const rd = t.recorded_at || t.created_at;
           const rdObj = rd ? new Date(rd) : null;
           const dateLabel = rdObj ? rdObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
           const timeLabel = rdObj ? rdObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
           return `
-          <div class="list-item transcript-card" onclick="showTranscriptDetail('${t.id}')">
-            <div class="list-item-title">${esc(t.title)}</div>
-            ${speakers.length ? `<div class="transcript-speakers">${speakers.map(s => `<span class="speaker-tag">${esc(s)}</span>`).join('')}</div>` : ''}
+          <div class="list-item transcript-card ${hasGeneric ? 'needs-id' : ''}" onclick="showTranscriptDetail('${t.id}')">
+            <div class="transcript-card-header">
+              <div class="list-item-title">${esc(t.title)}</div>
+              ${contentType && contentType !== 'conversation' ? `<span class="content-type-badge ${isMedia ? 'media' : ''}">${esc(contentType.replace('_',' '))}</span>` : ''}
+              ${hasGeneric ? '<span class="needs-id-badge">Needs ID</span>' : ''}
+            </div>
+            ${speakers.length ? `<div class="transcript-speakers">${speakers.map(s => `<span class="speaker-tag ${/^(speaker|unknown)/i.test(s) ? 'generic' : ''}">${esc(s)}</span>`).join('')}</div>` : ''}
             ${summary ? `<div class="transcript-summary">${esc(summary.substring(0, 300))}</div>` : ''}
             <div class="list-item-meta">
               <span>${t.source || 'bee'}</span>
@@ -750,14 +790,18 @@ async function loadTranscripts(searchQuery) {
               ${dateLabel ? `<span>${dateLabel} ${timeLabel}</span>` : ''}
             </div>
           </div>`;
-        }).join('') : '<div class="empty-state">No transcripts yet</div>'}
+        }).join('') : '<div class="empty-state">No transcripts match these filters</div>'}
       </div>
     `;
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
 let transcriptSearchTimer = null;
-function debounceTranscriptSearch(q) { clearTimeout(transcriptSearchTimer); transcriptSearchTimer = setTimeout(() => loadTranscripts(q), 300); }
+function debounceTranscriptSearch(q) {
+  transcriptFilters._q = q;
+  clearTimeout(transcriptSearchTimer);
+  transcriptSearchTimer = setTimeout(() => loadTranscripts(q), 300);
+}
 
 async function showTranscriptDetail(id) {
   try {

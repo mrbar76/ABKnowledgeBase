@@ -4,7 +4,9 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
   try {
-    const { q, source, limit = 50, offset = 0 } = req.query;
+    const { q, source, limit = 50, offset = 0,
+            status, content_type, is_media, tag, speaker,
+            since, before, sort } = req.query;
     const params = [];
     const where = [];
     let i = 1;
@@ -16,16 +18,89 @@ router.get('/', async (req, res) => {
     }
     if (source) { where.push(`source = $${i++}`); params.push(source); }
 
+    // --- Speaker identification status filters ---
+    if (status === 'unidentified') {
+      // Transcripts that still have generic Speaker/Unknown labels
+      where.push(`EXISTS (
+        SELECT 1 FROM transcript_speakers ts
+        WHERE ts.transcript_id = transcripts.id
+        AND ts.speaker_name ~* '^(speaker|unknown)'
+      )`);
+    } else if (status === 'identified') {
+      // Transcripts where all speakers have been named
+      where.push(`NOT EXISTS (
+        SELECT 1 FROM transcript_speakers ts
+        WHERE ts.transcript_id = transcripts.id
+        AND ts.speaker_name ~* '^(speaker|unknown)'
+      )`);
+      // Must have at least one speaker to count as identified
+      where.push(`EXISTS (
+        SELECT 1 FROM transcript_speakers ts WHERE ts.transcript_id = transcripts.id
+      )`);
+    } else if (status === 'unclassified') {
+      // Transcripts with no content_type set yet
+      where.push(`(metadata->>'content_type') IS NULL`);
+    }
+
+    // --- Content type filter ---
+    if (content_type) {
+      where.push(`metadata->>'content_type' = $${i++}`);
+      params.push(content_type);
+    }
+
+    // --- Media vs conversation filter ---
+    if (is_media === 'true') {
+      where.push(`(metadata->>'is_media')::text = 'true'`);
+    } else if (is_media === 'false') {
+      where.push(`((metadata->>'is_media')::text != 'true' OR (metadata->>'is_media') IS NULL)`);
+    }
+
+    // --- Tag filter ---
+    if (tag) {
+      where.push(`tags @> $${i++}::jsonb`);
+      params.push(JSON.stringify([tag]));
+    }
+
+    // --- Speaker name filter ---
+    if (speaker) {
+      where.push(`metadata->>'speakers' ILIKE '%' || $${i++} || '%'`);
+      params.push(speaker);
+    }
+
+    // --- Date range filters ---
+    if (since) {
+      where.push(`COALESCE(recorded_at, created_at) >= $${i++}`);
+      params.push(since);
+    }
+    if (before) {
+      where.push(`COALESCE(recorded_at, created_at) < $${i++}`);
+      params.push(before);
+    }
+
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    // --- Sorting ---
+    let orderBy = 'COALESCE(recorded_at, created_at) DESC';
+    if (sort === 'oldest') orderBy = 'COALESCE(recorded_at, created_at) ASC';
+    else if (sort === 'shortest') orderBy = 'duration_seconds ASC NULLS LAST';
+    else if (sort === 'longest') orderBy = 'duration_seconds DESC NULLS LAST';
+    else if (sort === 'updated') orderBy = 'updated_at DESC';
+
     params.push(Number(limit), Number(offset));
+
+    // Get total count for pagination
+    const countResult = await query(
+      `SELECT COUNT(*) as total FROM transcripts ${whereClause}`, params.slice(0, -2)
+    );
+    const total = parseInt(countResult.rows[0].total, 10);
 
     const result = await query(
       `SELECT id, title, LEFT(summary, 300) as preview, summary, source, ai_source,
               duration_seconds, recorded_at, location, tags, bee_id, project_id, metadata, created_at, updated_at
        FROM transcripts ${whereClause}
-       ORDER BY COALESCE(recorded_at, created_at) DESC LIMIT $${i++} OFFSET $${i++}`, params
+       ORDER BY ${orderBy} LIMIT $${i++} OFFSET $${i++}`, params
     );
-    res.json({ count: result.rows.length, transcripts: result.rows });
+    res.json({ total, count: result.rows.length, transcripts: result.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
