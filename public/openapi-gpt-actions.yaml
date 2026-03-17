@@ -211,6 +211,27 @@ components:
         elevation_gain:
           type: string
           description: Climbing gained (e.g. 850 ft)
+        heart_rate_avg:
+          type: string
+          description: Average heart rate (e.g. 109 bpm)
+        heart_rate_max:
+          type: string
+          description: Max heart rate (e.g. 150 bpm)
+        pace_avg:
+          type: string
+          description: Average pace (e.g. 18:43 /mi)
+        splits:
+          type: string
+          description: Per-mile or per-km splits (e.g. Mile 1 16:37 @ 104 bpm, Mile 2 16:49 @ 132 bpm)
+        cadence_avg:
+          type: string
+          description: Average cadence (e.g. 104 spm)
+        active_calories:
+          type: string
+          description: Active calories burned (e.g. 284 kcal)
+        total_calories:
+          type: string
+          description: Total calories burned (e.g. 346 kcal)
         effort:
           type: integer
           minimum: 1
@@ -279,6 +300,20 @@ components:
         distance:
           type: string
         elevation_gain:
+          type: string
+        heart_rate_avg:
+          type: string
+        heart_rate_max:
+          type: string
+        pace_avg:
+          type: string
+        splits:
+          type: string
+        cadence_avg:
+          type: string
+        active_calories:
+          type: string
+        total_calories:
           type: string
         effort:
           type: integer

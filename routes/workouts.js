@@ -65,15 +65,19 @@ router.post('/', async (req, res) => {
       `INSERT INTO workouts (
         title, workout_date, workout_type, location, elevation, focus,
         warmup, main_sets, carries, time_duration, distance, elevation_gain,
+        heart_rate_avg, heart_rate_max, pace_avg, splits, cadence_avg,
+        active_calories, total_calories,
         effort, slowdown_notes, failure_first,
         grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback, body_notes,
         adjustment, tags, source, ai_source, metadata
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11, $12,
-        $13, $14, $15,
-        $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25
+        $13, $14, $15, $16, $17,
+        $18, $19,
+        $20, $21, $22,
+        $23, $24, $25, $26, $27,
+        $28, $29, $30, $31, $32
       ) RETURNING *`,
       [
         title,
@@ -88,6 +92,13 @@ router.post('/', async (req, res) => {
         b.time_duration || b.time || null,
         b.distance || null,
         b.elevation_gain || null,
+        b.heart_rate_avg || null,
+        b.heart_rate_max || null,
+        b.pace_avg || null,
+        b.splits || null,
+        b.cadence_avg || null,
+        b.active_calories || null,
+        b.total_calories || null,
         b.effort ? parseInt(b.effort, 10) : null,
         b.slowdown_notes || b.where_slowed_down || null,
         b.failure_first || b.what_failed_first || null,
@@ -122,6 +133,8 @@ router.put('/:id', async (req, res) => {
     const allowed = [
       'title', 'workout_date', 'workout_type', 'location', 'elevation', 'focus',
       'warmup', 'main_sets', 'carries', 'time_duration', 'distance', 'elevation_gain',
+      'heart_rate_avg', 'heart_rate_max', 'pace_avg', 'splits', 'cadence_avg',
+      'active_calories', 'total_calories',
       'effort', 'slowdown_notes', 'failure_first',
       'grip_feedback', 'legs_feedback', 'cardio_feedback', 'shoulder_feedback', 'body_notes',
       'adjustment', 'tags', 'source', 'ai_source', 'metadata',
