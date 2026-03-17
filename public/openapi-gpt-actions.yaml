@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: AB Brain Unified AI Platform
+  version: 1.1.0
+  description: |
+    AB Brain action for workout logging, workout retrieval, and task creation.
+servers:
+  - url: https://ab-brain.up.railway.app/api
+    description: Production server
+security:
+  - ApiKeyAuth: []
+paths:
+  /workouts:
+    get:
+      operationId: getWorkouts
+      summary: Retrieve workout history
+      description: Retrieve recent workouts for analysis, reviews, and Spartan project updates.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: workout_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - hill
+              - strength
+              - run
+              - hybrid
+              - recovery
+              - ruck
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Full-text search query
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by tag (e.g. spartan, carry)
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Workouts on or after this date (YYYY-MM-DD)
+        - name: before
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Workouts before this date (YYYY-MM-DD)
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - newest
+              - oldest
+              - effort_high
+              - effort_low
+          description: Sort order (default newest)
+      responses:
+        '200':
+          description: List of workouts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  count:
+                    type: integer
+                  workouts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workout'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+    post:
+      operationId: logWorkout
+      summary: Log a Spartan workout
+      description: |
+        Create a workout entry in AB Brain. Use this after a workout recap.
+        Include workout_type, focus, exercises, metrics, body feedback, and adjustments.
+        Do NOT send fields that are not listed here — the API will reject unknown fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutCreate'
+      responses:
+        '201':
+          description: Workout created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '400':
+          description: Invalid payload
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+  /tasks:
+    post:
+      operationId: createTask
+      summary: Create a task
+      description: Create a task in AB Brain. Use ai_agent to tag which AI created it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+        '400':
+          description: Invalid payload
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  schemas:
+    WorkoutCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - workout_type
+      properties:
+        workout_type:
+          type: string
+          enum:
+            - hill
+            - strength
+            - run
+            - hybrid
+            - recovery
+            - ruck
+        workout_date:
+          type: string
+          format: date
+          description: YYYY-MM-DD, defaults to today if omitted
+        title:
+          type: string
+          description: Auto-generated as "Spartan Workout – DATE – TYPE" if omitted
+        location:
+          type: string
+          description: Where the workout happened (e.g. Runyon Canyon, Home Gym)
+        elevation:
+          type: string
+          description: Base elevation if outdoor (e.g. 1,320 ft)
+        focus:
+          type: string
+          description: Goal of the session (e.g. hill durability, grip endurance)
+        warmup:
+          type: string
+          description: Warm-up activities
+        main_sets:
+          type: string
+          description: Full workout — sets x reps @ weight per exercise
+        carries:
+          type: string
+          description: Loaded carries, farmer walks, sled work with distance/weight
+        time_duration:
+          type: string
+          description: Total workout time (e.g. 52 min)
+        distance:
+          type: string
+          description: Total distance if applicable (e.g. 3.2 mi)
+        elevation_gain:
+          type: string
+          description: Climbing gained (e.g. 850 ft)
+        effort:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Effort rating 1-10
+        slowdown_notes:
+          type: string
+          description: Where you slowed down or broke form
+        failure_first:
+          type: string
+          description: What gave out first (legs, grip, cardio, shoulders, etc.)
+        grip_feedback:
+          type: string
+          description: Grip status (e.g. solid, pumped by set 3, gave out on carries)
+        legs_feedback:
+          type: string
+          description: Legs status (e.g. strong, heavy after hill 4, cramped)
+        cardio_feedback:
+          type: string
+          description: Cardio status (e.g. steady, gasping on final set)
+        shoulder_feedback:
+          type: string
+          description: Shoulder status (e.g. fine, tight on overhead, clicking)
+        body_notes:
+          type: string
+          description: Any other body feedback, soreness, injuries, energy level
+        adjustment:
+          type: string
+          description: What to change next time (weight, pace, volume, rest)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Lowercase tags without # (e.g. spartan, hill, carry)
+        ai_source:
+          type: string
+          default: chatgpt
+          description: Always set to chatgpt
+    Workout:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        workout_date:
+          type: string
+          format: date
+        workout_type:
+          type: string
+        location:
+          type: string
+        elevation:
+          type: string
+        focus:
+          type: string
+        warmup:
+          type: string
+        main_sets:
+          type: string
+        carries:
+          type: string
+        time_duration:
+          type: string
+        distance:
+          type: string
+        elevation_gain:
+          type: string
+        effort:
+          type: integer
+        slowdown_notes:
+          type: string
+        failure_first:
+          type: string
+        grip_feedback:
+          type: string
+        legs_feedback:
+          type: string
+        cardio_feedback:
+          type: string
+        shoulder_feedback:
+          type: string
+        body_notes:
+          type: string
+        adjustment:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        ai_source:
+          type: string
+        source:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TaskCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+          description: Link task to a project
+        status:
+          type: string
+          enum:
+            - todo
+            - in_progress
+            - review
+            - done
+          default: todo
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - urgent
+          default: medium
+        ai_agent:
+          type: string
+          default: chatgpt
+          description: Which AI created the task
+        next_steps:
+          type: string
+          description: Next actions or follow-up notes
