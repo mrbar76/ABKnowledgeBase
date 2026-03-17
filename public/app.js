@@ -1225,7 +1225,7 @@ async function loadWorkouts(searchQuery) {
       <div id="workout-list">
         ${data.workouts.length ? data.workouts.map(w => {
           const color = typeColors[w.workout_type] || '#6366f1';
-          const d = new Date(w.workout_date);
+          const d = new Date(w.workout_date.slice(0,10) + 'T12:00:00');
           const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           return `
           <div class="list-item workout-card" onclick="showWorkoutDetail('${w.id}')" style="border-left:3px solid ${color}">
@@ -1264,7 +1264,7 @@ async function showWorkoutDetail(id) {
     const w = await api(`/workouts/${id}`);
     const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
     const color = typeColors[w.workout_type] || '#6366f1';
-    const d = new Date(w.workout_date);
+    const d = new Date(w.workout_date.slice(0,10) + 'T12:00:00');
     const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
     function section(label, value) {
@@ -1488,7 +1488,7 @@ function openModal(title, bodyHtml) { document.getElementById('modal-title').tex
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 
 // ─── Utilities ────────────────────────────────────────────────
-function esc(str) { if(!str)return''; const d=document.createElement('div'); d.textContent=String(str); return d.innerHTML; }
+function esc(str) { if(!str)return''; const d=document.createElement('div'); d.textContent=String(str); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 function formatBeeSummary(text) {
   if (!text) return '';
