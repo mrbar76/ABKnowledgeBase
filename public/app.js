@@ -1212,6 +1212,7 @@ async function loadWorkouts(searchQuery) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <input type="text" class="brain-search" placeholder="Search workouts..." value="${esc(searchQuery || '')}"
           oninput="debounceWorkoutSearch(this.value)" style="margin-bottom:0;flex:1;margin-right:8px">
+        <button class="btn-submit" onclick="showWorkoutImport()" style="white-space:nowrap;padding:8px 12px;margin-right:4px;background:var(--accent-dim,#4b5563)">Import</button>
         <button class="btn-submit" onclick="showWorkoutForm()" style="white-space:nowrap;padding:8px 16px">+ Log</button>
       </div>
       <div class="filter-row" style="margin-bottom:10px">
@@ -1481,6 +1482,155 @@ async function deleteWorkout(id) {
     closeModal();
     loadWorkouts(workoutFilters._q || '');
   } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ─── Bulk Workout Import ──────────────────────────────────────
+let _importWorkouts = [];
+
+function showWorkoutImport() {
+  _importWorkouts = [];
+  const html = `
+    <div style="margin-bottom:12px;color:var(--text-dim);font-size:0.85rem">
+      Upload a JSON file containing an array of workout objects, or paste JSON directly.<br>
+      Fields map to: title, workout_date, workout_type, location, focus, warmup, main_sets, carries, exercises,
+      time_duration, distance, elevation_gain, heart_rate_avg, heart_rate_max, pace_avg, splits, cadence_avg,
+      active_calories, total_calories, effort (1-10), body_notes, tags, etc.
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <label class="btn-submit" style="cursor:pointer;text-align:center;flex:1;padding:10px;margin:0">
+        Choose JSON File
+        <input type="file" accept=".json,application/json" onchange="handleWorkoutFile(this)" style="display:none">
+      </label>
+    </div>
+    <textarea id="import-json-raw" placeholder='Paste JSON array here, e.g. [{"workout_date":"2024-01-15","workout_type":"strength","focus":"Upper body",...}]'
+      style="width:100%;min-height:120px;font-family:monospace;font-size:0.75rem;background:var(--bg-secondary,#1e1e2e);color:var(--text-primary,#cdd6f4);border:1px solid var(--border-color,#45475a);border-radius:8px;padding:10px;box-sizing:border-box;resize:vertical"></textarea>
+    <button class="btn-submit" onclick="parseWorkoutImport()" style="width:100%;margin-top:8px;padding:10px">Preview Import</button>
+    <div id="import-preview" style="margin-top:12px"></div>
+    <div id="import-progress" style="margin-top:12px"></div>
+  `;
+  openModal('Import Workouts from JSON', html);
+}
+
+function handleWorkoutFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('import-json-raw').value = e.target.result;
+    parseWorkoutImport();
+  };
+  reader.readAsText(file);
+}
+
+function parseWorkoutImport() {
+  const raw = document.getElementById('import-json-raw').value.trim();
+  const preview = document.getElementById('import-preview');
+  if (!raw) { preview.innerHTML = '<div style="color:#f38ba8">No JSON provided</div>'; return; }
+
+  try {
+    let parsed = JSON.parse(raw);
+    // Support both array and {workouts:[...]} wrapper
+    if (!Array.isArray(parsed)) {
+      if (parsed.workouts && Array.isArray(parsed.workouts)) parsed = parsed.workouts;
+      else { preview.innerHTML = '<div style="color:#f38ba8">JSON must be an array or have a "workouts" array</div>'; return; }
+    }
+    if (!parsed.length) { preview.innerHTML = '<div style="color:#f38ba8">Empty array</div>'; return; }
+
+    _importWorkouts = parsed;
+    const sample = parsed.slice(0, 5);
+    const fields = [...new Set(parsed.flatMap(w => Object.keys(w)))];
+
+    preview.innerHTML = `
+      <div style="color:#a6e3a1;font-weight:600;margin-bottom:8px">${parsed.length} workout${parsed.length !== 1 ? 's' : ''} found</div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Fields detected: ${fields.join(', ')}</div>
+      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color,#45475a);border-radius:6px;padding:8px;font-size:0.75rem">
+        <table style="width:100%;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border-color,#45475a)">
+            <th style="text-align:left;padding:4px">#</th>
+            <th style="text-align:left;padding:4px">Date</th>
+            <th style="text-align:left;padding:4px">Type</th>
+            <th style="text-align:left;padding:4px">Title / Focus</th>
+            <th style="text-align:left;padding:4px">Effort</th>
+          </tr>
+          ${sample.map((w, i) => `<tr style="border-bottom:1px solid var(--border-color,#45475a)22">
+            <td style="padding:4px">${i + 1}</td>
+            <td style="padding:4px">${esc(w.workout_date || w.date || '—')}</td>
+            <td style="padding:4px">${esc(w.workout_type || w.type || '—')}</td>
+            <td style="padding:4px">${esc(w.title || w.focus || '—')}</td>
+            <td style="padding:4px">${w.effort || '—'}</td>
+          </tr>`).join('')}
+          ${parsed.length > 5 ? `<tr><td colspan="5" style="padding:4px;color:var(--text-dim)">... and ${parsed.length - 5} more</td></tr>` : ''}
+        </table>
+      </div>
+      <button class="btn-submit" onclick="executeWorkoutImport()" style="width:100%;margin-top:12px;padding:12px;font-size:1rem">
+        Import ${parsed.length} Workout${parsed.length !== 1 ? 's' : ''}
+      </button>
+    `;
+  } catch (e) {
+    preview.innerHTML = `<div style="color:#f38ba8">Invalid JSON: ${esc(e.message)}</div>`;
+  }
+}
+
+async function executeWorkoutImport() {
+  if (!_importWorkouts.length) return;
+
+  const progress = document.getElementById('import-progress');
+  const total = _importWorkouts.length;
+  const BATCH = 200;
+  let imported = 0, errors = 0, allResults = [];
+
+  // Normalize field names: support common aliases
+  const normalized = _importWorkouts.map(w => {
+    const out = { ...w };
+    if (w.date && !w.workout_date) out.workout_date = w.date;
+    if (w.type && !w.workout_type) out.workout_type = w.type;
+    if (w.time && !w.time_duration) out.time_duration = w.time;
+    if (w.duration && !w.time_duration) out.time_duration = w.duration;
+    if (w.notes && !w.body_notes) out.body_notes = w.notes;
+    if (w.where_slowed_down && !w.slowdown_notes) out.slowdown_notes = w.where_slowed_down;
+    if (w.what_failed_first && !w.failure_first) out.failure_first = w.what_failed_first;
+    if (w.grip && !w.grip_feedback) out.grip_feedback = w.grip;
+    if (w.legs && !w.legs_feedback) out.legs_feedback = w.legs;
+    if (w.cardio && !w.cardio_feedback) out.cardio_feedback = w.cardio;
+    if (w.shoulder && !w.shoulder_feedback) out.shoulder_feedback = w.shoulder;
+    if (w.adjustment_next_time && !w.adjustment) out.adjustment = w.adjustment_next_time;
+    if (!out.source) out.source = 'import';
+    return out;
+  });
+
+  const batches = [];
+  for (let i = 0; i < normalized.length; i += BATCH) {
+    batches.push(normalized.slice(i, i + BATCH));
+  }
+
+  progress.innerHTML = `<div style="color:var(--text-dim)">Importing... 0/${total}</div>`;
+
+  for (let bi = 0; bi < batches.length; bi++) {
+    try {
+      const data = await api('/workouts/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ workouts: batches[bi] })
+      });
+      imported += data.imported || 0;
+      errors += data.errors || 0;
+      if (data.results) allResults.push(...data.results);
+    } catch (e) {
+      errors += batches[bi].length;
+      allResults.push({ error: e.message, batch: bi + 1 });
+    }
+    progress.innerHTML = `<div style="color:var(--text-dim)">Importing... ${imported + errors}/${total}</div>`;
+  }
+
+  const errorItems = allResults.filter(r => r.error);
+  progress.innerHTML = `
+    <div style="color:#a6e3a1;font-weight:600;font-size:1.1rem;margin-bottom:6px">${imported} workout${imported !== 1 ? 's' : ''} imported</div>
+    ${errors ? `<div style="color:#f38ba8;margin-bottom:6px">${errors} error${errors !== 1 ? 's' : ''}</div>` : ''}
+    ${errorItems.length ? `<div style="max-height:150px;overflow-y:auto;font-size:0.75rem;color:#f38ba8;background:var(--bg-secondary,#1e1e2e);padding:8px;border-radius:6px;margin-top:4px">
+      ${errorItems.map(e => `<div>${esc(e.workout_date || e.title || 'batch ' + e.batch)}: ${esc(e.error)}</div>`).join('')}
+    </div>` : ''}
+    <button class="btn-submit" onclick="closeModal();loadWorkouts('')" style="width:100%;margin-top:12px;padding:10px">Done</button>
+  `;
+  _importWorkouts = [];
 }
 
 // ─── Modal ────────────────────────────────────────────────────
