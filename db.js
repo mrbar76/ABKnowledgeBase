@@ -197,13 +197,18 @@ async function initDB() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
       workout_date DATE NOT NULL DEFAULT CURRENT_DATE,
-      workout_type TEXT DEFAULT 'hybrid' CHECK(workout_type IN ('hill','strength','run','hybrid','recovery','ruck')),
+      workout_type TEXT DEFAULT 'hybrid',
       location TEXT,
       elevation TEXT,
       focus TEXT,
       warmup TEXT,
       main_sets TEXT,
       carries TEXT,
+      exercises JSONB DEFAULT '[]'::jsonb,
+      class_name TEXT,
+      program TEXT,
+      equipment TEXT,
+      instructor TEXT,
       time_duration TEXT,
       distance TEXT,
       elevation_gain TEXT,
@@ -339,11 +344,17 @@ async function initDB() {
   await safeQuery('workouts +cadence_avg', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cadence_avg TEXT`);
   await safeQuery('workouts +active_calories', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS active_calories TEXT`);
   await safeQuery('workouts +total_calories', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_calories TEXT`);
+  await safeQuery('workouts +exercises', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS exercises JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('workouts +class_name', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS class_name TEXT`);
+  await safeQuery('workouts +program', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS program TEXT`);
+  await safeQuery('workouts +equipment', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS equipment TEXT`);
+  await safeQuery('workouts +instructor', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS instructor TEXT`);
   await safeQuery('workouts +metadata', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('workouts +search_vector', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('workouts +updated_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
   await safeQuery('workouts started_at default', `ALTER TABLE workouts ALTER COLUMN started_at SET DEFAULT NOW()`);
   await safeQuery('workouts started_at nullable', `ALTER TABLE workouts ALTER COLUMN started_at DROP NOT NULL`);
+  await safeQuery('workouts drop type check', `ALTER TABLE workouts DROP CONSTRAINT IF EXISTS workouts_workout_type_check`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `

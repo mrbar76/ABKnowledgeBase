@@ -35,13 +35,9 @@ paths:
           required: false
           schema:
             type: string
-            enum:
-              - hill
-              - strength
-              - run
-              - hybrid
-              - recovery
-              - ruck
+          description: >
+            Filter by type (e.g. hill, strength, run, hybrid, recovery, ruck,
+            cycling, swim, yoga, crossfit, hiit, class, machine, walk)
         - name: q
           in: query
           required: false
@@ -164,47 +160,86 @@ components:
   schemas:
     WorkoutCreate:
       type: object
-      additionalProperties: false
       required:
         - workout_type
       properties:
         workout_type:
           type: string
-          enum:
-            - hill
-            - strength
-            - run
-            - hybrid
-            - recovery
-            - ruck
+          description: >
+            Any workout type. Common values: hill, strength, run, hybrid, recovery, ruck,
+            cycling, swim, yoga, crossfit, hiit, class, machine, walk, hike, rowing, boxing.
+            Use whatever best describes the session.
         workout_date:
           type: string
           format: date
           description: YYYY-MM-DD, defaults to today if omitted
         title:
           type: string
-          description: Auto-generated as "Spartan Workout – DATE – TYPE" if omitted
+          description: Auto-generated as "Workout – DATE – TYPE" if omitted
         location:
           type: string
-          description: Where the workout happened (e.g. Runyon Canyon, Home Gym)
+          description: Where the workout happened (e.g. Runyon Canyon, Home Gym, Equinox)
         elevation:
           type: string
           description: Base elevation if outdoor (e.g. 1,320 ft)
         focus:
           type: string
-          description: Goal of the session (e.g. hill durability, grip endurance)
+          description: Goal of the session (e.g. hill durability, upper body hypertrophy, zone 2 cardio)
         warmup:
           type: string
           description: Warm-up activities
         main_sets:
           type: string
-          description: Full workout — sets x reps @ weight per exercise
+          description: Full workout as text — sets x reps @ weight per exercise
         carries:
           type: string
           description: Loaded carries, farmer walks, sled work with distance/weight
+        exercises:
+          type: array
+          description: >
+            Structured exercise log. Use this for machine workouts, strength sessions, or
+            any workout where you want queryable per-exercise data.
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Exercise name (e.g. Bench Press, Lat Pulldown, Treadmill)
+              sets:
+                type: integer
+              reps:
+                type: integer
+                description: Reps per set (or use duration for timed exercises)
+              weight:
+                type: string
+                description: Weight used (e.g. 135 lbs, 60 kg, bodyweight)
+              duration:
+                type: string
+                description: Time for timed exercises (e.g. 30 sec, 5 min)
+              distance:
+                type: string
+                description: Distance for cardio exercises (e.g. 0.5 mi, 500m)
+              machine:
+                type: string
+                description: Machine or equipment used (e.g. cable machine, rower, bike)
+              notes:
+                type: string
+                description: Per-exercise notes (e.g. drop set, tempo 3-1-2, felt easy)
+        class_name:
+          type: string
+          description: Name of the class (e.g. Apple Fitness+ HIIT, Peloton Power Zone, Barry's)
+        program:
+          type: string
+          description: Training program (e.g. Spartan SGX, 5/3/1, Couch to 5K)
+        equipment:
+          type: string
+          description: Primary equipment (e.g. treadmill, bike, barbell, kettlebell, none)
+        instructor:
+          type: string
+          description: Instructor or coach name
         time_duration:
           type: string
-          description: Total workout time (e.g. 52 min)
+          description: Total workout time (e.g. 52 min, 1:23:45)
         distance:
           type: string
           description: Total distance if applicable (e.g. 3.2 mi)
@@ -219,13 +254,13 @@ components:
           description: Max heart rate (e.g. 150 bpm)
         pace_avg:
           type: string
-          description: Average pace (e.g. 18:43 /mi)
+          description: Average pace (e.g. 18:43 /mi, 5:30 /km)
         splits:
           type: string
-          description: Per-mile or per-km splits (e.g. Mile 1 16:37 @ 104 bpm, Mile 2 16:49 @ 132 bpm)
+          description: Per-mile or per-km splits (e.g. Mile 1 16:37 @ 104 bpm)
         cadence_avg:
           type: string
-          description: Average cadence (e.g. 104 spm)
+          description: Average cadence (e.g. 104 spm, 85 rpm)
         active_calories:
           type: string
           description: Active calories burned (e.g. 284 kcal)
@@ -265,11 +300,14 @@ components:
           type: array
           items:
             type: string
-          description: Lowercase tags without # (e.g. spartan, hill, carry)
+          description: Lowercase tags without # (e.g. spartan, hill, carry, chest, apple-fitness)
         ai_source:
           type: string
           default: chatgpt
           description: Always set to chatgpt
+        metadata:
+          type: object
+          description: Any additional data that doesn't fit other fields (e.g. Apple Watch metrics, Strava link)
     Workout:
       type: object
       properties:
@@ -294,6 +332,18 @@ components:
         main_sets:
           type: string
         carries:
+          type: string
+        exercises:
+          type: array
+          items:
+            type: object
+        class_name:
+          type: string
+        program:
+          type: string
+        equipment:
+          type: string
+        instructor:
           type: string
         time_duration:
           type: string
@@ -341,6 +391,8 @@ components:
           type: string
         source:
           type: string
+        metadata:
+          type: object
         created_at:
           type: string
           format: date-time

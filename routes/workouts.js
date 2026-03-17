@@ -59,12 +59,13 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = req.body;
-    const title = b.title || `Spartan Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
+    const title = b.title || `Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
 
     const result = await query(
       `INSERT INTO workouts (
         title, workout_date, workout_type, location, elevation, focus,
-        warmup, main_sets, carries, time_duration, distance, elevation_gain,
+        warmup, main_sets, carries, exercises, class_name, program, equipment, instructor,
+        time_duration, distance, elevation_gain,
         heart_rate_avg, heart_rate_max, pace_avg, splits, cadence_avg,
         active_calories, total_calories,
         effort, slowdown_notes, failure_first,
@@ -72,12 +73,13 @@ router.post('/', async (req, res) => {
         adjustment, tags, source, ai_source, metadata
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17,
-        $18, $19,
-        $20, $21, $22,
-        $23, $24, $25, $26, $27,
-        $28, $29, $30, $31, $32
+        $7, $8, $9, $10, $11, $12, $13, $14,
+        $15, $16, $17,
+        $18, $19, $20, $21, $22,
+        $23, $24,
+        $25, $26, $27,
+        $28, $29, $30, $31, $32,
+        $33, $34, $35, $36, $37
       ) RETURNING *`,
       [
         title,
@@ -89,6 +91,11 @@ router.post('/', async (req, res) => {
         b.warmup || null,
         b.main_sets || null,
         b.carries || null,
+        JSON.stringify(b.exercises || []),
+        b.class_name || null,
+        b.program || null,
+        b.equipment || null,
+        b.instructor || null,
         b.time_duration || b.time || null,
         b.distance || null,
         b.elevation_gain || null,
@@ -132,7 +139,8 @@ router.put('/:id', async (req, res) => {
 
     const allowed = [
       'title', 'workout_date', 'workout_type', 'location', 'elevation', 'focus',
-      'warmup', 'main_sets', 'carries', 'time_duration', 'distance', 'elevation_gain',
+      'warmup', 'main_sets', 'carries', 'exercises', 'class_name', 'program', 'equipment', 'instructor',
+      'time_duration', 'distance', 'elevation_gain',
       'heart_rate_avg', 'heart_rate_max', 'pace_avg', 'splits', 'cadence_avg',
       'active_calories', 'total_calories',
       'effort', 'slowdown_notes', 'failure_first',
@@ -142,7 +150,7 @@ router.put('/:id', async (req, res) => {
 
     for (const key of allowed) {
       if (b[key] !== undefined) {
-        if (key === 'tags' || key === 'metadata') {
+        if (key === 'tags' || key === 'metadata' || key === 'exercises') {
           fields.push(`${key} = $${i++}::jsonb`);
           params.push(JSON.stringify(b[key]));
         } else if (key === 'effort') {
