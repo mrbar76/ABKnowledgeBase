@@ -191,6 +191,48 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity_log(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at DESC)`);
 
+  // ===== WORKOUT LOGS =====
+  await safeQuery('workouts table', `
+    CREATE TABLE IF NOT EXISTS workouts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      workout_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      workout_type TEXT DEFAULT 'hybrid' CHECK(workout_type IN ('hill','strength','run','hybrid','recovery','ruck')),
+      location TEXT,
+      elevation TEXT,
+      focus TEXT,
+      warmup TEXT,
+      main_sets TEXT,
+      carries TEXT,
+      time_duration TEXT,
+      distance TEXT,
+      elevation_gain TEXT,
+      effort INTEGER CHECK(effort >= 1 AND effort <= 10),
+      slowdown_notes TEXT,
+      failure_first TEXT,
+      grip_feedback TEXT,
+      legs_feedback TEXT,
+      cardio_feedback TEXT,
+      shoulder_feedback TEXT,
+      body_notes TEXT,
+      adjustment TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      source TEXT DEFAULT 'manual',
+      ai_source TEXT,
+      metadata JSONB DEFAULT '{}'::jsonb,
+      search_vector TSVECTOR,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('workouts indexes', `
+    CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(workout_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_workouts_type ON workouts(workout_type);
+    CREATE INDEX IF NOT EXISTS idx_workouts_tags ON workouts USING gin(tags);
+    CREATE INDEX IF NOT EXISTS idx_workouts_search ON workouts USING gin(search_vector);
+    CREATE INDEX IF NOT EXISTS idx_workouts_trgm ON workouts USING gin(
+      (coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'')) gin_trgm_ops
+    )`);
+
   // ===== SCHEMA MIGRATIONS =====
   // ALTER TABLE ... ADD COLUMN IF NOT EXISTS ensures columns exist even if
   // tables were created by an older schema version (CREATE TABLE IF NOT EXISTS
@@ -307,6 +349,18 @@ async function initDB() {
     DROP TRIGGER IF EXISTS trg_conversations_search ON conversations;
     CREATE TRIGGER trg_conversations_search BEFORE INSERT OR UPDATE OF title, summary ON conversations
       FOR EACH ROW EXECUTE FUNCTION update_conversations_search();
+
+    CREATE OR REPLACE FUNCTION update_workouts_search() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.focus,'') || ' ' || coalesce(NEW.main_sets,'') || ' ' || coalesce(NEW.body_notes,'') || ' ' || coalesce(NEW.adjustment,''));
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_workouts_search ON workouts;
+    CREATE TRIGGER trg_workouts_search BEFORE INSERT OR UPDATE OF title, focus, main_sets, body_notes, adjustment ON workouts
+      FOR EACH ROW EXECUTE FUNCTION update_workouts_search();
   `);
 
   // Backfill search vectors for any existing rows
@@ -314,6 +368,7 @@ async function initDB() {
   await safeQuery('backfill facts search', `UPDATE facts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill conversations search', `UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'') || ' ' || coalesce(adjustment,'')) WHERE search_vector IS NULL`);
 
   console.log('PostgreSQL database initialized successfully');
 }

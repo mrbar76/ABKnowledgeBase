@@ -445,6 +445,89 @@
         }
       }
     },
+    "/workouts": {
+      "get": {
+        "operationId": "listWorkouts",
+        "summary": "List or search workout logs",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search query" },
+          { "name": "workout_type", "in": "query", "schema": { "type": "string", "enum": ["hill", "strength", "run", "hybrid", "recovery", "ruck"] } },
+          { "name": "tag", "in": "query", "schema": { "type": "string" }, "description": "Filter by tag (e.g. spartan, carry)" },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Workouts on or after this date" },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Workouts before this date" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workout log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": { "type": "integer" },
+                    "count": { "type": "integer" },
+                    "workouts": { "type": "array", "items": { "$ref": "#/components/schemas/Workout" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "logWorkout",
+        "summary": "Log a new Spartan workout with structured fields for type, workout details, metrics, performance, body feedback, and adjustments",
+        "description": "Post a structured workout log. ChatGPT should use this after a workout recap conversation. Include workout_type, focus, warmup, main_sets, carries, metrics (time, distance, elevation), effort rating 1-10, performance notes (slowdown, failure point), body feedback (grip, legs, cardio, shoulder), and adjustment for next time. Tags should be lowercase without # prefix.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["workout_type"],
+                "properties": {
+                  "title": { "type": "string", "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'" },
+                  "workout_date": { "type": "string", "format": "date", "description": "YYYY-MM-DD, defaults to today" },
+                  "workout_type": { "type": "string", "enum": ["hill", "strength", "run", "hybrid", "recovery", "ruck"] },
+                  "location": { "type": "string", "description": "e.g. Runyon Canyon, Home Gym" },
+                  "elevation": { "type": "string", "description": "Base elevation if relevant, e.g. 1,320 ft" },
+                  "focus": { "type": "string", "description": "Goal of the workout, e.g. hill durability, grip endurance" },
+                  "warmup": { "type": "string", "description": "Warm-up activities" },
+                  "main_sets": { "type": "string", "description": "Main workout sets and exercises" },
+                  "carries": { "type": "string", "description": "Carries, lifts, or loaded movements" },
+                  "time_duration": { "type": "string", "description": "Total time, e.g. 45 min, 1:15:00" },
+                  "distance": { "type": "string", "description": "Distance covered, e.g. 3.2 mi" },
+                  "elevation_gain": { "type": "string", "description": "Elevation gained, e.g. 850 ft" },
+                  "effort": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Effort rating 1-10" },
+                  "slowdown_notes": { "type": "string", "description": "Where did I slow down or break form" },
+                  "failure_first": { "type": "string", "description": "What failed first: legs / grip / cardio / shoulders" },
+                  "grip_feedback": { "type": "string", "description": "Grip status: solid / pumped / gave out" },
+                  "legs_feedback": { "type": "string", "description": "Legs status: strong / heavy / cramped" },
+                  "cardio_feedback": { "type": "string", "description": "Cardio status: steady / gasping / recovered fast" },
+                  "shoulder_feedback": { "type": "string", "description": "Shoulder status: fine / tight / clicking" },
+                  "body_notes": { "type": "string", "description": "Additional body feedback or recovery notes" },
+                  "adjustment": { "type": "string", "description": "What to change next time: weight, pace, structure" },
+                  "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags without # prefix, e.g. [\"spartan\", \"hill\", \"carry\"]" },
+                  "ai_source": { "type": "string", "default": "chatgpt" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workout logged",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Workout" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",
@@ -516,6 +599,35 @@
           "task_counts": { "type": "object" },
           "created_at": { "type": "string", "format": "date-time" },
           "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Workout": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "workout_date": { "type": "string", "format": "date" },
+          "workout_type": { "type": "string" },
+          "location": { "type": "string" },
+          "elevation": { "type": "string" },
+          "focus": { "type": "string" },
+          "warmup": { "type": "string" },
+          "main_sets": { "type": "string" },
+          "carries": { "type": "string" },
+          "time_duration": { "type": "string" },
+          "distance": { "type": "string" },
+          "elevation_gain": { "type": "string" },
+          "effort": { "type": "integer" },
+          "slowdown_notes": { "type": "string" },
+          "failure_first": { "type": "string" },
+          "grip_feedback": { "type": "string" },
+          "legs_feedback": { "type": "string" },
+          "cardio_feedback": { "type": "string" },
+          "shoulder_feedback": { "type": "string" },
+          "body_notes": { "type": "string" },
+          "adjustment": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "Transcript": {

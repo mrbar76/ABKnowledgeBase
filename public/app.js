@@ -60,6 +60,7 @@ function switchTab(tab) {
   else if (tab === 'brain') loadBrain();
   else if (tab === 'transcripts') loadTranscripts();
   else if (tab === 'projects') loadProjects();
+  else if (tab === 'workouts') loadWorkouts();
 }
 
 // ─── Dashboard (Home) ─────────────────────────────────────────
@@ -98,7 +99,7 @@ async function loadDashboardStats() {
       <div class="stat-card"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
       <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
       <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
-      <div class="stat-card"><div class="stat-value">${data.facts.total}</div><div class="stat-label">Facts</div></div>
+      <div class="stat-card" onclick="switchTab('workouts')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
     `;
     if (data.recent_activity?.length) {
       const ac = document.getElementById('activity-card');
@@ -1129,6 +1130,7 @@ async function runGlobalSearch(q) {
     if (r.transcripts?.length) html += renderSearchGroup('Transcripts', r.transcripts, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.summary||'',q)}</div></div>`);
     if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
     if (r.projects?.length) html += renderSearchGroup('Projects', r.projects, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title||i.name,q)}</div></div>`);
+    if (r.workouts?.length) html += renderSearchGroup('Workouts', r.workouts, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('workouts');setTimeout(()=>showWorkoutDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.workout_type||''}</span><span>${i.workout_date||''}</span>${i.effort?`<span>Effort: ${i.effort}/10</span>`:''}</div></div>`);
     el.innerHTML = html || '<div class="search-empty">No results</div>';
   } catch (e) { el.innerHTML = `<div class="search-empty">${esc(e.message)}</div>`; }
 }
@@ -1160,6 +1162,274 @@ function searchSnippet(text, query, maxLen) {
     snippet = (start > 0 ? '...' : '') + text.substring(start, start + maxLen) + (start + maxLen < text.length ? '...' : '');
   }
   return highlightText(snippet, query);
+}
+
+// ─── Workouts ─────────────────────────────────────────────────
+let workoutFilters = {};
+
+function setWorkoutFilter(key, value) {
+  if (!value) delete workoutFilters[key]; else workoutFilters[key] = value;
+  loadWorkouts(workoutFilters._q || '');
+}
+
+async function loadWorkouts(searchQuery) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    const params = new URLSearchParams({ limit: '50' });
+    if (searchQuery) params.set('q', searchQuery);
+    for (const [k, v] of Object.entries(workoutFilters)) {
+      if (k !== '_q' && v) params.set(k, v);
+    }
+    const data = await api('/workouts?' + params.toString());
+    const activeType = workoutFilters.workout_type || '';
+
+    const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
+
+    main.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <input type="text" class="brain-search" placeholder="Search workouts..." value="${esc(searchQuery || '')}"
+          oninput="debounceWorkoutSearch(this.value)" style="margin-bottom:0;flex:1;margin-right:8px">
+        <button class="btn-submit" onclick="showWorkoutForm()" style="white-space:nowrap;padding:8px 16px">+ Log</button>
+      </div>
+      <div class="filter-row" style="margin-bottom:10px">
+        <button class="filter-btn ${!activeType ? 'active' : ''}" onclick="workoutFilters={};loadWorkouts('')">All</button>
+        ${['hill','strength','run','hybrid','recovery','ruck'].map(t =>
+          `<button class="filter-btn ${activeType === t ? 'active' : ''}" onclick="setWorkoutFilter('workout_type', '${activeType === t ? '' : t}')"
+            style="${activeType === t ? 'background:' + typeColors[t] + ';border-color:' + typeColors[t] : ''}">${t}</button>`
+        ).join('')}
+      </div>
+      <div class="transcript-count">${data.total} workout${data.total !== 1 ? 's' : ''}</div>
+      <div id="workout-list">
+        ${data.workouts.length ? data.workouts.map(w => {
+          const color = typeColors[w.workout_type] || '#6366f1';
+          const d = new Date(w.workout_date);
+          const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          return `
+          <div class="list-item workout-card" onclick="showWorkoutDetail('${w.id}')" style="border-left:3px solid ${color}">
+            <div class="transcript-card-header">
+              <div class="list-item-title">${esc(w.title)}</div>
+              <span class="content-type-badge" style="background:${color}22;color:${color}">${w.workout_type}</span>
+              ${w.effort ? `<span class="effort-badge effort-${w.effort >= 8 ? 'high' : w.effort >= 5 ? 'med' : 'low'}">${w.effort}/10</span>` : ''}
+            </div>
+            ${w.focus ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(w.focus)}</div>` : ''}
+            <div class="list-item-meta">
+              <span>${dateLabel}</span>
+              ${w.location ? `<span>${esc(w.location)}</span>` : ''}
+              ${w.time_duration ? `<span>${esc(w.time_duration)}</span>` : ''}
+              ${w.distance ? `<span>${esc(w.distance)}</span>` : ''}
+              ${w.elevation_gain ? `<span>↑${esc(w.elevation_gain)}</span>` : ''}
+            </div>
+            ${w.tags && w.tags.length ? `<div class="transcript-speakers" style="margin-top:4px">${w.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>` : ''}
+          </div>`;
+        }).join('') : '<div class="empty-state">No workouts yet. Tap "+ Log" to add one!</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+let workoutSearchTimer = null;
+function debounceWorkoutSearch(q) {
+  workoutFilters._q = q;
+  clearTimeout(workoutSearchTimer);
+  workoutSearchTimer = setTimeout(() => loadWorkouts(q), 300);
+}
+
+async function showWorkoutDetail(id) {
+  try {
+    const w = await api(`/workouts/${id}`);
+    const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
+    const color = typeColors[w.workout_type] || '#6366f1';
+    const d = new Date(w.workout_date);
+    const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+    function section(label, value) {
+      if (!value) return '';
+      return `<div class="workout-detail-section"><div class="workout-detail-label">${label}</div><div class="workout-detail-value">${esc(value).replace(/\n/g, '<br>')}</div></div>`;
+    }
+
+    let html = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="content-type-badge" style="background:${color}22;color:${color};font-size:0.75rem;padding:3px 12px">${w.workout_type}</span>
+        <span style="font-size:0.8rem;color:var(--text-dim)">${dateLabel}</span>
+        ${w.effort ? `<span class="effort-badge effort-${w.effort >= 8 ? 'high' : w.effort >= 5 ? 'med' : 'low'}" style="font-size:0.75rem;padding:3px 10px">Effort: ${w.effort}/10</span>` : ''}
+      </div>
+
+      ${w.location || w.elevation ? `<div class="workout-detail-section"><div class="workout-detail-label">Location</div><div class="workout-detail-value">${esc(w.location || '')}${w.elevation ? ' · Elev: ' + esc(w.elevation) : ''}</div></div>` : ''}
+
+      ${section('Focus', w.focus)}
+
+      ${w.warmup || w.main_sets || w.carries ? `
+      <div class="workout-detail-section">
+        <div class="workout-detail-label">Workout</div>
+        <div class="workout-detail-value">
+          ${w.warmup ? '<strong>Warm-up:</strong> ' + esc(w.warmup).replace(/\n/g, '<br>') + '<br>' : ''}
+          ${w.main_sets ? '<strong>Main sets:</strong> ' + esc(w.main_sets).replace(/\n/g, '<br>') + '<br>' : ''}
+          ${w.carries ? '<strong>Carries / lifts:</strong> ' + esc(w.carries).replace(/\n/g, '<br>') : ''}
+        </div>
+      </div>` : ''}
+
+      ${w.time_duration || w.distance || w.elevation_gain ? `
+      <div class="workout-detail-section">
+        <div class="workout-detail-label">Metrics</div>
+        <div class="workout-detail-value">
+          ${w.time_duration ? '⏱ ' + esc(w.time_duration) + '<br>' : ''}
+          ${w.distance ? '📏 ' + esc(w.distance) + '<br>' : ''}
+          ${w.elevation_gain ? '⛰ ' + esc(w.elevation_gain) : ''}
+        </div>
+      </div>` : ''}
+
+      ${w.slowdown_notes || w.failure_first ? `
+      <div class="workout-detail-section">
+        <div class="workout-detail-label">Performance</div>
+        <div class="workout-detail-value">
+          ${w.slowdown_notes ? '<strong>Slowed down:</strong> ' + esc(w.slowdown_notes).replace(/\n/g, '<br>') + '<br>' : ''}
+          ${w.failure_first ? '<strong>Failed first:</strong> ' + esc(w.failure_first) : ''}
+        </div>
+      </div>` : ''}
+
+      ${w.grip_feedback || w.legs_feedback || w.cardio_feedback || w.shoulder_feedback || w.body_notes ? `
+      <div class="workout-detail-section">
+        <div class="workout-detail-label">Body Feedback</div>
+        <div class="workout-detail-value">
+          ${w.grip_feedback ? '<strong>Grip:</strong> ' + esc(w.grip_feedback) + '<br>' : ''}
+          ${w.legs_feedback ? '<strong>Legs:</strong> ' + esc(w.legs_feedback) + '<br>' : ''}
+          ${w.cardio_feedback ? '<strong>Cardio:</strong> ' + esc(w.cardio_feedback) + '<br>' : ''}
+          ${w.shoulder_feedback ? '<strong>Shoulder:</strong> ' + esc(w.shoulder_feedback) + '<br>' : ''}
+          ${w.body_notes ? '<strong>Notes:</strong> ' + esc(w.body_notes).replace(/\n/g, '<br>') : ''}
+        </div>
+      </div>` : ''}
+
+      ${section('Adjustment Next Time', w.adjustment)}
+
+      ${w.tags && w.tags.length ? `<div class="transcript-speakers" style="margin-top:8px">${w.tags.map(t => `<span class="speaker-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn-submit" onclick="showWorkoutForm('${w.id}')" style="flex:1">Edit</button>
+        <button class="btn-action btn-action-danger" onclick="deleteWorkout('${w.id}')" style="flex:0.5">Delete</button>
+      </div>
+    `;
+
+    openModal(w.title, html);
+  } catch (e) {
+    openModal('Error', `<div class="empty-state">${esc(e.message)}</div>`);
+  }
+}
+
+async function showWorkoutForm(editId) {
+  closeModal();
+  let w = {};
+  if (editId) {
+    try { w = await api(`/workouts/${editId}`); } catch {}
+  }
+  const isEdit = !!editId;
+  const today = new Date().toISOString().slice(0, 10);
+  const tagsStr = (w.tags || []).join(', ');
+
+  const html = `
+    <div class="workout-form-scroll">
+      <div class="form-group"><label>Title</label><input type="text" id="wf-title" value="${esc(w.title || '')}" placeholder="Spartan Workout – ${today} – HILL"></div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Date</label><input type="date" id="wf-date" value="${w.workout_date ? w.workout_date.slice(0,10) : today}"></div>
+        <div class="form-group" style="flex:1"><label>Type</label>
+          <select id="wf-type">
+            ${['hill','strength','run','hybrid','recovery','ruck'].map(t => `<option value="${t}" ${w.workout_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Location</label><input type="text" id="wf-location" value="${esc(w.location || '')}" placeholder="Runyon Canyon"></div>
+        <div class="form-group" style="flex:1"><label>Elevation</label><input type="text" id="wf-elevation" value="${esc(w.elevation || '')}" placeholder="1,320 ft"></div>
+      </div>
+
+      <div class="form-group"><label>Focus</label><textarea id="wf-focus" rows="2" placeholder="Hill durability, grip endurance...">${esc(w.focus || '')}</textarea></div>
+
+      <div class="form-group"><label>Warm-up</label><textarea id="wf-warmup" rows="2" placeholder="Joint circles, band walks...">${esc(w.warmup || '')}</textarea></div>
+      <div class="form-group"><label>Main Sets</label><textarea id="wf-main-sets" rows="3" placeholder="5x hill sprints, 3x sandbag carry...">${esc(w.main_sets || '')}</textarea></div>
+      <div class="form-group"><label>Carries / Lifts</label><textarea id="wf-carries" rows="2" placeholder="Farmer carry 100m x3...">${esc(w.carries || '')}</textarea></div>
+
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Time</label><input type="text" id="wf-time" value="${esc(w.time_duration || '')}" placeholder="45 min"></div>
+        <div class="form-group" style="flex:1"><label>Distance</label><input type="text" id="wf-distance" value="${esc(w.distance || '')}" placeholder="3.2 mi"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Elevation Gain</label><input type="text" id="wf-elev-gain" value="${esc(w.elevation_gain || '')}" placeholder="850 ft"></div>
+        <div class="form-group" style="flex:1"><label>Effort (1-10)</label><input type="number" id="wf-effort" min="1" max="10" value="${w.effort || ''}"></div>
+      </div>
+
+      <div class="form-group"><label>Where did I slow down / break?</label><textarea id="wf-slowdown" rows="2">${esc(w.slowdown_notes || '')}</textarea></div>
+      <div class="form-group"><label>What failed first?</label><input type="text" id="wf-failure" value="${esc(w.failure_first || '')}" placeholder="legs / grip / cardio"></div>
+
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Grip</label><input type="text" id="wf-grip" value="${esc(w.grip_feedback || '')}" placeholder="solid / pumped / gave out"></div>
+        <div class="form-group" style="flex:1"><label>Legs</label><input type="text" id="wf-legs" value="${esc(w.legs_feedback || '')}" placeholder="strong / heavy / cramped"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Cardio</label><input type="text" id="wf-cardio" value="${esc(w.cardio_feedback || '')}" placeholder="steady / gasping / recovered fast"></div>
+        <div class="form-group" style="flex:1"><label>Shoulder</label><input type="text" id="wf-shoulder" value="${esc(w.shoulder_feedback || '')}" placeholder="fine / tight / clicking"></div>
+      </div>
+      <div class="form-group"><label>Body Notes</label><textarea id="wf-body-notes" rows="2">${esc(w.body_notes || '')}</textarea></div>
+
+      <div class="form-group"><label>Adjustment Next Time</label><textarea id="wf-adjustment" rows="2" placeholder="More hip mobility, slower carries...">${esc(w.adjustment || '')}</textarea></div>
+
+      <div class="form-group"><label>Tags (comma separated)</label><input type="text" id="wf-tags" value="${esc(tagsStr)}" placeholder="#spartan #hill #carry"></div>
+
+      <button class="btn-submit" onclick="saveWorkout('${editId || ''}')" style="width:100%;margin-top:8px">${isEdit ? 'Update Workout' : 'Save Workout'}</button>
+    </div>
+  `;
+
+  openModal(isEdit ? 'Edit Workout' : 'Log Workout', html);
+}
+
+async function saveWorkout(editId) {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const tags = val('wf-tags').split(/[,\s]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean);
+
+  const body = {
+    title: val('wf-title') || undefined,
+    workout_date: val('wf-date'),
+    workout_type: val('wf-type'),
+    location: val('wf-location') || null,
+    elevation: val('wf-elevation') || null,
+    focus: val('wf-focus') || null,
+    warmup: val('wf-warmup') || null,
+    main_sets: val('wf-main-sets') || null,
+    carries: val('wf-carries') || null,
+    time_duration: val('wf-time') || null,
+    distance: val('wf-distance') || null,
+    elevation_gain: val('wf-elev-gain') || null,
+    effort: val('wf-effort') ? parseInt(val('wf-effort'), 10) : null,
+    slowdown_notes: val('wf-slowdown') || null,
+    failure_first: val('wf-failure') || null,
+    grip_feedback: val('wf-grip') || null,
+    legs_feedback: val('wf-legs') || null,
+    cardio_feedback: val('wf-cardio') || null,
+    shoulder_feedback: val('wf-shoulder') || null,
+    body_notes: val('wf-body-notes') || null,
+    adjustment: val('wf-adjustment') || null,
+    tags: tags,
+  };
+
+  try {
+    if (editId) {
+      await api(`/workouts/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+    } else {
+      await api('/workouts', { method: 'POST', body: JSON.stringify(body) });
+    }
+    closeModal();
+    loadWorkouts(workoutFilters._q || '');
+  } catch (e) {
+    alert('Error saving workout: ' + e.message);
+  }
+}
+
+async function deleteWorkout(id) {
+  if (!confirm('Delete this workout?')) return;
+  try {
+    await api(`/workouts/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadWorkouts(workoutFilters._q || '');
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 // ─── Modal ────────────────────────────────────────────────────

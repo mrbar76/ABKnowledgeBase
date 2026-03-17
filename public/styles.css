@@ -678,6 +678,68 @@ body {
 .brain-search:focus { border-color: var(--accent); }
 .brain-search::placeholder { color: var(--text-dim); }
 
+/* --- Workout Styles --- */
+.workout-card { transition: transform 0.15s; }
+.workout-card:active { transform: scale(0.98); }
+.effort-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.effort-badge.effort-high { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.effort-badge.effort-med  { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.effort-badge.effort-low  { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.workout-detail-section {
+  background: var(--bg-input);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.workout-detail-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.workout-detail-value {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.workout-form-scroll {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.workout-form-scroll .form-group { margin-bottom: 8px; }
+.workout-form-scroll label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.workout-form-scroll input,
+.workout-form-scroll select,
+.workout-form-scroll textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.workout-form-scroll textarea { resize: vertical; }
+
 /* --- Transcript Filters --- */
 .transcript-filters {
   display: flex;
