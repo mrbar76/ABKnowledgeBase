@@ -121,6 +121,28 @@ function toggleSettingsMenu() {
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
 
+async function copyGptActionsSchema() {
+  const btn = document.getElementById('btn-copy-schema');
+  const resultEl = document.getElementById('sm-schema-result');
+  try {
+    btn.textContent = 'Loading...';
+    const resp = await fetch('/openapi-gpt-actions.yaml');
+    if (!resp.ok) throw new Error('Failed to fetch schema');
+    const text = await resp.text();
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    resultEl.style.display = 'block';
+    resultEl.style.color = 'var(--accent)';
+    resultEl.textContent = 'Schema copied to clipboard. Paste it into your GPT Actions configuration.';
+    setTimeout(() => { btn.textContent = 'Copy Schema'; }, 3000);
+  } catch (err) {
+    btn.textContent = 'Copy Schema';
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
 async function loadSettingsMenuInfo() {
   const bkEl = document.getElementById('sm-backend-val');
   const beeEl = document.getElementById('sm-bee-val');

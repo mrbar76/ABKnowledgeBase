@@ -97,6 +97,16 @@
           </div>
         </div>
 
+        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
+          <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">GPT Actions Schema</div>
+          <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px">Copy this schema into your GPT Actions configuration:</div>
+          <div style="display:flex;gap:6px;margin-bottom:4px">
+            <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema" style="flex:1">Copy Schema</button>
+            <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')" style="flex:1">View Raw</button>
+          </div>
+          <div id="sm-schema-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:6px"></div>
+        </div>
+
         <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
           <button class="btn-action btn-action-secondary" onclick="closeSettingsMenu();showDebugPanel()" style="width:100%">Diagnostics &amp; Logs</button>
           <button class="btn-action btn-action-secondary" onclick="closeSettingsMenu();logout()" style="width:100%">Log Out</button>
