@@ -611,6 +611,122 @@
         }
       }
     },
+    "/body-metrics": {
+      "get": {
+        "operationId": "listBodyMetrics",
+        "summary": "List or search body composition measurements",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "source", "in": "query", "schema": { "type": "string" }, "description": "Filter by source (e.g. RENPHO)" },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Start date (inclusive)" },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "End date (exclusive)" },
+          { "name": "latest", "in": "query", "schema": { "type": "string", "enum": ["true"] }, "description": "Return only the most recent entry" },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["oldest"] }, "description": "Sort order (default: newest first)" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Body metrics list or single latest entry",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createBodyMetric",
+        "summary": "Create a body composition measurement entry",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BodyMetricInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created body metric",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BodyMetric" } } }
+          }
+        }
+      }
+    },
+    "/body-metrics/bulk": {
+      "post": {
+        "operationId": "bulkImportBodyMetrics",
+        "summary": "Bulk import body composition measurements (max 200 per request)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["body_metrics"],
+                "properties": {
+                  "body_metrics": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/BodyMetricInput" },
+                    "maxItems": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bulk import results",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/body-metrics/{id}": {
+      "get": {
+        "operationId": "getBodyMetric",
+        "summary": "Get a single body metric entry by ID",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Body metric entry",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BodyMetric" } } }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateBodyMetric",
+        "summary": "Update a body metric entry",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BodyMetricInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated body metric",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BodyMetric" } } }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteBodyMetric",
+        "summary": "Delete a body metric entry",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Deleted" }
+        }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",
@@ -711,6 +827,66 @@
           "adjustment": { "type": "string" },
           "tags": { "type": "array", "items": { "type": "string" } },
           "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "BodyMetricInput": {
+        "type": "object",
+        "required": ["measurement_date", "weight_lb"],
+        "properties": {
+          "measurement_date": { "type": "string", "format": "date" },
+          "measurement_time": { "type": "string", "nullable": true },
+          "source": { "type": "string", "default": "RENPHO" },
+          "source_type": { "type": "string", "default": "smart_scale" },
+          "weight_lb": { "type": "number", "minimum": 0 },
+          "bmi": { "type": "number", "nullable": true },
+          "body_fat_pct": { "type": "number", "nullable": true },
+          "skeletal_muscle_pct": { "type": "number", "nullable": true },
+          "fat_free_mass_lb": { "type": "number", "nullable": true },
+          "subcutaneous_fat_pct": { "type": "number", "nullable": true },
+          "visceral_fat": { "type": "integer", "nullable": true },
+          "body_water_pct": { "type": "number", "nullable": true },
+          "muscle_mass_lb": { "type": "number", "nullable": true },
+          "bone_mass_lb": { "type": "number", "nullable": true },
+          "protein_pct": { "type": "number", "nullable": true },
+          "bmr_kcal": { "type": "integer", "nullable": true },
+          "metabolic_age": { "type": "integer", "nullable": true },
+          "measurement_context": { "type": "string", "nullable": true },
+          "vendor_user_mode": { "type": "string", "nullable": true },
+          "notes": { "type": "string", "nullable": true },
+          "tags": { "type": "array", "items": { "type": "string" }, "nullable": true },
+          "is_manual_entry": { "type": "boolean", "default": false },
+          "raw_payload": { "type": "object", "nullable": true }
+        }
+      },
+      "BodyMetric": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "measurement_date": { "type": "string", "format": "date" },
+          "measurement_time": { "type": "string" },
+          "source": { "type": "string" },
+          "source_type": { "type": "string" },
+          "weight_lb": { "type": "number" },
+          "bmi": { "type": "number" },
+          "body_fat_pct": { "type": "number" },
+          "skeletal_muscle_pct": { "type": "number" },
+          "fat_free_mass_lb": { "type": "number" },
+          "subcutaneous_fat_pct": { "type": "number" },
+          "visceral_fat": { "type": "integer" },
+          "body_water_pct": { "type": "number" },
+          "muscle_mass_lb": { "type": "number" },
+          "bone_mass_lb": { "type": "number" },
+          "protein_pct": { "type": "number" },
+          "bmr_kcal": { "type": "integer" },
+          "metabolic_age": { "type": "integer" },
+          "measurement_context": { "type": "string" },
+          "vendor_user_mode": { "type": "string" },
+          "notes": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "is_manual_entry": { "type": "boolean" },
+          "raw_payload": { "type": "object" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
         }
       },
       "Transcript": {

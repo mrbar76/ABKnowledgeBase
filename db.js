@@ -245,6 +245,43 @@ async function initDB() {
       (coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'')) gin_trgm_ops
     )`);
 
+  // ===== BODY METRICS =====
+  await safeQuery('body_metrics table', `
+    CREATE TABLE IF NOT EXISTS body_metrics (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      measurement_date DATE NOT NULL,
+      measurement_time TIME,
+      source TEXT DEFAULT 'RENPHO',
+      source_type TEXT DEFAULT 'smart_scale',
+      weight_lb NUMERIC(6,2) NOT NULL,
+      bmi NUMERIC(5,2),
+      body_fat_pct NUMERIC(5,2),
+      skeletal_muscle_pct NUMERIC(5,2),
+      fat_free_mass_lb NUMERIC(6,2),
+      subcutaneous_fat_pct NUMERIC(5,2),
+      visceral_fat INTEGER,
+      body_water_pct NUMERIC(5,2),
+      muscle_mass_lb NUMERIC(6,2),
+      bone_mass_lb NUMERIC(5,2),
+      protein_pct NUMERIC(5,2),
+      bmr_kcal INTEGER,
+      metabolic_age INTEGER,
+      measurement_context TEXT,
+      vendor_user_mode TEXT,
+      notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      is_manual_entry BOOLEAN DEFAULT false,
+      raw_payload JSONB,
+      search_vector TSVECTOR,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('body_metrics indexes', `
+    CREATE INDEX IF NOT EXISTS idx_body_metrics_date ON body_metrics(measurement_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_body_metrics_source ON body_metrics(source);
+    CREATE INDEX IF NOT EXISTS idx_body_metrics_tags ON body_metrics USING gin(tags);
+    CREATE INDEX IF NOT EXISTS idx_body_metrics_search ON body_metrics USING gin(search_vector)`);
+
   // ===== SCHEMA MIGRATIONS =====
   // ALTER TABLE ... ADD COLUMN IF NOT EXISTS ensures columns exist even if
   // tables were created by an older schema version (CREATE TABLE IF NOT EXISTS
@@ -356,6 +393,11 @@ async function initDB() {
   await safeQuery('workouts started_at nullable', `ALTER TABLE workouts ALTER COLUMN started_at DROP NOT NULL`);
   await safeQuery('workouts drop type check', `ALTER TABLE workouts DROP CONSTRAINT IF EXISTS workouts_workout_type_check`);
 
+  // -- body_metrics migrations --
+  await safeQuery('body_metrics +measurement_context', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS measurement_context TEXT`);
+  await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
+  await safeQuery('body_metrics +search_vector', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
     CREATE OR REPLACE FUNCTION update_knowledge_search() RETURNS TRIGGER AS $$
@@ -417,6 +459,18 @@ async function initDB() {
     DROP TRIGGER IF EXISTS trg_workouts_search ON workouts;
     CREATE TRIGGER trg_workouts_search BEFORE INSERT OR UPDATE OF title, focus, main_sets, body_notes, adjustment ON workouts
       FOR EACH ROW EXECUTE FUNCTION update_workouts_search();
+
+    CREATE OR REPLACE FUNCTION update_body_metrics_search() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.source,'') || ' ' || coalesce(NEW.notes,'') || ' ' || coalesce(NEW.measurement_context,'') || ' ' || coalesce(NEW.vendor_user_mode,''));
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_body_metrics_search ON body_metrics;
+    CREATE TRIGGER trg_body_metrics_search BEFORE INSERT OR UPDATE OF source, notes, measurement_context, vendor_user_mode ON body_metrics
+      FOR EACH ROW EXECUTE FUNCTION update_body_metrics_search();
   `);
 
   // Backfill search vectors for any existing rows
@@ -425,6 +479,7 @@ async function initDB() {
   await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill conversations search', `UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'') || ' ' || coalesce(adjustment,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill body_metrics search', `UPDATE body_metrics SET search_vector = to_tsvector('english', coalesce(source,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(measurement_context,'') || ' ' || coalesce(vendor_user_mode,'')) WHERE search_vector IS NULL`);
 
   console.log('PostgreSQL database initialized successfully');
 }

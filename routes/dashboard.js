@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
       knowledgeRows, factRows, projectRows,
       taskStatusRows, taskPriorityRows, taskAgentRows,
       transcriptRows, conversationRows, activityRows,
-      workoutRows
+      workoutRows, bodyMetricRows
     ] = await Promise.all([
       sq('SELECT COUNT(*)::int as total FROM knowledge', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM facts', [{ total: 0 }]),
@@ -26,6 +26,7 @@ router.get('/', async (req, res) => {
       sq('SELECT COUNT(*)::int as total FROM conversations', [{ total: 0 }]),
       sq('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 15'),
       sq('SELECT COUNT(*)::int as total FROM workouts', [{ total: 0 }]),
+      sq('SELECT COUNT(*)::int as total FROM body_metrics', [{ total: 0 }]),
     ]);
 
     const statusMap = {};
@@ -45,6 +46,7 @@ router.get('/', async (req, res) => {
       transcripts: { total: transcriptRows[0]?.total || 0 },
       conversations: { total: conversationRows[0]?.total || 0 },
       workouts: { total: workoutRows[0]?.total || 0 },
+      body_metrics: { total: bodyMetricRows[0]?.total || 0 },
       recent_activity: activityRows,
     });
   } catch (err) {

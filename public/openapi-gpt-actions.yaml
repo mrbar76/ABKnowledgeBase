@@ -168,6 +168,170 @@ paths:
           description: Unauthorized
         '500':
           description: Server error
+  /body-metrics:
+    get:
+      operationId: getBodyMetrics
+      summary: Retrieve body composition measurements
+      description: Retrieve body metrics (weight, body fat, muscle mass, etc.) from RENPHO scale data.
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start date (inclusive)
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End date (exclusive)
+        - name: latest
+          in: query
+          schema:
+            type: string
+            enum: ["true"]
+          description: Return only the most recent entry
+        - name: source
+          in: query
+          schema:
+            type: string
+          description: Filter by source (e.g. RENPHO)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Body metrics list or single latest entry
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      operationId: createBodyMetric
+      summary: Create a body composition measurement
+      description: Store a body metric entry (e.g. from RENPHO scale). Required fields are measurement_date and weight_lb.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - measurement_date
+                - weight_lb
+              properties:
+                measurement_date:
+                  type: string
+                  format: date
+                measurement_time:
+                  type: string
+                  nullable: true
+                source:
+                  type: string
+                  default: RENPHO
+                source_type:
+                  type: string
+                  default: smart_scale
+                weight_lb:
+                  type: number
+                bmi:
+                  type: number
+                  nullable: true
+                body_fat_pct:
+                  type: number
+                  nullable: true
+                skeletal_muscle_pct:
+                  type: number
+                  nullable: true
+                fat_free_mass_lb:
+                  type: number
+                  nullable: true
+                subcutaneous_fat_pct:
+                  type: number
+                  nullable: true
+                visceral_fat:
+                  type: integer
+                  nullable: true
+                body_water_pct:
+                  type: number
+                  nullable: true
+                muscle_mass_lb:
+                  type: number
+                  nullable: true
+                bone_mass_lb:
+                  type: number
+                  nullable: true
+                protein_pct:
+                  type: number
+                  nullable: true
+                bmr_kcal:
+                  type: integer
+                  nullable: true
+                metabolic_age:
+                  type: integer
+                  nullable: true
+                measurement_context:
+                  type: string
+                  nullable: true
+                vendor_user_mode:
+                  type: string
+                  nullable: true
+                notes:
+                  type: string
+                  nullable: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+                is_manual_entry:
+                  type: boolean
+                  default: false
+                raw_payload:
+                  type: object
+                  nullable: true
+      responses:
+        '201':
+          description: Created body metric
+        '400':
+          description: Validation error
+  /body-metrics/bulk:
+    post:
+      operationId: bulkImportBodyMetrics
+      summary: Bulk import body metrics (max 200 per request)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body_metrics
+              properties:
+                body_metrics:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: object
+                    required:
+                      - measurement_date
+                      - weight_lb
+                    properties:
+                      measurement_date:
+                        type: string
+                        format: date
+                      weight_lb:
+                        type: number
+      responses:
+        '201':
+          description: Bulk import results
   /tasks:
     post:
       operationId: createTask

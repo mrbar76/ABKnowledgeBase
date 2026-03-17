@@ -61,6 +61,7 @@ function switchTab(tab) {
   else if (tab === 'transcripts') loadTranscripts();
   else if (tab === 'projects') loadProjects();
   else if (tab === 'workouts') loadWorkouts();
+  else if (tab === 'body') loadBodyMetrics();
 }
 
 // ─── Dashboard (Home) ─────────────────────────────────────────
@@ -100,6 +101,7 @@ async function loadDashboardStats() {
       <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
       <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
       <div class="stat-card" onclick="switchTab('workouts')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
+      <div class="stat-card" onclick="switchTab('body')" style="cursor:pointer"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
     `;
     if (data.recent_activity?.length) {
       const ac = document.getElementById('activity-card');
@@ -1153,6 +1155,7 @@ async function runGlobalSearch(q) {
     if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
     if (r.projects?.length) html += renderSearchGroup('Projects', r.projects, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title||i.name,q)}</div></div>`);
     if (r.workouts?.length) html += renderSearchGroup('Workouts', r.workouts, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('workouts');setTimeout(()=>showWorkoutDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.workout_type||''}</span><span>${i.workout_date||''}</span>${i.effort?`<span>Effort: ${i.effort}/10</span>`:''}</div></div>`);
+    if (r.body_metrics?.length) html += renderSearchGroup('Body Metrics', r.body_metrics, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('body');setTimeout(()=>showBodyMetricDetail('${i.id}'),300)"><div class="search-result-title">${i.weight_lb}lb — ${i.measurement_date||''}</div><div class="search-result-meta"><span>${i.source||'RENPHO'}</span>${i.body_fat_pct?`<span>BF: ${i.body_fat_pct}%</span>`:''}</div></div>`);
     el.innerHTML = html || '<div class="search-empty">No results</div>';
   } catch (e) { el.innerHTML = `<div class="search-empty">${esc(e.message)}</div>`; }
 }
@@ -1482,6 +1485,342 @@ async function deleteWorkout(id) {
     closeModal();
     loadWorkouts(workoutFilters._q || '');
   } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ─── Body Metrics ─────────────────────────────────────────────
+let bodyMetricFilters = {};
+
+function setBodyMetricFilter(key, value) {
+  if (!value) delete bodyMetricFilters[key]; else bodyMetricFilters[key] = value;
+  loadBodyMetrics(bodyMetricFilters._q || '');
+}
+
+async function loadBodyMetrics(searchQuery) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    const params = new URLSearchParams({ limit: '50' });
+    if (searchQuery) params.set('q', searchQuery);
+    for (const [k, v] of Object.entries(bodyMetricFilters)) {
+      if (k !== '_q' && v) params.set(k, v);
+    }
+    const data = await api('/body-metrics?' + params.toString());
+
+    main.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <input type="text" class="brain-search" placeholder="Search body metrics..." value="${esc(searchQuery || '')}"
+          oninput="debounceBodyMetricSearch(this.value)" style="margin-bottom:0;flex:1;margin-right:8px">
+        <button class="btn-submit" onclick="showBodyMetricImport()" style="white-space:nowrap;padding:8px 12px;margin-right:4px;background:var(--accent-dim,#4b5563)">Import</button>
+        <button class="btn-submit" onclick="showBodyMetricForm()" style="white-space:nowrap;padding:8px 16px">+ Log</button>
+      </div>
+      <div class="transcript-count">${data.total} measurement${data.total !== 1 ? 's' : ''}</div>
+      <div id="body-metric-list">
+        ${data.body_metrics.length ? data.body_metrics.map(m => {
+          const d = new Date(m.measurement_date.slice(0,10) + 'T12:00:00');
+          const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const weightChange = '';
+          return `
+          <div class="list-item workout-card" onclick="showBodyMetricDetail('${m.id}')" style="border-left:3px solid #06b6d4">
+            <div class="transcript-card-header">
+              <div class="list-item-title">${esc(m.weight_lb)}lb</div>
+              <span class="content-type-badge" style="background:#06b6d422;color:#06b6d4">${esc(m.source || 'RENPHO')}</span>
+            </div>
+            <div class="list-item-meta">
+              <span>${dateLabel}</span>
+              ${m.body_fat_pct ? `<span>BF: ${m.body_fat_pct}%</span>` : ''}
+              ${m.muscle_mass_lb ? `<span>Muscle: ${m.muscle_mass_lb}lb</span>` : ''}
+              ${m.bmi ? `<span>BMI: ${m.bmi}</span>` : ''}
+              ${m.bmr_kcal ? `<span>BMR: ${m.bmr_kcal}</span>` : ''}
+              ${m.metabolic_age ? `<span>Met Age: ${m.metabolic_age}</span>` : ''}
+            </div>
+            ${m.measurement_context ? `<div class="transcript-summary" style="-webkit-line-clamp:1;font-size:0.7rem;color:var(--text-dim)">${esc(m.measurement_context)}</div>` : ''}
+          </div>`;
+        }).join('') : '<div class="empty-state">No body metrics yet. Tap "+ Log" to add one!</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+let bodyMetricSearchTimer = null;
+function debounceBodyMetricSearch(q) {
+  bodyMetricFilters._q = q;
+  clearTimeout(bodyMetricSearchTimer);
+  bodyMetricSearchTimer = setTimeout(() => loadBodyMetrics(q), 300);
+}
+
+async function showBodyMetricDetail(id) {
+  try {
+    const m = await api(`/body-metrics/${id}`);
+    const d = new Date(m.measurement_date.slice(0,10) + 'T12:00:00');
+    const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+    function row(label, value, unit) {
+      if (value == null || value === '') return '';
+      return `<tr><td style="padding:4px 8px;color:var(--text-dim);white-space:nowrap">${label}</td><td style="padding:4px 8px;font-weight:600">${esc(String(value))}${unit ? ' ' + unit : ''}</td></tr>`;
+    }
+
+    let html = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="content-type-badge" style="background:#06b6d422;color:#06b6d4;font-size:0.75rem;padding:3px 12px">${esc(m.source || 'RENPHO')}</span>
+        <span style="font-size:0.8rem;color:var(--text-dim)">${dateLabel}</span>
+        ${m.measurement_time ? `<span style="font-size:0.8rem;color:var(--text-dim)">${esc(m.measurement_time)}</span>` : ''}
+        ${m.vendor_user_mode ? `<span class="content-type-badge" style="background:#f59e0b22;color:#f59e0b;font-size:0.7rem;padding:2px 8px">${esc(m.vendor_user_mode)}</span>` : ''}
+      </div>
+
+      <div style="font-size:2rem;font-weight:700;margin:12px 0">${esc(String(m.weight_lb))} lb</div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        ${row('BMI', m.bmi, '')}
+        ${row('Body Fat', m.body_fat_pct, '%')}
+        ${row('Skeletal Muscle', m.skeletal_muscle_pct, '%')}
+        ${row('Fat-Free Mass', m.fat_free_mass_lb, 'lb')}
+        ${row('Subcutaneous Fat', m.subcutaneous_fat_pct, '%')}
+        ${row('Visceral Fat', m.visceral_fat, '')}
+        ${row('Body Water', m.body_water_pct, '%')}
+        ${row('Muscle Mass', m.muscle_mass_lb, 'lb')}
+        ${row('Bone Mass', m.bone_mass_lb, 'lb')}
+        ${row('Protein', m.protein_pct, '%')}
+        ${row('BMR', m.bmr_kcal, 'kcal')}
+        ${row('Metabolic Age', m.metabolic_age, '')}
+      </table>
+
+      ${m.measurement_context ? `<div style="margin-top:12px;padding:8px;background:var(--bg-secondary,#1e1e2e);border-radius:6px;font-size:0.8rem"><strong>Context:</strong> ${esc(m.measurement_context)}</div>` : ''}
+      ${m.notes ? `<div style="margin-top:8px;padding:8px;background:var(--bg-secondary,#1e1e2e);border-radius:6px;font-size:0.8rem"><strong>Notes:</strong> ${esc(m.notes)}</div>` : ''}
+      ${m.tags && m.tags.length ? `<div style="margin-top:8px">${m.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
+
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn-submit" onclick="showBodyMetricForm('${m.id}')" style="flex:1">Edit</button>
+        <button class="btn-action btn-action-danger" onclick="deleteBodyMetric('${m.id}')" style="flex:0.5">Delete</button>
+      </div>
+    `;
+    openModal(`${m.weight_lb} lb — ${dateLabel}`, html);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function showBodyMetricForm(editId) {
+  let m = {};
+  const isEdit = !!editId;
+  if (isEdit) {
+    try { m = await api(`/body-metrics/${editId}`); } catch {}
+  }
+  const today = new Date().toISOString().slice(0, 10);
+
+  const numField = (id, label, val, step) =>
+    `<div class="form-group" style="flex:1;min-width:100px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
+
+  const html = `
+    <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
+      <div class="form-group"><label>Measurement Date</label><input type="date" id="bm-date" value="${m.measurement_date ? m.measurement_date.slice(0,10) : today}"></div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Time (optional)</label><input type="time" id="bm-time" value="${m.measurement_time || ''}"></div>
+        <div class="form-group" style="flex:1"><label>Source</label><input type="text" id="bm-source" value="${esc(m.source || 'RENPHO')}" placeholder="RENPHO"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Source Type</label><input type="text" id="bm-source-type" value="${esc(m.source_type || 'smart_scale')}"></div>
+        <div class="form-group" style="flex:1"><label>Mode</label><input type="text" id="bm-mode" value="${esc(m.vendor_user_mode || '')}" placeholder="Athlete mode"></div>
+      </div>
+
+      <h3 style="margin:16px 0 8px;font-size:0.9rem;color:var(--text-dim)">Core Metrics</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('bm-weight', 'Weight (lb)*', m.weight_lb, '0.1')}
+        ${numField('bm-bmi', 'BMI', m.bmi, '0.1')}
+        ${numField('bm-bf', 'Body Fat %', m.body_fat_pct, '0.1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('bm-skeletal', 'Skeletal Muscle %', m.skeletal_muscle_pct, '0.1')}
+        ${numField('bm-ffm', 'Fat-Free Mass (lb)', m.fat_free_mass_lb, '0.1')}
+        ${numField('bm-subq', 'Subcutaneous Fat %', m.subcutaneous_fat_pct, '0.1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('bm-visceral', 'Visceral Fat', m.visceral_fat, '1')}
+        ${numField('bm-water', 'Body Water %', m.body_water_pct, '0.1')}
+        ${numField('bm-muscle', 'Muscle Mass (lb)', m.muscle_mass_lb, '0.1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('bm-bone', 'Bone Mass (lb)', m.bone_mass_lb, '0.1')}
+        ${numField('bm-protein', 'Protein %', m.protein_pct, '0.1')}
+        ${numField('bm-bmr', 'BMR (kcal)', m.bmr_kcal, '1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('bm-metage', 'Metabolic Age', m.metabolic_age, '1')}
+      </div>
+
+      <h3 style="margin:16px 0 8px;font-size:0.9rem;color:var(--text-dim)">Context</h3>
+      <div class="form-group"><label>Measurement Context</label><input type="text" id="bm-context" value="${esc(m.measurement_context || '')}" placeholder="morning, fasted, post-bathroom"></div>
+      <div class="form-group"><label>Notes</label><textarea id="bm-notes" rows="2" placeholder="Optional notes">${esc(m.notes || '')}</textarea></div>
+      <div class="form-group"><label>Tags (comma-separated)</label><input type="text" id="bm-tags" value="${(m.tags || []).join(', ')}" placeholder="renpho, body-composition"></div>
+
+      <button class="btn-submit" onclick="saveBodyMetric('${editId || ''}')" style="width:100%;margin-top:8px">${isEdit ? 'Update' : 'Save'} Body Metric</button>
+    </div>
+  `;
+  openModal(isEdit ? 'Edit Body Metric' : 'Log Body Metric', html);
+}
+
+function numVal(id) { const v = document.getElementById(id)?.value; return v ? Number(v) : null; }
+
+async function saveBodyMetric(editId) {
+  const body = {
+    measurement_date: document.getElementById('bm-date').value,
+    measurement_time: document.getElementById('bm-time').value || null,
+    source: document.getElementById('bm-source').value || 'RENPHO',
+    source_type: document.getElementById('bm-source-type').value || 'smart_scale',
+    vendor_user_mode: document.getElementById('bm-mode').value || null,
+    weight_lb: numVal('bm-weight'),
+    bmi: numVal('bm-bmi'),
+    body_fat_pct: numVal('bm-bf'),
+    skeletal_muscle_pct: numVal('bm-skeletal'),
+    fat_free_mass_lb: numVal('bm-ffm'),
+    subcutaneous_fat_pct: numVal('bm-subq'),
+    visceral_fat: numVal('bm-visceral'),
+    body_water_pct: numVal('bm-water'),
+    muscle_mass_lb: numVal('bm-muscle'),
+    bone_mass_lb: numVal('bm-bone'),
+    protein_pct: numVal('bm-protein'),
+    bmr_kcal: numVal('bm-bmr'),
+    metabolic_age: numVal('bm-metage'),
+    measurement_context: document.getElementById('bm-context').value || null,
+    notes: document.getElementById('bm-notes').value || null,
+    tags: document.getElementById('bm-tags').value.split(',').map(t => t.trim()).filter(Boolean),
+  };
+
+  if (!body.weight_lb) { alert('Weight is required'); return; }
+  if (!body.measurement_date) { alert('Date is required'); return; }
+
+  try {
+    if (editId) {
+      await api(`/body-metrics/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await api('/body-metrics', { method: 'POST', body: JSON.stringify(body) });
+    }
+    closeModal();
+    loadBodyMetrics(bodyMetricFilters._q || '');
+  } catch (e) {
+    alert('Error saving: ' + e.message);
+  }
+}
+
+async function deleteBodyMetric(id) {
+  if (!confirm('Delete this body metric?')) return;
+  try {
+    await api(`/body-metrics/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadBodyMetrics(bodyMetricFilters._q || '');
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ─── Bulk Body Metrics Import ─────────────────────────────────
+let _importBodyMetrics = [];
+
+function showBodyMetricImport() {
+  _importBodyMetrics = [];
+  const html = `
+    <div style="margin-bottom:12px;color:var(--text-dim);font-size:0.85rem">
+      Upload a JSON file with an array of body metric objects (e.g. RENPHO export).<br>
+      Required fields: measurement_date, weight_lb. All other fields are optional.
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <label class="btn-submit" style="cursor:pointer;text-align:center;flex:1;padding:10px;margin:0">
+        Choose JSON File
+        <input type="file" accept=".json,application/json" onchange="handleBodyMetricFile(this)" style="display:none">
+      </label>
+    </div>
+    <textarea id="bm-import-raw" placeholder='[{"measurement_date":"2026-03-17","weight_lb":190,...}]'
+      style="width:100%;min-height:100px;font-family:monospace;font-size:0.75rem;background:var(--bg-secondary,#1e1e2e);color:var(--text-primary,#cdd6f4);border:1px solid var(--border-color,#45475a);border-radius:8px;padding:10px;box-sizing:border-box;resize:vertical"></textarea>
+    <button class="btn-submit" onclick="parseBodyMetricImport()" style="width:100%;margin-top:8px;padding:10px">Preview Import</button>
+    <div id="bm-import-preview" style="margin-top:12px"></div>
+    <div id="bm-import-progress" style="margin-top:12px"></div>
+  `;
+  openModal('Import Body Metrics from JSON', html);
+}
+
+function handleBodyMetricFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('bm-import-raw').value = e.target.result;
+    parseBodyMetricImport();
+  };
+  reader.readAsText(file);
+}
+
+function parseBodyMetricImport() {
+  const raw = document.getElementById('bm-import-raw').value.trim();
+  const preview = document.getElementById('bm-import-preview');
+  if (!raw) { preview.innerHTML = '<div style="color:#f38ba8">No JSON provided</div>'; return; }
+  try {
+    let parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      if (parsed.body_metrics && Array.isArray(parsed.body_metrics)) parsed = parsed.body_metrics;
+      else { preview.innerHTML = '<div style="color:#f38ba8">JSON must be an array or have a "body_metrics" array</div>'; return; }
+    }
+    if (!parsed.length) { preview.innerHTML = '<div style="color:#f38ba8">Empty array</div>'; return; }
+    _importBodyMetrics = parsed;
+    const sample = parsed.slice(0, 5);
+    preview.innerHTML = `
+      <div style="color:#a6e3a1;font-weight:600;margin-bottom:8px">${parsed.length} entry${parsed.length !== 1 ? 'ies' : 'y'} found</div>
+      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color,#45475a);border-radius:6px;padding:8px;font-size:0.75rem">
+        <table style="width:100%;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border-color,#45475a)">
+            <th style="text-align:left;padding:4px">#</th>
+            <th style="text-align:left;padding:4px">Date</th>
+            <th style="text-align:left;padding:4px">Weight</th>
+            <th style="text-align:left;padding:4px">BF%</th>
+            <th style="text-align:left;padding:4px">Source</th>
+          </tr>
+          ${sample.map((m, i) => `<tr>
+            <td style="padding:4px">${i + 1}</td>
+            <td style="padding:4px">${esc(m.measurement_date || '—')}</td>
+            <td style="padding:4px">${m.weight_lb || '—'}</td>
+            <td style="padding:4px">${m.body_fat_pct || '—'}</td>
+            <td style="padding:4px">${esc(m.source || 'RENPHO')}</td>
+          </tr>`).join('')}
+          ${parsed.length > 5 ? `<tr><td colspan="5" style="padding:4px;color:var(--text-dim)">... and ${parsed.length - 5} more</td></tr>` : ''}
+        </table>
+      </div>
+      <button class="btn-submit" onclick="executeBodyMetricImport()" style="width:100%;margin-top:12px;padding:12px;font-size:1rem">
+        Import ${parsed.length} Body Metric${parsed.length !== 1 ? 's' : ''}
+      </button>
+    `;
+  } catch (e) {
+    preview.innerHTML = `<div style="color:#f38ba8">Invalid JSON: ${esc(e.message)}</div>`;
+  }
+}
+
+async function executeBodyMetricImport() {
+  if (!_importBodyMetrics.length) return;
+  const progress = document.getElementById('bm-import-progress');
+  const total = _importBodyMetrics.length;
+  const BATCH = 200;
+  let imported = 0, errors = 0;
+
+  const batches = [];
+  for (let i = 0; i < _importBodyMetrics.length; i += BATCH) {
+    batches.push(_importBodyMetrics.slice(i, i + BATCH));
+  }
+
+  progress.innerHTML = `<div style="color:var(--text-dim)">Importing... 0/${total}</div>`;
+
+  for (const batch of batches) {
+    try {
+      const data = await api('/body-metrics/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ body_metrics: batch })
+      });
+      imported += data.imported || 0;
+      errors += data.errors || 0;
+    } catch (e) {
+      errors += batch.length;
+    }
+    progress.innerHTML = `<div style="color:var(--text-dim)">Importing... ${imported + errors}/${total}</div>`;
+  }
+
+  progress.innerHTML = `
+    <div style="color:#a6e3a1;font-weight:600;font-size:1.1rem;margin-bottom:6px">${imported} body metric${imported !== 1 ? 's' : ''} imported</div>
+    ${errors ? `<div style="color:#f38ba8;margin-bottom:6px">${errors} error${errors !== 1 ? 's' : ''}</div>` : ''}
+    <button class="btn-submit" onclick="closeModal();loadBodyMetrics('')" style="width:100%;margin-top:12px;padding:10px">Done</button>
+  `;
+  _importBodyMetrics = [];
 }
 
 // ─── Bulk Workout Import ──────────────────────────────────────

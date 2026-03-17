@@ -17,6 +17,7 @@ const beeRoutes = require('./routes/bee');
 const searchRoutes = require('./routes/search');
 const intakeRoutes = require('./routes/intake');
 const workoutRoutes = require('./routes/workouts');
+const bodyMetricsRoutes = require('./routes/body-metrics');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,7 +64,7 @@ const purgeState = { running: false, progress: null, result: null };
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts', 'conversations', 'workouts'];
+    const allowed = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts', 'conversations', 'workouts', 'body_metrics'];
     const requested = req.body.databases || allowed;
     const targets = requested.filter(d => allowed.includes(d));
     if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
@@ -111,6 +112,7 @@ app.use('/api/bee', beeRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/intake', intakeRoutes);
 app.use('/api/workouts', workoutRoutes);
+app.use('/api/body-metrics', bodyMetricsRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
