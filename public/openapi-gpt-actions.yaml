@@ -3,7 +3,7 @@ info:
   title: AB Brain Unified AI Platform
   version: 1.1.0
   description: |
-    AB Brain action for workout logging, workout retrieval, and task creation.
+    AB Brain action for workout logging, workout retrieval, meal tracking, nutrition context, and task creation.
 servers:
   - url: https://ab-brain.up.railway.app/api
     description: Production server
@@ -332,6 +332,263 @@ paths:
       responses:
         '201':
           description: Bulk import results
+  /meals:
+    get:
+      operationId: getMeals
+      summary: List or search meal entries
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter by exact date
+        - name: meal_type
+          in: query
+          schema:
+            type: string
+          description: Filter by type (breakfast, lunch, dinner, snack, pre-workout, post-workout, drink, supplement)
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Meals list
+    post:
+      operationId: createMeal
+      summary: Log a meal or snack
+      description: Log a meal with macros, timing, and feel ratings. Required fields are title and meal_date.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - meal_date
+              properties:
+                meal_date:
+                  type: string
+                  format: date
+                meal_time:
+                  type: string
+                  nullable: true
+                meal_type:
+                  type: string
+                  default: meal
+                  enum: [breakfast, lunch, dinner, snack, pre-workout, post-workout, drink, supplement, meal]
+                title:
+                  type: string
+                calories:
+                  type: number
+                  nullable: true
+                protein_g:
+                  type: number
+                  nullable: true
+                carbs_g:
+                  type: number
+                  nullable: true
+                fat_g:
+                  type: number
+                  nullable: true
+                fiber_g:
+                  type: number
+                  nullable: true
+                sugar_g:
+                  type: number
+                  nullable: true
+                sodium_mg:
+                  type: number
+                  nullable: true
+                serving_size:
+                  type: string
+                  nullable: true
+                hunger_before:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                fullness_after:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                energy_after:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                notes:
+                  type: string
+                  nullable: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Created meal
+  /meals/bulk:
+    post:
+      operationId: bulkImportMeals
+      summary: Bulk import meals (max 200 per request)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - meals
+              properties:
+                meals:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: object
+                    required:
+                      - title
+                      - meal_date
+                    properties:
+                      title:
+                        type: string
+                      meal_date:
+                        type: string
+                        format: date
+                      calories:
+                        type: number
+      responses:
+        '201':
+          description: Bulk import results
+  /nutrition/daily-context:
+    get:
+      operationId: getDailyContext
+      summary: Get daily nutrition context (energy, sleep, hydration, cravings)
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Get context for a specific date
+      responses:
+        '200':
+          description: Daily context
+    post:
+      operationId: createDailyContext
+      summary: Create daily nutrition context
+      description: Store non-meal daily data like energy, sleep, hydration, cravings, day type. One per date.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - date
+              properties:
+                date:
+                  type: string
+                  format: date
+                day_type:
+                  type: string
+                  enum: [rest, strength, run, hill, hybrid, race, travel]
+                  nullable: true
+                hydration_liters:
+                  type: number
+                  nullable: true
+                energy_rating:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                hunger_rating:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                cravings:
+                  type: string
+                  nullable: true
+                digestion:
+                  type: string
+                  nullable: true
+                sleep_hours:
+                  type: number
+                  nullable: true
+                sleep_quality:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                recovery_rating:
+                  type: integer
+                  nullable: true
+                  minimum: 1
+                  maximum: 10
+                body_weight_lb:
+                  type: number
+                  nullable: true
+                notes:
+                  type: string
+                  nullable: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Created context
+        '409':
+          description: Context already exists for this date
+  /nutrition/daily-summary:
+    get:
+      operationId: getDailySummary
+      summary: Get computed daily nutrition summary from meals + context
+      description: Returns macro totals computed from meals, merged with daily context. Meals listed chronologically.
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Daily summary with meals and context
+  /nutrition/daily-summary/range:
+    get:
+      operationId: getDailySummaryRange
+      summary: Get daily summaries for a date range with averages
+      parameters:
+        - name: since
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: before
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Range summary with daily breakdowns
   /tasks:
     post:
       operationId: createTask

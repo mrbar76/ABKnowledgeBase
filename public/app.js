@@ -61,6 +61,7 @@ function switchTab(tab) {
   else if (tab === 'transcripts') loadTranscripts();
   else if (tab === 'projects') loadProjects();
   else if (tab === 'workouts') loadWorkouts();
+  else if (tab === 'nutrition') loadNutrition();
   else if (tab === 'body') loadBodyMetrics();
 }
 
@@ -101,6 +102,7 @@ async function loadDashboardStats() {
       <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
       <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
       <div class="stat-card" onclick="switchTab('workouts')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
+      <div class="stat-card" onclick="switchTab('nutrition')" style="cursor:pointer"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
       <div class="stat-card" onclick="switchTab('body')" style="cursor:pointer"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
     `;
     if (data.recent_activity?.length) {
@@ -1155,6 +1157,7 @@ async function runGlobalSearch(q) {
     if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
     if (r.projects?.length) html += renderSearchGroup('Projects', r.projects, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title||i.name,q)}</div></div>`);
     if (r.workouts?.length) html += renderSearchGroup('Workouts', r.workouts, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('workouts');setTimeout(()=>showWorkoutDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.workout_type||''}</span><span>${i.workout_date||''}</span>${i.effort?`<span>Effort: ${i.effort}/10</span>`:''}</div></div>`);
+    if (r.meals?.length) html += renderSearchGroup('Meals', r.meals, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('nutrition');setTimeout(()=>showMealDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.meal_type||''}</span><span>${i.meal_date||''}</span>${i.calories?`<span>${i.calories} cal</span>`:''}</div></div>`);
     if (r.body_metrics?.length) html += renderSearchGroup('Body Metrics', r.body_metrics, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('body');setTimeout(()=>showBodyMetricDetail('${i.id}'),300)"><div class="search-result-title">${i.weight_lb}lb — ${i.measurement_date||''}</div><div class="search-result-meta"><span>${i.source||'RENPHO'}</span>${i.body_fat_pct?`<span>BF: ${i.body_fat_pct}%</span>`:''}</div></div>`);
     el.innerHTML = html || '<div class="search-empty">No results</div>';
   } catch (e) { el.innerHTML = `<div class="search-empty">${esc(e.message)}</div>`; }
@@ -1485,6 +1488,405 @@ async function deleteWorkout(id) {
     closeModal();
     loadWorkouts(workoutFilters._q || '');
   } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ─── Nutrition (Meals + Daily Context + Summary) ──────────────
+let nutritionDate = new Date().toISOString().slice(0, 10);
+
+async function loadNutrition(date) {
+  if (date) nutritionDate = date;
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    const summary = await api(`/nutrition/daily-summary?date=${nutritionDate}`);
+    const d = new Date(nutritionDate + 'T12:00:00');
+    const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const ctx = summary.context;
+
+    const mealTypeColors = {
+      breakfast: '#f59e0b', lunch: '#3b82f6', dinner: '#8b5cf6', snack: '#10b981',
+      'pre-workout': '#ef4444', 'post-workout': '#06b6d4', drink: '#64748b', supplement: '#ec4899', meal: '#6366f1',
+    };
+
+    main.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <button class="btn-action" onclick="loadNutrition(shiftDate(nutritionDate,-1))" style="padding:6px 12px">&lt;</button>
+        <div style="text-align:center;flex:1">
+          <input type="date" value="${nutritionDate}" onchange="loadNutrition(this.value)"
+            style="background:transparent;border:none;color:var(--text-primary);font-size:1rem;text-align:center;cursor:pointer">
+          <div style="font-size:0.75rem;color:var(--text-dim)">${dateLabel}</div>
+        </div>
+        <button class="btn-action" onclick="loadNutrition(shiftDate(nutritionDate,1))" style="padding:6px 12px">&gt;</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
+        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_calories}</div><div class="stat-label" style="font-size:0.6rem">Calories</div></div>
+        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_protein_g}g</div><div class="stat-label" style="font-size:0.6rem">Protein</div></div>
+        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_carbs_g}g</div><div class="stat-label" style="font-size:0.6rem">Carbs</div></div>
+        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_fat_g}g</div><div class="stat-label" style="font-size:0.6rem">Fat</div></div>
+      </div>
+
+      ${ctx ? `
+      <div class="card" style="margin-bottom:12px;padding:10px;font-size:0.8rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <strong>Daily Context</strong>
+          ${ctx.day_type ? `<span class="content-type-badge" style="background:#f59e0b22;color:#f59e0b;font-size:0.7rem">${ctx.day_type}</span>` : ''}
+          <button class="btn-action" onclick="showDailyContextForm('${nutritionDate}','${ctx.id}')" style="padding:2px 8px;font-size:0.7rem">Edit</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;color:var(--text-dim)">
+          ${ctx.energy_rating ? `<span>Energy: ${ctx.energy_rating}/10</span>` : ''}
+          ${ctx.hunger_rating ? `<span>Hunger: ${ctx.hunger_rating}/10</span>` : ''}
+          ${ctx.hydration_liters ? `<span>Water: ${ctx.hydration_liters}L</span>` : ''}
+          ${ctx.sleep_hours ? `<span>Sleep: ${ctx.sleep_hours}h</span>` : ''}
+          ${ctx.sleep_quality ? `<span>Sleep Q: ${ctx.sleep_quality}/10</span>` : ''}
+          ${ctx.recovery_rating ? `<span>Recovery: ${ctx.recovery_rating}/10</span>` : ''}
+          ${ctx.body_weight_lb ? `<span>Weight: ${ctx.body_weight_lb}lb</span>` : ''}
+        </div>
+        ${ctx.cravings ? `<div style="margin-top:4px;color:var(--text-dim)">Cravings: ${esc(ctx.cravings)}</div>` : ''}
+        ${ctx.notes ? `<div style="margin-top:4px;color:var(--text-dim)">${esc(ctx.notes)}</div>` : ''}
+      </div>` : `
+      <div style="margin-bottom:12px;text-align:center">
+        <button class="btn-action" onclick="showDailyContextForm('${nutritionDate}')" style="padding:6px 16px;font-size:0.8rem">+ Add Daily Context</button>
+      </div>`}
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="transcript-count">${summary.total_meals} meal${summary.total_meals !== 1 ? 's' : ''}</div>
+        <div style="display:flex;gap:4px">
+          <button class="btn-submit" onclick="showMealImport()" style="padding:6px 12px;font-size:0.8rem;background:var(--accent-dim,#4b5563)">Import</button>
+          <button class="btn-submit" onclick="showMealForm()" style="padding:6px 12px;font-size:0.8rem">+ Meal</button>
+        </div>
+      </div>
+
+      <div id="meal-list">
+        ${summary.meals.length ? summary.meals.map(m => {
+          const color = mealTypeColors[m.meal_type] || '#6366f1';
+          return `
+          <div class="list-item workout-card" onclick="showMealDetail('${m.id}')" style="border-left:3px solid ${color}">
+            <div class="transcript-card-header">
+              <div class="list-item-title">${esc(m.title)}</div>
+              <span class="content-type-badge" style="background:${color}22;color:${color};font-size:0.65rem">${m.meal_type}</span>
+            </div>
+            <div class="list-item-meta">
+              ${m.meal_time ? `<span>${m.meal_time.slice(0,5)}</span>` : ''}
+              ${m.calories ? `<span>${m.calories} cal</span>` : ''}
+              ${m.protein_g ? `<span>P: ${m.protein_g}g</span>` : ''}
+              ${m.carbs_g ? `<span>C: ${m.carbs_g}g</span>` : ''}
+              ${m.fat_g ? `<span>F: ${m.fat_g}g</span>` : ''}
+            </div>
+          </div>`;
+        }).join('') : '<div class="empty-state">No meals logged. Tap "+ Meal" to add one!</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+async function showMealDetail(id) {
+  try {
+    const m = await api(`/meals/${id}`);
+    const color = { breakfast:'#f59e0b', lunch:'#3b82f6', dinner:'#8b5cf6', snack:'#10b981', 'pre-workout':'#ef4444', 'post-workout':'#06b6d4', drink:'#64748b', supplement:'#ec4899', meal:'#6366f1' }[m.meal_type] || '#6366f1';
+
+    function row(label, val, unit) {
+      if (val == null || val === '') return '';
+      return `<tr><td style="padding:3px 8px;color:var(--text-dim)">${label}</td><td style="padding:3px 8px;font-weight:600">${esc(String(val))}${unit ? ' ' + unit : ''}</td></tr>`;
+    }
+
+    let html = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="content-type-badge" style="background:${color}22;color:${color};font-size:0.75rem;padding:3px 12px">${m.meal_type}</span>
+        ${m.meal_time ? `<span style="font-size:0.8rem;color:var(--text-dim)">${m.meal_time.slice(0,5)}</span>` : ''}
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        ${row('Calories', m.calories, 'cal')}
+        ${row('Protein', m.protein_g, 'g')}
+        ${row('Carbs', m.carbs_g, 'g')}
+        ${row('Fat', m.fat_g, 'g')}
+        ${row('Fiber', m.fiber_g, 'g')}
+        ${row('Sugar', m.sugar_g, 'g')}
+        ${row('Sodium', m.sodium_mg, 'mg')}
+        ${row('Serving', m.serving_size, '')}
+        ${row('Hunger Before', m.hunger_before, '/10')}
+        ${row('Fullness After', m.fullness_after, '/10')}
+        ${row('Energy After', m.energy_after, '/10')}
+      </table>
+      ${m.notes ? `<div style="margin-top:10px;padding:8px;background:var(--bg-secondary,#1e1e2e);border-radius:6px;font-size:0.8rem">${esc(m.notes)}</div>` : ''}
+      ${m.tags && m.tags.length ? `<div style="margin-top:8px">${m.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn-submit" onclick="showMealForm('${m.id}')" style="flex:1">Edit</button>
+        <button class="btn-action btn-action-danger" onclick="deleteMeal('${m.id}')" style="flex:0.5">Delete</button>
+      </div>
+    `;
+    openModal(m.title, html);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function showMealForm(editId) {
+  let m = {};
+  const isEdit = !!editId;
+  if (isEdit) {
+    try { m = await api(`/meals/${editId}`); } catch {}
+  }
+  const types = ['breakfast','lunch','dinner','snack','pre-workout','post-workout','drink','supplement','meal'];
+
+  const numField = (id, label, val, step) =>
+    `<div class="form-group" style="flex:1;min-width:80px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
+
+  const html = `
+    <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
+      <div class="form-group"><label>Title*</label><input type="text" id="ml-title" value="${esc(m.title || '')}" placeholder="Grilled chicken & rice"></div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Date</label><input type="date" id="ml-date" value="${m.meal_date ? m.meal_date.slice(0,10) : nutritionDate}"></div>
+        <div class="form-group" style="flex:1"><label>Time</label><input type="time" id="ml-time" value="${m.meal_time || ''}"></div>
+        <div class="form-group" style="flex:1"><label>Type</label><select id="ml-type">
+          ${types.map(t => `<option value="${t}" ${m.meal_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select></div>
+      </div>
+      <h3 style="margin:12px 0 6px;font-size:0.85rem;color:var(--text-dim)">Macros</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('ml-cal', 'Calories', m.calories, '1')}
+        ${numField('ml-prot', 'Protein (g)', m.protein_g, '0.1')}
+        ${numField('ml-carb', 'Carbs (g)', m.carbs_g, '0.1')}
+        ${numField('ml-fat', 'Fat (g)', m.fat_g, '0.1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('ml-fiber', 'Fiber (g)', m.fiber_g, '0.1')}
+        ${numField('ml-sugar', 'Sugar (g)', m.sugar_g, '0.1')}
+        ${numField('ml-sodium', 'Sodium (mg)', m.sodium_mg, '1')}
+      </div>
+      <div class="form-group"><label>Serving Size</label><input type="text" id="ml-serving" value="${esc(m.serving_size || '')}" placeholder="1 plate, 2 scoops, etc."></div>
+      <h3 style="margin:12px 0 6px;font-size:0.85rem;color:var(--text-dim)">Feel (1-10)</h3>
+      <div style="display:flex;gap:8px">
+        ${numField('ml-hunger', 'Hunger Before', m.hunger_before, '1')}
+        ${numField('ml-full', 'Fullness After', m.fullness_after, '1')}
+        ${numField('ml-energy', 'Energy After', m.energy_after, '1')}
+      </div>
+      <div class="form-group"><label>Notes</label><textarea id="ml-notes" rows="2" placeholder="Optional notes">${esc(m.notes || '')}</textarea></div>
+      <div class="form-group"><label>Tags</label><input type="text" id="ml-tags" value="${(m.tags || []).join(', ')}" placeholder="chicken, post-workout"></div>
+      <button class="btn-submit" onclick="saveMeal('${editId || ''}')" style="width:100%;margin-top:8px">${isEdit ? 'Update' : 'Save'} Meal</button>
+    </div>
+  `;
+  openModal(isEdit ? 'Edit Meal' : 'Log Meal', html);
+}
+
+async function saveMeal(editId) {
+  const nv = (id) => { const v = document.getElementById(id)?.value; return v ? Number(v) : null; };
+  const body = {
+    title: document.getElementById('ml-title').value,
+    meal_date: document.getElementById('ml-date').value,
+    meal_time: document.getElementById('ml-time').value || null,
+    meal_type: document.getElementById('ml-type').value,
+    calories: nv('ml-cal'),
+    protein_g: nv('ml-prot'),
+    carbs_g: nv('ml-carb'),
+    fat_g: nv('ml-fat'),
+    fiber_g: nv('ml-fiber'),
+    sugar_g: nv('ml-sugar'),
+    sodium_mg: nv('ml-sodium'),
+    serving_size: document.getElementById('ml-serving').value || null,
+    hunger_before: nv('ml-hunger'),
+    fullness_after: nv('ml-full'),
+    energy_after: nv('ml-energy'),
+    notes: document.getElementById('ml-notes').value || null,
+    tags: document.getElementById('ml-tags').value.split(',').map(t => t.trim()).filter(Boolean),
+  };
+  if (!body.title) { alert('Title is required'); return; }
+  try {
+    if (editId) {
+      await api(`/meals/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await api('/meals', { method: 'POST', body: JSON.stringify(body) });
+    }
+    closeModal();
+    loadNutrition(nutritionDate);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function deleteMeal(id) {
+  if (!confirm('Delete this meal?')) return;
+  try {
+    await api(`/meals/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadNutrition(nutritionDate);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function showDailyContextForm(date, editId) {
+  let ctx = {};
+  if (editId) {
+    try { ctx = await api(`/nutrition/daily-context/${editId}`); } catch {}
+  }
+  const dayTypes = ['rest','strength','run','hill','hybrid','race','travel'];
+  const numField = (id, label, val, step) =>
+    `<div class="form-group" style="flex:1;min-width:90px"><label>${label}</label><input type="number" step="${step || '1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
+
+  const html = `
+    <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Day Type</label><select id="dc-type">
+          <option value="">—</option>
+          ${dayTypes.map(t => `<option value="${t}" ${ctx.day_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select></div>
+        ${numField('dc-weight', 'Weight (lb)', ctx.body_weight_lb, '0.1')}
+        ${numField('dc-water', 'Water (L)', ctx.hydration_liters, '0.1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('dc-energy', 'Energy (1-10)', ctx.energy_rating, '1')}
+        ${numField('dc-hunger', 'Hunger (1-10)', ctx.hunger_rating, '1')}
+        ${numField('dc-recovery', 'Recovery (1-10)', ctx.recovery_rating, '1')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${numField('dc-sleep-hrs', 'Sleep (hrs)', ctx.sleep_hours, '0.5')}
+        ${numField('dc-sleep-q', 'Sleep Quality (1-10)', ctx.sleep_quality, '1')}
+      </div>
+      <div class="form-group"><label>Cravings</label><input type="text" id="dc-cravings" value="${esc(ctx.cravings || '')}" placeholder="Sugar, salty, none"></div>
+      <div class="form-group"><label>Digestion</label><input type="text" id="dc-digestion" value="${esc(ctx.digestion || '')}" placeholder="Good, bloated, etc."></div>
+      <div class="form-group"><label>Notes</label><textarea id="dc-notes" rows="2">${esc(ctx.notes || '')}</textarea></div>
+      <div class="form-group"><label>Tags</label><input type="text" id="dc-tags" value="${(ctx.tags || []).join(', ')}" placeholder="fasted, cheat-day"></div>
+      <button class="btn-submit" onclick="saveDailyContext('${date}','${editId || ''}')" style="width:100%;margin-top:8px">${editId ? 'Update' : 'Save'} Daily Context</button>
+    </div>
+  `;
+  openModal(`Daily Context — ${date}`, html);
+}
+
+async function saveDailyContext(date, editId) {
+  const nv = (id) => { const v = document.getElementById(id)?.value; return v ? Number(v) : null; };
+  const body = {
+    date,
+    day_type: document.getElementById('dc-type').value || null,
+    body_weight_lb: nv('dc-weight'),
+    hydration_liters: nv('dc-water'),
+    energy_rating: nv('dc-energy'),
+    hunger_rating: nv('dc-hunger'),
+    recovery_rating: nv('dc-recovery'),
+    sleep_hours: nv('dc-sleep-hrs'),
+    sleep_quality: nv('dc-sleep-q'),
+    cravings: document.getElementById('dc-cravings').value || null,
+    digestion: document.getElementById('dc-digestion').value || null,
+    notes: document.getElementById('dc-notes').value || null,
+    tags: document.getElementById('dc-tags').value.split(',').map(t => t.trim()).filter(Boolean),
+  };
+  try {
+    if (editId) {
+      await api(`/nutrition/daily-context/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await api('/nutrition/daily-context', { method: 'POST', body: JSON.stringify(body) });
+    }
+    closeModal();
+    loadNutrition(date);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ─── Bulk Meal Import ─────────────────────────────────────────
+let _importMeals = [];
+
+function showMealImport() {
+  _importMeals = [];
+  const html = `
+    <div style="margin-bottom:12px;color:var(--text-dim);font-size:0.85rem">
+      Upload a JSON file with an array of meal objects.<br>
+      Required: title, meal_date. Optional: meal_time, meal_type, calories, protein_g, carbs_g, fat_g, etc.
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <label class="btn-submit" style="cursor:pointer;text-align:center;flex:1;padding:10px;margin:0">
+        Choose JSON File
+        <input type="file" accept=".json,application/json" onchange="handleMealFile(this)" style="display:none">
+      </label>
+    </div>
+    <textarea id="meal-import-raw" placeholder='[{"title":"Oatmeal","meal_date":"2026-03-17","meal_type":"breakfast","calories":350,...}]'
+      style="width:100%;min-height:100px;font-family:monospace;font-size:0.75rem;background:var(--bg-secondary,#1e1e2e);color:var(--text-primary,#cdd6f4);border:1px solid var(--border-color,#45475a);border-radius:8px;padding:10px;box-sizing:border-box;resize:vertical"></textarea>
+    <button class="btn-submit" onclick="parseMealImport()" style="width:100%;margin-top:8px;padding:10px">Preview Import</button>
+    <div id="meal-import-preview" style="margin-top:12px"></div>
+    <div id="meal-import-progress" style="margin-top:12px"></div>
+  `;
+  openModal('Import Meals from JSON', html);
+}
+
+function handleMealFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('meal-import-raw').value = e.target.result;
+    parseMealImport();
+  };
+  reader.readAsText(file);
+}
+
+function parseMealImport() {
+  const raw = document.getElementById('meal-import-raw').value.trim();
+  const preview = document.getElementById('meal-import-preview');
+  if (!raw) { preview.innerHTML = '<div style="color:#f38ba8">No JSON provided</div>'; return; }
+  try {
+    let parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      if (parsed.meals && Array.isArray(parsed.meals)) parsed = parsed.meals;
+      else { preview.innerHTML = '<div style="color:#f38ba8">JSON must be an array or have a "meals" array</div>'; return; }
+    }
+    if (!parsed.length) { preview.innerHTML = '<div style="color:#f38ba8">Empty array</div>'; return; }
+    _importMeals = parsed;
+    const sample = parsed.slice(0, 5);
+    preview.innerHTML = `
+      <div style="color:#a6e3a1;font-weight:600;margin-bottom:8px">${parsed.length} meal${parsed.length !== 1 ? 's' : ''} found</div>
+      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color,#45475a);border-radius:6px;padding:8px;font-size:0.75rem">
+        <table style="width:100%;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border-color,#45475a)">
+            <th style="text-align:left;padding:4px">#</th>
+            <th style="text-align:left;padding:4px">Date</th>
+            <th style="text-align:left;padding:4px">Type</th>
+            <th style="text-align:left;padding:4px">Title</th>
+            <th style="text-align:left;padding:4px">Cal</th>
+          </tr>
+          ${sample.map((m, i) => `<tr>
+            <td style="padding:4px">${i + 1}</td>
+            <td style="padding:4px">${esc(m.meal_date || '—')}</td>
+            <td style="padding:4px">${esc(m.meal_type || 'meal')}</td>
+            <td style="padding:4px">${esc(m.title || '—')}</td>
+            <td style="padding:4px">${m.calories || '—'}</td>
+          </tr>`).join('')}
+          ${parsed.length > 5 ? `<tr><td colspan="5" style="padding:4px;color:var(--text-dim)">... and ${parsed.length - 5} more</td></tr>` : ''}
+        </table>
+      </div>
+      <button class="btn-submit" onclick="executeMealImport()" style="width:100%;margin-top:12px;padding:12px;font-size:1rem">
+        Import ${parsed.length} Meal${parsed.length !== 1 ? 's' : ''}
+      </button>
+    `;
+  } catch (e) {
+    preview.innerHTML = `<div style="color:#f38ba8">Invalid JSON: ${esc(e.message)}</div>`;
+  }
+}
+
+async function executeMealImport() {
+  if (!_importMeals.length) return;
+  const progress = document.getElementById('meal-import-progress');
+  const total = _importMeals.length;
+  const BATCH = 200;
+  let imported = 0, errors = 0;
+
+  const batches = [];
+  for (let i = 0; i < _importMeals.length; i += BATCH) batches.push(_importMeals.slice(i, i + BATCH));
+
+  progress.innerHTML = `<div style="color:var(--text-dim)">Importing... 0/${total}</div>`;
+
+  for (const batch of batches) {
+    try {
+      const data = await api('/meals/bulk', { method: 'POST', body: JSON.stringify({ meals: batch }) });
+      imported += data.imported || 0;
+      errors += data.errors || 0;
+    } catch (e) { errors += batch.length; }
+    progress.innerHTML = `<div style="color:var(--text-dim)">Importing... ${imported + errors}/${total}</div>`;
+  }
+
+  progress.innerHTML = `
+    <div style="color:#a6e3a1;font-weight:600;font-size:1.1rem;margin-bottom:6px">${imported} meal${imported !== 1 ? 's' : ''} imported</div>
+    ${errors ? `<div style="color:#f38ba8;margin-bottom:6px">${errors} error${errors !== 1 ? 's' : ''}</div>` : ''}
+    <button class="btn-submit" onclick="closeModal();loadNutrition(nutritionDate)" style="width:100%;margin-top:12px;padding:10px">Done</button>
+  `;
+  _importMeals = [];
 }
 
 // ─── Body Metrics ─────────────────────────────────────────────

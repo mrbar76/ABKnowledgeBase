@@ -282,6 +282,69 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_body_metrics_tags ON body_metrics USING gin(tags);
     CREATE INDEX IF NOT EXISTS idx_body_metrics_search ON body_metrics USING gin(search_vector)`);
 
+  // ===== MEALS =====
+  await safeQuery('meals table', `
+    CREATE TABLE IF NOT EXISTS meals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      meal_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      meal_time TIME,
+      meal_type TEXT DEFAULT 'meal',
+      title TEXT NOT NULL,
+      calories NUMERIC(7,1),
+      protein_g NUMERIC(6,1),
+      carbs_g NUMERIC(6,1),
+      fat_g NUMERIC(6,1),
+      fiber_g NUMERIC(6,1),
+      sugar_g NUMERIC(6,1),
+      sodium_mg NUMERIC(7,1),
+      serving_size TEXT,
+      hunger_before INTEGER CHECK(hunger_before >= 1 AND hunger_before <= 10),
+      fullness_after INTEGER CHECK(fullness_after >= 1 AND fullness_after <= 10),
+      energy_after INTEGER CHECK(energy_after >= 1 AND energy_after <= 10),
+      notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      source TEXT DEFAULT 'manual',
+      ai_source TEXT,
+      metadata JSONB DEFAULT '{}'::jsonb,
+      search_vector TSVECTOR,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('meals indexes', `
+    CREATE INDEX IF NOT EXISTS idx_meals_date ON meals(meal_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_meals_type ON meals(meal_type);
+    CREATE INDEX IF NOT EXISTS idx_meals_tags ON meals USING gin(tags);
+    CREATE INDEX IF NOT EXISTS idx_meals_search ON meals USING gin(search_vector);
+    CREATE INDEX IF NOT EXISTS idx_meals_trgm ON meals USING gin(
+      (coalesce(title,'') || ' ' || coalesce(notes,'')) gin_trgm_ops
+    )`);
+
+  // ===== DAILY NUTRITION CONTEXT =====
+  await safeQuery('daily_nutrition_context table', `
+    CREATE TABLE IF NOT EXISTS daily_nutrition_context (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      date DATE NOT NULL UNIQUE,
+      day_type TEXT CHECK(day_type IN ('rest','strength','run','hill','hybrid','race','travel')),
+      hydration_liters NUMERIC(4,2),
+      energy_rating INTEGER CHECK(energy_rating >= 1 AND energy_rating <= 10),
+      hunger_rating INTEGER CHECK(hunger_rating >= 1 AND hunger_rating <= 10),
+      cravings TEXT,
+      digestion TEXT,
+      sleep_hours NUMERIC(4,2),
+      sleep_quality INTEGER CHECK(sleep_quality >= 1 AND sleep_quality <= 10),
+      recovery_rating INTEGER CHECK(recovery_rating >= 1 AND recovery_rating <= 10),
+      body_weight_lb NUMERIC(6,2),
+      notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      search_vector TSVECTOR,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('daily_nutrition_context indexes', `
+    CREATE INDEX IF NOT EXISTS idx_dnc_date ON daily_nutrition_context(date DESC);
+    CREATE INDEX IF NOT EXISTS idx_dnc_day_type ON daily_nutrition_context(day_type);
+    CREATE INDEX IF NOT EXISTS idx_dnc_search ON daily_nutrition_context USING gin(search_vector)`);
+
   // ===== SCHEMA MIGRATIONS =====
   // ALTER TABLE ... ADD COLUMN IF NOT EXISTS ensures columns exist even if
   // tables were created by an older schema version (CREATE TABLE IF NOT EXISTS
@@ -393,6 +456,45 @@ async function initDB() {
   await safeQuery('workouts started_at nullable', `ALTER TABLE workouts ALTER COLUMN started_at DROP NOT NULL`);
   await safeQuery('workouts drop type check', `ALTER TABLE workouts DROP CONSTRAINT IF EXISTS workouts_workout_type_check`);
 
+  // -- meals migrations --
+  await safeQuery('meals +meal_date', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_date DATE NOT NULL DEFAULT CURRENT_DATE`);
+  await safeQuery('meals +meal_time', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_time TIME`);
+  await safeQuery('meals +meal_type', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_type TEXT DEFAULT 'meal'`);
+  await safeQuery('meals +calories', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS calories NUMERIC(7,1)`);
+  await safeQuery('meals +protein_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS protein_g NUMERIC(6,1)`);
+  await safeQuery('meals +carbs_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS carbs_g NUMERIC(6,1)`);
+  await safeQuery('meals +fat_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS fat_g NUMERIC(6,1)`);
+  await safeQuery('meals +fiber_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS fiber_g NUMERIC(6,1)`);
+  await safeQuery('meals +sugar_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS sugar_g NUMERIC(6,1)`);
+  await safeQuery('meals +sodium_mg', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS sodium_mg NUMERIC(7,1)`);
+  await safeQuery('meals +serving_size', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS serving_size TEXT`);
+  await safeQuery('meals +hunger_before', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS hunger_before INTEGER`);
+  await safeQuery('meals +fullness_after', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS fullness_after INTEGER`);
+  await safeQuery('meals +energy_after', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS energy_after INTEGER`);
+  await safeQuery('meals +notes', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await safeQuery('meals +tags', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('meals +source', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual'`);
+  await safeQuery('meals +ai_source', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS ai_source TEXT`);
+  await safeQuery('meals +metadata', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
+  await safeQuery('meals +search_vector', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+  await safeQuery('meals +updated_at', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+
+  // -- daily_nutrition_context migrations --
+  await safeQuery('dnc +day_type', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS day_type TEXT`);
+  await safeQuery('dnc +hydration_liters', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS hydration_liters NUMERIC(4,2)`);
+  await safeQuery('dnc +energy_rating', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS energy_rating INTEGER`);
+  await safeQuery('dnc +hunger_rating', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS hunger_rating INTEGER`);
+  await safeQuery('dnc +cravings', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS cravings TEXT`);
+  await safeQuery('dnc +digestion', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS digestion TEXT`);
+  await safeQuery('dnc +sleep_hours', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS sleep_hours NUMERIC(4,2)`);
+  await safeQuery('dnc +sleep_quality', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS sleep_quality INTEGER`);
+  await safeQuery('dnc +recovery_rating', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS recovery_rating INTEGER`);
+  await safeQuery('dnc +body_weight_lb', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS body_weight_lb NUMERIC(6,2)`);
+  await safeQuery('dnc +notes', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await safeQuery('dnc +tags', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('dnc +search_vector', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+  await safeQuery('dnc +updated_at', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+
   // -- body_metrics migrations --
   await safeQuery('body_metrics +measurement_context', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS measurement_context TEXT`);
   await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
@@ -471,6 +573,30 @@ async function initDB() {
     DROP TRIGGER IF EXISTS trg_body_metrics_search ON body_metrics;
     CREATE TRIGGER trg_body_metrics_search BEFORE INSERT OR UPDATE OF source, notes, measurement_context, vendor_user_mode ON body_metrics
       FOR EACH ROW EXECUTE FUNCTION update_body_metrics_search();
+
+    CREATE OR REPLACE FUNCTION update_meals_search() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.notes,'') || ' ' || coalesce(NEW.meal_type,''));
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_meals_search ON meals;
+    CREATE TRIGGER trg_meals_search BEFORE INSERT OR UPDATE OF title, notes, meal_type ON meals
+      FOR EACH ROW EXECUTE FUNCTION update_meals_search();
+
+    CREATE OR REPLACE FUNCTION update_dnc_search() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.day_type,'') || ' ' || coalesce(NEW.notes,'') || ' ' || coalesce(NEW.cravings,'') || ' ' || coalesce(NEW.digestion,''));
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_dnc_search ON daily_nutrition_context;
+    CREATE TRIGGER trg_dnc_search BEFORE INSERT OR UPDATE OF day_type, notes, cravings, digestion ON daily_nutrition_context
+      FOR EACH ROW EXECUTE FUNCTION update_dnc_search();
   `);
 
   // Backfill search vectors for any existing rows
@@ -480,6 +606,8 @@ async function initDB() {
   await safeQuery('backfill conversations search', `UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'') || ' ' || coalesce(adjustment,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill body_metrics search', `UPDATE body_metrics SET search_vector = to_tsvector('english', coalesce(source,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(measurement_context,'') || ' ' || coalesce(vendor_user_mode,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill meals search', `UPDATE meals SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(meal_type,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill dnc search', `UPDATE daily_nutrition_context SET search_vector = to_tsvector('english', coalesce(day_type,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(cravings,'') || ' ' || coalesce(digestion,'')) WHERE search_vector IS NULL`);
 
   console.log('PostgreSQL database initialized successfully');
 }

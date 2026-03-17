@@ -727,6 +727,123 @@
         }
       }
     },
+    "/meals": {
+      "get": {
+        "operationId": "listMeals",
+        "summary": "List or search meal entries",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "meal_type", "in": "query", "schema": { "type": "string" }, "description": "Filter by meal type" },
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Filter by exact date" },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Start date (inclusive)" },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "End date (exclusive)" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": { "200": { "description": "Meals list", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      },
+      "post": {
+        "operationId": "createMeal",
+        "summary": "Log a meal entry",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MealInput" } } }
+        },
+        "responses": { "201": { "description": "Created meal" } }
+      }
+    },
+    "/meals/bulk": {
+      "post": {
+        "operationId": "bulkImportMeals",
+        "summary": "Bulk import meals (max 200 per request)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["meals"],
+                "properties": { "meals": { "type": "array", "items": { "$ref": "#/components/schemas/MealInput" }, "maxItems": 200 } }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Bulk import results" } }
+      }
+    },
+    "/meals/{id}": {
+      "get": {
+        "operationId": "getMeal",
+        "summary": "Get a single meal by ID",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Meal entry" } }
+      },
+      "patch": {
+        "operationId": "updateMeal",
+        "summary": "Update a meal entry",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MealInput" } } } },
+        "responses": { "200": { "description": "Updated meal" } }
+      },
+      "delete": {
+        "operationId": "deleteMeal",
+        "summary": "Delete a meal entry",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/nutrition/daily-context": {
+      "get": {
+        "operationId": "getDailyContext",
+        "summary": "Get daily nutrition context (energy, sleep, hydration, cravings, etc.)",
+        "parameters": [
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Get context for a specific date" },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Daily context" } }
+      },
+      "post": {
+        "operationId": "createDailyContext",
+        "summary": "Create daily nutrition context for a date",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyContextInput" } } }
+        },
+        "responses": { "201": { "description": "Created context" }, "409": { "description": "Context already exists for this date" } }
+      }
+    },
+    "/nutrition/daily-context/{id}": {
+      "patch": {
+        "operationId": "updateDailyContext",
+        "summary": "Update daily nutrition context",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyContextInput" } } } },
+        "responses": { "200": { "description": "Updated context" } }
+      }
+    },
+    "/nutrition/daily-summary": {
+      "get": {
+        "operationId": "getDailySummary",
+        "summary": "Get computed daily nutrition summary (aggregated from meals + context)",
+        "description": "Returns macro totals computed from meals, merged with daily context if available. Meals listed chronologically.",
+        "parameters": [
+          { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Daily summary with meals and context" } }
+      }
+    },
+    "/nutrition/daily-summary/range": {
+      "get": {
+        "operationId": "getDailySummaryRange",
+        "summary": "Get daily summaries for a date range with range totals and averages",
+        "parameters": [
+          { "name": "since", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "before", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Range summary with daily breakdowns" } }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",
@@ -827,6 +944,48 @@
           "adjustment": { "type": "string" },
           "tags": { "type": "array", "items": { "type": "string" } },
           "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MealInput": {
+        "type": "object",
+        "required": ["title", "meal_date"],
+        "properties": {
+          "meal_date": { "type": "string", "format": "date" },
+          "meal_time": { "type": "string", "nullable": true },
+          "meal_type": { "type": "string", "default": "meal", "enum": ["breakfast","lunch","dinner","snack","pre-workout","post-workout","drink","supplement","meal"] },
+          "title": { "type": "string" },
+          "calories": { "type": "number", "nullable": true },
+          "protein_g": { "type": "number", "nullable": true },
+          "carbs_g": { "type": "number", "nullable": true },
+          "fat_g": { "type": "number", "nullable": true },
+          "fiber_g": { "type": "number", "nullable": true },
+          "sugar_g": { "type": "number", "nullable": true },
+          "sodium_mg": { "type": "number", "nullable": true },
+          "serving_size": { "type": "string", "nullable": true },
+          "hunger_before": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "fullness_after": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "energy_after": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "notes": { "type": "string", "nullable": true },
+          "tags": { "type": "array", "items": { "type": "string" }, "nullable": true }
+        }
+      },
+      "DailyContextInput": {
+        "type": "object",
+        "required": ["date"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "day_type": { "type": "string", "nullable": true, "enum": ["rest","strength","run","hill","hybrid","race","travel"] },
+          "hydration_liters": { "type": "number", "nullable": true },
+          "energy_rating": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "hunger_rating": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "cravings": { "type": "string", "nullable": true },
+          "digestion": { "type": "string", "nullable": true },
+          "sleep_hours": { "type": "number", "nullable": true },
+          "sleep_quality": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "recovery_rating": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 10 },
+          "body_weight_lb": { "type": "number", "nullable": true },
+          "notes": { "type": "string", "nullable": true },
+          "tags": { "type": "array", "items": { "type": "string" }, "nullable": true }
         }
       },
       "BodyMetricInput": {
