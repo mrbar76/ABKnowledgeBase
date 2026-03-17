@@ -528,6 +528,89 @@
         }
       }
     },
+    "/workouts/bulk": {
+      "post": {
+        "operationId": "bulkImportWorkouts",
+        "summary": "Bulk import up to 200 workouts at once",
+        "description": "Import historical workouts from Apple Health, Fitbod, or any batch data. Each item uses the same fields as logWorkout. Only workout_type is required per entry.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["workouts"],
+                "properties": {
+                  "workouts": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "object",
+                      "required": ["workout_type"],
+                      "properties": {
+                        "workout_type": { "type": "string" },
+                        "workout_date": { "type": "string", "format": "date" },
+                        "title": { "type": "string" },
+                        "location": { "type": "string" },
+                        "focus": { "type": "string" },
+                        "warmup": { "type": "string" },
+                        "main_sets": { "type": "string" },
+                        "carries": { "type": "string" },
+                        "exercises": { "type": "array", "items": { "type": "object" } },
+                        "class_name": { "type": "string" },
+                        "program": { "type": "string" },
+                        "equipment": { "type": "string" },
+                        "instructor": { "type": "string" },
+                        "time_duration": { "type": "string" },
+                        "distance": { "type": "string" },
+                        "elevation_gain": { "type": "string" },
+                        "heart_rate_avg": { "type": "string" },
+                        "heart_rate_max": { "type": "string" },
+                        "pace_avg": { "type": "string" },
+                        "splits": { "type": "string" },
+                        "cadence_avg": { "type": "string" },
+                        "active_calories": { "type": "string" },
+                        "total_calories": { "type": "string" },
+                        "effort": { "type": "integer", "minimum": 1, "maximum": 10 },
+                        "slowdown_notes": { "type": "string" },
+                        "failure_first": { "type": "string" },
+                        "grip_feedback": { "type": "string" },
+                        "legs_feedback": { "type": "string" },
+                        "cardio_feedback": { "type": "string" },
+                        "shoulder_feedback": { "type": "string" },
+                        "body_notes": { "type": "string" },
+                        "adjustment": { "type": "string" },
+                        "tags": { "type": "array", "items": { "type": "string" } },
+                        "ai_source": { "type": "string", "default": "chatgpt" },
+                        "metadata": { "type": "object" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bulk import results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "imported": { "type": "integer" },
+                    "errors": { "type": "integer" },
+                    "results": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",

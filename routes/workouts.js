@@ -129,6 +129,101 @@ router.post('/', async (req, res) => {
   }
 });
 
+// ─── Bulk Import Workouts ───────────────────────────────────
+router.post('/bulk', async (req, res) => {
+  try {
+    const { workouts } = req.body;
+    if (!Array.isArray(workouts) || !workouts.length) {
+      return res.status(400).json({ error: 'workouts array is required' });
+    }
+    if (workouts.length > 200) {
+      return res.status(400).json({ error: 'Maximum 200 workouts per request' });
+    }
+
+    const results = [];
+    let imported = 0;
+    let errors = 0;
+
+    for (const b of workouts) {
+      try {
+        const title = b.title || `Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
+
+        const result = await query(
+          `INSERT INTO workouts (
+            title, workout_date, workout_type, location, elevation, focus,
+            warmup, main_sets, carries, exercises, class_name, program, equipment, instructor,
+            time_duration, distance, elevation_gain,
+            heart_rate_avg, heart_rate_max, pace_avg, splits, cadence_avg,
+            active_calories, total_calories,
+            effort, slowdown_notes, failure_first,
+            grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback, body_notes,
+            adjustment, tags, source, ai_source, metadata
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11, $12, $13, $14,
+            $15, $16, $17,
+            $18, $19, $20, $21, $22,
+            $23, $24,
+            $25, $26, $27,
+            $28, $29, $30, $31, $32,
+            $33, $34, $35, $36, $37
+          ) RETURNING id, title, workout_date, workout_type`,
+          [
+            title,
+            b.workout_date || new Date().toISOString().slice(0, 10),
+            b.workout_type || 'hybrid',
+            b.location || null,
+            b.elevation || null,
+            b.focus || null,
+            b.warmup || null,
+            b.main_sets || null,
+            b.carries || null,
+            JSON.stringify(b.exercises || []),
+            b.class_name || null,
+            b.program || null,
+            b.equipment || null,
+            b.instructor || null,
+            b.time_duration || b.time || null,
+            b.distance || null,
+            b.elevation_gain || null,
+            b.heart_rate_avg || null,
+            b.heart_rate_max || null,
+            b.pace_avg || null,
+            b.splits || null,
+            b.cadence_avg || null,
+            b.active_calories || null,
+            b.total_calories || null,
+            b.effort ? parseInt(b.effort, 10) : null,
+            b.slowdown_notes || b.where_slowed_down || null,
+            b.failure_first || b.what_failed_first || null,
+            b.grip_feedback || b.grip || null,
+            b.legs_feedback || b.legs || null,
+            b.cardio_feedback || b.cardio || null,
+            b.shoulder_feedback || b.shoulder || null,
+            b.body_notes || b.notes || null,
+            b.adjustment || b.adjustment_next_time || null,
+            JSON.stringify(b.tags || []),
+            b.source || 'import',
+            b.ai_source || null,
+            JSON.stringify(b.metadata || {}),
+          ]
+        );
+
+        results.push({ id: result.rows[0].id, title: result.rows[0].title, workout_date: result.rows[0].workout_date });
+        imported++;
+      } catch (itemErr) {
+        results.push({ error: itemErr.message, workout_date: b.workout_date, title: b.title });
+        errors++;
+      }
+    }
+
+    await logActivity('create', 'workout', 'bulk', 'import', `Bulk imported ${imported} workouts (${errors} errors)`);
+    res.status(201).json({ message: `Imported ${imported} workouts`, imported, errors, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Update Workout ──────────────────────────────────────────
 router.put('/:id', async (req, res) => {
   try {

@@ -121,6 +121,53 @@ paths:
           description: Unauthorized
         '500':
           description: Server error
+  /workouts/bulk:
+    post:
+      operationId: bulkImportWorkouts
+      summary: Bulk import multiple workouts at once
+      description: |
+        Import up to 200 workouts in a single request. Use this for historical imports
+        from Apple Health, Fitbod, or any batch data. Each item in the workouts array
+        uses the same schema as logWorkout. Send as many fields as you have data for —
+        only workout_type is required per entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workouts
+              properties:
+                workouts:
+                  type: array
+                  maxItems: 200
+                  items:
+                    $ref: '#/components/schemas/WorkoutCreate'
+      responses:
+        '201':
+          description: Bulk import results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  imported:
+                    type: integer
+                  errors:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: Invalid payload
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
   /tasks:
     post:
       operationId: createTask
