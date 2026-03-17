@@ -1241,6 +1241,8 @@ async function loadWorkouts(searchQuery) {
               ${w.time_duration ? `<span>${esc(w.time_duration)}</span>` : ''}
               ${w.distance ? `<span>${esc(w.distance)}</span>` : ''}
               ${w.elevation_gain ? `<span>↑${esc(w.elevation_gain)}</span>` : ''}
+              ${w.heart_rate_avg ? `<span>♥${esc(w.heart_rate_avg)}</span>` : ''}
+              ${w.active_calories ? `<span>${esc(w.active_calories)}</span>` : ''}
             </div>
             ${w.tags && w.tags.length ? `<div class="transcript-speakers" style="margin-top:4px">${w.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>` : ''}
           </div>`;
@@ -1291,13 +1293,20 @@ async function showWorkoutDetail(id) {
         </div>
       </div>` : ''}
 
-      ${w.time_duration || w.distance || w.elevation_gain ? `
+      ${w.time_duration || w.distance || w.elevation_gain || w.heart_rate_avg || w.heart_rate_max || w.pace_avg || w.cadence_avg || w.active_calories || w.total_calories || w.splits ? `
       <div class="workout-detail-section">
         <div class="workout-detail-label">Metrics</div>
         <div class="workout-detail-value">
-          ${w.time_duration ? '⏱ ' + esc(w.time_duration) + '<br>' : ''}
-          ${w.distance ? '📏 ' + esc(w.distance) + '<br>' : ''}
-          ${w.elevation_gain ? '⛰ ' + esc(w.elevation_gain) : ''}
+          ${w.time_duration ? '<strong>Duration:</strong> ' + esc(w.time_duration) + '<br>' : ''}
+          ${w.distance ? '<strong>Distance:</strong> ' + esc(w.distance) + '<br>' : ''}
+          ${w.elevation_gain ? '<strong>Elevation gain:</strong> ' + esc(w.elevation_gain) + '<br>' : ''}
+          ${w.pace_avg ? '<strong>Avg pace:</strong> ' + esc(w.pace_avg) + '<br>' : ''}
+          ${w.cadence_avg ? '<strong>Cadence:</strong> ' + esc(w.cadence_avg) + '<br>' : ''}
+          ${w.heart_rate_avg ? '<strong>Avg HR:</strong> ' + esc(w.heart_rate_avg) + '<br>' : ''}
+          ${w.heart_rate_max ? '<strong>Max HR:</strong> ' + esc(w.heart_rate_max) + '<br>' : ''}
+          ${w.active_calories ? '<strong>Active cal:</strong> ' + esc(w.active_calories) + '<br>' : ''}
+          ${w.total_calories ? '<strong>Total cal:</strong> ' + esc(w.total_calories) + '<br>' : ''}
+          ${w.splits ? '<strong>Splits:</strong><br>' + esc(w.splits).replace(/\n/g, '<br>') : ''}
         </div>
       </div>` : ''}
 
@@ -1378,6 +1387,19 @@ async function showWorkoutForm(editId) {
         <div class="form-group" style="flex:1"><label>Elevation Gain</label><input type="text" id="wf-elev-gain" value="${esc(w.elevation_gain || '')}" placeholder="850 ft"></div>
         <div class="form-group" style="flex:1"><label>Effort (1-10)</label><input type="number" id="wf-effort" min="1" max="10" value="${w.effort || ''}"></div>
       </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Avg HR</label><input type="text" id="wf-hr-avg" value="${esc(w.heart_rate_avg || '')}" placeholder="135 bpm"></div>
+        <div class="form-group" style="flex:1"><label>Max HR</label><input type="text" id="wf-hr-max" value="${esc(w.heart_rate_max || '')}" placeholder="172 bpm"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Avg Pace</label><input type="text" id="wf-pace" value="${esc(w.pace_avg || '')}" placeholder="9:30 /mi"></div>
+        <div class="form-group" style="flex:1"><label>Cadence</label><input type="text" id="wf-cadence" value="${esc(w.cadence_avg || '')}" placeholder="160 spm"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="form-group" style="flex:1"><label>Active Cal</label><input type="text" id="wf-active-cal" value="${esc(w.active_calories || '')}" placeholder="284 kcal"></div>
+        <div class="form-group" style="flex:1"><label>Total Cal</label><input type="text" id="wf-total-cal" value="${esc(w.total_calories || '')}" placeholder="346 kcal"></div>
+      </div>
+      <div class="form-group"><label>Splits</label><textarea id="wf-splits" rows="2" placeholder="Mile 1: 8:20 @ 140 bpm&#10;Mile 2: 8:45 @ 155 bpm">${esc(w.splits || '')}</textarea></div>
 
       <div class="form-group"><label>Where did I slow down / break?</label><textarea id="wf-slowdown" rows="2">${esc(w.slowdown_notes || '')}</textarea></div>
       <div class="form-group"><label>What failed first?</label><input type="text" id="wf-failure" value="${esc(w.failure_first || '')}" placeholder="legs / grip / cardio"></div>
@@ -1420,6 +1442,13 @@ async function saveWorkout(editId) {
     time_duration: val('wf-time') || null,
     distance: val('wf-distance') || null,
     elevation_gain: val('wf-elev-gain') || null,
+    heart_rate_avg: val('wf-hr-avg') || null,
+    heart_rate_max: val('wf-hr-max') || null,
+    pace_avg: val('wf-pace') || null,
+    cadence_avg: val('wf-cadence') || null,
+    active_calories: val('wf-active-cal') || null,
+    total_calories: val('wf-total-cal') || null,
+    splits: val('wf-splits') || null,
     effort: val('wf-effort') ? parseInt(val('wf-effort'), 10) : null,
     slowdown_notes: val('wf-slowdown') || null,
     failure_first: val('wf-failure') || null,
