@@ -1552,8 +1552,15 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .settings-header h3 { font-size: 1rem; font-weight: 700; }
-.settings-body { padding: 10px 16px 16px; }
-.sm-group { margin-bottom: 16px; }
+.settings-body { padding: 6px 16px 16px; overflow-y: auto; }
+.sm-section { margin-bottom: 4px; }
+.sm-section:last-child { margin-bottom: 0; }
+.sm-section-title {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--text-dim); padding: 10px 2px 6px; border-top: 1px solid var(--border);
+}
+.sm-section:first-child .sm-section-title { border-top: none; padding-top: 4px; }
+.sm-group { margin-bottom: 4px; }
 .sm-group-title {
   font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--text-dim); margin-bottom: 8px; padding-left: 2px;

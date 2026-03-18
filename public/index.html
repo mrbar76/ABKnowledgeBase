@@ -65,91 +65,115 @@
       </div>
       <div class="settings-body">
 
-        <!-- Appearance -->
-        <div class="sm-group">
-          <div class="settings-row">
-            <div class="settings-row-label">Appearance</div>
-            <div class="sm-theme-toggle">
-              <button id="theme-btn-light" onclick="setTheme('light')" class="sm-theme-btn">Light</button>
-              <button id="theme-btn-auto"  onclick="setTheme('auto')"  class="sm-theme-btn">Auto</button>
-              <button id="theme-btn-dark"  onclick="setTheme('dark')"  class="sm-theme-btn">Dark</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Status -->
-        <div class="sm-group">
-          <div class="sm-group-title">Status</div>
-          <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
-          <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">—</div></div>
-          <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">—</div></div>
-          <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">—</div></div>
-        </div>
-
-        <!-- Data Sync -->
-        <div class="sm-group">
-          <div class="sm-group-title">Data Sync</div>
-          <div class="sm-card">
-            <div class="sm-card-label">Bee Wearable</div>
-            <div class="sm-btn-row">
-              <button class="btn-action" onclick="triggerBeeSyncFromMenu('incremental')" id="sm-btn-sync-updates">Sync Updates</button>
-              <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('full')" id="sm-btn-sync-full">Full Sync</button>
-            </div>
-            <div id="sm-sync-result" class="sm-result"></div>
-          </div>
-          <div class="sm-card">
-            <div class="sm-card-label">Bee Conversations by Date</div>
-            <div class="sm-date-row">
-              <input type="date" id="sm-conv-start" class="sm-date-input">
-              <span class="sm-date-sep">to</span>
-              <input type="date" id="sm-conv-end" class="sm-date-input">
-            </div>
-            <button class="btn-action btn-action-secondary sm-btn-full" onclick="syncConversationsByDate()" id="sm-btn-sync-convos">Sync Date Range</button>
-            <div id="sm-conv-sync-result" class="sm-result"></div>
-          </div>
-          <div class="sm-card">
-            <div class="sm-card-label">ChatGPT Import</div>
-            <div class="sm-card-desc">Import exported conversations.json &mdash; duplicates auto-skipped.</div>
-            <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">
-            <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('chatgpt-import-file').click()" id="chatgpt-import-btn">Choose File</button>
-            <div id="chatgpt-import-progress" style="display:none;margin-top:8px">
-              <div class="sm-progress-info">
-                <span id="chatgpt-import-status">Importing...</span>
-                <span id="chatgpt-import-count"></span>
+        <!-- ─── General ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">General</div>
+          <div class="sm-group">
+            <div class="settings-row">
+              <div class="settings-row-label">Theme</div>
+              <div class="sm-theme-toggle">
+                <button id="theme-btn-light" onclick="setTheme('light')" class="sm-theme-btn">Light</button>
+                <button id="theme-btn-auto"  onclick="setTheme('auto')"  class="sm-theme-btn">Auto</button>
+                <button id="theme-btn-dark"  onclick="setTheme('dark')"  class="sm-theme-btn">Dark</button>
               </div>
-              <div class="sm-progress-bar"><div id="chatgpt-import-bar" class="sm-progress-fill"></div></div>
             </div>
-            <div id="chatgpt-import-result" class="sm-result"></div>
           </div>
         </div>
 
-        <!-- Developer -->
-        <div class="sm-group">
-          <div class="sm-group-title">Developer</div>
-          <div class="sm-card">
-            <div class="sm-card-label">GPT System Instructions</div>
-            <div class="sm-card-desc">Copy-paste into your Custom GPT's Instructions field</div>
-            <button class="btn-action sm-btn-full" onclick="copyGptInstructions()" id="btn-copy-instructions">Copy Instructions</button>
-            <div id="sm-instructions-result" class="sm-result"></div>
+        <!-- ─── System Status ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">System Status</div>
+          <div class="sm-group">
+            <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
+            <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">&mdash;</div></div>
+            <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">&mdash;</div></div>
+            <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">&mdash;</div></div>
           </div>
-          <div class="sm-card">
-            <div class="sm-card-label">GPT Actions Schema</div>
-            <div class="sm-card-desc">For Custom GPT Actions configuration</div>
-            <div class="sm-btn-row">
-              <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema">Copy Schema</button>
-              <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')">View Raw</button>
-            </div>
-            <div id="sm-schema-result" class="sm-result"></div>
-          </div>
-          <button class="btn-action btn-action-secondary sm-btn-full" onclick="closeSettingsMenu();showDebugPanel()">Diagnostics &amp; Logs</button>
         </div>
 
-        <!-- Account -->
-        <div class="sm-group">
-          <div class="sm-group-title">Account</div>
-          <button class="btn-action btn-action-secondary sm-btn-full" onclick="closeSettingsMenu();logout()">Log Out</button>
-          <button class="btn-action btn-action-danger sm-btn-full" id="btn-purge-settings" onclick="confirmPurgeFromMenu()">Purge All Data</button>
-          <div id="purge-menu-result" class="sm-result"></div>
+        <!-- ─── Data & Sync ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Data &amp; Sync</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Bee Wearable</div>
+              <div class="sm-btn-row">
+                <button class="btn-action" onclick="triggerBeeSyncFromMenu('incremental')" id="sm-btn-sync-updates">Sync Updates</button>
+                <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('full')" id="sm-btn-sync-full">Full Sync</button>
+              </div>
+              <div id="sm-sync-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Bee by Date Range</div>
+              <div class="sm-date-row">
+                <input type="date" id="sm-conv-start" class="sm-date-input">
+                <span class="sm-date-sep">to</span>
+                <input type="date" id="sm-conv-end" class="sm-date-input">
+              </div>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="syncConversationsByDate()" id="sm-btn-sync-convos">Sync Date Range</button>
+              <div id="sm-conv-sync-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">ChatGPT Import</div>
+              <div class="sm-card-desc">Import exported conversations.json &mdash; duplicates auto-skipped.</div>
+              <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('chatgpt-import-file').click()" id="chatgpt-import-btn">Choose File</button>
+              <div id="chatgpt-import-progress" style="display:none;margin-top:8px">
+                <div class="sm-progress-info">
+                  <span id="chatgpt-import-status">Importing...</span>
+                  <span id="chatgpt-import-count"></span>
+                </div>
+                <div class="sm-progress-bar"><div id="chatgpt-import-bar" class="sm-progress-fill"></div></div>
+              </div>
+              <div id="chatgpt-import-result" class="sm-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Custom GPTs ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Custom GPTs</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Knowledge Base GPT</div>
+              <div class="sm-card-desc">Knowledge, tasks, projects, transcripts, conversations, search</div>
+              <button class="btn-action sm-btn-full" onclick="copyGptInstructions('kb')" id="btn-copy-kb-instructions">Copy KB Instructions</button>
+              <div id="sm-kb-instructions-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Fitness &amp; Training GPT</div>
+              <div class="sm-card-desc">Workouts, meals, body metrics, coaching, injuries, plans</div>
+              <button class="btn-action sm-btn-full" onclick="copyGptInstructions('fitness')" id="btn-copy-fitness-instructions">Copy Fitness Instructions</button>
+              <div id="sm-fitness-instructions-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Actions Schema (OpenAPI)</div>
+              <div class="sm-card-desc">Paste into your GPT&rsquo;s Actions configuration</div>
+              <div class="sm-btn-row">
+                <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema">Copy Schema</button>
+                <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')">View Raw</button>
+              </div>
+              <div id="sm-schema-result" class="sm-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Advanced ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Advanced</div>
+          <div class="sm-group">
+            <button class="btn-action btn-action-secondary sm-btn-full" onclick="closeSettingsMenu();showDebugPanel()">Diagnostics &amp; Logs</button>
+          </div>
+        </div>
+
+        <!-- ─── Account ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Account</div>
+          <div class="sm-group">
+            <button class="btn-action btn-action-secondary sm-btn-full" onclick="closeSettingsMenu();logout()">Log Out</button>
+            <button class="btn-action btn-action-danger sm-btn-full" id="btn-purge-settings" onclick="confirmPurgeFromMenu()">Purge All Data</button>
+            <div id="purge-menu-result" class="sm-result"></div>
+          </div>
         </div>
 
       </div>
