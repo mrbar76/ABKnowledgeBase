@@ -225,7 +225,7 @@ async function loadDashboardStats() {
       </div>
     `;
     // Animate all stat values
-    document.querySelectorAll('#dash-content .stat-value[data-target]').forEach(el => {
+    document.querySelectorAll('#dash-content [data-target]').forEach(el => {
       animateValue(el, parseInt(el.dataset.target) || 0);
     });
     if (data.recent_activity?.length) {
