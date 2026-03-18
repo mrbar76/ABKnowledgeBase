@@ -148,7 +148,7 @@ function switchTab(tab) {
   if (tab === 'home') loadDashboard();
   else if (tab === 'kanban') loadKanban();
   else if (tab === 'brain') loadBrain();
-  else if (tab === 'transcripts') loadTranscripts();
+  else if (tab === 'transcripts') { brainSubTab = 'transcripts'; loadBrain(); }
   else if (tab === 'projects') loadProjects();
   else if (tab === 'fitness') loadFitness();
 }
@@ -917,20 +917,24 @@ async function createTask(e) {
 }
 
 // ─── Brain (Knowledge + Facts) ────────────────────────────────
-let brainSubTab = 'knowledge';
+let brainSubTab = 'all';
 function brainTabsHtml() {
   return `<div class="brain-tabs">
+    <button class="brain-tab${brainSubTab==='all'?' active':''}" onclick="brainSubTab='all';loadBrain()">All</button>
     <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
     <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
     <button class="brain-tab${brainSubTab==='conversations'?' active':''}" onclick="brainSubTab='conversations';loadBrain()">Conversations</button>
+    <button class="brain-tab${brainSubTab==='transcripts'?' active':''}" onclick="brainSubTab='transcripts';loadBrain()">Transcripts</button>
   </div>`;
 }
 
 async function loadBrain(searchQuery) {
   const main = document.getElementById('main-content');
   main.innerHTML = brainTabsHtml() + '<div class="loading">Loading...</div>';
+  if (brainSubTab === 'all') return loadBrainAll(searchQuery);
   if (brainSubTab === 'facts') return loadFacts(searchQuery);
   if (brainSubTab === 'conversations') return loadConversations(searchQuery);
+  if (brainSubTab === 'transcripts') return loadTranscripts(searchQuery);
   try {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
     const data = await api('/knowledge' + qs);
@@ -957,6 +961,93 @@ async function loadBrain(searchQuery) {
     `;
     main.innerHTML = brainTabsHtml() + listHtml;
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+let brainAllSearchTimer = null;
+function debounceBrainAllSearch(q) { clearTimeout(brainAllSearchTimer); brainAllSearchTimer = setTimeout(() => loadBrainAll(q), 300); }
+
+async function loadBrainAll(searchQuery) {
+  const main = document.getElementById('main-content');
+  try {
+    const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=20` : '?limit=20';
+    const [kData, fData, cData, tData] = await Promise.all([
+      api('/knowledge' + qs),
+      api('/facts' + qs),
+      api('/conversations' + qs),
+      api('/transcripts' + qs)
+    ]);
+
+    const sections = [];
+
+    if (kData.entries.length) {
+      sections.push(`<div class="brain-all-section">
+        <div class="brain-all-section-header" onclick="brainSubTab='knowledge';loadBrain(${searchQuery ? "'" + esc(searchQuery).replace(/'/g,"\\'") + "'" : ''})">
+          <span>Knowledge</span><span class="brain-all-count">${kData.entries.length}${kData.entries.length >= 20 ? '+' : ''}</span>
+        </div>
+        ${kData.entries.slice(0, 5).map(k => `
+          <div class="list-item list-item-compact" onclick="showKnowledgeDetail('${k.id}')">
+            <div class="list-item-title">
+              ${k.ai_source ? `<span class="k-source-badge source-${k.ai_source}">${k.ai_source}</span>` : ''}
+              ${esc(k.title)}
+            </div>
+            <div class="list-item-preview">${esc((k.content || '').substring(0, 100))}</div>
+          </div>`).join('')}
+        ${kData.entries.length > 5 ? `<div class="brain-all-more" onclick="brainSubTab='knowledge';loadBrain()">View all knowledge &rarr;</div>` : ''}
+      </div>`);
+    }
+
+    if (fData.facts.length) {
+      sections.push(`<div class="brain-all-section">
+        <div class="brain-all-section-header" onclick="brainSubTab='facts';loadBrain(${searchQuery ? "'" + esc(searchQuery).replace(/'/g,"\\'") + "'" : ''})">
+          <span>Facts</span><span class="brain-all-count">${fData.facts.length}${fData.facts.length >= 20 ? '+' : ''}</span>
+        </div>
+        ${fData.facts.slice(0, 5).map(f => `
+          <div class="list-item list-item-compact" onclick="showFactDetail('${f.id}')">
+            <div class="list-item-title">${esc(f.title)}</div>
+            <div class="list-item-preview">${esc((f.content || '').substring(0, 100))}</div>
+          </div>`).join('')}
+        ${fData.facts.length > 5 ? `<div class="brain-all-more" onclick="brainSubTab='facts';loadBrain()">View all facts &rarr;</div>` : ''}
+      </div>`);
+    }
+
+    if (cData.conversations.length) {
+      sections.push(`<div class="brain-all-section">
+        <div class="brain-all-section-header" onclick="brainSubTab='conversations';loadBrain(${searchQuery ? "'" + esc(searchQuery).replace(/'/g,"\\'") + "'" : ''})">
+          <span>Conversations</span><span class="brain-all-count">${cData.conversations.length}${cData.conversations.length >= 20 ? '+' : ''}</span>
+        </div>
+        ${cData.conversations.slice(0, 5).map(c => `
+          <div class="list-item list-item-compact" onclick="showConversationDetail('${c.id}')">
+            <div class="list-item-title">
+              <span class="k-source-badge source-${c.ai_source}">${c.ai_source}</span>
+              ${esc(c.title)}
+            </div>
+            <div class="list-item-preview">${esc((c.summary || '').substring(0, 100))}</div>
+          </div>`).join('')}
+        ${cData.conversations.length > 5 ? `<div class="brain-all-more" onclick="brainSubTab='conversations';loadBrain()">View all conversations &rarr;</div>` : ''}
+      </div>`);
+    }
+
+    if (tData.transcripts.length) {
+      sections.push(`<div class="brain-all-section">
+        <div class="brain-all-section-header" onclick="brainSubTab='transcripts';loadBrain(${searchQuery ? "'" + esc(searchQuery).replace(/'/g,"\\'") + "'" : ''})">
+          <span>Transcripts</span><span class="brain-all-count">${tData.transcripts.length}${tData.transcripts.length >= 20 ? '+' : ''}</span>
+        </div>
+        ${tData.transcripts.slice(0, 5).map(t => `
+          <div class="list-item list-item-compact" onclick="showTranscriptDetail('${t.id}')">
+            <div class="list-item-title">${esc(t.title)}</div>
+            <div class="list-item-preview">${esc((t.summary || t.preview || '').substring(0, 100))}</div>
+          </div>`).join('')}
+        ${tData.transcripts.length > 5 ? `<div class="brain-all-more" onclick="brainSubTab='transcripts';loadBrain()">View all transcripts &rarr;</div>` : ''}
+      </div>`);
+    }
+
+    main.innerHTML = brainTabsHtml() + `
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" class="brain-search" placeholder="Search everything..." value="${esc(searchQuery || '')}" oninput="debounceBrainAllSearch(this.value)">
+      </div>
+      ${sections.length ? sections.join('') : `<div class="empty-state">${searchQuery ? 'No results found' : 'Your brain is empty. Start adding knowledge, facts, or import conversations.'}</div>`}
+    `;
+  } catch (e) { main.innerHTML = brainTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
 async function loadFacts(searchQuery) {
@@ -1150,7 +1241,6 @@ function setTranscriptFilter(key, value) {
 
 async function loadTranscripts(searchQuery) {
   const main = document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
   try {
     const params = new URLSearchParams({ limit: '50' });
     if (searchQuery) params.set('q', searchQuery);
@@ -1163,7 +1253,7 @@ async function loadTranscripts(searchQuery) {
     const activeType = transcriptFilters.content_type || '';
     const activeMedia = transcriptFilters.is_media || '';
 
-    main.innerHTML = `
+    main.innerHTML = brainTabsHtml() + `
       <input type="text" class="brain-search" placeholder="Search transcripts..." value="${esc(searchQuery || '')}"
         oninput="debounceTranscriptSearch(this.value)" style="margin-bottom:8px">
       <div class="transcript-filters">
