@@ -918,16 +918,19 @@ async function createTask(e) {
 
 // ─── Brain (Knowledge + Facts) ────────────────────────────────
 let brainSubTab = 'knowledge';
+function brainTabsHtml() {
+  return `<div class="brain-tabs">
+    <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
+    <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
+    <button class="brain-tab${brainSubTab==='conversations'?' active':''}" onclick="brainSubTab='conversations';loadBrain()">Conversations</button>
+  </div>`;
+}
 
 async function loadBrain(searchQuery) {
   const main = document.getElementById('main-content');
-  main.innerHTML = `
-    <div class="brain-tabs">
-      <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
-      <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
-    </div>
-    <div class="loading">Loading...</div>`;
+  main.innerHTML = brainTabsHtml() + '<div class="loading">Loading...</div>';
   if (brainSubTab === 'facts') return loadFacts(searchQuery);
+  if (brainSubTab === 'conversations') return loadConversations(searchQuery);
   try {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
     const data = await api('/knowledge' + qs);
@@ -952,11 +955,7 @@ async function loadBrain(searchQuery) {
           </div>`).join('') : '<div class="empty-state">No knowledge entries yet</div>'}
       </div>
     `;
-    main.innerHTML = `
-      <div class="brain-tabs">
-        <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
-        <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
-      </div>` + listHtml;
+    main.innerHTML = brainTabsHtml() + listHtml;
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
@@ -966,11 +965,7 @@ async function loadFacts(searchQuery) {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
     const data = await api('/facts' + qs);
 
-    main.innerHTML = `
-      <div class="brain-tabs">
-        <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
-        <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
-      </div>
+    main.innerHTML = brainTabsHtml() + `
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <input type="text" class="brain-search" placeholder="Search facts..." value="${esc(searchQuery || '')}" oninput="debounceFactSearch(this.value)">
       </div>
@@ -1024,6 +1019,72 @@ async function confirmFact(id) {
 async function deleteFact(id) {
   if (!confirm('Delete this fact?')) return;
   try { await api(`/facts/${id}`, { method: 'DELETE' }); closeModal(); loadBrain(); } catch {}
+}
+
+// ─── Conversations sub-tab ─────────────────────────────────────
+let convSearchTimer = null;
+function debounceConvSearch(q) { clearTimeout(convSearchTimer); convSearchTimer = setTimeout(() => loadConversations(q), 300); }
+
+async function loadConversations(searchQuery) {
+  const main = document.getElementById('main-content');
+  try {
+    const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
+    const data = await api('/conversations' + qs);
+
+    main.innerHTML = brainTabsHtml() + `
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" class="brain-search" placeholder="Search conversations..." value="${esc(searchQuery || '')}" oninput="debounceConvSearch(this.value)">
+      </div>
+      <div id="conv-list">
+        ${data.conversations.length ? data.conversations.map(c => `
+          <div class="list-item" onclick="showConversationDetail('${c.id}')">
+            <div class="list-item-title">
+              <span class="k-source-badge source-${c.ai_source}">${c.ai_source}</span>
+              ${esc(c.title)}
+            </div>
+            <div class="list-item-preview">${esc((c.summary || '').substring(0, 150))}</div>
+            <div class="list-item-meta">
+              <span>${c.message_count || 0} messages</span>
+              <span>${c.metadata?.model || ''}</span>
+              <span>${timeAgo(c.created_at)}</span>
+            </div>
+          </div>`).join('') : '<div class="empty-state">No conversations yet. Import ChatGPT conversations from Settings.</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = brainTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function showConversationDetail(id) {
+  try {
+    const c = await api(`/conversations/${id}`);
+    const thread = Array.isArray(c.full_thread) ? c.full_thread : [];
+    const messagesHtml = thread.map(m => `
+      <div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:${m.role === 'assistant' ? 'var(--bg-input)' : 'transparent'};border:1px solid var(--border)">
+        <div style="font-size:0.7rem;font-weight:700;color:${m.role === 'assistant' ? 'var(--accent)' : 'var(--green)'};text-transform:uppercase;margin-bottom:4px">
+          ${m.role}${m.timestamp ? ` &middot; ${new Date(m.timestamp).toLocaleString()}` : ''}
+        </div>
+        <div style="font-size:0.85rem;white-space:pre-wrap;line-height:1.55">${esc(m.content)}</div>
+      </div>`).join('');
+
+    openModal(c.title, `
+      <div class="list-item-meta" style="margin-bottom:12px">
+        <span class="k-source-badge source-${c.ai_source}">${c.ai_source}</span>
+        <span>${c.metadata?.model || ''}</span>
+        <span>${thread.length} messages</span>
+        <span>${timeAgo(c.created_at)}</span>
+      </div>
+      ${c.summary ? `<div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:14px;padding:8px 10px;background:var(--bg-input);border-radius:6px">${esc(c.summary)}</div>` : ''}
+      <div style="max-height:60vh;overflow-y:auto">${messagesHtml || '<div class="empty-state">No messages</div>'}</div>
+      <div style="margin-top:14px">
+        <button class="btn-action btn-action-danger" onclick="deleteConversation('${id}')" style="width:100%">Delete</button>
+      </div>
+    `);
+  } catch (e) { openModal('Error', esc(e.message)); }
+}
+
+async function deleteConversation(id) {
+  if (!confirm('Delete this conversation?')) return;
+  try { await api(`/conversations/${id}`, { method: 'DELETE' }); closeModal(); loadBrain(); } catch {}
 }
 
 let brainSearchTimer = null;
