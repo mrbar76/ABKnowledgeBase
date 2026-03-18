@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "Personal knowledge base, task management, and transcript storage for AI-augmented workflows.",
-    "version": "1.0.0"
+    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` — check for contraindications FIRST\n2. Call `GET /training/day/{today}` — see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` — understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` — save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` — log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` — update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` — include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries",
+    "version": "1.1.0"
   },
   "servers": [
     {
@@ -367,6 +367,169 @@
         "responses": {
           "201": { "description": "Transcript uploaded" }
         }
+      }
+    },
+    "/knowledge/{id}": {
+      "get": {
+        "operationId": "getKnowledge",
+        "summary": "Get a single knowledge entry by ID",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Knowledge entry" } }
+      },
+      "put": {
+        "operationId": "updateKnowledge",
+        "summary": "Update a knowledge entry",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string" }, "content": { "type": "string" }, "category": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } } } } } },
+        "responses": { "200": { "description": "Updated entry" } }
+      },
+      "delete": {
+        "operationId": "deleteKnowledge",
+        "summary": "Delete a knowledge entry",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/facts": {
+      "get": {
+        "operationId": "searchFacts",
+        "summary": "Search or list fact entries",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "category", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": { "200": { "description": "Facts list" } }
+      },
+      "post": {
+        "operationId": "createFact",
+        "summary": "Create a new fact",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["title", "content"], "properties": { "title": { "type": "string" }, "content": { "type": "string" }, "category": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "source": { "type": "string" }, "confirmed": { "type": "boolean" } } } } } },
+        "responses": { "201": { "description": "Created fact" } }
+      }
+    },
+    "/facts/{id}": {
+      "get": {
+        "operationId": "getFact",
+        "summary": "Get a single fact by ID",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Fact" } }
+      },
+      "put": {
+        "operationId": "updateFact",
+        "summary": "Update a fact",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string" }, "content": { "type": "string" }, "category": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "confirmed": { "type": "boolean" } } } } } },
+        "responses": { "200": { "description": "Updated fact" } }
+      },
+      "delete": {
+        "operationId": "deleteFact",
+        "summary": "Delete a fact",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/conversations": {
+      "get": {
+        "operationId": "listConversations",
+        "summary": "List or search AI conversation threads",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "ai_source", "in": "query", "schema": { "type": "string" }, "description": "Filter by source (chatgpt, claude, gemini)" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": { "200": { "description": "Conversations list" } }
+      },
+      "post": {
+        "operationId": "createConversation",
+        "summary": "Store a full AI conversation thread with summary",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["title", "ai_source"], "properties": { "title": { "type": "string" }, "ai_source": { "type": "string" }, "full_thread": { "type": "array", "items": { "type": "object" }, "description": "Array of {role, content, timestamp}" }, "summary": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "message_count": { "type": "integer" } } } } } },
+        "responses": { "201": { "description": "Created conversation" } }
+      }
+    },
+    "/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "summary": "Get a conversation with full thread",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Conversation with full_thread" } }
+      },
+      "put": {
+        "operationId": "updateConversation",
+        "summary": "Update a conversation",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string" }, "summary": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } } } } } },
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "operationId": "deleteConversation",
+        "summary": "Delete a conversation",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/transcripts/{id}": {
+      "get": {
+        "operationId": "getTranscript",
+        "summary": "Get a single transcript with speaker data",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Transcript with speakers" } }
+      },
+      "delete": {
+        "operationId": "deleteTranscript",
+        "summary": "Delete a transcript",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/workouts/{id}": {
+      "get": {
+        "operationId": "getWorkout",
+        "summary": "Get a single workout by ID",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Workout detail" } }
+      },
+      "put": {
+        "operationId": "updateWorkout",
+        "summary": "Update a workout",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Updated workout" } }
+      },
+      "delete": {
+        "operationId": "deleteWorkout",
+        "summary": "Delete a workout",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/workouts/stats/summary": {
+      "get": {
+        "operationId": "getWorkoutStats",
+        "summary": "Get workout statistics — total count, by type, average effort, recent workouts",
+        "responses": { "200": { "description": "Workout stats summary" } }
+      }
+    },
+    "/intake": {
+      "post": {
+        "operationId": "smartIntake",
+        "summary": "AI-powered smart intake — auto-classifies text into knowledge, fact, task, or transcript",
+        "description": "Send raw text and OpenAI will classify it and store it in the appropriate table automatically.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string", "description": "Raw text to classify and store" }, "ai_source": { "type": "string" } } } } } },
+        "responses": { "201": { "description": "Classified and stored result" } }
+      }
+    },
+    "/activity": {
+      "get": {
+        "operationId": "getActivityLog",
+        "summary": "Get recent activity log entries",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 30 } },
+          { "name": "entity_type", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Activity log entries" } }
       }
     },
     "/search": {

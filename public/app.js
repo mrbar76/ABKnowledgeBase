@@ -63,6 +63,7 @@ function switchTab(tab) {
   else if (tab === 'workouts') loadWorkouts();
   else if (tab === 'nutrition') loadNutrition();
   else if (tab === 'body') loadBodyMetrics();
+  else if (tab === 'training') loadTraining();
 }
 
 // ─── Dashboard (Home) ─────────────────────────────────────────
@@ -104,6 +105,11 @@ async function loadDashboardStats() {
       <div class="stat-card" onclick="switchTab('workouts')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
       <div class="stat-card" onclick="switchTab('nutrition')" style="cursor:pointer"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
       <div class="stat-card" onclick="switchTab('body')" style="cursor:pointer"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
+      ${data.training ? `
+      <div class="stat-card" onclick="switchTab('training')" style="cursor:pointer"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
+      <div class="stat-card" onclick="switchTab('training')" style="cursor:pointer"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
+      <div class="stat-card" onclick="switchTab('training')" style="cursor:pointer;${(data.training.injuries?.active || 0) > 0 ? 'border-color:var(--red)' : ''}"><div class="stat-value" ${(data.training.injuries?.active || 0) > 0 ? 'style="color:var(--red)"' : ''}>${data.training.injuries?.active || 0}</div><div class="stat-label">Active Injuries</div></div>
+      ` : ''}
     `;
     if (data.recent_activity?.length) {
       const ac = document.getElementById('activity-card');
@@ -2377,6 +2383,639 @@ async function executeWorkoutImport() {
 // ─── Modal ────────────────────────────────────────────────────
 function openModal(title, bodyHtml) { document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-overlay').classList.add('open'); }
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+// ─── Training Tab ─────────────────────────────────────────────
+let trainingSubTab = 'plans';
+
+async function loadTraining() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="filter-row" style="margin-bottom:12px">
+      <button class="filter-btn ${trainingSubTab === 'plans' ? 'active' : ''}" onclick="trainingSubTab='plans';loadTraining()">Plans</button>
+      <button class="filter-btn ${trainingSubTab === 'coaching' ? 'active' : ''}" onclick="trainingSubTab='coaching';loadTraining()">Coaching</button>
+      <button class="filter-btn ${trainingSubTab === 'injuries' ? 'active' : ''}" onclick="trainingSubTab='injuries';loadTraining()">Injuries</button>
+      <button class="filter-btn ${trainingSubTab === 'day' ? 'active' : ''}" onclick="trainingSubTab='day';loadTraining()">Day View</button>
+    </div>
+    <div id="training-content"><div class="loading">Loading...</div></div>
+  `;
+  if (trainingSubTab === 'plans') loadTrainingPlans();
+  else if (trainingSubTab === 'coaching') loadCoachingSessions();
+  else if (trainingSubTab === 'injuries') loadInjuries();
+  else if (trainingSubTab === 'day') loadTrainingDay();
+}
+
+// ── Training Plans ──
+async function loadTrainingPlans() {
+  const container = document.getElementById('training-content');
+  try {
+    const data = await api('/training/plans?limit=50');
+    const statusColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="transcript-count">${data.total} plan${data.total !== 1 ? 's' : ''}</div>
+        <button class="btn-submit" onclick="showTrainingPlanForm()" style="padding:8px 16px">+ Plan</button>
+      </div>
+      ${data.plans.length ? data.plans.map(p => {
+        const color = statusColors[p.status] || '#6366f1';
+        const dates = p.start_date ? `${new Date(p.start_date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}${p.end_date ? ' - ' + new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : ''}` : '';
+        return `
+        <div class="list-item" onclick="showTrainingPlanDetail('${p.id}')" style="border-left:3px solid ${color}">
+          <div class="transcript-card-header">
+            <div class="list-item-title">${esc(p.title)}</div>
+            <span class="content-type-badge" style="background:${color}22;color:${color}">${p.status}</span>
+            <span class="content-type-badge" style="background:var(--bg-input);color:var(--text-dim)">${p.plan_type}</span>
+          </div>
+          ${p.goal ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(p.goal)}</div>` : ''}
+          <div class="list-item-meta">
+            ${dates ? `<span>${dates}</span>` : ''}
+            ${p.weeks ? `<span>${p.weeks}wk</span>` : ''}
+            ${p.phase ? `<span>${esc(p.phase)}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('') : '<div class="empty-state">No training plans yet. Create one to track your programming!</div>'}
+    `;
+  } catch (e) { container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function showTrainingPlanDetail(id) {
+  try {
+    const p = await api(`/training/plans/${id}`);
+    const statusColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
+    const color = statusColors[p.status] || '#6366f1';
+
+    function section(label, value) {
+      if (!value) return '';
+      return `<div class="workout-detail-section"><div class="workout-detail-label">${label}</div><div class="workout-detail-value">${esc(value).replace(/\n/g, '<br>')}</div></div>`;
+    }
+
+    let html = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="content-type-badge" style="background:${color}22;color:${color}">${p.status}</span>
+        <span class="content-type-badge" style="background:var(--bg-input);color:var(--text-dim)">${p.plan_type}</span>
+        ${p.weeks ? `<span style="font-size:0.8rem;color:var(--text-dim)">${p.weeks} weeks</span>` : ''}
+        ${p.phase ? `<span style="font-size:0.8rem;color:var(--accent)">${esc(p.phase)}</span>` : ''}
+      </div>
+      ${p.start_date ? `<div class="workout-detail-section"><div class="workout-detail-label">Dates</div><div class="workout-detail-value">${new Date(p.start_date).toLocaleDateString()}${p.end_date ? ' — ' + new Date(p.end_date).toLocaleDateString() : ''}</div></div>` : ''}
+      ${section('Goal', p.goal)}
+      ${section('Rationale', p.rationale)}
+      ${section('Constraints', p.constraints)}
+      ${section('Intensity Scheme', p.intensity_scheme)}
+      ${section('Progression', p.progression_notes)}
+    `;
+
+    if (p.weekly_structure && p.weekly_structure.length) {
+      html += `<div class="workout-detail-section"><div class="workout-detail-label">Weekly Structure</div><div class="workout-detail-value">`;
+      p.weekly_structure.forEach(d => {
+        html += `<div style="margin-bottom:6px"><strong>${esc(d.day || d.name || 'Day')}</strong>: ${esc(d.type || '')} ${d.focus ? '— ' + esc(d.focus) : ''} ${d.notes ? '<br><span style="color:var(--text-dim)">' + esc(d.notes) + '</span>' : ''}</div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    if (p.coaching_sessions?.length) {
+      html += `<div class="workout-detail-section"><div class="workout-detail-label">Coaching Sessions (${p.coaching_sessions.length})</div><div class="workout-detail-value">`;
+      p.coaching_sessions.forEach(s => {
+        html += `<div class="list-item" onclick="event.stopPropagation();closeModal();setTimeout(()=>showCoachingDetail('${s.id}'),200)" style="cursor:pointer;margin-bottom:6px;padding:8px">
+          <div class="list-item-title" style="font-size:0.8rem">${esc(s.title)}</div>
+          <div style="font-size:0.7rem;color:var(--text-dim)">${new Date(s.session_date).toLocaleDateString()} · ${esc(s.ai_source || '')}</div>
+          ${s.summary ? `<div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px">${esc(s.summary)}</div>` : ''}
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    if (p.injuries?.length) {
+      html += `<div class="workout-detail-section"><div class="workout-detail-label">Related Injuries (${p.injuries.length})</div><div class="workout-detail-value">`;
+      p.injuries.forEach(inj => {
+        const sevColor = inj.severity >= 7 ? 'var(--red)' : inj.severity >= 4 ? 'var(--yellow)' : 'var(--green)';
+        html += `<div style="margin-bottom:6px"><span style="color:${sevColor};font-weight:700">${inj.severity || '?'}/10</span> ${esc(inj.title)} <span style="color:var(--text-dim)">(${esc(inj.body_area)}${inj.side && inj.side !== 'n/a' ? ' · ' + inj.side : ''} · ${inj.status})</span></div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    if (p.tags?.length) {
+      html += `<div class="transcript-speakers" style="margin-top:8px">${p.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>`;
+    }
+
+    html += `
+      <div style="display:flex;gap:8px;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn-action" onclick="editTrainingPlan('${p.id}')">Edit</button>
+        <button class="btn-action btn-action-danger" onclick="deleteTrainingPlan('${p.id}')">Delete</button>
+      </div>
+    `;
+
+    openModal(p.title, html);
+  } catch (e) { alert(e.message); }
+}
+
+function showTrainingPlanForm(existing) {
+  const p = existing || {};
+  const html = `
+    <form onsubmit="saveTrainingPlan(event, '${p.id || ''}')">
+      <div class="form-group"><label>Title *</label><input name="title" value="${esc(p.title || '')}" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Type</label><select name="plan_type">
+          ${['block','mesocycle','microcycle','deload','race_prep','rehab','custom'].map(t => `<option value="${t}" ${p.plan_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label>Status</label><select name="status">
+          ${['draft','active','completed','paused','archived'].map(s => `<option value="${s}" ${(p.status || 'active') === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="form-group"><label>Goal</label><textarea name="goal" rows="2">${esc(p.goal || '')}</textarea></div>
+      <div class="form-group"><label>Rationale (WHY this plan)</label><textarea name="rationale" rows="3">${esc(p.rationale || '')}</textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Date</label><input type="date" name="start_date" value="${p.start_date ? p.start_date.slice(0,10) : ''}"></div>
+        <div class="form-group"><label>End Date</label><input type="date" name="end_date" value="${p.end_date ? p.end_date.slice(0,10) : ''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Weeks</label><input type="number" name="weeks" value="${p.weeks || ''}" min="1"></div>
+        <div class="form-group"><label>Phase</label><input name="phase" value="${esc(p.phase || '')}" placeholder="base, build, peak, taper..."></div>
+      </div>
+      <div class="form-group"><label>Intensity Scheme</label><input name="intensity_scheme" value="${esc(p.intensity_scheme || '')}" placeholder="e.g. RPE 7-8, 5/3/1 progression"></div>
+      <div class="form-group"><label>Progression Notes</label><textarea name="progression_notes" rows="2">${esc(p.progression_notes || '')}</textarea></div>
+      <div class="form-group"><label>Constraints</label><textarea name="constraints" rows="2" placeholder="Injuries, schedule limits, equipment...">${esc(p.constraints || '')}</textarea></div>
+      <div class="form-group"><label>Tags (comma separated)</label><input name="tags" value="${(p.tags || []).join(', ')}"></div>
+      <button type="submit" class="btn-submit" style="width:100%;margin-top:8px">${p.id ? 'Update' : 'Create'} Plan</button>
+    </form>
+  `;
+  openModal(p.id ? 'Edit Training Plan' : 'New Training Plan', html);
+}
+
+async function saveTrainingPlan(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const body = {
+    title: f.get('title'),
+    plan_type: f.get('plan_type'),
+    status: f.get('status'),
+    goal: f.get('goal') || null,
+    rationale: f.get('rationale') || null,
+    start_date: f.get('start_date') || null,
+    end_date: f.get('end_date') || null,
+    weeks: f.get('weeks') ? parseInt(f.get('weeks')) : null,
+    phase: f.get('phase') || null,
+    intensity_scheme: f.get('intensity_scheme') || null,
+    progression_notes: f.get('progression_notes') || null,
+    constraints: f.get('constraints') || null,
+    tags: f.get('tags') ? f.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
+  };
+  try {
+    if (id) await api(`/training/plans/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    else await api('/training/plans', { method: 'POST', body: JSON.stringify(body) });
+    closeModal();
+    loadTraining();
+  } catch (err) { alert(err.message); }
+}
+
+async function editTrainingPlan(id) {
+  try {
+    const p = await api(`/training/plans/${id}`);
+    closeModal();
+    setTimeout(() => showTrainingPlanForm(p), 200);
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteTrainingPlan(id) {
+  if (!confirm('Delete this training plan?')) return;
+  try { await api(`/training/plans/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
+  catch (e) { alert(e.message); }
+}
+
+// ── Coaching Sessions ──
+async function loadCoachingSessions() {
+  const container = document.getElementById('training-content');
+  try {
+    const data = await api('/training/coaching?limit=50');
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="transcript-count">${data.total} session${data.total !== 1 ? 's' : ''}</div>
+        <button class="btn-submit" onclick="showCoachingForm()" style="padding:8px 16px">+ Session</button>
+      </div>
+      ${data.sessions.length ? data.sessions.map(s => `
+        <div class="list-item" onclick="showCoachingDetail('${s.id}')" style="border-left:3px solid #a855f7">
+          <div class="transcript-card-header">
+            <div class="list-item-title">${esc(s.title)}</div>
+            <span class="content-type-badge" style="background:#a855f722;color:#a855f7">${esc(s.ai_source || 'ai')}</span>
+          </div>
+          ${s.summary ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(s.summary)}</div>` : ''}
+          <div class="list-item-meta">
+            <span>${new Date(s.session_date).toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'})}</span>
+            ${s.injury_notes ? '<span style="color:var(--red)">injury notes</span>' : ''}
+            ${s.next_steps ? '<span>has next steps</span>' : ''}
+          </div>
+        </div>
+      `).join('') : '<div class="empty-state">No coaching sessions yet. Chat with your AI coach and save the summary here!</div>'}
+    `;
+  } catch (e) { container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function showCoachingDetail(id) {
+  try {
+    const s = await api(`/training/coaching/${id}`);
+    function section(label, value) {
+      if (!value) return '';
+      return `<div class="workout-detail-section"><div class="workout-detail-label">${label}</div><div class="workout-detail-value">${esc(value).replace(/\n/g, '<br>')}</div></div>`;
+    }
+
+    let html = `
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:10px">
+        ${new Date(s.session_date).toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+        · <span style="color:#a855f7">${esc(s.ai_source || 'AI')}</span>
+      </div>
+      ${section('Summary', s.summary)}
+    `;
+
+    if (s.key_decisions?.length) {
+      html += `<div class="workout-detail-section"><div class="workout-detail-label">Key Decisions</div><div class="workout-detail-value">`;
+      s.key_decisions.forEach(d => { html += `<div style="margin-bottom:4px">• ${esc(typeof d === 'string' ? d : JSON.stringify(d))}</div>`; });
+      html += `</div></div>`;
+    }
+
+    if (s.adjustments?.length) {
+      html += `<div class="workout-detail-section"><div class="workout-detail-label">Adjustments</div><div class="workout-detail-value">`;
+      s.adjustments.forEach(a => {
+        if (typeof a === 'object') html += `<div style="margin-bottom:6px"><strong>${esc(a.area || '')}</strong>: ${esc(a.change || '')} ${a.reason ? '<span style="color:var(--text-dim)">(' + esc(a.reason) + ')</span>' : ''}</div>`;
+        else html += `<div style="margin-bottom:4px">• ${esc(String(a))}</div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    html += section('Injury Notes', s.injury_notes);
+    html += section('Nutrition Notes', s.nutrition_notes);
+    html += section('Recovery Notes', s.recovery_notes);
+    html += section('Mental Notes', s.mental_notes);
+    html += section('Next Steps', s.next_steps);
+
+    if (s.tags?.length) {
+      html += `<div class="transcript-speakers" style="margin-top:8px">${s.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>`;
+    }
+
+    html += `
+      <div style="display:flex;gap:8px;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn-action" onclick="editCoachingSession('${s.id}')">Edit</button>
+        <button class="btn-action btn-action-danger" onclick="deleteCoachingSession('${s.id}')">Delete</button>
+      </div>
+    `;
+
+    openModal(s.title, html);
+  } catch (e) { alert(e.message); }
+}
+
+function showCoachingForm(existing) {
+  const s = existing || {};
+  const html = `
+    <form onsubmit="saveCoachingSession(event, '${s.id || ''}')">
+      <div class="form-group"><label>Title *</label><input name="title" value="${esc(s.title || '')}" required placeholder="e.g. Weekly Training Review - March 18"></div>
+      <div class="form-group"><label>Date</label><input type="date" name="session_date" value="${s.session_date ? s.session_date.slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-group"><label>Summary *</label><textarea name="summary" rows="4" required placeholder="Full summary of the coaching conversation...">${esc(s.summary || '')}</textarea></div>
+      <div class="form-group"><label>Key Decisions (one per line)</label><textarea name="key_decisions" rows="3" placeholder="Reduce upper body volume 20%\nAdd hip mobility work">${(s.key_decisions || []).map(d => typeof d === 'string' ? d : JSON.stringify(d)).join('\n')}</textarea></div>
+      <div class="form-group"><label>Injury Notes</label><textarea name="injury_notes" rows="2">${esc(s.injury_notes || '')}</textarea></div>
+      <div class="form-group"><label>Nutrition Notes</label><textarea name="nutrition_notes" rows="2">${esc(s.nutrition_notes || '')}</textarea></div>
+      <div class="form-group"><label>Recovery Notes</label><textarea name="recovery_notes" rows="2">${esc(s.recovery_notes || '')}</textarea></div>
+      <div class="form-group"><label>Mental Notes</label><textarea name="mental_notes" rows="2">${esc(s.mental_notes || '')}</textarea></div>
+      <div class="form-group"><label>Next Steps</label><textarea name="next_steps" rows="2">${esc(s.next_steps || '')}</textarea></div>
+      <div class="form-group"><label>AI Source</label><select name="ai_source">
+        ${['chatgpt','claude','gemini','manual'].map(src => `<option value="${src}" ${(s.ai_source || 'chatgpt') === src ? 'selected' : ''}>${src}</option>`).join('')}
+      </select></div>
+      <div class="form-group"><label>Tags (comma separated)</label><input name="tags" value="${(s.tags || []).join(', ')}"></div>
+      <button type="submit" class="btn-submit" style="width:100%;margin-top:8px">${s.id ? 'Update' : 'Save'} Session</button>
+    </form>
+  `;
+  openModal(s.id ? 'Edit Coaching Session' : 'New Coaching Session', html);
+}
+
+async function saveCoachingSession(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const body = {
+    title: f.get('title'),
+    session_date: f.get('session_date') || null,
+    summary: f.get('summary'),
+    key_decisions: f.get('key_decisions') ? f.get('key_decisions').split('\n').map(s => s.trim()).filter(Boolean) : [],
+    injury_notes: f.get('injury_notes') || null,
+    nutrition_notes: f.get('nutrition_notes') || null,
+    recovery_notes: f.get('recovery_notes') || null,
+    mental_notes: f.get('mental_notes') || null,
+    next_steps: f.get('next_steps') || null,
+    ai_source: f.get('ai_source'),
+    tags: f.get('tags') ? f.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
+  };
+  try {
+    if (id) await api(`/training/coaching/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    else await api('/training/coaching', { method: 'POST', body: JSON.stringify(body) });
+    closeModal();
+    loadTraining();
+  } catch (err) { alert(err.message); }
+}
+
+async function editCoachingSession(id) {
+  try {
+    const s = await api(`/training/coaching/${id}`);
+    closeModal();
+    setTimeout(() => showCoachingForm(s), 200);
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteCoachingSession(id) {
+  if (!confirm('Delete this coaching session?')) return;
+  try { await api(`/training/coaching/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
+  catch (e) { alert(e.message); }
+}
+
+// ── Injuries ──
+async function loadInjuries() {
+  const container = document.getElementById('training-content');
+  try {
+    const data = await api('/training/injuries?limit=50');
+    const statusColors = { active: '#ef4444', monitoring: '#f59e0b', recovering: '#3b82f6', resolved: '#22c55e', chronic: '#78716c' };
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="transcript-count">${data.total} injur${data.total !== 1 ? 'ies' : 'y'}</div>
+        <button class="btn-submit" onclick="showInjuryForm()" style="padding:8px 16px">+ Injury</button>
+      </div>
+      ${data.injuries.length ? data.injuries.map(inj => {
+        const color = statusColors[inj.status] || '#6366f1';
+        const sevColor = inj.severity >= 7 ? '#ef4444' : inj.severity >= 4 ? '#f59e0b' : '#22c55e';
+        return `
+        <div class="list-item" onclick="showInjuryDetail('${inj.id}')" style="border-left:3px solid ${color}">
+          <div class="transcript-card-header">
+            <div class="list-item-title">${esc(inj.title)}</div>
+            <span class="content-type-badge" style="background:${color}22;color:${color}">${inj.status}</span>
+            ${inj.severity ? `<span class="effort-badge" style="background:${sevColor}22;color:${sevColor}">${inj.severity}/10</span>` : ''}
+          </div>
+          <div class="list-item-meta">
+            <span>${esc(inj.body_area)}${inj.side && inj.side !== 'n/a' ? ' (' + inj.side + ')' : ''}</span>
+            <span>${esc(inj.injury_type || '')}</span>
+            ${inj.onset_date ? `<span>onset: ${new Date(inj.onset_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}
+          </div>
+          ${inj.symptoms ? `<div class="transcript-summary" style="-webkit-line-clamp:1">${esc(inj.symptoms)}</div>` : ''}
+        </div>`;
+      }).join('') : '<div class="empty-state">No injuries logged. Track injuries to help AI coaches prevent re-injury!</div>'}
+    `;
+  } catch (e) { container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function showInjuryDetail(id) {
+  try {
+    const inj = await api(`/training/injuries/${id}`);
+    const statusColors = { active: '#ef4444', monitoring: '#f59e0b', recovering: '#3b82f6', resolved: '#22c55e', chronic: '#78716c' };
+    const color = statusColors[inj.status] || '#6366f1';
+    const sevColor = inj.severity >= 7 ? '#ef4444' : inj.severity >= 4 ? '#f59e0b' : '#22c55e';
+
+    function section(label, value) {
+      if (!value) return '';
+      return `<div class="workout-detail-section"><div class="workout-detail-label">${label}</div><div class="workout-detail-value">${esc(value).replace(/\n/g, '<br>')}</div></div>`;
+    }
+
+    let html = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="content-type-badge" style="background:${color}22;color:${color}">${inj.status}</span>
+        <span style="font-size:0.8rem">${esc(inj.body_area)}${inj.side && inj.side !== 'n/a' ? ' (' + inj.side + ')' : ''}</span>
+        <span class="content-type-badge" style="background:var(--bg-input);color:var(--text-dim)">${inj.injury_type || ''}</span>
+        ${inj.severity ? `<span class="effort-badge" style="background:${sevColor}22;color:${sevColor};font-size:0.75rem;padding:3px 10px">Severity: ${inj.severity}/10</span>` : ''}
+      </div>
+      ${inj.onset_date ? `<div class="workout-detail-section"><div class="workout-detail-label">Dates</div><div class="workout-detail-value">Onset: ${new Date(inj.onset_date).toLocaleDateString()}${inj.resolved_date ? ' — Resolved: ' + new Date(inj.resolved_date).toLocaleDateString() : ''}</div></div>` : ''}
+      ${section('Mechanism', inj.mechanism)}
+      ${section('Symptoms', inj.symptoms)}
+      ${section('Aggravating Movements', inj.aggravating_movements)}
+      ${section('Relieving Factors', inj.relieving_factors)}
+      ${section('Treatment', inj.treatment)}
+      ${section('Workout Modifications', inj.modifications)}
+      ${section('Prevention Notes', inj.prevention_notes)}
+    `;
+
+    if (inj.tags?.length) {
+      html += `<div class="transcript-speakers" style="margin-top:8px">${inj.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>`;
+    }
+
+    html += `
+      <div style="display:flex;gap:8px;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn-action" onclick="editInjury('${inj.id}')">Edit</button>
+        ${inj.status !== 'resolved' ? `<button class="btn-action" style="background:#22c55e22;color:#22c55e" onclick="resolveInjury('${inj.id}')">Mark Resolved</button>` : ''}
+        <button class="btn-action btn-action-danger" onclick="deleteInjury('${inj.id}')">Delete</button>
+      </div>
+    `;
+
+    openModal(inj.title, html);
+  } catch (e) { alert(e.message); }
+}
+
+function showInjuryForm(existing) {
+  const inj = existing || {};
+  const html = `
+    <form onsubmit="saveInjury(event, '${inj.id || ''}')">
+      <div class="form-group"><label>Title *</label><input name="title" value="${esc(inj.title || '')}" required placeholder="e.g. Left shoulder impingement"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Body Area *</label><input name="body_area" value="${esc(inj.body_area || '')}" required placeholder="shoulder, knee, lower_back..."></div>
+        <div class="form-group"><label>Side</label><select name="side">
+          ${['n/a','left','right','bilateral','central'].map(s => `<option value="${s}" ${(inj.side || 'n/a') === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Type</label><select name="injury_type">
+          ${['strain','sprain','tendinitis','soreness','tightness','pain','fracture','contusion','overuse','other'].map(t => `<option value="${t}" ${(inj.injury_type || 'strain') === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label>Severity (1-10)</label><input type="number" name="severity" value="${inj.severity || ''}" min="1" max="10"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Status</label><select name="status">
+          ${['active','monitoring','recovering','resolved','chronic'].map(s => `<option value="${s}" ${(inj.status || 'active') === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label>Onset Date</label><input type="date" name="onset_date" value="${inj.onset_date ? inj.onset_date.slice(0,10) : ''}"></div>
+      </div>
+      <div class="form-group"><label>Mechanism (how it happened)</label><textarea name="mechanism" rows="2">${esc(inj.mechanism || '')}</textarea></div>
+      <div class="form-group"><label>Symptoms</label><textarea name="symptoms" rows="2">${esc(inj.symptoms || '')}</textarea></div>
+      <div class="form-group"><label>Aggravating Movements</label><textarea name="aggravating_movements" rows="2" placeholder="Movements that make it worse...">${esc(inj.aggravating_movements || '')}</textarea></div>
+      <div class="form-group"><label>Relieving Factors</label><textarea name="relieving_factors" rows="2" placeholder="What helps...">${esc(inj.relieving_factors || '')}</textarea></div>
+      <div class="form-group"><label>Treatment</label><textarea name="treatment" rows="2">${esc(inj.treatment || '')}</textarea></div>
+      <div class="form-group"><label>Workout Modifications</label><textarea name="modifications" rows="2" placeholder="How to modify workouts to avoid aggravation...">${esc(inj.modifications || '')}</textarea></div>
+      <div class="form-group"><label>Prevention Notes</label><textarea name="prevention_notes" rows="2">${esc(inj.prevention_notes || '')}</textarea></div>
+      <div class="form-group"><label>Tags (comma separated)</label><input name="tags" value="${(inj.tags || []).join(', ')}"></div>
+      <button type="submit" class="btn-submit" style="width:100%;margin-top:8px">${inj.id ? 'Update' : 'Log'} Injury</button>
+    </form>
+  `;
+  openModal(inj.id ? 'Edit Injury' : 'Log Injury', html);
+}
+
+async function saveInjury(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const body = {
+    title: f.get('title'),
+    body_area: f.get('body_area'),
+    side: f.get('side'),
+    injury_type: f.get('injury_type'),
+    severity: f.get('severity') ? parseInt(f.get('severity')) : null,
+    status: f.get('status'),
+    onset_date: f.get('onset_date') || null,
+    mechanism: f.get('mechanism') || null,
+    symptoms: f.get('symptoms') || null,
+    aggravating_movements: f.get('aggravating_movements') || null,
+    relieving_factors: f.get('relieving_factors') || null,
+    treatment: f.get('treatment') || null,
+    modifications: f.get('modifications') || null,
+    prevention_notes: f.get('prevention_notes') || null,
+    tags: f.get('tags') ? f.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
+  };
+  try {
+    if (id) await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    else await api('/training/injuries', { method: 'POST', body: JSON.stringify(body) });
+    closeModal();
+    loadTraining();
+  } catch (err) { alert(err.message); }
+}
+
+async function editInjury(id) {
+  try {
+    const inj = await api(`/training/injuries/${id}`);
+    closeModal();
+    setTimeout(() => showInjuryForm(inj), 200);
+  } catch (e) { alert(e.message); }
+}
+
+async function resolveInjury(id) {
+  try {
+    await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved', resolved_date: new Date().toISOString().slice(0,10) }) });
+    closeModal();
+    loadTraining();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteInjury(id) {
+  if (!confirm('Delete this injury record?')) return;
+  try { await api(`/training/injuries/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
+  catch (e) { alert(e.message); }
+}
+
+// ── Training Day View ──
+let trainingDayDate = new Date().toISOString().slice(0, 10);
+
+async function loadTrainingDay() {
+  const container = document.getElementById('training-content');
+  container.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <button class="btn-action" onclick="trainingDayDate=shiftDate(trainingDayDate,-1);loadTrainingDay()">&larr;</button>
+      <input type="date" value="${trainingDayDate}" onchange="trainingDayDate=this.value;loadTrainingDay()" style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);text-align:center">
+      <button class="btn-action" onclick="trainingDayDate=shiftDate(trainingDayDate,1);loadTrainingDay()">&rarr;</button>
+      <button class="btn-action" onclick="trainingDayDate=new Date().toISOString().slice(0,10);loadTrainingDay()">Today</button>
+    </div>
+    <div id="day-view-content"><div class="loading">Loading...</div></div>
+  `;
+
+  try {
+    const data = await api(`/training/day/${trainingDayDate}`);
+    const dv = document.getElementById('day-view-content');
+    const dateLabel = new Date(trainingDayDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+    let html = `<h3 style="color:var(--accent);margin-bottom:12px">${dateLabel}</h3>`;
+
+    // Active Plan
+    if (data.active_plan) {
+      html += `<div class="card" style="border-left:3px solid #22c55e;margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Active Plan</div>
+        <div style="font-weight:700">${esc(data.active_plan.title)}</div>
+        ${data.active_plan.phase ? `<div style="font-size:0.8rem;color:var(--accent)">Phase: ${esc(data.active_plan.phase)}</div>` : ''}
+        ${data.active_plan.goal ? `<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px">${esc(data.active_plan.goal)}</div>` : ''}
+      </div>`;
+    }
+
+    // Active Injuries
+    if (data.active_injuries?.length) {
+      html += `<div class="card" style="border-left:3px solid #ef4444;margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--red);margin-bottom:4px">Active Injuries (${data.active_injuries.length})</div>
+        ${data.active_injuries.map(inj => {
+          const sevColor = inj.severity >= 7 ? '#ef4444' : inj.severity >= 4 ? '#f59e0b' : '#22c55e';
+          return `<div style="margin-bottom:4px"><span style="color:${sevColor};font-weight:700">${inj.severity || '?'}/10</span> ${esc(inj.title)} <span style="color:var(--text-dim)">(${esc(inj.body_area)})</span>${inj.modifications ? `<div style="font-size:0.75rem;color:var(--text-dim);padding-left:28px">Mod: ${esc(inj.modifications)}</div>` : ''}</div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    // Nutrition Context
+    if (data.nutrition_context) {
+      const nc = data.nutrition_context;
+      html += `<div class="card" style="border-left:3px solid #06b6d4;margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Daily Context</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:0.8rem">
+          ${nc.day_type ? `<span><strong>Type:</strong> ${nc.day_type}</span>` : ''}
+          ${nc.energy_rating ? `<span><strong>Energy:</strong> ${nc.energy_rating}/10</span>` : ''}
+          ${nc.sleep_hours ? `<span><strong>Sleep:</strong> ${nc.sleep_hours}h</span>` : ''}
+          ${nc.sleep_quality ? `<span><strong>Sleep Q:</strong> ${nc.sleep_quality}/10</span>` : ''}
+          ${nc.recovery_rating ? `<span><strong>Recovery:</strong> ${nc.recovery_rating}/10</span>` : ''}
+          ${nc.hydration_liters ? `<span><strong>Water:</strong> ${nc.hydration_liters}L</span>` : ''}
+        </div>
+        ${nc.notes ? `<div style="font-size:0.8rem;color:var(--text-dim);margin-top:4px">${esc(nc.notes)}</div>` : ''}
+      </div>`;
+    }
+
+    // Workouts
+    if (data.workouts?.length) {
+      const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
+      html += `<div class="card" style="margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">Workouts (${data.workouts.length})</div>
+        ${data.workouts.map(w => {
+          const c = typeColors[w.workout_type] || '#6366f1';
+          return `<div class="list-item" onclick="showWorkoutDetail('${w.id}')" style="border-left:3px solid ${c};cursor:pointer;margin-bottom:6px">
+            <div class="transcript-card-header"><div class="list-item-title">${esc(w.title)}</div>
+              <span class="content-type-badge" style="background:${c}22;color:${c}">${w.workout_type}</span>
+              ${w.effort ? `<span class="effort-badge effort-${w.effort >= 8 ? 'high' : w.effort >= 5 ? 'med' : 'low'}">${w.effort}/10</span>` : ''}
+            </div>
+            ${w.focus ? `<div style="font-size:0.8rem;color:var(--text-dim)">${esc(w.focus)}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    // Meals
+    if (data.meals?.length) {
+      html += `<div class="card" style="margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">Meals (${data.meals.length})</div>
+        ${data.meals.map(m => `<div style="margin-bottom:4px;font-size:0.8rem">
+          ${m.meal_time ? `<span style="color:var(--text-dim)">${m.meal_time.slice(0,5)}</span> ` : ''}
+          <strong>${esc(m.title)}</strong>
+          ${m.calories ? ` · ${m.calories}cal` : ''}${m.protein_g ? ` · ${m.protein_g}g protein` : ''}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Body Metrics
+    if (data.body_metrics?.length) {
+      const bm = data.body_metrics[0];
+      html += `<div class="card" style="margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Body Metrics</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:0.8rem">
+          <span><strong>Weight:</strong> ${bm.weight_lb} lb</span>
+          ${bm.body_fat_pct ? `<span><strong>BF:</strong> ${bm.body_fat_pct}%</span>` : ''}
+          ${bm.muscle_mass_lb ? `<span><strong>Muscle:</strong> ${bm.muscle_mass_lb} lb</span>` : ''}
+        </div>
+      </div>`;
+    }
+
+    // Coaching Sessions
+    if (data.coaching_sessions?.length) {
+      html += `<div class="card" style="border-left:3px solid #a855f7;margin-bottom:12px;padding:10px 14px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">Coaching Sessions</div>
+        ${data.coaching_sessions.map(s => `<div class="list-item" onclick="showCoachingDetail('${s.id}')" style="cursor:pointer;margin-bottom:6px;padding:8px">
+          <div class="list-item-title" style="font-size:0.85rem">${esc(s.title)}</div>
+          ${s.summary ? `<div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px;-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden">${esc(s.summary)}</div>` : ''}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Empty state
+    if (!data.workouts?.length && !data.meals?.length && !data.nutrition_context && !data.body_metrics?.length && !data.coaching_sessions?.length) {
+      html += '<div class="empty-state">No data for this date.</div>';
+    }
+
+    dv.innerHTML = html;
+  } catch (e) {
+    document.getElementById('day-view-content').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
+  }
+}
+
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 // ─── Utilities ────────────────────────────────────────────────
 function esc(str) { if(!str)return''; const d=document.createElement('div'); d.textContent=String(str); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
