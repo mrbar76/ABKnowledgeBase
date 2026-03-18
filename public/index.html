@@ -65,6 +65,14 @@
       </div>
       <div class="settings-body">
         <div class="settings-row">
+          <div class="settings-row-label">Appearance</div>
+          <div style="display:flex;gap:3px;background:var(--bg-input);border-radius:8px;padding:3px">
+            <button id="theme-btn-light" onclick="setTheme('light')" style="padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-dim)">☀️ Light</button>
+            <button id="theme-btn-auto"  onclick="setTheme('auto')"  style="padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-dim)">Auto</button>
+            <button id="theme-btn-dark"  onclick="setTheme('dark')"  style="padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-dim)">🌙 Dark</button>
+          </div>
+        </div>
+        <div class="settings-row">
           <div class="settings-row-label">Backend</div>
           <div class="settings-row-value" id="sm-backend-val">checking...</div>
         </div>

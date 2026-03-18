@@ -4,6 +4,42 @@ const API = '/api';
 let currentTab = 'home';
 let cachedProjects = []; // cached for dropdowns
 
+// ─── Theme Management ─────────────────────────────────────────
+function getThemeMode() { return localStorage.getItem('ab_theme') || 'auto'; }
+
+function applyCurrentTheme() {
+  const mode = getThemeMode();
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const resolved = mode === 'auto' ? (systemDark ? 'dark' : 'light') : mode;
+  document.documentElement.setAttribute('data-theme', resolved);
+  updateThemeButtons(mode);
+}
+
+function setTheme(mode) {
+  if (mode === 'auto') localStorage.removeItem('ab_theme');
+  else localStorage.setItem('ab_theme', mode);
+  applyCurrentTheme();
+}
+
+function updateThemeButtons(mode) {
+  ['light', 'auto', 'dark'].forEach(t => {
+    const btn = document.getElementById('theme-btn-' + t);
+    if (!btn) return;
+    const active = t === mode;
+    btn.style.background = active ? 'var(--bg-card-solid)' : 'none';
+    btn.style.color = active ? 'var(--text)' : 'var(--text-dim)';
+    btn.style.boxShadow = active ? '0 1px 4px rgba(0,0,0,0.15)' : 'none';
+    btn.style.fontWeight = active ? '600' : '500';
+  });
+}
+
+// Apply theme immediately before any rendering
+applyCurrentTheme();
+// Re-apply if system preference changes and user is on Auto
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (getThemeMode() === 'auto') applyCurrentTheme();
+});
+
 // ─── Auth ─────────────────────────────────────────────────────
 function getStoredKey() { return sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key') || ''; }
 
@@ -245,6 +281,7 @@ function toggleSettingsMenu() {
   if (menu.classList.contains('open')) { closeSettingsMenu(); return; }
   menu.classList.add('open');
   loadSettingsMenuInfo();
+  updateThemeButtons(getThemeMode());
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
 
