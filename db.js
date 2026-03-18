@@ -99,13 +99,17 @@ async function initDB() {
       ai_agent TEXT,
       next_steps TEXT,
       output_log TEXT,
+      due_date DATE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
   await safeQuery('tasks indexes', `
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_tasks_ai_agent ON tasks(ai_agent)`);
+    CREATE INDEX IF NOT EXISTS idx_tasks_ai_agent ON tasks(ai_agent);
+    CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)`);
+  await safeQuery('tasks due_date column', `
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE`);
 
   // ===== TRANSCRIPTS =====
   await safeQuery('transcripts table', `

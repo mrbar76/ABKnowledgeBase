@@ -1055,6 +1055,44 @@ body {
 .status-completed { background: rgba(107,114,128,0.2); color: var(--text-dim); }
 .status-archived { background: rgba(107,114,128,0.15); color: var(--text-dim); }
 
+/* --- Calendar --- */
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+  background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.cal-header {
+  background: var(--bg-card); text-align: center; font-size: 0.7rem; font-weight: 700;
+  color: var(--text-dim); padding: 6px 2px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.cal-cell {
+  background: var(--bg); min-height: 70px; padding: 4px; cursor: pointer; position: relative;
+  transition: background 0.15s;
+}
+.cal-cell:hover { background: var(--bg-card); }
+.cal-empty { background: var(--bg-card); opacity: 0.4; cursor: default; }
+.cal-today { background: rgba(99,102,241,0.08); }
+.cal-today .cal-day { color: var(--accent); font-weight: 700; }
+.cal-day { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); margin-bottom: 2px; }
+.cal-task {
+  display: flex; align-items: center; gap: 3px; padding: 1px 3px; border-radius: 3px;
+  font-size: 0.65rem; cursor: pointer; overflow: hidden; white-space: nowrap;
+  margin-bottom: 1px; background: rgba(255,255,255,0.03);
+}
+.cal-task:hover { background: rgba(255,255,255,0.08); }
+.cal-task-title { overflow: hidden; text-overflow: ellipsis; }
+.priority-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.priority-dot.priority-urgent { background: var(--red); }
+.priority-dot.priority-high { background: var(--yellow); }
+.priority-dot.priority-medium { background: var(--accent); }
+.priority-dot.priority-low { background: var(--text-dim); }
+.cal-more { font-size: 0.6rem; color: var(--text-dim); padding: 1px 3px; }
+.cal-unscheduled { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+@media (max-width: 600px) {
+  .cal-cell { min-height: 50px; padding: 2px; }
+  .cal-task { font-size: 0.58rem; }
+  .cal-day { font-size: 0.65rem; }
+}
+
 /* --- Tag Pills --- */
 .tag-pill {
   display: inline-block;

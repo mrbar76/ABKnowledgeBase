@@ -145,8 +145,13 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'fitness'));
   }
 
+  // Map legacy tab names
+  if (tab === 'kanban') { tab = 'tasks'; currentTab = 'tasks'; tasksSubTab = 'kanban';
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'tasks'));
+  }
+
   if (tab === 'home') loadDashboard();
-  else if (tab === 'kanban') loadKanban();
+  else if (tab === 'tasks') loadTasks();
   else if (tab === 'brain') loadBrain();
   else if (tab === 'transcripts') { brainSubTab = 'transcripts'; loadBrain(); }
   else if (tab === 'projects') loadProjects();
@@ -218,8 +223,8 @@ async function loadDashboardStats() {
     const knowledgeCards = [
       { label: 'Knowledge', value: data.knowledge.total, color: '#818cf8', icon: '\u{1F9E0}', tab: 'brain' },
       { label: 'Transcripts', value: data.transcripts.total, color: '#f59e0b', icon: '\u{1F399}', tab: 'transcripts' },
-      { label: 'Tasks', value: totalTasks, color: '#3b82f6', icon: '\u2705', tab: 'kanban' },
-      { label: 'In Progress', value: inProgress, color: '#f97316', icon: '\u{1F525}', tab: 'kanban' },
+      { label: 'Tasks', value: totalTasks, color: '#3b82f6', icon: '\u2705', tab: 'tasks' },
+      { label: 'In Progress', value: inProgress, color: '#f97316', icon: '\u{1F525}', tab: 'tasks' },
       { label: 'Projects', value: data.projects.active, color: '#22c55e', icon: '\u{1F4C1}', tab: 'projects' },
     ];
 
@@ -693,19 +698,91 @@ function copyDebugRaw() {
   }
 }
 
-// ─── Kanban ───────────────────────────────────────────────────
-async function loadKanban() {
+// ─── Tasks (List / Kanban / Calendar) ────────────────────────
+let tasksSubTab = 'list';
+function tasksTabsHtml() {
+  return `<div class="brain-tabs">
+    <button class="brain-tab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
+    <button class="brain-tab${tasksSubTab==='kanban'?' active':''}" onclick="tasksSubTab='kanban';loadTasks()">Kanban</button>
+    <button class="brain-tab${tasksSubTab==='calendar'?' active':''}" onclick="tasksSubTab='calendar';loadTasks()">Calendar</button>
+  </div>`;
+}
+
+async function loadTasks() {
   const main = document.getElementById('main-content');
-  main.innerHTML = skeletonCards(2);
+  main.innerHTML = tasksTabsHtml() + '<div class="loading">Loading...</div>';
+  if (tasksSubTab === 'kanban') return loadTasksKanban();
+  if (tasksSubTab === 'calendar') return loadTasksCalendar();
+  return loadTasksList();
+}
+
+// ── List View ──
+let taskListFilter = '';
+async function loadTasksList() {
+  const main = document.getElementById('main-content');
+  try {
+    const params = new URLSearchParams({ limit: '200' });
+    if (taskListFilter) params.set('status', taskListFilter);
+    const data = await api('/tasks?' + params.toString());
+
+    const statusLabels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', done: 'Done' };
+    const statusColors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
+
+    main.innerHTML = tasksTabsHtml() + `
+      <div class="flex-between mb-md">
+        <div class="filter-row">
+          <button class="filter-btn ${!taskListFilter ? 'active' : ''}" onclick="taskListFilter='';loadTasksList()">All</button>
+          ${Object.entries(statusLabels).map(([k, v]) =>
+            `<button class="filter-btn ${taskListFilter === k ? 'active' : ''}" onclick="taskListFilter='${k}';loadTasksList()">${v}</button>`
+          ).join('')}
+        </div>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+      </div>
+      <div id="task-list">
+        ${data.tasks.length ? data.tasks.map(t => {
+          const dueBadge = t.due_date ? (() => {
+            const d = new Date(t.due_date); const now = new Date(); now.setHours(0,0,0,0);
+            const isOverdue = d < now && t.status !== 'done';
+            const isToday = d.toDateString() === now.toDateString();
+            const label = isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : isToday ? 'var(--yellow)' : 'var(--text-dim)'}">${label}</span>`;
+          })() : '';
+          return `
+          <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
+            <div style="flex:1;min-width:0">
+              <div class="list-item-title" style="${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</div>
+              <div class="list-item-meta">
+                <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                ${t.project_name ? `<span>${esc(t.project_name)}</span>` : ''}
+                ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
+                <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
+                ${dueBadge}
+              </div>
+            </div>
+          </div>`;
+        }).join('') : '<div class="empty-state">No tasks yet</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function quickToggleTask(id, currentStatus) {
+  const newStatus = currentStatus === 'done' ? 'todo' : 'done';
+  try { await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }); loadTasks(); } catch {}
+}
+
+// ── Kanban View ──
+async function loadTasksKanban() {
+  const main = document.getElementById('main-content');
   try {
     const data = await api('/tasks/kanban');
     const cols = ['todo', 'in_progress', 'review', 'done'];
     const labels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', done: 'Done' };
     const colors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
 
-    main.innerHTML = `
-      <div class="flex-between mb-md">
-        <h2 class="section-title">Kanban Board</h2>
+    main.innerHTML = tasksTabsHtml() + `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
         <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
       </div>
       <div class="kanban-board">${cols.map(col => `
@@ -725,15 +802,118 @@ async function loadKanban() {
                 <div class="kanban-card-meta">
                   <span class="priority-badge priority-${t.priority}">${t.priority}</span>
                   ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
+                  ${t.due_date ? `<span style="font-size:0.65rem;color:var(--text-dim)">${new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}
                 </div>
               </div>`).join('') || '<div class="empty-state" style="padding:12px">Empty</div>'}
           </div>
         </div>`).join('')}
       </div>
     `;
-  } catch (e) { main.innerHTML = `<div class="empty-state">Failed to load kanban: ${esc(e.message)}</div>`; }
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
+// ── Calendar View ──
+let calendarDate = new Date();
+async function loadTasksCalendar() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api('/tasks?limit=500');
+    const tasks = data.tasks || [];
+
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date(); today.setHours(0,0,0,0);
+    const monthLabel = calendarDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    // Index tasks by due date
+    const tasksByDate = {};
+    for (const t of tasks) {
+      if (t.due_date) {
+        const d = t.due_date.slice(0, 10);
+        (tasksByDate[d] = tasksByDate[d] || []).push(t);
+      }
+    }
+
+    // Also collect tasks without due dates
+    const unscheduled = tasks.filter(t => !t.due_date && t.status !== 'done');
+
+    // Build calendar grid
+    let cells = '';
+    // Empty leading cells
+    for (let i = 0; i < firstDay; i++) cells += '<div class="cal-cell cal-empty"></div>';
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const cellDate = new Date(year, month, day);
+      const isToday = cellDate.toDateString() === today.toDateString();
+      const dayTasks = tasksByDate[dateStr] || [];
+      const dots = dayTasks.slice(0, 4).map(t =>
+        `<div class="cal-task" onclick="event.stopPropagation();showTaskDetail('${t.id}')" title="${esc(t.title)}">
+          <span class="priority-dot priority-${t.priority}"></span>
+          <span class="cal-task-title">${esc(t.title)}</span>
+        </div>`
+      ).join('');
+      const more = dayTasks.length > 4 ? `<div class="cal-more">+${dayTasks.length - 4} more</div>` : '';
+      cells += `
+        <div class="cal-cell${isToday ? ' cal-today' : ''}" onclick="setTaskDueByCalendar('${dateStr}')">
+          <div class="cal-day">${day}</div>
+          ${dots}${more}
+        </div>`;
+    }
+
+    main.innerHTML = tasksTabsHtml() + `
+      <div class="flex-between mb-md">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn-action btn-compact-sm" onclick="calendarDate.setMonth(calendarDate.getMonth()-1);loadTasksCalendar()">&lt;</button>
+          <span style="font-weight:700;font-size:0.9rem;min-width:140px;text-align:center">${monthLabel}</span>
+          <button class="btn-action btn-compact-sm" onclick="calendarDate.setMonth(calendarDate.getMonth()+1);loadTasksCalendar()">&gt;</button>
+          <button class="btn-action btn-compact-sm" onclick="calendarDate=new Date();loadTasksCalendar()" style="font-size:0.7rem">Today</button>
+        </div>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-header">Sun</div><div class="cal-header">Mon</div><div class="cal-header">Tue</div>
+        <div class="cal-header">Wed</div><div class="cal-header">Thu</div><div class="cal-header">Fri</div><div class="cal-header">Sat</div>
+        ${cells}
+      </div>
+      ${unscheduled.length ? `
+        <div style="margin-top:16px">
+          <div style="font-size:0.8rem;font-weight:700;color:var(--text-dim);margin-bottom:6px">Unscheduled (${unscheduled.length})</div>
+          <div class="cal-unscheduled">
+            ${unscheduled.slice(0, 10).map(t => `
+              <div class="list-item list-item-compact" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:8px">
+                <span class="priority-badge priority-${t.priority}" style="font-size:0.65rem">${t.priority[0].toUpperCase()}</span>
+                <span style="flex:1;font-size:0.8rem">${esc(t.title)}</span>
+              </div>`).join('')}
+            ${unscheduled.length > 10 ? `<div style="font-size:0.75rem;color:var(--text-dim);padding:4px">+${unscheduled.length - 10} more</div>` : ''}
+          </div>
+        </div>` : ''}
+    `;
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+function setTaskDueByCalendar(dateStr) {
+  // Quick-create a task on this date
+  ensureProjectsCache().then(() => {
+    openModal('New Task', `
+      <form onsubmit="createTask(event)">
+        <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
+        <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="2"></textarea></div>
+        <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due" value="${dateStr}"></div>
+        <div class="form-group"><label>Priority</label>
+          <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+        </div>
+        <div class="form-group"><label>Project</label>
+          <select id="new-task-project">${projectDropdownHtml()}</select>
+        </div>
+        <button type="submit" class="btn-submit">Create Task</button>
+      </form>
+    `);
+  });
+}
+
+// ── Shared Task Detail / Edit ──
 async function showTaskDetail(id) {
   try {
     const task = await api(`/tasks/${id}`);
@@ -748,6 +928,9 @@ async function showTaskDetail(id) {
         <select onchange="updateTask('${id}', 'priority', this.value)">
           ${['low','medium','high','urgent'].map(p => `<option value="${p}" ${task.priority===p?'selected':''}>${p}</option>`).join('')}
         </select>
+      </div>
+      <div class="form-group"><label>Due Date</label>
+        <input type="date" value="${task.due_date ? task.due_date.slice(0,10) : ''}" onchange="updateTask('${id}', 'due_date', this.value||null)">
       </div>
       <div class="form-group"><label>Project</label>
         <select onchange="updateTask('${id}', 'project_id', this.value||null)">
@@ -764,7 +947,7 @@ async function showTaskDetail(id) {
 }
 
 async function updateTask(id, field, value) {
-  try { await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) }); loadKanban(); } catch {}
+  try { await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) }); loadTasks(); } catch {}
 }
 
 // ─── Kanban Drag & Drop ──────────────────────────────────────
@@ -868,7 +1051,7 @@ function kanbanTouchEnd(e) {
 
 async function deleteTask(id) {
   if (!confirm('Delete this task?')) return;
-  try { await api(`/tasks/${id}`, { method: 'DELETE' }); closeModal(); loadKanban(); } catch {}
+  try { await api(`/tasks/${id}`, { method: 'DELETE' }); closeModal(); loadTasks(); } catch {}
 }
 
 async function ensureProjectsCache() {
@@ -889,6 +1072,7 @@ function showNewTaskModal(defaultProjectId) {
       <form onsubmit="createTask(event)">
         <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
         <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="3"></textarea></div>
+        <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due"></div>
         <div class="form-group"><label>Priority</label>
           <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
         </div>
@@ -904,14 +1088,16 @@ function showNewTaskModal(defaultProjectId) {
 async function createTask(e) {
   e.preventDefault();
   try {
+    const dueEl = document.getElementById('new-task-due');
     await api('/tasks', { method: 'POST', body: JSON.stringify({
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
       priority: document.getElementById('new-task-priority').value,
       project_id: document.getElementById('new-task-project').value || null,
+      due_date: dueEl ? dueEl.value || null : null,
     }) });
     closeModal();
-    if (currentTab === 'kanban') loadKanban();
+    if (currentTab === 'tasks') loadTasks();
     else if (currentTab === 'projects') loadProjects();
   } catch (err) { showToast(err.message); }
 }

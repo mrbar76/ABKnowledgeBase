@@ -64,14 +64,14 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { project_id, title, description, status, priority, ai_agent, next_steps } = req.body;
+    const { project_id, title, description, status, priority, ai_agent, next_steps, due_date } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
 
     const result = await query(
-      `INSERT INTO tasks (project_id, title, description, status, priority, ai_agent, next_steps)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      `INSERT INTO tasks (project_id, title, description, status, priority, ai_agent, next_steps, due_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [project_id || null, title, description || null, status || 'todo',
-       priority || 'medium', ai_agent || null, next_steps || null]
+       priority || 'medium', ai_agent || null, next_steps || null, due_date || null]
     );
 
     await logActivity('create', 'task', result.rows[0].id, ai_agent, `Created task: ${title}`);
@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { project_id, title, description, status, priority, ai_agent, next_steps, output_log } = req.body;
+    const { project_id, title, description, status, priority, ai_agent, next_steps, output_log, due_date } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
     let i = 1;
@@ -96,6 +96,7 @@ router.put('/:id', async (req, res) => {
     if (next_steps !== undefined) { sets.push(`next_steps = $${i++}`); params.push(next_steps); }
     if (output_log !== undefined) { sets.push(`output_log = $${i++}`); params.push(output_log); }
     if (project_id !== undefined) { sets.push(`project_id = $${i++}`); params.push(project_id || null); }
+    if (due_date !== undefined) { sets.push(`due_date = $${i++}`); params.push(due_date || null); }
 
     params.push(req.params.id);
     const result = await query(
