@@ -1421,7 +1421,7 @@ function loadBrainGuide() {
         </div>
         <div class="guide-step">
           <span class="guide-step-num">2</span>
-          <div><strong>Import ChatGPT</strong> &mdash; Export all from ChatGPT (Settings &rarr; Export data), then import the file here. Duplicates are auto-skipped.</div>
+          <div><strong>Catch up on AI chats</strong> &mdash; Review any useful ChatGPT/Claude conversations, ask for an outline, paste into Custom GPT. Or bulk import from Settings.</div>
         </div>
         <div class="guide-step">
           <span class="guide-step-num">3</span>
@@ -1443,14 +1443,14 @@ function loadBrainGuide() {
           <span>Just use it. Tasks, knowledge, facts push automatically.</span>
         </div>
         <div class="guide-row">
-          <span><strong>Regular ChatGPT</strong></span>
-          <span style="color:var(--yellow)">Batch &mdash; full export</span>
-          <span>ChatGPT &rarr; Settings &rarr; Export data &rarr; Import the file here. It exports everything, but duplicates are skipped automatically. Safe to re-import anytime.</span>
+          <span><strong>ChatGPT / Claude</strong></span>
+          <span style="color:var(--green)">Curate &amp; push</span>
+          <span>Had a useful conversation? Ask it: "Give me a detailed outline of this entire conversation." Copy the outline &rarr; paste into your Custom GPT to post. Only the valuable stuff gets saved.</span>
         </div>
         <div class="guide-row">
-          <span><strong>Claude</strong></span>
-          <span style="color:var(--yellow)">Batch &mdash; manual save</span>
-          <span>Save important outputs via intake or copy key info manually.</span>
+          <span><strong>ChatGPT bulk</strong></span>
+          <span style="color:var(--text-dim)">Optional backup</span>
+          <span>Settings &rarr; Export data &rarr; Import here. Archives all conversations for search. Duplicates auto-skipped.</span>
         </div>
         <div class="guide-row">
           <span><strong>Bee Wearable</strong></span>
@@ -1458,7 +1458,7 @@ function loadBrainGuide() {
           <span>Wear it. Conversations, tasks, and facts sync on their own.</span>
         </div>
       </div>
-      <div class="guide-callout">You don't need to capture everything in real-time. Batch importing monthly is perfectly fine.</div>
+      <div class="guide-callout">Best habit: when a conversation is useful, ask your AI to outline it, then paste into Custom GPT. Takes 30 seconds. The intake system classifies it into knowledge, tasks, or facts automatically.</div>
     </div>
 
     <div class="guide-section">
