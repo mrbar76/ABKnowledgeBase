@@ -48,6 +48,48 @@ async function api(path, opts = {}) {
   return body;
 }
 
+// ─── Toast Notification System ────────────────────────────────
+function showToast(message, type = 'error', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const icons = { error: '\u26A0\uFE0F', success: '\u2705', warning: '\u26A0\uFE0F', info: '\u2139\uFE0F' };
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span class="toast-message">${esc(message)}</span><button class="toast-close" onclick="this.parentElement.classList.add('toast-exit');setTimeout(()=>this.parentElement.remove(),200)">\u00D7</button>`;
+  container.appendChild(toast);
+  setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 200); }, duration);
+}
+
+// ─── Animated Counter ─────────────────────────────────────────
+function animateValue(el, end, duration = 600) {
+  const start = parseInt(el.textContent) || 0;
+  if (start === end) return;
+  const range = end - start;
+  const startTime = performance.now();
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+    el.textContent = Math.round(start + range * eased);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─── Pull-to-Refresh ─────────────────────────────────────────
+let _ptrStartY = 0, _ptrActive = false;
+document.addEventListener('touchstart', e => { if (window.scrollY === 0) _ptrStartY = e.touches[0].clientY; else _ptrStartY = 0; }, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (_ptrStartY && e.touches[0].clientY - _ptrStartY > 80 && !_ptrActive) {
+    _ptrActive = true;
+    const ind = document.getElementById('ptr-indicator');
+    if (ind) ind.classList.add('active');
+    switchTab(currentTab);
+    setTimeout(() => { if (ind) ind.classList.remove('active'); _ptrActive = false; }, 1200);
+  }
+}, { passive: true });
+document.addEventListener('touchend', () => { _ptrStartY = 0; }, { passive: true });
+
 // ─── Tab Navigation ───────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
@@ -125,15 +167,15 @@ async function loadDashboardStats() {
     const activeInjuries = data.training?.injuries?.active || 0;
 
     container.innerHTML = `
-      <div class="dash-section fade-in" onclick="switchTab('fitness')" style="cursor:pointer">
+      <div class="dash-section fade-in stagger-1" onclick="switchTab('fitness')" style="cursor:pointer">
         <div class="dash-section-header">
           <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
           Fitness
         </div>
         <div class="stats-grid">
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='workouts';switchTab('fitness')"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='nutrition';switchTab('fitness')"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='body';switchTab('fitness')"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='workouts';switchTab('fitness')"><div class="stat-value" data-target="${data.workouts?.total || 0}">0</div><div class="stat-label">Workouts</div></div>
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='nutrition';switchTab('fitness')"><div class="stat-value" data-target="${data.meals?.total || 0}">0</div><div class="stat-label">Meals</div></div>
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='body';switchTab('fitness')"><div class="stat-value" data-target="${data.body_metrics?.total || 0}">0</div><div class="stat-label">Body Metrics</div></div>
           ${data.training ? `
           <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
           <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
@@ -142,25 +184,29 @@ async function loadDashboardStats() {
         </div>
       </div>
 
-      <div class="dash-section fade-in">
+      <div class="dash-section fade-in stagger-2">
         <div class="dash-section-header">
           <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
           Knowledge &amp; Tasks
         </div>
         <div class="stats-grid">
-          <div class="stat-card clickable" onclick="switchTab('brain')"><div class="stat-value">${data.knowledge.total}</div><div class="stat-label">Knowledge</div></div>
-          <div class="stat-card clickable" onclick="switchTab('transcripts')"><div class="stat-value">${data.transcripts.total}</div><div class="stat-label">Transcripts</div></div>
-          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
-          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
-          <div class="stat-card clickable" onclick="switchTab('projects')"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
+          <div class="stat-card clickable" onclick="switchTab('brain')"><div class="stat-value" data-target="${data.knowledge.total}">0</div><div class="stat-label">Knowledge</div></div>
+          <div class="stat-card clickable" onclick="switchTab('transcripts')"><div class="stat-value" data-target="${data.transcripts.total}">0</div><div class="stat-label">Transcripts</div></div>
+          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value" data-target="${totalTasks}">0</div><div class="stat-label">Tasks</div></div>
+          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value" data-target="${inProgress}">0</div><div class="stat-label">In Progress</div></div>
+          <div class="stat-card clickable" onclick="switchTab('projects')"><div class="stat-value" data-target="${data.projects.active}">0</div><div class="stat-label">Projects</div></div>
         </div>
       </div>
 
-      <div class="card fade-in" id="activity-card" style="display:none">
+      <div class="card fade-in stagger-3" id="activity-card" style="display:none">
         <h2>Recent Activity</h2>
         <div id="recent-activity"></div>
       </div>
     `;
+    // Animate all stat values
+    document.querySelectorAll('#dash-content .stat-value[data-target]').forEach(el => {
+      animateValue(el, parseInt(el.dataset.target) || 0);
+    });
     if (data.recent_activity?.length) {
       const ac = document.getElementById('activity-card');
       if (ac) { ac.style.display = ''; document.getElementById('recent-activity').innerHTML = data.recent_activity.map(renderActivityItem).join(''); }
@@ -638,7 +684,7 @@ async function createTask(e) {
     closeModal();
     if (currentTab === 'kanban') loadKanban();
     else if (currentTab === 'projects') loadProjects();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 // ─── Brain (Knowledge + Facts) ────────────────────────────────
@@ -743,7 +789,7 @@ async function confirmFact(id) {
   try {
     await api(`/facts/${id}`, { method: 'PUT', body: JSON.stringify({ confirmed: true }) });
     closeModal(); loadBrain();
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 async function deleteFact(id) {
@@ -797,7 +843,7 @@ async function createKnowledge(e) {
       tags: document.getElementById('new-k-tags').value.split(',').map(t => t.trim()).filter(Boolean),
     }) });
     closeModal(); loadBrain();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 // ─── Transcripts ──────────────────────────────────────────────
@@ -1017,11 +1063,11 @@ async function identifySpeakers(id) {
       if (data.relationship_notes) notes.push(data.relationship_notes);
       if (notes.length) msg += '\n\n' + notes.join('\n');
       if (btn) { btn.textContent = 'No match'; btn.style.background = 'var(--yellow)'; btn.style.color = '#000'; }
-      alert(msg);
+      showToast(msg, 'success');
     }
   } catch (e) {
     if (btn) { btn.textContent = 'Error'; btn.style.background = 'var(--red)'; }
-    alert('Speaker identification failed: ' + e.message);
+    showToast('Speaker identification failed: ' + e.message);
   }
 }
 
@@ -1043,11 +1089,11 @@ async function reIdentifyWithHints(id) {
       setTimeout(() => showTranscriptDetail(id), 800);
     } else {
       if (btn) { btn.textContent = 'No match'; btn.style.background = 'var(--yellow)'; btn.style.color = '#000'; }
-      alert('Could not match speakers to those names. You can manually rename speakers by tapping their name tags.');
+      showToast('Could not match speakers to those names. You can manually rename speakers by tapping their name tags.', 'warning');
     }
   } catch (e) {
     if (btn) { btn.textContent = 'Error'; btn.style.background = 'var(--red)'; }
-    alert('Re-identification failed: ' + e.message);
+    showToast('Re-identification failed: ' + e.message);
   }
 }
 
@@ -1060,7 +1106,7 @@ async function renameSpeaker(id, oldName) {
     });
     showTranscriptDetail(id); // Refresh
   } catch (e) {
-    alert('Rename failed: ' + e.message);
+    showToast('Rename failed: ' + e.message);
   }
 }
 
@@ -1163,7 +1209,7 @@ async function createProject(e) {
       description: document.getElementById('new-proj-desc').value,
     }) });
     closeModal(); loadProjects();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 async function deleteProject(id) {
@@ -1556,7 +1602,7 @@ async function saveWorkout(editId) {
     closeModal();
     loadWorkouts(workoutFilters._q || '');
   } catch (e) {
-    alert('Error saving workout: ' + e.message);
+    showToast('Error saving workout: ' + e.message);
   }
 }
 
@@ -1566,7 +1612,7 @@ async function deleteWorkout(id) {
     await api(`/workouts/${id}`, { method: 'DELETE' });
     closeModal();
     loadWorkouts(workoutFilters._q || '');
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 // ─── Nutrition (Meals + Daily Context + Summary) ──────────────
@@ -1701,7 +1747,7 @@ async function showMealDetail(id) {
       </div>
     `;
     openModal(m.title, html);
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 async function showMealForm(editId) {
@@ -1773,7 +1819,7 @@ async function saveMeal(editId) {
     notes: document.getElementById('ml-notes').value || null,
     tags: document.getElementById('ml-tags').value.split(',').map(t => t.trim()).filter(Boolean),
   };
-  if (!body.title) { alert('Title is required'); return; }
+  if (!body.title) { showToast('Title is required', 'warning'); return; }
   try {
     if (editId) {
       await api(`/meals/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -1782,7 +1828,7 @@ async function saveMeal(editId) {
     }
     closeModal();
     loadNutrition(nutritionDate);
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 async function deleteMeal(id) {
@@ -1791,7 +1837,7 @@ async function deleteMeal(id) {
     await api(`/meals/${id}`, { method: 'DELETE' });
     closeModal();
     loadNutrition(nutritionDate);
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 async function showDailyContextForm(date, editId) {
@@ -1857,7 +1903,7 @@ async function saveDailyContext(date, editId) {
     }
     closeModal();
     loadNutrition(date);
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 // ─── Bulk Meal Import ─────────────────────────────────────────
@@ -2074,7 +2120,7 @@ async function showBodyMetricDetail(id) {
       </div>
     `;
     openModal(`${m.weight_lb} lb — ${dateLabel}`, html);
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 async function showBodyMetricForm(editId) {
@@ -2163,8 +2209,8 @@ async function saveBodyMetric(editId) {
     tags: document.getElementById('bm-tags').value.split(',').map(t => t.trim()).filter(Boolean),
   };
 
-  if (!body.weight_lb) { alert('Weight is required'); return; }
-  if (!body.measurement_date) { alert('Date is required'); return; }
+  if (!body.weight_lb) { showToast('Weight is required', 'warning'); return; }
+  if (!body.measurement_date) { showToast('Date is required', 'warning'); return; }
 
   try {
     if (editId) {
@@ -2175,7 +2221,7 @@ async function saveBodyMetric(editId) {
     closeModal();
     loadBodyMetrics(bodyMetricFilters._q || '');
   } catch (e) {
-    alert('Error saving: ' + e.message);
+    showToast('Error saving: ' + e.message);
   }
 }
 
@@ -2185,7 +2231,7 @@ async function deleteBodyMetric(id) {
     await api(`/body-metrics/${id}`, { method: 'DELETE' });
     closeModal();
     loadBodyMetrics(bodyMetricFilters._q || '');
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 // ─── Bulk Body Metrics Import ─────────────────────────────────
@@ -2576,7 +2622,7 @@ async function showTrainingPlanDetail(id) {
     `;
 
     openModal(p.title, html);
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 function showTrainingPlanForm(existing) {
@@ -2635,7 +2681,7 @@ async function saveTrainingPlan(e, id) {
     else await api('/training/plans', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
     loadTraining();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 async function editTrainingPlan(id) {
@@ -2643,13 +2689,13 @@ async function editTrainingPlan(id) {
     const p = await api(`/training/plans/${id}`);
     closeModal();
     setTimeout(() => showTrainingPlanForm(p), 200);
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 async function deleteTrainingPlan(id) {
   if (!confirm('Delete this training plan?')) return;
   try { await api(`/training/plans/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
-  catch (e) { alert(e.message); }
+  catch (e) { showToast(e.message); }
 }
 
 // ── Coaching Sessions ──
@@ -2729,7 +2775,7 @@ async function showCoachingDetail(id) {
     `;
 
     openModal(s.title, html);
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 function showCoachingForm(existing) {
@@ -2776,7 +2822,7 @@ async function saveCoachingSession(e, id) {
     else await api('/training/coaching', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
     loadTraining();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 async function editCoachingSession(id) {
@@ -2784,13 +2830,13 @@ async function editCoachingSession(id) {
     const s = await api(`/training/coaching/${id}`);
     closeModal();
     setTimeout(() => showCoachingForm(s), 200);
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 async function deleteCoachingSession(id) {
   if (!confirm('Delete this coaching session?')) return;
   try { await api(`/training/coaching/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
-  catch (e) { alert(e.message); }
+  catch (e) { showToast(e.message); }
 }
 
 // ── Injuries ──
@@ -2868,7 +2914,7 @@ async function showInjuryDetail(id) {
     `;
 
     openModal(inj.title, html);
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 function showInjuryForm(existing) {
@@ -2933,7 +2979,7 @@ async function saveInjury(e, id) {
     else await api('/training/injuries', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
     loadTraining();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 async function editInjury(id) {
@@ -2941,7 +2987,7 @@ async function editInjury(id) {
     const inj = await api(`/training/injuries/${id}`);
     closeModal();
     setTimeout(() => showInjuryForm(inj), 200);
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 async function resolveInjury(id) {
@@ -2949,13 +2995,13 @@ async function resolveInjury(id) {
     await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved', resolved_date: new Date().toISOString().slice(0,10) }) });
     closeModal();
     loadTraining();
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message); }
 }
 
 async function deleteInjury(id) {
   if (!confirm('Delete this injury record?')) return;
   try { await api(`/training/injuries/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
-  catch (e) { alert(e.message); }
+  catch (e) { showToast(e.message); }
 }
 
 // ── Training Day View ──
