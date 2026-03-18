@@ -11,9 +11,9 @@ router.get('/', async (req, res) => {
     const where = [];
     let i = 1;
 
-    if (project_id) { where.push(`project_id = $${i++}`); params.push(project_id); }
-    if (status) { where.push(`status = $${i++}`); params.push(status); }
-    if (ai_agent) { where.push(`ai_agent = $${i++}`); params.push(ai_agent); }
+    if (project_id) { where.push(`t.project_id = $${i++}`); params.push(project_id); }
+    if (status) { where.push(`t.status = $${i++}`); params.push(status); }
+    if (ai_agent) { where.push(`t.ai_agent = $${i++}`); params.push(ai_agent); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(Number(limit));
