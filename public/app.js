@@ -1227,6 +1227,7 @@ function brainTabsHtml() {
     <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
     <button class="brain-tab${brainSubTab==='conversations'?' active':''}" onclick="brainSubTab='conversations';loadBrain()">Conversations</button>
     <button class="brain-tab${brainSubTab==='transcripts'?' active':''}" onclick="brainSubTab='transcripts';loadBrain()">Transcripts</button>
+    <button class="brain-tab${brainSubTab==='guide'?' active':''}" onclick="brainSubTab='guide';loadBrain()">Guide</button>
   </div>`;
 }
 
@@ -1237,6 +1238,7 @@ async function loadBrain(searchQuery) {
   if (brainSubTab === 'facts') return loadFacts(searchQuery);
   if (brainSubTab === 'conversations') return loadConversations(searchQuery);
   if (brainSubTab === 'transcripts') return loadTranscripts(searchQuery);
+  if (brainSubTab === 'guide') return loadBrainGuide();
   try {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
     const data = await api('/knowledge' + qs);
@@ -1350,6 +1352,131 @@ async function loadBrainAll(searchQuery) {
       ${sections.length ? sections.join('') : `<div class="empty-state">${searchQuery ? 'No results found' : 'Your brain is empty. Start adding knowledge, facts, or import conversations.'}</div>`}
     `;
   } catch (e) { main.innerHTML = brainTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+// ─── Guide ────────────────────────────────────────────────────
+function loadBrainGuide() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = brainTabsHtml() + `<div class="guide">
+
+    <div class="guide-section guide-highlight">
+      <div class="guide-section-title">Your System in 10 Seconds</div>
+      <div class="guide-flow">
+        <div class="guide-flow-item">
+          <div class="guide-flow-icon">ChatGPT / Claude</div>
+          <div class="guide-flow-label">Talk to your AI</div>
+        </div>
+        <div class="guide-flow-arrow">&rarr;</div>
+        <div class="guide-flow-item">
+          <div class="guide-flow-icon">Bee</div>
+          <div class="guide-flow-label">Captures calls & meetings</div>
+        </div>
+        <div class="guide-flow-arrow">&rarr;</div>
+        <div class="guide-flow-item">
+          <div class="guide-flow-icon" style="color:var(--accent)">AB Brain</div>
+          <div class="guide-flow-label">Everything lands here</div>
+        </div>
+      </div>
+      <p style="text-align:center;color:var(--text-dim);margin:0">Use your AI naturally. Wear your Bee. This system catches what you miss.</p>
+    </div>
+
+    <div class="guide-section">
+      <div class="guide-section-title">The 2-Minute Re-Entry</div>
+      <p class="guide-subtitle">Been away for days or weeks? Here's all you need to do:</p>
+      <div class="guide-steps">
+        <div class="guide-step">
+          <span class="guide-step-num">1</span>
+          <div><strong>Sync Bee</strong> &mdash; Tap the logo &rarr; Sync Updates. One tap, done.</div>
+        </div>
+        <div class="guide-step">
+          <span class="guide-step-num">2</span>
+          <div><strong>Import ChatGPT</strong> &mdash; If you used it, export from ChatGPT &rarr; Settings &rarr; Choose file.</div>
+        </div>
+        <div class="guide-step">
+          <span class="guide-step-num">3</span>
+          <div><strong>Glance at Home</strong> &mdash; See what's there. No obligation to act on anything.</div>
+        </div>
+      </div>
+      <div class="guide-callout">Nothing broke while you were gone. The system waited for you.</div>
+    </div>
+
+    <div class="guide-section">
+      <div class="guide-section-title">How Your AI Connects</div>
+      <div class="guide-table">
+        <div class="guide-row guide-row-header">
+          <span>Tool</span><span>Connection</span><span>What to do</span>
+        </div>
+        <div class="guide-row">
+          <span><strong>Custom GPT</strong></span>
+          <span style="color:var(--green)">Live &mdash; posts directly</span>
+          <span>Just use it. Tasks, knowledge, facts push automatically.</span>
+        </div>
+        <div class="guide-row">
+          <span><strong>Regular ChatGPT</strong></span>
+          <span style="color:var(--yellow)">Batch &mdash; monthly export</span>
+          <span>Export from ChatGPT settings &rarr; Import here. Monthly is fine.</span>
+        </div>
+        <div class="guide-row">
+          <span><strong>Claude</strong></span>
+          <span style="color:var(--yellow)">Batch &mdash; manual save</span>
+          <span>Save important outputs via intake or copy key info manually.</span>
+        </div>
+        <div class="guide-row">
+          <span><strong>Bee Wearable</strong></span>
+          <span style="color:var(--green)">Automatic</span>
+          <span>Wear it. Conversations, tasks, and facts sync on their own.</span>
+        </div>
+      </div>
+      <div class="guide-callout">You don't need to capture everything in real-time. Batch importing monthly is perfectly fine.</div>
+    </div>
+
+    <div class="guide-section">
+      <div class="guide-section-title">What Goes Where</div>
+      <div class="guide-table">
+        <div class="guide-row guide-row-header">
+          <span>You have...</span><span>It becomes...</span><span>How</span>
+        </div>
+        <div class="guide-row">
+          <span>Meeting or phone call</span><span>Transcript</span><span>Bee auto-captures</span>
+        </div>
+        <div class="guide-row">
+          <span>ChatGPT / Claude chat</span><span>Conversation</span><span>Export &amp; import</span>
+        </div>
+        <div class="guide-row">
+          <span>Something you learned</span><span>Knowledge</span><span>AI intake or Custom GPT</span>
+        </div>
+        <div class="guide-row">
+          <span>A fact about you or someone</span><span>Fact</span><span>Extracted from transcripts</span>
+        </div>
+        <div class="guide-row">
+          <span>Something you need to do</span><span>Task</span><span>Create manually or AI extracts</span>
+        </div>
+        <div class="guide-row">
+          <span>A bigger initiative</span><span>Project</span><span>Group tasks under it</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-section guide-highlight">
+      <div class="guide-section-title">When You Fall Off</div>
+      <p>You will stop using this. That's normal, not failure.</p>
+      <p>Bee keeps recording. ChatGPT keeps your history. Nothing is lost.</p>
+      <p>Coming back = 2 taps (sync + import). That's it.</p>
+      <p><strong>No streaks. No daily requirements. No guilt.</strong></p>
+      <p>Even using this once a month has value &mdash; it's your searchable second brain.</p>
+    </div>
+
+    <div class="guide-section">
+      <div class="guide-section-title">Quick Actions</div>
+      <div class="guide-actions">
+        <button class="btn-action" onclick="brainSubTab='all';loadBrain()">Search Everything</button>
+        <button class="btn-action" onclick="showNewTaskModal()">New Task</button>
+        <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('incremental')">Sync Bee</button>
+        <button class="btn-action btn-action-secondary" onclick="document.getElementById('settings-menu').classList.add('open');setTimeout(()=>document.getElementById('chatgpt-import-file')?.click(),300)">Import ChatGPT</button>
+      </div>
+    </div>
+
+  </div>`;
 }
 
 async function loadFacts(searchQuery) {

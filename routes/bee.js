@@ -524,7 +524,14 @@ router.post('/sync', async (req, res) => {
         const todos = extractArray(data, 'todos'); cursor = data.next_cursor || null;
         for (const todo of todos) {
           const t = extractTodoText(todo); if (!t) continue;
-          if (!force && await findExistingTask(t)) { results.skipped++; continue; }
+          const existing = await findExistingTask(t);
+          if (existing) {
+            // AB Brain is source of truth — only let Bee mark tasks done, never revert
+            if (todo.completed) {
+              await cq("UPDATE tasks SET status='done', updated_at=NOW() WHERE id=$1 AND status != 'done'", [existing.id]);
+            }
+            results.skipped++; continue;
+          }
           await storeTodo(t, todo, cq); results.todos++;
         }
       } while (cursor);
@@ -663,7 +670,13 @@ router.post('/sync-chunk', async (req, res) => {
       for (const todo of todos) {
         const t = extractTodoText(todo);
         if (!t) { result.skipped++; continue; }
-        if (!force && await findExistingTask(t)) { result.skipped++; continue; }
+        const existing = await findExistingTask(t);
+        if (existing) {
+          if (todo.completed) {
+            await query("UPDATE tasks SET status='done', updated_at=NOW() WHERE id=$1 AND status != 'done'", [existing.id]);
+          }
+          result.skipped++; continue;
+        }
         await storeTodo(t, todo); result.imported++;
       }
       if (!result.cursor) result.done = true;
