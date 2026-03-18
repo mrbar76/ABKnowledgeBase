@@ -55,15 +55,20 @@ function switchTab(tab) {
   const main = document.getElementById('main-content');
   main.scrollTop = 0;
 
+  // Map legacy fitness sub-tab names to the unified fitness tab
+  if (['workouts', 'nutrition', 'body', 'training'].includes(tab)) {
+    fitnessSubTab = tab;
+    tab = 'fitness';
+    currentTab = 'fitness';
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'fitness'));
+  }
+
   if (tab === 'home') loadDashboard();
   else if (tab === 'kanban') loadKanban();
   else if (tab === 'brain') loadBrain();
   else if (tab === 'transcripts') loadTranscripts();
   else if (tab === 'projects') loadProjects();
-  else if (tab === 'workouts') loadWorkouts();
-  else if (tab === 'nutrition') loadNutrition();
-  else if (tab === 'body') loadBodyMetrics();
-  else if (tab === 'training') loadTraining();
+  else if (tab === 'fitness') loadFitness();
 }
 
 // ─── Dashboard (Home) ─────────────────────────────────────────
@@ -102,13 +107,13 @@ async function loadDashboardStats() {
       <div class="stat-card"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
       <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
       <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
-      <div class="stat-card" onclick="switchTab('workouts')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
-      <div class="stat-card" onclick="switchTab('nutrition')" style="cursor:pointer"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
-      <div class="stat-card" onclick="switchTab('body')" style="cursor:pointer"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
+      <div class="stat-card" onclick="fitnessSubTab='workouts';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
+      <div class="stat-card" onclick="fitnessSubTab='nutrition';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
+      <div class="stat-card" onclick="fitnessSubTab='body';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
       ${data.training ? `
-      <div class="stat-card" onclick="switchTab('training')" style="cursor:pointer"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
-      <div class="stat-card" onclick="switchTab('training')" style="cursor:pointer"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
-      <div class="stat-card" onclick="switchTab('training')" style="cursor:pointer;${(data.training.injuries?.active || 0) > 0 ? 'border-color:var(--red)' : ''}"><div class="stat-value" ${(data.training.injuries?.active || 0) > 0 ? 'style="color:var(--red)"' : ''}>${data.training.injuries?.active || 0}</div><div class="stat-label">Active Injuries</div></div>
+      <div class="stat-card" onclick="fitnessSubTab='training';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
+      <div class="stat-card" onclick="fitnessSubTab='training';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
+      <div class="stat-card" onclick="fitnessSubTab='training';switchTab('fitness')" style="cursor:pointer;${(data.training.injuries?.active || 0) > 0 ? 'border-color:var(--red)' : ''}"><div class="stat-value" ${(data.training.injuries?.active || 0) > 0 ? 'style="color:var(--red)"' : ''}>${data.training.injuries?.active || 0}</div><div class="stat-label">Active Injuries</div></div>
       ` : ''}
     `;
     if (data.recent_activity?.length) {
@@ -1198,6 +1203,29 @@ function searchSnippet(text, query, maxLen) {
   return highlightText(snippet, query);
 }
 
+// ─── Fitness (unified tab) ────────────────────────────────────
+let fitnessSubTab = 'workouts';
+
+function loadFitness() {
+  const main = document.getElementById('main-content');
+  const tabs = [
+    { key: 'workouts', label: 'Workouts', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>' },
+    { key: 'nutrition', label: 'Nutrition', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M18.06 22.99h1.66c.84 0 1.53-.64 1.63-1.46L23 5.05h-5V1h-1.97v4.05h-4.97l.3 2.34c1.71.47 3.31 1.32 4.27 2.26 1.44 1.42 2.43 2.89 2.43 5.29v8.05zM1 21.99V21h15.03v.99c0 .55-.45 1-1.01 1H2.01c-.56 0-1.01-.45-1.01-1zm15.03-7c0-4.5-6.83-5-9.52-5C3.92 9.99 1 10.99 1 14.99h15.03zm-15.03 2h15.03v2H1v-2z"/></svg>' },
+    { key: 'body', label: 'Body', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>' },
+    { key: 'training', label: 'Training', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' },
+  ];
+  main.innerHTML = `
+    <div class="fitness-tabs">
+      ${tabs.map(t => `<button class="fitness-tab ${fitnessSubTab === t.key ? 'active' : ''}" onclick="fitnessSubTab='${t.key}';loadFitness()">${t.icon}<span>${t.label}</span></button>`).join('')}
+    </div>
+    <div id="fitness-content"></div>
+  `;
+  if (fitnessSubTab === 'workouts') loadWorkouts();
+  else if (fitnessSubTab === 'nutrition') loadNutrition();
+  else if (fitnessSubTab === 'body') loadBodyMetrics();
+  else if (fitnessSubTab === 'training') loadTraining();
+}
+
 // ─── Workouts ─────────────────────────────────────────────────
 let workoutFilters = {};
 
@@ -1207,7 +1235,7 @@ function setWorkoutFilter(key, value) {
 }
 
 async function loadWorkouts(searchQuery) {
-  const main = document.getElementById('main-content');
+  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = '<div class="loading">Loading...</div>';
   try {
     const params = new URLSearchParams({ limit: '50' });
@@ -1501,7 +1529,7 @@ let nutritionDate = new Date().toISOString().slice(0, 10);
 
 async function loadNutrition(date) {
   if (date) nutritionDate = date;
-  const main = document.getElementById('main-content');
+  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = '<div class="loading">Loading...</div>';
   try {
     const summary = await api(`/nutrition/daily-summary?date=${nutritionDate}`);
@@ -1904,7 +1932,7 @@ function setBodyMetricFilter(key, value) {
 }
 
 async function loadBodyMetrics(searchQuery) {
-  const main = document.getElementById('main-content');
+  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = '<div class="loading">Loading...</div>';
   try {
     const params = new URLSearchParams({ limit: '50' });
@@ -2388,7 +2416,7 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 let trainingSubTab = 'plans';
 
 async function loadTraining() {
-  const main = document.getElementById('main-content');
+  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = `
     <div class="filter-row" style="margin-bottom:12px">
       <button class="filter-btn ${trainingSubTab === 'plans' ? 'active' : ''}" onclick="trainingSubTab='plans';loadTraining()">Plans</button>

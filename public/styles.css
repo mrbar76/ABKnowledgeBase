@@ -678,6 +678,40 @@ body {
 .brain-search:focus { border-color: var(--accent); }
 .brain-search::placeholder { color: var(--text-dim); }
 
+/* --- Fitness Sub-tabs --- */
+.fitness-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 14px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-card);
+  border-radius: var(--radius) var(--radius) 0 0;
+  overflow: hidden;
+}
+.fitness-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 11px 4px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.fitness-tab svg { opacity: 0.5; transition: opacity 0.2s; flex-shrink: 0; }
+.fitness-tab:hover { color: var(--text); }
+.fitness-tab:hover svg { opacity: 0.8; }
+.fitness-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.fitness-tab.active svg { opacity: 1; color: var(--accent); }
+
 /* --- Workout Styles --- */
 .workout-card { transition: transform 0.15s; }
 .workout-card:active { transform: scale(0.98); }
