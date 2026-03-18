@@ -6,13 +6,14 @@ const PRIORITY_ORDER = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WH
 
 router.get('/', async (req, res) => {
   try {
-    const { project_id, status, ai_agent, limit = 100 } = req.query;
+    const { project_id, status, priority, ai_agent, limit = 100 } = req.query;
     const params = [];
     const where = [];
     let i = 1;
 
     if (project_id) { where.push(`t.project_id = $${i++}`); params.push(project_id); }
     if (status) { where.push(`t.status = $${i++}`); params.push(status); }
+    if (priority) { where.push(`t.priority = $${i++}`); params.push(priority); }
     if (ai_agent) { where.push(`t.ai_agent = $${i++}`); params.push(ai_agent); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';

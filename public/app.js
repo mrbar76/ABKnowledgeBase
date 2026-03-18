@@ -718,25 +718,38 @@ async function loadTasks() {
 
 // ── List View ──
 let taskListFilter = '';
+let taskPriorityFilter = '';
 async function loadTasksList() {
   const main = document.getElementById('main-content');
   try {
     const params = new URLSearchParams({ limit: '200' });
     if (taskListFilter) params.set('status', taskListFilter);
+    if (taskPriorityFilter) params.set('priority', taskPriorityFilter);
     const data = await api('/tasks?' + params.toString());
 
     const statusLabels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', done: 'Done' };
     const statusColors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
+    const priorityLabels = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
 
     main.innerHTML = tasksTabsHtml() + `
       <div class="flex-between mb-md">
-        <div class="filter-row">
-          <button class="filter-btn ${!taskListFilter ? 'active' : ''}" onclick="taskListFilter='';loadTasksList()">All</button>
-          ${Object.entries(statusLabels).map(([k, v]) =>
-            `<button class="filter-btn ${taskListFilter === k ? 'active' : ''}" onclick="taskListFilter='${k}';loadTasksList()">${v}</button>`
-          ).join('')}
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div class="filter-row">
+            <button class="filter-btn ${!taskListFilter ? 'active' : ''}" onclick="taskListFilter='';loadTasksList()">All</button>
+            ${Object.entries(statusLabels).map(([k, v]) =>
+              `<button class="filter-btn ${taskListFilter === k ? 'active' : ''}" onclick="taskListFilter='${k}';loadTasksList()">${v}</button>`
+            ).join('')}
+          </div>
+          <div class="filter-row">
+            ${Object.entries(priorityLabels).map(([k, v]) =>
+              `<button class="filter-btn filter-btn-sm ${taskPriorityFilter === k ? 'active' : ''}" onclick="taskPriorityFilter=taskPriorityFilter==='${k}'?'':'${k}';loadTasksList()">
+                <span class="priority-dot priority-${k}"></span> ${v}
+              </button>`
+            ).join('')}
+            ${taskPriorityFilter ? `<button class="filter-btn filter-btn-sm" onclick="taskPriorityFilter='';loadTasksList()" style="color:var(--text-dim)">Clear</button>` : ''}
+          </div>
         </div>
-        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()" style="align-self:start">+ Task</button>
       </div>
       <div id="task-list">
         ${data.tasks.length ? data.tasks.map(t => {
