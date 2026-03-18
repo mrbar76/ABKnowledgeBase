@@ -14,7 +14,8 @@ router.get('/', async (req, res) => {
       knowledgeRows, factRows, projectRows,
       taskStatusRows, taskPriorityRows, taskAgentRows,
       transcriptRows, conversationRows, activityRows,
-      workoutRows, bodyMetricRows, mealRows
+      workoutRows, bodyMetricRows, mealRows,
+      trainingPlanRows, coachingRows, injuryRows, activeInjuryRows
     ] = await Promise.all([
       sq('SELECT COUNT(*)::int as total FROM knowledge', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM facts', [{ total: 0 }]),
@@ -28,6 +29,10 @@ router.get('/', async (req, res) => {
       sq('SELECT COUNT(*)::int as total FROM workouts', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM body_metrics', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM meals', [{ total: 0 }]),
+      sq("SELECT COUNT(*)::int as total, COUNT(*) FILTER (WHERE status = 'active')::int as active FROM training_plans", [{ total: 0, active: 0 }]),
+      sq('SELECT COUNT(*)::int as total FROM coaching_sessions', [{ total: 0 }]),
+      sq('SELECT COUNT(*)::int as total FROM injuries', [{ total: 0 }]),
+      sq("SELECT COUNT(*)::int as active FROM injuries WHERE status IN ('active','monitoring')", [{ active: 0 }]),
     ]);
 
     const statusMap = {};
@@ -49,6 +54,11 @@ router.get('/', async (req, res) => {
       workouts: { total: workoutRows[0]?.total || 0 },
       body_metrics: { total: bodyMetricRows[0]?.total || 0 },
       meals: { total: mealRows[0]?.total || 0 },
+      training: {
+        plans: { total: trainingPlanRows[0]?.total || 0, active: trainingPlanRows[0]?.active || 0 },
+        coaching_sessions: { total: coachingRows[0]?.total || 0 },
+        injuries: { total: injuryRows[0]?.total || 0, active: activeInjuryRows[0]?.active || 0 },
+      },
       recent_activity: activityRows,
     });
   } catch (err) {

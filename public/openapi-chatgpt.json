@@ -869,6 +869,152 @@
           }
         }
       }
+    },
+    "/training/plans": {
+      "get": {
+        "operationId": "listTrainingPlans",
+        "summary": "List or search training plans (periodized blocks, mesocycles, rehab plans)",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["draft","active","completed","paused","archived"] } },
+          { "name": "plan_type", "in": "query", "schema": { "type": "string", "enum": ["block","mesocycle","microcycle","deload","race_prep","rehab","custom"] } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": { "200": { "description": "Training plans list", "content": { "application/json": { "schema": { "type": "object", "properties": { "total": { "type": "integer" }, "plans": { "type": "array", "items": { "$ref": "#/components/schemas/TrainingPlan" } } } } } } } }
+      },
+      "post": {
+        "operationId": "createTrainingPlan",
+        "summary": "Create a new training plan with goals, phases, weekly structure, and rationale",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlanInput" } } }
+        },
+        "responses": { "201": { "description": "Created plan", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } } }
+      }
+    },
+    "/training/plans/{id}": {
+      "get": {
+        "operationId": "getTrainingPlan",
+        "summary": "Get a training plan with linked coaching sessions and injuries",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Training plan with related data" } }
+      },
+      "put": {
+        "operationId": "updateTrainingPlan",
+        "summary": "Update a training plan",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlanInput" } } } },
+        "responses": { "200": { "description": "Updated plan" } }
+      },
+      "delete": {
+        "operationId": "deleteTrainingPlan",
+        "summary": "Delete a training plan",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/training/coaching": {
+      "get": {
+        "operationId": "listCoachingSessions",
+        "summary": "List AI coaching session summaries (injury notes, adjustments, rationale)",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "training_plan_id", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Coaching sessions list", "content": { "application/json": { "schema": { "type": "object", "properties": { "total": { "type": "integer" }, "sessions": { "type": "array", "items": { "$ref": "#/components/schemas/CoachingSession" } } } } } } } }
+      },
+      "post": {
+        "operationId": "createCoachingSession",
+        "summary": "Save a coaching session summary after reviewing training data with AI",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoachingSessionInput" } } }
+        },
+        "responses": { "201": { "description": "Created session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoachingSession" } } } } }
+      }
+    },
+    "/training/coaching/{id}": {
+      "get": {
+        "operationId": "getCoachingSession",
+        "summary": "Get a coaching session by ID",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Coaching session" } }
+      },
+      "put": {
+        "operationId": "updateCoachingSession",
+        "summary": "Update a coaching session",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoachingSessionInput" } } } },
+        "responses": { "200": { "description": "Updated session" } }
+      },
+      "delete": {
+        "operationId": "deleteCoachingSession",
+        "summary": "Delete a coaching session",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/training/injuries": {
+      "get": {
+        "operationId": "listInjuries",
+        "summary": "List injuries/contentions with body area, severity, and status filters",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["active","monitoring","recovering","resolved","chronic"] } },
+          { "name": "body_area", "in": "query", "schema": { "type": "string" }, "description": "Filter by body area (e.g. shoulder, knee, lower_back)" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Injuries list", "content": { "application/json": { "schema": { "type": "object", "properties": { "total": { "type": "integer" }, "injuries": { "type": "array", "items": { "$ref": "#/components/schemas/Injury" } } } } } } } }
+      },
+      "post": {
+        "operationId": "createInjury",
+        "summary": "Log an injury or contention with symptoms, treatment, and movement modifications",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InjuryInput" } } }
+        },
+        "responses": { "201": { "description": "Created injury", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Injury" } } } } }
+      }
+    },
+    "/training/injuries/{id}": {
+      "get": {
+        "operationId": "getInjury",
+        "summary": "Get an injury by ID",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Injury details" } }
+      },
+      "put": {
+        "operationId": "updateInjury",
+        "summary": "Update an injury (e.g. change status to resolved, add treatment notes)",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InjuryInput" } } } },
+        "responses": { "200": { "description": "Updated injury" } }
+      },
+      "delete": {
+        "operationId": "deleteInjury",
+        "summary": "Delete an injury",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/training/injuries/active/summary": {
+      "get": {
+        "operationId": "getActiveInjuriesSummary",
+        "summary": "Get all active/monitoring injuries — use this before recommending exercises to check for contraindications",
+        "responses": { "200": { "description": "Active injuries with body areas, severity, and modifications" } }
+      }
+    },
+    "/training/day/{date}": {
+      "get": {
+        "operationId": "getTrainingDayView",
+        "summary": "Cross-reference ALL fitness data for a specific date: workouts, meals, nutrition context, body metrics, coaching sessions, active injuries, and current training plan",
+        "parameters": [ { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "format": "date" }, "description": "Date in YYYY-MM-DD format" } ],
+        "responses": { "200": { "description": "Complete training day view with all cross-referenced data" } }
+      }
     }
   },
   "components": {
@@ -1060,6 +1206,148 @@
           "duration_seconds": { "type": "integer" },
           "recorded_at": { "type": "string", "format": "date-time" },
           "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TrainingPlan": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "plan_type": { "type": "string", "enum": ["block","mesocycle","microcycle","deload","race_prep","rehab","custom"] },
+          "status": { "type": "string", "enum": ["draft","active","completed","paused","archived"] },
+          "goal": { "type": "string" },
+          "start_date": { "type": "string", "format": "date" },
+          "end_date": { "type": "string", "format": "date" },
+          "weeks": { "type": "integer" },
+          "phase": { "type": "string" },
+          "weekly_structure": { "type": "array", "items": { "type": "object" }, "description": "Array of day-by-day plan: [{day: 'Monday', type: 'strength', focus: 'upper body', notes: '...'}]" },
+          "intensity_scheme": { "type": "string" },
+          "progression_notes": { "type": "string" },
+          "rationale": { "type": "string", "description": "WHY this plan was chosen — training philosophy, injury avoidance, periodization reasoning" },
+          "constraints": { "type": "string", "description": "Limitations: injuries, schedule, equipment, recovery needs" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "ai_source": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TrainingPlanInput": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "plan_type": { "type": "string", "enum": ["block","mesocycle","microcycle","deload","race_prep","rehab","custom"], "default": "block" },
+          "status": { "type": "string", "enum": ["draft","active","completed","paused","archived"], "default": "active" },
+          "goal": { "type": "string" },
+          "start_date": { "type": "string", "format": "date" },
+          "end_date": { "type": "string", "format": "date" },
+          "weeks": { "type": "integer" },
+          "phase": { "type": "string" },
+          "weekly_structure": { "type": "array", "items": { "type": "object" } },
+          "intensity_scheme": { "type": "string" },
+          "progression_notes": { "type": "string" },
+          "rationale": { "type": "string" },
+          "constraints": { "type": "string" },
+          "project_id": { "type": "string", "format": "uuid" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "ai_source": { "type": "string" },
+          "metadata": { "type": "object" }
+        }
+      },
+      "CoachingSession": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "session_date": { "type": "string", "format": "date" },
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "key_decisions": { "type": "array", "items": { "type": "string" }, "description": "Key decisions made during the session" },
+          "adjustments": { "type": "array", "items": { "type": "object" }, "description": "Training adjustments: [{area: 'volume', change: 'reduce upper body sets by 20%', reason: 'shoulder impingement'}]" },
+          "injury_notes": { "type": "string" },
+          "nutrition_notes": { "type": "string" },
+          "recovery_notes": { "type": "string" },
+          "mental_notes": { "type": "string" },
+          "next_steps": { "type": "string" },
+          "data_reviewed": { "type": "object", "description": "What data was reviewed: {workouts_from: '2026-03-01', workouts_to: '2026-03-18', body_metrics: true}" },
+          "training_plan_id": { "type": "string", "format": "uuid" },
+          "conversation_id": { "type": "string", "format": "uuid" },
+          "ai_source": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CoachingSessionInput": {
+        "type": "object",
+        "required": ["title", "summary"],
+        "properties": {
+          "session_date": { "type": "string", "format": "date" },
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "key_decisions": { "type": "array", "items": { "type": "string" } },
+          "adjustments": { "type": "array", "items": { "type": "object" } },
+          "injury_notes": { "type": "string" },
+          "nutrition_notes": { "type": "string" },
+          "recovery_notes": { "type": "string" },
+          "mental_notes": { "type": "string" },
+          "next_steps": { "type": "string" },
+          "data_reviewed": { "type": "object" },
+          "training_plan_id": { "type": "string", "format": "uuid" },
+          "conversation_id": { "type": "string", "format": "uuid" },
+          "ai_source": { "type": "string", "default": "chatgpt" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "metadata": { "type": "object" }
+        }
+      },
+      "Injury": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "body_area": { "type": "string" },
+          "side": { "type": "string", "enum": ["left","right","bilateral","central","n/a"] },
+          "injury_type": { "type": "string", "enum": ["strain","sprain","tendinitis","soreness","tightness","pain","fracture","contusion","overuse","other"] },
+          "severity": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "status": { "type": "string", "enum": ["active","monitoring","recovering","resolved","chronic"] },
+          "onset_date": { "type": "string", "format": "date" },
+          "resolved_date": { "type": "string", "format": "date" },
+          "mechanism": { "type": "string", "description": "How it happened" },
+          "symptoms": { "type": "string" },
+          "aggravating_movements": { "type": "string", "description": "Movements that make it worse" },
+          "relieving_factors": { "type": "string", "description": "What helps" },
+          "treatment": { "type": "string" },
+          "modifications": { "type": "string", "description": "Workout modifications to avoid aggravating" },
+          "prevention_notes": { "type": "string", "description": "Long-term prevention strategy" },
+          "related_workout_id": { "type": "string", "format": "uuid" },
+          "training_plan_id": { "type": "string", "format": "uuid" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "ai_source": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "InjuryInput": {
+        "type": "object",
+        "required": ["title", "body_area"],
+        "properties": {
+          "title": { "type": "string" },
+          "body_area": { "type": "string" },
+          "side": { "type": "string", "enum": ["left","right","bilateral","central","n/a"] },
+          "injury_type": { "type": "string", "enum": ["strain","sprain","tendinitis","soreness","tightness","pain","fracture","contusion","overuse","other"], "default": "strain" },
+          "severity": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "status": { "type": "string", "enum": ["active","monitoring","recovering","resolved","chronic"], "default": "active" },
+          "onset_date": { "type": "string", "format": "date" },
+          "resolved_date": { "type": "string", "format": "date" },
+          "mechanism": { "type": "string" },
+          "symptoms": { "type": "string" },
+          "aggravating_movements": { "type": "string" },
+          "relieving_factors": { "type": "string" },
+          "treatment": { "type": "string" },
+          "modifications": { "type": "string" },
+          "prevention_notes": { "type": "string" },
+          "related_workout_id": { "type": "string", "format": "uuid" },
+          "training_plan_id": { "type": "string", "format": "uuid" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "ai_source": { "type": "string" },
+          "metadata": { "type": "object" }
         }
       }
     },
