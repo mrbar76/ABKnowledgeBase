@@ -54,6 +54,10 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   const main = document.getElementById('main-content');
   main.scrollTop = 0;
+  // Re-trigger fade-in animation on tab switch
+  main.style.animation = 'none';
+  main.offsetHeight; // force reflow
+  main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the unified fitness tab
   if (['workouts', 'nutrition', 'body', 'training'].includes(tab)) {
@@ -72,22 +76,38 @@ function switchTab(tab) {
 }
 
 // ─── Dashboard (Home) ─────────────────────────────────────────
+
+function skeletonStats(n) {
+  return Array(n).fill('<div class="skeleton-stat"><div class="skeleton skeleton-stat-value"></div><div class="skeleton skeleton-stat-label"></div></div>').join('');
+}
+function skeletonCards(n) {
+  return Array(n).fill('<div class="skeleton-card"><div class="skeleton skeleton-line skeleton-line-lg"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line skeleton-line-sm"></div></div>').join('');
+}
+
 async function loadDashboard() {
   const main = document.getElementById('main-content');
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   main.innerHTML = `
-    <div class="stats-grid" id="stats-grid">
-      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Knowledge</div></div>
-      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Transcripts</div></div>
-      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Tasks</div></div>
-      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">In Progress</div></div>
-      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Projects</div></div>
-      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Facts</div></div>
-    </div>
-
-    <div class="card" id="activity-card" style="display:none">
-      <h2>Recent Activity</h2>
-      <div id="recent-activity"></div>
+    <div class="dash-greeting">${greeting}.</div>
+    <div class="dash-date">${dateStr}</div>
+    <div id="dash-content">
+      <div class="dash-section">
+        <div class="dash-section-header">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
+          Fitness
+        </div>
+        <div class="stats-grid">${skeletonStats(6)}</div>
+      </div>
+      <div class="dash-section">
+        <div class="dash-section-header">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          Knowledge &amp; Tasks
+        </div>
+        <div class="stats-grid">${skeletonStats(5)}</div>
+      </div>
     </div>
   `;
 
@@ -99,22 +119,47 @@ async function loadDashboardStats() {
     const data = await api('/dashboard');
     const totalTasks = Object.values(data.tasks.by_status).reduce((a, b) => a + b, 0);
     const inProgress = data.tasks.by_status.in_progress || 0;
-    const grid = document.getElementById('stats-grid');
-    if (!grid) return;
-    grid.innerHTML = `
-      <div class="stat-card"><div class="stat-value">${data.knowledge.total}</div><div class="stat-label">Knowledge</div></div>
-      <div class="stat-card"><div class="stat-value">${data.transcripts.total}</div><div class="stat-label">Transcripts</div></div>
-      <div class="stat-card"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
-      <div class="stat-card"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
-      <div class="stat-card"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
-      <div class="stat-card" onclick="fitnessSubTab='workouts';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
-      <div class="stat-card" onclick="fitnessSubTab='nutrition';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
-      <div class="stat-card" onclick="fitnessSubTab='body';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
-      ${data.training ? `
-      <div class="stat-card" onclick="fitnessSubTab='training';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
-      <div class="stat-card" onclick="fitnessSubTab='training';switchTab('fitness')" style="cursor:pointer"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
-      <div class="stat-card" onclick="fitnessSubTab='training';switchTab('fitness')" style="cursor:pointer;${(data.training.injuries?.active || 0) > 0 ? 'border-color:var(--red)' : ''}"><div class="stat-value" ${(data.training.injuries?.active || 0) > 0 ? 'style="color:var(--red)"' : ''}>${data.training.injuries?.active || 0}</div><div class="stat-label">Active Injuries</div></div>
-      ` : ''}
+    const container = document.getElementById('dash-content');
+    if (!container) return;
+
+    const activeInjuries = data.training?.injuries?.active || 0;
+
+    container.innerHTML = `
+      <div class="dash-section fade-in" onclick="switchTab('fitness')" style="cursor:pointer">
+        <div class="dash-section-header">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
+          Fitness
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='workouts';switchTab('fitness')"><div class="stat-value">${data.workouts?.total || 0}</div><div class="stat-label">Workouts</div></div>
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='nutrition';switchTab('fitness')"><div class="stat-value">${data.meals?.total || 0}</div><div class="stat-label">Meals</div></div>
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='body';switchTab('fitness')"><div class="stat-value">${data.body_metrics?.total || 0}</div><div class="stat-label">Body Metrics</div></div>
+          ${data.training ? `
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
+          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
+          <div class="stat-card clickable${activeInjuries > 0 ? '" style="border-color:var(--red)' : ''}" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value"${activeInjuries > 0 ? ' style="color:var(--red)"' : ''}>${activeInjuries}</div><div class="stat-label">Injuries</div></div>
+          ` : ''}
+        </div>
+      </div>
+
+      <div class="dash-section fade-in">
+        <div class="dash-section-header">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          Knowledge &amp; Tasks
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card clickable" onclick="switchTab('brain')"><div class="stat-value">${data.knowledge.total}</div><div class="stat-label">Knowledge</div></div>
+          <div class="stat-card clickable" onclick="switchTab('transcripts')"><div class="stat-value">${data.transcripts.total}</div><div class="stat-label">Transcripts</div></div>
+          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value">${totalTasks}</div><div class="stat-label">Tasks</div></div>
+          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value">${inProgress}</div><div class="stat-label">In Progress</div></div>
+          <div class="stat-card clickable" onclick="switchTab('projects')"><div class="stat-value">${data.projects.active}</div><div class="stat-label">Projects</div></div>
+        </div>
+      </div>
+
+      <div class="card fade-in" id="activity-card" style="display:none">
+        <h2>Recent Activity</h2>
+        <div id="recent-activity"></div>
+      </div>
     `;
     if (data.recent_activity?.length) {
       const ac = document.getElementById('activity-card');
@@ -122,8 +167,8 @@ async function loadDashboardStats() {
     }
   } catch (e) {
     if (e.message === 'Unauthorized') return;
-    const grid = document.getElementById('stats-grid');
-    if (grid) grid.innerHTML = '<div class="stat-card" style="grid-column:1/-1"><div class="stat-value" style="font-size:0.85rem;color:var(--text-dim)">Could not load stats</div></div>';
+    const container = document.getElementById('dash-content');
+    if (container) container.innerHTML = '<div class="empty-state">Could not load stats</div>';
   }
 }
 
@@ -478,7 +523,7 @@ function copyDebugRaw() {
 // ─── Kanban ───────────────────────────────────────────────────
 async function loadKanban() {
   const main = document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
+  main.innerHTML = skeletonCards(2);
   try {
     const data = await api('/tasks/kanban');
     const cols = ['todo', 'in_progress', 'review', 'done'];
@@ -486,9 +531,9 @@ async function loadKanban() {
     const colors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
 
     main.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h2 style="font-size:1rem;font-weight:700">Kanban Board</h2>
-        <button class="btn-action" onclick="showNewTaskModal()" style="padding:6px 14px;font-size:0.8rem">+ Task</button>
+      <div class="flex-between mb-md">
+        <h2 class="section-title">Kanban Board</h2>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
       </div>
       <div class="kanban-board">${cols.map(col => `
         <div class="kanban-col">
@@ -1236,7 +1281,7 @@ function setWorkoutFilter(key, value) {
 
 async function loadWorkouts(searchQuery) {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
+  main.innerHTML = skeletonCards(4);
   try {
     const params = new URLSearchParams({ limit: '50' });
     if (searchQuery) params.set('q', searchQuery);
@@ -1249,13 +1294,13 @@ async function loadWorkouts(searchQuery) {
     const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
 
     main.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="list-search-row">
         <input type="text" class="brain-search" placeholder="Search workouts..." value="${esc(searchQuery || '')}"
-          oninput="debounceWorkoutSearch(this.value)" style="margin-bottom:0;flex:1;margin-right:8px">
-        <button class="btn-submit" onclick="showWorkoutImport()" style="white-space:nowrap;padding:8px 12px;margin-right:4px;background:var(--accent-dim,#4b5563)">Import</button>
-        <button class="btn-submit" onclick="showWorkoutForm()" style="white-space:nowrap;padding:8px 16px">+ Log</button>
+          oninput="debounceWorkoutSearch(this.value)">
+        <button class="btn-submit btn-secondary btn-compact-sm" onclick="showWorkoutImport()">Import</button>
+        <button class="btn-submit btn-compact" onclick="showWorkoutForm()">+ Log</button>
       </div>
-      <div class="filter-row" style="margin-bottom:10px">
+      <div class="filter-row mb-md">
         <button class="filter-btn ${!activeType ? 'active' : ''}" onclick="workoutFilters={};loadWorkouts('')">All</button>
         ${['hill','strength','run','hybrid','recovery','ruck'].map(t =>
           `<button class="filter-btn ${activeType === t ? 'active' : ''}" onclick="setWorkoutFilter('workout_type', '${activeType === t ? '' : t}')"
@@ -1263,7 +1308,7 @@ async function loadWorkouts(searchQuery) {
         ).join('')}
       </div>
       <div class="transcript-count">${data.total} workout${data.total !== 1 ? 's' : ''}</div>
-      <div id="workout-list">
+      <div id="workout-list" class="fade-in">
         ${data.workouts.length ? data.workouts.map(w => {
           const color = typeColors[w.workout_type] || '#6366f1';
           const d = new Date(w.workout_date.slice(0,10) + 'T12:00:00');
@@ -1272,7 +1317,7 @@ async function loadWorkouts(searchQuery) {
           <div class="list-item workout-card" onclick="showWorkoutDetail('${w.id}')" style="border-left:3px solid ${color}">
             <div class="transcript-card-header">
               <div class="list-item-title">${esc(w.title)}</div>
-              <span class="content-type-badge" style="background:${color}22;color:${color}">${w.workout_type}</span>
+              <span class="badge-dynamic" style="background:${color}22;color:${color}">${w.workout_type}</span>
               ${w.effort ? `<span class="effort-badge effort-${w.effort >= 8 ? 'high' : w.effort >= 5 ? 'med' : 'low'}">${w.effort}/10</span>` : ''}
             </div>
             ${w.focus ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(w.focus)}</div>` : ''}
@@ -1285,7 +1330,7 @@ async function loadWorkouts(searchQuery) {
               ${w.heart_rate_avg ? `<span>♥${esc(w.heart_rate_avg)}</span>` : ''}
               ${w.active_calories ? `<span>${esc(w.active_calories)}</span>` : ''}
             </div>
-            ${w.tags && w.tags.length ? `<div class="transcript-speakers" style="margin-top:4px">${w.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>` : ''}
+            ${w.tags && w.tags.length ? `<div class="transcript-speakers mt-sm">${w.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>` : ''}
           </div>`;
         }).join('') : '<div class="empty-state">No workouts yet. Tap "+ Log" to add one!</div>'}
       </div>
@@ -1314,10 +1359,10 @@ async function showWorkoutDetail(id) {
     }
 
     let html = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <span class="content-type-badge" style="background:${color}22;color:${color};font-size:0.75rem;padding:3px 12px">${w.workout_type}</span>
-        <span style="font-size:0.8rem;color:var(--text-dim)">${dateLabel}</span>
-        ${w.effort ? `<span class="effort-badge effort-${w.effort >= 8 ? 'high' : w.effort >= 5 ? 'med' : 'low'}" style="font-size:0.75rem;padding:3px 10px">Effort: ${w.effort}/10</span>` : ''}
+      <div class="flex-row-wrap mb-md">
+        <span class="badge-dynamic badge-lg" style="background:${color}22;color:${color}">${w.workout_type}</span>
+        <span class="text-meta">${dateLabel}</span>
+        ${w.effort ? `<span class="effort-badge effort-${w.effort >= 8 ? 'high' : w.effort >= 5 ? 'med' : 'low'} badge-lg">Effort: ${w.effort}/10</span>` : ''}
       </div>
 
       ${w.location || w.elevation ? `<div class="workout-detail-section"><div class="workout-detail-label">Location</div><div class="workout-detail-value">${esc(w.location || '')}${w.elevation ? ' · Elev: ' + esc(w.elevation) : ''}</div></div>` : ''}
@@ -1374,11 +1419,11 @@ async function showWorkoutDetail(id) {
 
       ${section('Adjustment Next Time', w.adjustment)}
 
-      ${w.tags && w.tags.length ? `<div class="transcript-speakers" style="margin-top:8px">${w.tags.map(t => `<span class="speaker-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      ${w.tags && w.tags.length ? `<div class="transcript-speakers mt-sm">${w.tags.map(t => `<span class="speaker-tag">${esc(t)}</span>`).join('')}</div>` : ''}
 
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="btn-submit" onclick="showWorkoutForm('${w.id}')" style="flex:1">Edit</button>
-        <button class="btn-action btn-action-danger" onclick="deleteWorkout('${w.id}')" style="flex:0.5">Delete</button>
+      <div class="action-row">
+        <button class="btn-submit flex-1" onclick="showWorkoutForm('${w.id}')">Edit</button>
+        <button class="btn-action btn-action-danger flex-half" onclick="deleteWorkout('${w.id}')">Delete</button>
       </div>
     `;
 
@@ -1401,17 +1446,17 @@ async function showWorkoutForm(editId) {
   const html = `
     <div class="workout-form-scroll">
       <div class="form-group"><label>Title</label><input type="text" id="wf-title" value="${esc(w.title || '')}" placeholder="Spartan Workout – ${today} – HILL"></div>
-      <div style="display:flex;gap:8px">
-        <div class="form-group" style="flex:1"><label>Date</label><input type="date" id="wf-date" value="${w.workout_date ? w.workout_date.slice(0,10) : today}"></div>
-        <div class="form-group" style="flex:1"><label>Type</label>
+      <div class="flex-row">
+        <div class="form-group flex-1"><label>Date</label><input type="date" id="wf-date" value="${w.workout_date ? w.workout_date.slice(0,10) : today}"></div>
+        <div class="form-group flex-1"><label>Type</label>
           <select id="wf-type">
             ${['hill','strength','run','hybrid','recovery','ruck'].map(t => `<option value="${t}" ${w.workout_type === t ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
         </div>
       </div>
-      <div style="display:flex;gap:8px">
-        <div class="form-group" style="flex:1"><label>Location</label><input type="text" id="wf-location" value="${esc(w.location || '')}" placeholder="Runyon Canyon"></div>
-        <div class="form-group" style="flex:1"><label>Elevation</label><input type="text" id="wf-elevation" value="${esc(w.elevation || '')}" placeholder="1,320 ft"></div>
+      <div class="flex-row">
+        <div class="form-group flex-1"><label>Location</label><input type="text" id="wf-location" value="${esc(w.location || '')}" placeholder="Runyon Canyon"></div>
+        <div class="form-group flex-1"><label>Elevation</label><input type="text" id="wf-elevation" value="${esc(w.elevation || '')}" placeholder="1,320 ft"></div>
       </div>
 
       <div class="form-group"><label>Focus</label><textarea id="wf-focus" rows="2" placeholder="Hill durability, grip endurance...">${esc(w.focus || '')}</textarea></div>
@@ -1530,7 +1575,7 @@ let nutritionDate = new Date().toISOString().slice(0, 10);
 async function loadNutrition(date) {
   if (date) nutritionDate = date;
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
+  main.innerHTML = skeletonCards(3);
   try {
     const summary = await api(`/nutrition/daily-summary?date=${nutritionDate}`);
     const d = new Date(nutritionDate + 'T12:00:00');
@@ -1543,31 +1588,31 @@ async function loadNutrition(date) {
     };
 
     main.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <button class="btn-action" onclick="loadNutrition(shiftDate(nutritionDate,-1))" style="padding:6px 12px">&lt;</button>
-        <div style="text-align:center;flex:1">
+      <div class="flex-between mb-sm">
+        <button class="btn-action btn-icon" onclick="loadNutrition(shiftDate(nutritionDate,-1))">&lt;</button>
+        <div class="text-center flex-1">
           <input type="date" value="${nutritionDate}" onchange="loadNutrition(this.value)"
-            style="background:transparent;border:none;color:var(--text-primary);font-size:1rem;text-align:center;cursor:pointer">
-          <div style="font-size:0.75rem;color:var(--text-dim)">${dateLabel}</div>
+            style="background:transparent;border:none;color:var(--text);font-size:1rem;text-align:center;cursor:pointer">
+          <div class="text-micro">${dateLabel}</div>
         </div>
-        <button class="btn-action" onclick="loadNutrition(shiftDate(nutritionDate,1))" style="padding:6px 12px">&gt;</button>
+        <button class="btn-action btn-icon" onclick="loadNutrition(shiftDate(nutritionDate,1))">&gt;</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
-        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_calories}</div><div class="stat-label" style="font-size:0.6rem">Calories</div></div>
-        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_protein_g}g</div><div class="stat-label" style="font-size:0.6rem">Protein</div></div>
-        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_carbs_g}g</div><div class="stat-label" style="font-size:0.6rem">Carbs</div></div>
-        <div class="stat-card" style="padding:8px;text-align:center"><div class="stat-value" style="font-size:1.3rem">${summary.total_fat_g}g</div><div class="stat-label" style="font-size:0.6rem">Fat</div></div>
+      <div class="macro-grid">
+        <div class="stat-card"><div class="stat-value">${summary.total_calories}</div><div class="stat-label">Calories</div></div>
+        <div class="stat-card"><div class="stat-value">${summary.total_protein_g}g</div><div class="stat-label">Protein</div></div>
+        <div class="stat-card"><div class="stat-value">${summary.total_carbs_g}g</div><div class="stat-label">Carbs</div></div>
+        <div class="stat-card"><div class="stat-value">${summary.total_fat_g}g</div><div class="stat-label">Fat</div></div>
       </div>
 
       ${ctx ? `
-      <div class="card" style="margin-bottom:12px;padding:10px;font-size:0.8rem">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div class="card mb-md" style="padding:10px;font-size:0.8rem">
+        <div class="flex-between mb-xs">
           <strong>Daily Context</strong>
-          ${ctx.day_type ? `<span class="content-type-badge" style="background:#f59e0b22;color:#f59e0b;font-size:0.7rem">${ctx.day_type}</span>` : ''}
-          <button class="btn-action" onclick="showDailyContextForm('${nutritionDate}','${ctx.id}')" style="padding:2px 8px;font-size:0.7rem">Edit</button>
+          ${ctx.day_type ? `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b">${ctx.day_type}</span>` : ''}
+          <button class="btn-action btn-compact-sm" onclick="showDailyContextForm('${nutritionDate}','${ctx.id}')" style="padding:2px 8px;font-size:0.7rem">Edit</button>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;color:var(--text-dim)">
+        <div class="flex-row-wrap text-dim">
           ${ctx.energy_rating ? `<span>Energy: ${ctx.energy_rating}/10</span>` : ''}
           ${ctx.hunger_rating ? `<span>Hunger: ${ctx.hunger_rating}/10</span>` : ''}
           ${ctx.hydration_liters ? `<span>Water: ${ctx.hydration_liters}L</span>` : ''}
@@ -1576,29 +1621,29 @@ async function loadNutrition(date) {
           ${ctx.recovery_rating ? `<span>Recovery: ${ctx.recovery_rating}/10</span>` : ''}
           ${ctx.body_weight_lb ? `<span>Weight: ${ctx.body_weight_lb}lb</span>` : ''}
         </div>
-        ${ctx.cravings ? `<div style="margin-top:4px;color:var(--text-dim)">Cravings: ${esc(ctx.cravings)}</div>` : ''}
-        ${ctx.notes ? `<div style="margin-top:4px;color:var(--text-dim)">${esc(ctx.notes)}</div>` : ''}
+        ${ctx.cravings ? `<div class="mt-sm text-dim">Cravings: ${esc(ctx.cravings)}</div>` : ''}
+        ${ctx.notes ? `<div class="mt-sm text-dim">${esc(ctx.notes)}</div>` : ''}
       </div>` : `
-      <div style="margin-bottom:12px;text-align:center">
-        <button class="btn-action" onclick="showDailyContextForm('${nutritionDate}')" style="padding:6px 16px;font-size:0.8rem">+ Add Daily Context</button>
+      <div class="mb-md text-center">
+        <button class="btn-action btn-compact-sm" onclick="showDailyContextForm('${nutritionDate}')">+ Add Daily Context</button>
       </div>`}
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="list-header">
         <div class="transcript-count">${summary.total_meals} meal${summary.total_meals !== 1 ? 's' : ''}</div>
-        <div style="display:flex;gap:4px">
-          <button class="btn-submit" onclick="showMealImport()" style="padding:6px 12px;font-size:0.8rem;background:var(--accent-dim,#4b5563)">Import</button>
-          <button class="btn-submit" onclick="showMealForm()" style="padding:6px 12px;font-size:0.8rem">+ Meal</button>
+        <div class="flex-row gap-4">
+          <button class="btn-submit btn-secondary btn-compact-sm" onclick="showMealImport()">Import</button>
+          <button class="btn-submit btn-compact-sm" onclick="showMealForm()">+ Meal</button>
         </div>
       </div>
 
-      <div id="meal-list">
+      <div id="meal-list" class="fade-in">
         ${summary.meals.length ? summary.meals.map(m => {
           const color = mealTypeColors[m.meal_type] || '#6366f1';
           return `
           <div class="list-item workout-card" onclick="showMealDetail('${m.id}')" style="border-left:3px solid ${color}">
             <div class="transcript-card-header">
               <div class="list-item-title">${esc(m.title)}</div>
-              <span class="content-type-badge" style="background:${color}22;color:${color};font-size:0.65rem">${m.meal_type}</span>
+              <span class="badge-dynamic" style="background:${color}22;color:${color}">${m.meal_type}</span>
             </div>
             <div class="list-item-meta">
               ${m.meal_time ? `<span>${m.meal_time.slice(0,5)}</span>` : ''}
@@ -1627,15 +1672,15 @@ async function showMealDetail(id) {
 
     function row(label, val, unit) {
       if (val == null || val === '') return '';
-      return `<tr><td style="padding:3px 8px;color:var(--text-dim)">${label}</td><td style="padding:3px 8px;font-weight:600">${esc(String(val))}${unit ? ' ' + unit : ''}</td></tr>`;
+      return `<tr><td>${label}</td><td>${esc(String(val))}${unit ? ' ' + unit : ''}</td></tr>`;
     }
 
     let html = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <span class="content-type-badge" style="background:${color}22;color:${color};font-size:0.75rem;padding:3px 12px">${m.meal_type}</span>
-        ${m.meal_time ? `<span style="font-size:0.8rem;color:var(--text-dim)">${m.meal_time.slice(0,5)}</span>` : ''}
+      <div class="flex-row-wrap mb-md">
+        <span class="badge-dynamic badge-lg" style="background:${color}22;color:${color}">${m.meal_type}</span>
+        ${m.meal_time ? `<span class="text-meta">${m.meal_time.slice(0,5)}</span>` : ''}
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+      <table class="detail-table">
         ${row('Calories', m.calories, 'cal')}
         ${row('Protein', m.protein_g, 'g')}
         ${row('Carbs', m.carbs_g, 'g')}
@@ -1648,11 +1693,11 @@ async function showMealDetail(id) {
         ${row('Fullness After', m.fullness_after, '/10')}
         ${row('Energy After', m.energy_after, '/10')}
       </table>
-      ${m.notes ? `<div style="margin-top:10px;padding:8px;background:var(--bg-secondary,#1e1e2e);border-radius:6px;font-size:0.8rem">${esc(m.notes)}</div>` : ''}
-      ${m.tags && m.tags.length ? `<div style="margin-top:8px">${m.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="btn-submit" onclick="showMealForm('${m.id}')" style="flex:1">Edit</button>
-        <button class="btn-action btn-action-danger" onclick="deleteMeal('${m.id}')" style="flex:0.5">Delete</button>
+      ${m.notes ? `<div class="detail-info">${esc(m.notes)}</div>` : ''}
+      ${m.tags && m.tags.length ? `<div class="mt-sm">${m.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
+      <div class="action-row">
+        <button class="btn-submit flex-1" onclick="showMealForm('${m.id}')">Edit</button>
+        <button class="btn-action btn-action-danger flex-half" onclick="deleteMeal('${m.id}')">Delete</button>
       </div>
     `;
     openModal(m.title, html);
@@ -1668,33 +1713,33 @@ async function showMealForm(editId) {
   const types = ['breakfast','lunch','dinner','snack','pre-workout','post-workout','drink','supplement','meal'];
 
   const numField = (id, label, val, step) =>
-    `<div class="form-group" style="flex:1;min-width:80px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
+    `<div class="form-group flex-1" style="min-width:80px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
 
   const html = `
-    <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
+    <div class="form-scroll">
       <div class="form-group"><label>Title*</label><input type="text" id="ml-title" value="${esc(m.title || '')}" placeholder="Grilled chicken & rice"></div>
-      <div style="display:flex;gap:8px">
-        <div class="form-group" style="flex:1"><label>Date</label><input type="date" id="ml-date" value="${m.meal_date ? m.meal_date.slice(0,10) : nutritionDate}"></div>
-        <div class="form-group" style="flex:1"><label>Time</label><input type="time" id="ml-time" value="${m.meal_time || ''}"></div>
-        <div class="form-group" style="flex:1"><label>Type</label><select id="ml-type">
+      <div class="flex-row">
+        <div class="form-group flex-1"><label>Date</label><input type="date" id="ml-date" value="${m.meal_date ? m.meal_date.slice(0,10) : nutritionDate}"></div>
+        <div class="form-group flex-1"><label>Time</label><input type="time" id="ml-time" value="${m.meal_time || ''}"></div>
+        <div class="form-group flex-1"><label>Type</label><select id="ml-type">
           ${types.map(t => `<option value="${t}" ${m.meal_type === t ? 'selected' : ''}>${t}</option>`).join('')}
         </select></div>
       </div>
-      <h3 style="margin:12px 0 6px;font-size:0.85rem;color:var(--text-dim)">Macros</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <h3 class="form-section-title">Macros</h3>
+      <div class="flex-row-wrap">
         ${numField('ml-cal', 'Calories', m.calories, '1')}
         ${numField('ml-prot', 'Protein (g)', m.protein_g, '0.1')}
         ${numField('ml-carb', 'Carbs (g)', m.carbs_g, '0.1')}
         ${numField('ml-fat', 'Fat (g)', m.fat_g, '0.1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('ml-fiber', 'Fiber (g)', m.fiber_g, '0.1')}
         ${numField('ml-sugar', 'Sugar (g)', m.sugar_g, '0.1')}
         ${numField('ml-sodium', 'Sodium (mg)', m.sodium_mg, '1')}
       </div>
       <div class="form-group"><label>Serving Size</label><input type="text" id="ml-serving" value="${esc(m.serving_size || '')}" placeholder="1 plate, 2 scoops, etc."></div>
-      <h3 style="margin:12px 0 6px;font-size:0.85rem;color:var(--text-dim)">Feel (1-10)</h3>
-      <div style="display:flex;gap:8px">
+      <h3 class="form-section-title">Feel (1-10)</h3>
+      <div class="flex-row">
         ${numField('ml-hunger', 'Hunger Before', m.hunger_before, '1')}
         ${numField('ml-full', 'Fullness After', m.fullness_after, '1')}
         ${numField('ml-energy', 'Energy After', m.energy_after, '1')}
@@ -1756,24 +1801,24 @@ async function showDailyContextForm(date, editId) {
   }
   const dayTypes = ['rest','strength','run','hill','hybrid','race','travel'];
   const numField = (id, label, val, step) =>
-    `<div class="form-group" style="flex:1;min-width:90px"><label>${label}</label><input type="number" step="${step || '1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
+    `<div class="form-group flex-1" style="min-width:90px"><label>${label}</label><input type="number" step="${step || '1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
 
   const html = `
-    <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
-      <div style="display:flex;gap:8px">
-        <div class="form-group" style="flex:1"><label>Day Type</label><select id="dc-type">
+    <div class="form-scroll">
+      <div class="flex-row">
+        <div class="form-group flex-1"><label>Day Type</label><select id="dc-type">
           <option value="">—</option>
           ${dayTypes.map(t => `<option value="${t}" ${ctx.day_type === t ? 'selected' : ''}>${t}</option>`).join('')}
         </select></div>
         ${numField('dc-weight', 'Weight (lb)', ctx.body_weight_lb, '0.1')}
         ${numField('dc-water', 'Water (L)', ctx.hydration_liters, '0.1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('dc-energy', 'Energy (1-10)', ctx.energy_rating, '1')}
         ${numField('dc-hunger', 'Hunger (1-10)', ctx.hunger_rating, '1')}
         ${numField('dc-recovery', 'Recovery (1-10)', ctx.recovery_rating, '1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('dc-sleep-hrs', 'Sleep (hrs)', ctx.sleep_hours, '0.5')}
         ${numField('dc-sleep-q', 'Sleep Quality (1-10)', ctx.sleep_quality, '1')}
       </div>
@@ -1933,7 +1978,7 @@ function setBodyMetricFilter(key, value) {
 
 async function loadBodyMetrics(searchQuery) {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
+  main.innerHTML = skeletonCards(4);
   try {
     const params = new URLSearchParams({ limit: '50' });
     if (searchQuery) params.set('q', searchQuery);
@@ -1943,23 +1988,22 @@ async function loadBodyMetrics(searchQuery) {
     const data = await api('/body-metrics?' + params.toString());
 
     main.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="list-search-row">
         <input type="text" class="brain-search" placeholder="Search body metrics..." value="${esc(searchQuery || '')}"
-          oninput="debounceBodyMetricSearch(this.value)" style="margin-bottom:0;flex:1;margin-right:8px">
-        <button class="btn-submit" onclick="showBodyMetricImport()" style="white-space:nowrap;padding:8px 12px;margin-right:4px;background:var(--accent-dim,#4b5563)">Import</button>
-        <button class="btn-submit" onclick="showBodyMetricForm()" style="white-space:nowrap;padding:8px 16px">+ Log</button>
+          oninput="debounceBodyMetricSearch(this.value)">
+        <button class="btn-submit btn-secondary btn-compact-sm" onclick="showBodyMetricImport()">Import</button>
+        <button class="btn-submit btn-compact" onclick="showBodyMetricForm()">+ Log</button>
       </div>
       <div class="transcript-count">${data.total} measurement${data.total !== 1 ? 's' : ''}</div>
-      <div id="body-metric-list">
+      <div id="body-metric-list" class="fade-in">
         ${data.body_metrics.length ? data.body_metrics.map(m => {
           const d = new Date(m.measurement_date.slice(0,10) + 'T12:00:00');
           const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          const weightChange = '';
           return `
           <div class="list-item workout-card" onclick="showBodyMetricDetail('${m.id}')" style="border-left:3px solid #06b6d4">
             <div class="transcript-card-header">
               <div class="list-item-title">${esc(m.weight_lb)}lb</div>
-              <span class="content-type-badge" style="background:#06b6d422;color:#06b6d4">${esc(m.source || 'RENPHO')}</span>
+              <span class="badge-dynamic" style="background:#06b6d422;color:#06b6d4">${esc(m.source || 'RENPHO')}</span>
             </div>
             <div class="list-item-meta">
               <span>${dateLabel}</span>
@@ -1969,7 +2013,7 @@ async function loadBodyMetrics(searchQuery) {
               ${m.bmr_kcal ? `<span>BMR: ${m.bmr_kcal}</span>` : ''}
               ${m.metabolic_age ? `<span>Met Age: ${m.metabolic_age}</span>` : ''}
             </div>
-            ${m.measurement_context ? `<div class="transcript-summary" style="-webkit-line-clamp:1;font-size:0.7rem;color:var(--text-dim)">${esc(m.measurement_context)}</div>` : ''}
+            ${m.measurement_context ? `<div class="transcript-summary text-micro" style="-webkit-line-clamp:1">${esc(m.measurement_context)}</div>` : ''}
           </div>`;
         }).join('') : '<div class="empty-state">No body metrics yet. Tap "+ Log" to add one!</div>'}
       </div>
@@ -1992,20 +2036,20 @@ async function showBodyMetricDetail(id) {
 
     function row(label, value, unit) {
       if (value == null || value === '') return '';
-      return `<tr><td style="padding:4px 8px;color:var(--text-dim);white-space:nowrap">${label}</td><td style="padding:4px 8px;font-weight:600">${esc(String(value))}${unit ? ' ' + unit : ''}</td></tr>`;
+      return `<tr><td>${label}</td><td>${esc(String(value))}${unit ? ' ' + unit : ''}</td></tr>`;
     }
 
     let html = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <span class="content-type-badge" style="background:#06b6d422;color:#06b6d4;font-size:0.75rem;padding:3px 12px">${esc(m.source || 'RENPHO')}</span>
-        <span style="font-size:0.8rem;color:var(--text-dim)">${dateLabel}</span>
-        ${m.measurement_time ? `<span style="font-size:0.8rem;color:var(--text-dim)">${esc(m.measurement_time)}</span>` : ''}
-        ${m.vendor_user_mode ? `<span class="content-type-badge" style="background:#f59e0b22;color:#f59e0b;font-size:0.7rem;padding:2px 8px">${esc(m.vendor_user_mode)}</span>` : ''}
+      <div class="flex-row-wrap mb-md">
+        <span class="badge-dynamic badge-lg" style="background:#06b6d422;color:#06b6d4">${esc(m.source || 'RENPHO')}</span>
+        <span class="text-meta">${dateLabel}</span>
+        ${m.measurement_time ? `<span class="text-meta">${esc(m.measurement_time)}</span>` : ''}
+        ${m.vendor_user_mode ? `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b">${esc(m.vendor_user_mode)}</span>` : ''}
       </div>
 
-      <div style="font-size:2rem;font-weight:700;margin:12px 0">${esc(String(m.weight_lb))} lb</div>
+      <div class="text-hero mb-md">${esc(String(m.weight_lb))} lb</div>
 
-      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+      <table class="detail-table">
         ${row('BMI', m.bmi, '')}
         ${row('Body Fat', m.body_fat_pct, '%')}
         ${row('Skeletal Muscle', m.skeletal_muscle_pct, '%')}
@@ -2020,13 +2064,13 @@ async function showBodyMetricDetail(id) {
         ${row('Metabolic Age', m.metabolic_age, '')}
       </table>
 
-      ${m.measurement_context ? `<div style="margin-top:12px;padding:8px;background:var(--bg-secondary,#1e1e2e);border-radius:6px;font-size:0.8rem"><strong>Context:</strong> ${esc(m.measurement_context)}</div>` : ''}
-      ${m.notes ? `<div style="margin-top:8px;padding:8px;background:var(--bg-secondary,#1e1e2e);border-radius:6px;font-size:0.8rem"><strong>Notes:</strong> ${esc(m.notes)}</div>` : ''}
-      ${m.tags && m.tags.length ? `<div style="margin-top:8px">${m.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
+      ${m.measurement_context ? `<div class="detail-info mt-md"><strong>Context:</strong> ${esc(m.measurement_context)}</div>` : ''}
+      ${m.notes ? `<div class="detail-info mt-sm"><strong>Notes:</strong> ${esc(m.notes)}</div>` : ''}
+      ${m.tags && m.tags.length ? `<div class="mt-sm">${m.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
 
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="btn-submit" onclick="showBodyMetricForm('${m.id}')" style="flex:1">Edit</button>
-        <button class="btn-action btn-action-danger" onclick="deleteBodyMetric('${m.id}')" style="flex:0.5">Delete</button>
+      <div class="action-row">
+        <button class="btn-submit flex-1" onclick="showBodyMetricForm('${m.id}')">Edit</button>
+        <button class="btn-action btn-action-danger flex-half" onclick="deleteBodyMetric('${m.id}')">Delete</button>
       </div>
     `;
     openModal(`${m.weight_lb} lb — ${dateLabel}`, html);
@@ -2042,46 +2086,46 @@ async function showBodyMetricForm(editId) {
   const today = new Date().toISOString().slice(0, 10);
 
   const numField = (id, label, val, step) =>
-    `<div class="form-group" style="flex:1;min-width:100px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
+    `<div class="form-group flex-1" style="min-width:100px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
 
   const html = `
-    <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
+    <div class="form-scroll">
       <div class="form-group"><label>Measurement Date</label><input type="date" id="bm-date" value="${m.measurement_date ? m.measurement_date.slice(0,10) : today}"></div>
-      <div style="display:flex;gap:8px">
-        <div class="form-group" style="flex:1"><label>Time (optional)</label><input type="time" id="bm-time" value="${m.measurement_time || ''}"></div>
-        <div class="form-group" style="flex:1"><label>Source</label><input type="text" id="bm-source" value="${esc(m.source || 'RENPHO')}" placeholder="RENPHO"></div>
+      <div class="flex-row">
+        <div class="form-group flex-1"><label>Time (optional)</label><input type="time" id="bm-time" value="${m.measurement_time || ''}"></div>
+        <div class="form-group flex-1"><label>Source</label><input type="text" id="bm-source" value="${esc(m.source || 'RENPHO')}" placeholder="RENPHO"></div>
       </div>
-      <div style="display:flex;gap:8px">
-        <div class="form-group" style="flex:1"><label>Source Type</label><input type="text" id="bm-source-type" value="${esc(m.source_type || 'smart_scale')}"></div>
-        <div class="form-group" style="flex:1"><label>Mode</label><input type="text" id="bm-mode" value="${esc(m.vendor_user_mode || '')}" placeholder="Athlete mode"></div>
+      <div class="flex-row">
+        <div class="form-group flex-1"><label>Source Type</label><input type="text" id="bm-source-type" value="${esc(m.source_type || 'smart_scale')}"></div>
+        <div class="form-group flex-1"><label>Mode</label><input type="text" id="bm-mode" value="${esc(m.vendor_user_mode || '')}" placeholder="Athlete mode"></div>
       </div>
 
-      <h3 style="margin:16px 0 8px;font-size:0.9rem;color:var(--text-dim)">Core Metrics</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <h3 class="form-section-title mt-lg">Core Metrics</h3>
+      <div class="flex-row-wrap">
         ${numField('bm-weight', 'Weight (lb)*', m.weight_lb, '0.1')}
         ${numField('bm-bmi', 'BMI', m.bmi, '0.1')}
         ${numField('bm-bf', 'Body Fat %', m.body_fat_pct, '0.1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('bm-skeletal', 'Skeletal Muscle %', m.skeletal_muscle_pct, '0.1')}
         ${numField('bm-ffm', 'Fat-Free Mass (lb)', m.fat_free_mass_lb, '0.1')}
         ${numField('bm-subq', 'Subcutaneous Fat %', m.subcutaneous_fat_pct, '0.1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('bm-visceral', 'Visceral Fat', m.visceral_fat, '1')}
         ${numField('bm-water', 'Body Water %', m.body_water_pct, '0.1')}
         ${numField('bm-muscle', 'Muscle Mass (lb)', m.muscle_mass_lb, '0.1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('bm-bone', 'Bone Mass (lb)', m.bone_mass_lb, '0.1')}
         ${numField('bm-protein', 'Protein %', m.protein_pct, '0.1')}
         ${numField('bm-bmr', 'BMR (kcal)', m.bmr_kcal, '1')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="flex-row-wrap">
         ${numField('bm-metage', 'Metabolic Age', m.metabolic_age, '1')}
       </div>
 
-      <h3 style="margin:16px 0 8px;font-size:0.9rem;color:var(--text-dim)">Context</h3>
+      <h3 class="form-section-title mt-lg">Context</h3>
       <div class="form-group"><label>Measurement Context</label><input type="text" id="bm-context" value="${esc(m.measurement_context || '')}" placeholder="morning, fasted, post-bathroom"></div>
       <div class="form-group"><label>Notes</label><textarea id="bm-notes" rows="2" placeholder="Optional notes">${esc(m.notes || '')}</textarea></div>
       <div class="form-group"><label>Tags (comma-separated)</label><input type="text" id="bm-tags" value="${(m.tags || []).join(', ')}" placeholder="renpho, body-composition"></div>
