@@ -802,8 +802,8 @@ body {
   padding: 10px 4px 8px;
   background: none;
   border: none;
-  color: rgba(139, 143, 163, 0.65);
-  font-size: 0.67rem;
+  color: #9ca3af;
+  font-size: 0.7rem;
   font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -811,22 +811,21 @@ body {
   -webkit-tap-highlight-color: transparent;
   position: relative;
 }
-.tab-btn svg { opacity: 0.55; transition: opacity 0.22s ease, transform 0.22s ease; }
+.tab-btn svg { transition: transform 0.22s ease; }
 .tab-btn:active { transform: scale(0.88); }
-.tab-btn.active { color: var(--accent); font-weight: 600; }
-.tab-btn.active svg { opacity: 1; color: var(--accent); transform: scale(1.0); }
+.tab-btn.active { color: var(--accent-hover); font-weight: 600; }
+.tab-btn.active svg { color: var(--accent-hover); }
 .tab-btn.active::before {
   content: '';
   position: absolute;
-  top: 7px;
+  top: 6px;
   left: 50%;
   transform: translateX(-50%);
-  width: 50px;
+  width: 52px;
   height: 32px;
-  background: rgba(99, 102, 241, 0.14);
+  background: rgba(129, 140, 248, 0.18);
   border-radius: 16px;
   z-index: -1;
-  transition: opacity 0.2s ease;
 }
 
 /* --- Loading --- */
