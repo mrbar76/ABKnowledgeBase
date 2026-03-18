@@ -785,43 +785,48 @@ body {
   left: 0;
   right: 0;
   display: flex;
-  background: rgba(15, 17, 23, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(45, 49, 72, 0.4);
+  background: rgba(18, 20, 30, 0.93);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   padding-bottom: env(safe-area-inset-bottom, 0);
   z-index: 100;
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25), 0 -8px 24px rgba(0, 0, 0, 0.15);
 }
 .tab-btn {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 4px 6px;
+  gap: 4px;
+  padding: 10px 4px 8px;
   background: none;
   border: none;
-  color: var(--text-dim);
-  font-size: 0.6rem;
+  color: rgba(139, 143, 163, 0.65);
+  font-size: 0.67rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: color 0.2s, transform 0.15s;
+  transition: color 0.2s ease, transform 0.15s ease;
   -webkit-tap-highlight-color: transparent;
   position: relative;
 }
-.tab-btn svg { opacity: 0.4; transition: opacity 0.2s, transform 0.2s; }
-.tab-btn:active { transform: scale(0.9); }
-.tab-btn.active { color: var(--accent); }
-.tab-btn.active svg { opacity: 1; color: var(--accent); transform: scale(1.1); }
+.tab-btn svg { opacity: 0.55; transition: opacity 0.22s ease, transform 0.22s ease; }
+.tab-btn:active { transform: scale(0.88); }
+.tab-btn.active { color: var(--accent); font-weight: 600; }
+.tab-btn.active svg { opacity: 1; color: var(--accent); transform: scale(1.0); }
 .tab-btn.active::before {
   content: '';
   position: absolute;
-  top: 0;
+  top: 7px;
   left: 50%;
   transform: translateX(-50%);
-  width: 24px;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 0 0 2px 2px;
+  width: 50px;
+  height: 32px;
+  background: rgba(99, 102, 241, 0.14);
+  border-radius: 16px;
+  z-index: -1;
+  transition: opacity 0.2s ease;
 }
 
 /* --- Loading --- */
