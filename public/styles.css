@@ -188,6 +188,24 @@ body {
 .stat-card .stat-label { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.02em; }
 
 /* --- Activity --- */
+.activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.activity-header h2 { margin-bottom: 0; }
+.activity-body {
+  overflow: hidden;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s, margin-top 0.2s;
+  max-height: 600px;
+  opacity: 1;
+  margin-top: 12px;
+}
+.activity-body.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
 .activity-item {
   display: flex;
   gap: 10px;
@@ -596,9 +614,9 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 12px;
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 .dash-section:hover { border-color: rgba(99,102,241,0.2); }
@@ -606,29 +624,78 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
-  font-size: 0.72rem;
+  margin-bottom: 14px;
+}
+.dash-section-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  padding: 4px 12px;
+  border-radius: 20px;
 }
-.dash-section-header svg { opacity: 0.5; }
 .dash-section .stats-grid { margin-bottom: 0; }
 .dash-greeting {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  margin-bottom: 4px;
-  background: linear-gradient(135deg, var(--text), var(--accent-hover));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  margin-bottom: 2px;
+  letter-spacing: -0.01em;
 }
 .dash-date {
   font-size: 0.78rem;
   color: var(--text-dim);
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   letter-spacing: 0.01em;
+}
+
+/* --- Ring-style stat cards (Apple Fitness inspired) --- */
+.ring-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.ring-card {
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 10px 12px;
+  text-align: center;
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.ring-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.08); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+.ring-card:active { transform: scale(0.97); }
+.ring-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  margin: 0 auto 8px;
+  transition: transform var(--transition);
+}
+.ring-card:hover .ring-icon { transform: scale(1.1); }
+.ring-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+.ring-label {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+@media (max-width: 374px) {
+  .ring-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* --- Skeleton Loading --- */
@@ -818,7 +885,7 @@ body {
 .kanban-col {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   min-height: 120px;
   overflow: hidden;
 }
@@ -850,6 +917,30 @@ body {
 }
 .kanban-card:hover { border-color: rgba(99,102,241,0.4); transform: translateY(-1px); box-shadow: 0 3px 12px rgba(0,0,0,0.15); }
 .kanban-card:active { transform: scale(0.98); }
+.kanban-card[draggable="true"] { cursor: grab; }
+.kanban-card[draggable="true"]:active { cursor: grabbing; }
+.kanban-card-dragging { opacity: 0.3; transform: scale(0.95); }
+.kanban-drop-zone {
+  min-height: 80px;
+  border: 2px dashed rgba(99,102,241,0.25);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.kanban-drop-hover {
+  border-color: var(--accent);
+  background: rgba(99,102,241,0.06);
+}
+.kanban-ghost {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0.85;
+  transform: rotate(2deg) scale(1.04);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+}
 .kanban-card-title {
   font-size: 0.8rem;
   font-weight: 600;
@@ -912,42 +1003,45 @@ body {
 
 /* --- Progress Bar --- */
 .progress-bar {
-  height: 4px;
+  height: 5px;
   background: var(--bg-input);
-  border-radius: 2px;
+  border-radius: 3px;
   margin-top: 8px;
   overflow: hidden;
 }
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--green));
-  border-radius: 2px;
-  transition: width 0.3s ease;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* --- Brain Search Input --- */
-/* --- Brain Sub-tabs --- */
+/* --- Brain Sub-tabs (segment control style) --- */
 .brain-tabs {
   display: flex;
-  gap: 0;
+  gap: 4px;
   margin-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 .brain-tab {
   flex: 1;
-  padding: 10px 0;
+  padding: 9px 0;
   text-align: center;
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-dim);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
 }
-.brain-tab:hover { color: var(--text); }
-.brain-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.brain-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.brain-tab:active { transform: scale(0.96); }
+.brain-tab.active { color: #fff; background: var(--accent); box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
 
 .brain-search {
   width: 100%;
@@ -964,14 +1058,15 @@ body {
 .brain-search:focus { border-color: var(--accent); }
 .brain-search::placeholder { color: var(--text-dim); }
 
-/* --- Fitness Sub-tabs --- */
+/* --- Fitness Sub-tabs (segment control style) --- */
 .fitness-tabs {
   display: flex;
-  gap: 0;
-  margin-bottom: 14px;
-  border-bottom: 2px solid var(--border);
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
   background: var(--bg-card);
-  border-radius: var(--radius) var(--radius) 0 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   overflow: hidden;
 }
 .fitness-tab {
@@ -980,23 +1075,23 @@ body {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 11px 4px;
+  padding: 9px 4px;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-dim);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
 }
-.fitness-tab svg { opacity: 0.5; transition: opacity 0.2s; flex-shrink: 0; }
-.fitness-tab:hover { color: var(--text); }
-.fitness-tab:hover svg { opacity: 0.8; }
-.fitness-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-.fitness-tab.active svg { opacity: 1; color: var(--accent); }
+.fitness-tab svg { opacity: 0.4; transition: opacity 0.2s; flex-shrink: 0; }
+.fitness-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.fitness-tab:hover svg { opacity: 0.7; }
+.fitness-tab:active { transform: scale(0.96); }
+.fitness-tab.active { color: #fff; background: var(--accent); box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
+.fitness-tab.active svg { opacity: 1; color: #fff; }
 
 /* --- Workout Styles --- */
 .workout-card { transition: transform 0.15s; }

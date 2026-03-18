@@ -166,41 +166,62 @@ async function loadDashboardStats() {
 
     const activeInjuries = data.training?.injuries?.active || 0;
 
+    const fitnessCards = [
+      { label: 'Workouts', value: data.workouts?.total || 0, color: '#22c55e', icon: '\u{1F3CB}', sub: 'workouts' },
+      { label: 'Meals', value: data.meals?.total || 0, color: '#f97316', icon: '\u{1F34E}', sub: 'nutrition' },
+      { label: 'Body Metrics', value: data.body_metrics?.total || 0, color: '#3b82f6', icon: '\u{1F4CF}', sub: 'body' },
+    ];
+    if (data.training) {
+      fitnessCards.push(
+        { label: 'Active Plans', value: data.training.plans?.active || 0, color: '#a855f7', icon: '\u{1F4CB}', sub: 'training' },
+        { label: 'Coaching', value: data.training.coaching_sessions?.total || 0, color: '#06b6d4', icon: '\u{1F9D1}\u{200D}\u{1F3EB}', sub: 'training' },
+        { label: 'Injuries', value: activeInjuries, color: activeInjuries > 0 ? '#ef4444' : '#6b7280', icon: '\u{1FA79}', sub: 'training' },
+      );
+    }
+
+    const knowledgeCards = [
+      { label: 'Knowledge', value: data.knowledge.total, color: '#818cf8', icon: '\u{1F9E0}', tab: 'brain' },
+      { label: 'Transcripts', value: data.transcripts.total, color: '#f59e0b', icon: '\u{1F399}', tab: 'transcripts' },
+      { label: 'Tasks', value: totalTasks, color: '#3b82f6', icon: '\u2705', tab: 'kanban' },
+      { label: 'In Progress', value: inProgress, color: '#f97316', icon: '\u{1F525}', tab: 'kanban' },
+      { label: 'Projects', value: data.projects.active, color: '#22c55e', icon: '\u{1F4C1}', tab: 'projects' },
+    ];
+
+    function renderRingCard(c, onclick) {
+      return `<div class="ring-card clickable" onclick="${onclick}">
+        <div class="ring-icon" style="background:${c.color}18;color:${c.color}">${c.icon}</div>
+        <div class="ring-value" style="color:${c.color}" data-target="${c.value}">0</div>
+        <div class="ring-label">${c.label}</div>
+      </div>`;
+    }
+
     container.innerHTML = `
       <div class="dash-section fade-in stagger-1" onclick="switchTab('fitness')" style="cursor:pointer">
         <div class="dash-section-header">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
-          Fitness
+          <div class="dash-section-pill" style="background:#22c55e18;color:#22c55e">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
+            Fitness
+          </div>
         </div>
-        <div class="stats-grid">
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='workouts';switchTab('fitness')"><div class="stat-value" data-target="${data.workouts?.total || 0}">0</div><div class="stat-label">Workouts</div></div>
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='nutrition';switchTab('fitness')"><div class="stat-value" data-target="${data.meals?.total || 0}">0</div><div class="stat-label">Meals</div></div>
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='body';switchTab('fitness')"><div class="stat-value" data-target="${data.body_metrics?.total || 0}">0</div><div class="stat-label">Body Metrics</div></div>
-          ${data.training ? `
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value">${data.training.plans?.active || 0}</div><div class="stat-label">Active Plans</div></div>
-          <div class="stat-card clickable" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value">${data.training.coaching_sessions?.total || 0}</div><div class="stat-label">Coaching</div></div>
-          <div class="stat-card clickable${activeInjuries > 0 ? '" style="border-color:var(--red)' : ''}" onclick="event.stopPropagation();fitnessSubTab='training';switchTab('fitness')"><div class="stat-value"${activeInjuries > 0 ? ' style="color:var(--red)"' : ''}>${activeInjuries}</div><div class="stat-label">Injuries</div></div>
-          ` : ''}
-        </div>
+        <div class="ring-grid">${fitnessCards.map(c => renderRingCard(c, `event.stopPropagation();fitnessSubTab='${c.sub}';switchTab('fitness')`)).join('')}</div>
       </div>
 
       <div class="dash-section fade-in stagger-2">
         <div class="dash-section-header">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-          Knowledge &amp; Tasks
+          <div class="dash-section-pill" style="background:#818cf818;color:#818cf8">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            Knowledge &amp; Tasks
+          </div>
         </div>
-        <div class="stats-grid">
-          <div class="stat-card clickable" onclick="switchTab('brain')"><div class="stat-value" data-target="${data.knowledge.total}">0</div><div class="stat-label">Knowledge</div></div>
-          <div class="stat-card clickable" onclick="switchTab('transcripts')"><div class="stat-value" data-target="${data.transcripts.total}">0</div><div class="stat-label">Transcripts</div></div>
-          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value" data-target="${totalTasks}">0</div><div class="stat-label">Tasks</div></div>
-          <div class="stat-card clickable" onclick="switchTab('kanban')"><div class="stat-value" data-target="${inProgress}">0</div><div class="stat-label">In Progress</div></div>
-          <div class="stat-card clickable" onclick="switchTab('projects')"><div class="stat-value" data-target="${data.projects.active}">0</div><div class="stat-label">Projects</div></div>
-        </div>
+        <div class="ring-grid">${knowledgeCards.map(c => renderRingCard(c, `switchTab('${c.tab}')`)).join('')}</div>
       </div>
 
       <div class="card fade-in stagger-3" id="activity-card" style="display:none">
-        <h2>Recent Activity</h2>
-        <div id="recent-activity"></div>
+        <div class="activity-header clickable" onclick="toggleActivity()">
+          <h2>Recent Activity</h2>
+          <svg id="activity-chevron" viewBox="0 0 24 24" width="16" height="16" style="color:var(--text-dim);transition:transform 0.2s"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+        </div>
+        <div id="recent-activity" class="activity-body collapsed"></div>
       </div>
     `;
     // Animate all stat values
@@ -582,14 +603,17 @@ async function loadKanban() {
         <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
       </div>
       <div class="kanban-board">${cols.map(col => `
-        <div class="kanban-col">
+        <div class="kanban-col" data-status="${col}">
           <div class="kanban-col-header" style="border-bottom-color:${colors[col]}">
             <span>${labels[col]}</span>
             <span class="kanban-count">${(data[col] || []).length}</span>
           </div>
-          <div class="kanban-col-body">
+          <div class="kanban-col-body" ondragover="kanbanDragOver(event)" ondrop="kanbanDrop(event)">
             ${(data[col] || []).map(t => `
-              <div class="kanban-card" onclick="showTaskDetail('${t.id}')">
+              <div class="kanban-card" draggable="true"
+                ondragstart="kanbanDragStart(event,'${t.id}')" ondragend="kanbanDragEnd(event)"
+                ontouchstart="kanbanTouchStart(event,'${t.id}')" ontouchmove="kanbanTouchMove(event)" ontouchend="kanbanTouchEnd(event)"
+                onclick="if(!_touchMoved)showTaskDetail('${t.id}')">
                 <div class="kanban-card-title">${esc(t.title)}</div>
                 ${t.project_name ? `<div class="kanban-card-meta">${esc(t.project_name)}</div>` : ''}
                 <div class="kanban-card-meta">
@@ -635,6 +659,105 @@ async function showTaskDetail(id) {
 
 async function updateTask(id, field, value) {
   try { await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) }); loadKanban(); } catch {}
+}
+
+// ─── Kanban Drag & Drop ──────────────────────────────────────
+let _dragTaskId = null;
+let _dragGhost = null;
+let _touchStartX = 0, _touchStartY = 0, _touchMoved = false;
+
+function kanbanDragStart(e, taskId) {
+  _dragTaskId = taskId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', taskId);
+  e.target.classList.add('kanban-card-dragging');
+  // Highlight drop zones
+  setTimeout(() => document.querySelectorAll('.kanban-col-body').forEach(c => c.classList.add('kanban-drop-zone')), 0);
+}
+function kanbanDragEnd(e) {
+  e.target.classList.remove('kanban-card-dragging');
+  document.querySelectorAll('.kanban-col-body').forEach(c => { c.classList.remove('kanban-drop-zone', 'kanban-drop-hover'); });
+  _dragTaskId = null;
+}
+function kanbanDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const zone = e.target.closest('.kanban-col-body');
+  if (zone) {
+    document.querySelectorAll('.kanban-col-body').forEach(c => c.classList.remove('kanban-drop-hover'));
+    zone.classList.add('kanban-drop-hover');
+  }
+}
+function kanbanDrop(e) {
+  e.preventDefault();
+  const zone = e.target.closest('.kanban-col-body');
+  if (!zone || !_dragTaskId) return;
+  const col = zone.closest('.kanban-col');
+  const status = col?.dataset.status;
+  if (status) {
+    updateTask(_dragTaskId, 'status', status);
+    showToast(`Moved to ${status.replace('_', ' ')}`, 'success', 2000);
+  }
+  document.querySelectorAll('.kanban-col-body').forEach(c => { c.classList.remove('kanban-drop-zone', 'kanban-drop-hover'); });
+  _dragTaskId = null;
+}
+
+// Touch-based drag for mobile
+function kanbanTouchStart(e, taskId) {
+  const touch = e.touches[0];
+  _touchStartX = touch.clientX;
+  _touchStartY = touch.clientY;
+  _touchMoved = false;
+  _dragTaskId = taskId;
+}
+function kanbanTouchMove(e) {
+  if (!_dragTaskId) return;
+  const touch = e.touches[0];
+  const dx = Math.abs(touch.clientX - _touchStartX);
+  const dy = Math.abs(touch.clientY - _touchStartY);
+  if (dx > 10 || dy > 10) _touchMoved = true;
+  if (!_touchMoved) return;
+  e.preventDefault();
+
+  if (!_dragGhost) {
+    const card = e.target.closest('.kanban-card');
+    if (!card) return;
+    _dragGhost = card.cloneNode(true);
+    _dragGhost.classList.add('kanban-ghost');
+    _dragGhost.style.width = card.offsetWidth + 'px';
+    document.body.appendChild(_dragGhost);
+    card.classList.add('kanban-card-dragging');
+    document.querySelectorAll('.kanban-col-body').forEach(c => c.classList.add('kanban-drop-zone'));
+  }
+  _dragGhost.style.left = (touch.clientX - 40) + 'px';
+  _dragGhost.style.top = (touch.clientY - 20) + 'px';
+
+  // Highlight target column
+  document.querySelectorAll('.kanban-col-body').forEach(c => c.classList.remove('kanban-drop-hover'));
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const zone = el?.closest('.kanban-col-body');
+  if (zone) zone.classList.add('kanban-drop-hover');
+}
+function kanbanTouchEnd(e) {
+  if (!_dragTaskId) return;
+  if (_touchMoved && _dragGhost) {
+    const touch = e.changedTouches[0];
+    // Temporarily hide ghost to find element below
+    _dragGhost.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    _dragGhost.style.display = '';
+    const zone = el?.closest('.kanban-col-body');
+    const status = zone?.closest('.kanban-col')?.dataset.status;
+    if (status) {
+      updateTask(_dragTaskId, 'status', status);
+      showToast(`Moved to ${status.replace('_', ' ')}`, 'success', 2000);
+    }
+  }
+  if (_dragGhost) { _dragGhost.remove(); _dragGhost = null; }
+  document.querySelectorAll('.kanban-card-dragging').forEach(c => c.classList.remove('kanban-card-dragging'));
+  document.querySelectorAll('.kanban-col-body').forEach(c => { c.classList.remove('kanban-drop-zone', 'kanban-drop-hover'); });
+  _dragTaskId = null;
+  _touchMoved = false;
 }
 
 async function deleteTask(id) {
@@ -1218,6 +1341,14 @@ async function deleteProject(id) {
 }
 
 // ─── Sync helpers ─────────────────────────────────────────────
+
+function toggleActivity() {
+  const body = document.getElementById('recent-activity');
+  const chevron = document.getElementById('activity-chevron');
+  if (!body) return;
+  body.classList.toggle('collapsed');
+  if (chevron) chevron.style.transform = body.classList.contains('collapsed') ? '' : 'rotate(180deg)';
+}
 
 function renderActivityItem(log) {
   const icons = { create: '+', update: '~', delete: 'x', sync: '\u21BB' };
