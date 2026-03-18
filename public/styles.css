@@ -1087,19 +1087,24 @@ body {
 .priority-dot.priority-medium { background: var(--accent); }
 .priority-dot.priority-low { background: var(--text-dim); }
 .cal-more { font-size: 0.6rem; color: var(--text-dim); padding: 1px 3px; }
-.cal-dragging { opacity: 0.4; }
-.cal-drop-zone { outline: 2px dashed rgba(99,102,241,0.3); outline-offset: -2px; }
-.cal-drop-hover { background: rgba(99,102,241,0.15) !important; outline-color: var(--accent); }
-.cal-ghost {
-  position: fixed; z-index: 9999; pointer-events: none; opacity: 0.9;
-  background: var(--bg-card); border: 1px solid var(--accent); border-radius: 6px;
-  padding: 4px 8px; font-size: 0.75rem; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+.cal-task { cursor: pointer; }
+.cal-task:active { transform: scale(0.95); }
+.cal-task-selected {
+  background: var(--accent) !important; color: #fff; border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--accent);
 }
-.cal-task { cursor: grab; }
-.cal-task:active { cursor: grabbing; }
+.cal-task-selected .priority-dot { border: 1px solid #fff; }
+.cal-drop-zone { outline: 2px dashed rgba(99,102,241,0.35); outline-offset: -2px; cursor: pointer; }
+.cal-drop-zone:hover { background: rgba(99,102,241,0.15) !important; outline-color: var(--accent); }
+.cal-move-banner {
+  display: none; align-items: center; justify-content: center; flex-wrap: wrap;
+  padding: 8px 12px; margin-bottom: 8px; border-radius: 8px;
+  background: rgba(99,102,241,0.1); border: 1px solid var(--accent);
+  font-size: 0.8rem; color: var(--accent); text-align: center;
+}
+.cal-item-selected { background: rgba(99,102,241,0.12) !important; border-color: var(--accent) !important; }
 .cal-unscheduled { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.cal-unscheduled [draggable] { cursor: grab; }
-.cal-unscheduled [draggable]:active { cursor: grabbing; }
+.cal-unscheduled .list-item:hover { background: rgba(99,102,241,0.06); }
 @media (max-width: 600px) {
   .cal-cell { min-height: 50px; padding: 2px; }
   .cal-task { font-size: 0.58rem; }
