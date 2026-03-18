@@ -13,6 +13,7 @@ router.get('/', async (req, res) => {
     const [
       knowledgeRows, factRows, projectRows,
       taskStatusRows, taskPriorityRows, taskAgentRows,
+      taskDueTodayRows, taskDueWeekRows,
       transcriptRows, conversationRows, activityRows,
       workoutRows, bodyMetricRows, mealRows,
       trainingPlanRows, coachingRows, injuryRows, activeInjuryRows
@@ -23,6 +24,8 @@ router.get('/', async (req, res) => {
       sq('SELECT status, COUNT(*)::int as count FROM tasks GROUP BY status'),
       sq('SELECT priority, COUNT(*)::int as count FROM tasks GROUP BY priority'),
       sq('SELECT ai_agent, COUNT(*)::int as count FROM tasks WHERE ai_agent IS NOT NULL GROUP BY ai_agent'),
+      sq("SELECT COUNT(*)::int as total FROM tasks WHERE due_date = CURRENT_DATE AND status != 'done'", [{ total: 0 }]),
+      sq("SELECT COUNT(*)::int as total FROM tasks WHERE due_date BETWEEN CURRENT_DATE AND (CURRENT_DATE + interval '6 days') AND status != 'done'", [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM transcripts', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM conversations', [{ total: 0 }]),
       sq('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 15'),
@@ -48,6 +51,8 @@ router.get('/', async (req, res) => {
         by_status: statusMap,
         by_priority: priorityMap,
         by_agent: taskAgentRows.map(r => ({ ai_agent: r.ai_agent, count: r.count })),
+        due_today: taskDueTodayRows[0]?.total || 0,
+        due_this_week: taskDueWeekRows[0]?.total || 0,
       },
       transcripts: { total: transcriptRows[0]?.total || 0 },
       conversations: { total: conversationRows[0]?.total || 0 },

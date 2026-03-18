@@ -179,17 +179,24 @@ async function loadDashboard() {
     <div id="dash-content">
       <div class="dash-section">
         <div class="dash-section-header">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
-          Fitness
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          Tasks
         </div>
         <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
       <div class="dash-section">
         <div class="dash-section-header">
           <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-          Knowledge &amp; Tasks
+          Knowledge Base
         </div>
-        <div class="stats-grid">${skeletonStats(5)}</div>
+        <div class="stats-grid">${skeletonStats(4)}</div>
+      </div>
+      <div class="dash-section">
+        <div class="dash-section-header">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
+          Fitness
+        </div>
+        <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
     </div>
   `;
@@ -220,12 +227,26 @@ async function loadDashboardStats() {
       );
     }
 
-    const knowledgeCards = [
-      { label: 'Knowledge', value: data.knowledge.total, color: '#818cf8', icon: '\u{1F9E0}', tab: 'brain' },
-      { label: 'Transcripts', value: data.transcripts.total, color: '#f59e0b', icon: '\u{1F399}', tab: 'transcripts' },
-      { label: 'Tasks', value: totalTasks, color: '#3b82f6', icon: '\u2705', tab: 'tasks' },
-      { label: 'In Progress', value: inProgress, color: '#f97316', icon: '\u{1F525}', tab: 'tasks' },
-      { label: 'Projects', value: data.projects.active, color: '#22c55e', icon: '\u{1F4C1}', tab: 'projects' },
+    const dueToday = data.tasks.due_today || 0;
+    const dueWeek = data.tasks.due_this_week || 0;
+    const todo = data.tasks.by_status.todo || 0;
+    const review = data.tasks.by_status.review || 0;
+    const done = data.tasks.by_status.done || 0;
+
+    const taskCards = [
+      { label: 'To Do', value: todo, color: '#6b7280', icon: '\u{1F4CB}', tab: 'tasks' },
+      { label: 'In Progress', value: inProgress, color: '#3b82f6', icon: '\u{1F525}', tab: 'tasks' },
+      { label: 'In Review', value: review, color: '#f59e0b', icon: '\u{1F50D}', tab: 'tasks' },
+      { label: 'Done', value: done, color: '#22c55e', icon: '\u2705', tab: 'tasks' },
+      { label: 'Due Today', value: dueToday, color: dueToday > 0 ? '#ef4444' : '#6b7280', icon: '\u{1F4C5}', tab: 'tasks' },
+      { label: 'This Week', value: dueWeek, color: dueWeek > 0 ? '#f97316' : '#6b7280', icon: '\u{1F4C6}', tab: 'tasks' },
+    ];
+
+    const kbCards = [
+      { label: 'Conversations', value: data.conversations.total, color: '#a855f7', icon: '\u{1F4AC}', tab: 'brain', sub: 'conversations' },
+      { label: 'Transcripts', value: data.transcripts.total, color: '#f59e0b', icon: '\u{1F399}', tab: 'brain', sub: 'transcripts' },
+      { label: 'Facts', value: data.facts.total, color: '#06b6d4', icon: '\u{1F4CC}', tab: 'brain', sub: 'facts' },
+      { label: 'Knowledge', value: data.knowledge.total, color: '#818cf8', icon: '\u{1F9E0}', tab: 'brain', sub: 'knowledge' },
     ];
 
     function renderRingCard(c, onclick) {
@@ -237,7 +258,27 @@ async function loadDashboardStats() {
     }
 
     container.innerHTML = `
-      <div class="dash-section fade-in stagger-1" onclick="switchTab('fitness')" style="cursor:pointer">
+      <div class="dash-section fade-in stagger-1" onclick="switchTab('tasks')" style="cursor:pointer">
+        <div class="dash-section-header">
+          <div class="dash-section-pill" style="background:#3b82f618;color:#3b82f6">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+            Tasks
+          </div>
+        </div>
+        <div class="ring-grid">${taskCards.map(c => renderRingCard(c, `event.stopPropagation();switchTab('${c.tab}')`)).join('')}</div>
+      </div>
+
+      <div class="dash-section fade-in stagger-2" onclick="switchTab('brain')" style="cursor:pointer">
+        <div class="dash-section-header">
+          <div class="dash-section-pill" style="background:#818cf818;color:#818cf8">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            Knowledge Base
+          </div>
+        </div>
+        <div class="ring-grid">${kbCards.map(c => renderRingCard(c, `event.stopPropagation();brainSubTab='${c.sub}';switchTab('${c.tab}')`)).join('')}</div>
+      </div>
+
+      <div class="dash-section fade-in stagger-3" onclick="switchTab('fitness')" style="cursor:pointer">
         <div class="dash-section-header">
           <div class="dash-section-pill" style="background:#22c55e18;color:#22c55e">
             <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
@@ -247,17 +288,7 @@ async function loadDashboardStats() {
         <div class="ring-grid">${fitnessCards.map(c => renderRingCard(c, `event.stopPropagation();fitnessSubTab='${c.sub}';switchTab('fitness')`)).join('')}</div>
       </div>
 
-      <div class="dash-section fade-in stagger-2">
-        <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:#818cf818;color:#818cf8">
-            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-            Knowledge &amp; Tasks
-          </div>
-        </div>
-        <div class="ring-grid">${knowledgeCards.map(c => renderRingCard(c, `switchTab('${c.tab}')`)).join('')}</div>
-      </div>
-
-      <div class="card fade-in stagger-3" id="activity-card" style="display:none">
+      <div class="card fade-in stagger-4" id="activity-card" style="display:none">
         <div class="activity-header clickable" onclick="toggleActivity()">
           <h2>Recent Activity</h2>
           <svg id="activity-chevron" viewBox="0 0 24 24" width="16" height="16" style="color:var(--text-dim);transition:transform 0.2s"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
@@ -1390,7 +1421,7 @@ function loadBrainGuide() {
         </div>
         <div class="guide-step">
           <span class="guide-step-num">2</span>
-          <div><strong>Import ChatGPT</strong> &mdash; If you used it, export from ChatGPT &rarr; Settings &rarr; Choose file.</div>
+          <div><strong>Import ChatGPT</strong> &mdash; Export all from ChatGPT (Settings &rarr; Export data), then import the file here. Duplicates are auto-skipped.</div>
         </div>
         <div class="guide-step">
           <span class="guide-step-num">3</span>
@@ -1413,8 +1444,8 @@ function loadBrainGuide() {
         </div>
         <div class="guide-row">
           <span><strong>Regular ChatGPT</strong></span>
-          <span style="color:var(--yellow)">Batch &mdash; monthly export</span>
-          <span>Export from ChatGPT settings &rarr; Import here. Monthly is fine.</span>
+          <span style="color:var(--yellow)">Batch &mdash; full export</span>
+          <span>ChatGPT &rarr; Settings &rarr; Export data &rarr; Import the file here. It exports everything, but duplicates are skipped automatically. Safe to re-import anytime.</span>
         </div>
         <div class="guide-row">
           <span><strong>Claude</strong></span>
