@@ -1552,7 +1552,38 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .settings-header h3 { font-size: 1rem; font-weight: 700; }
-.settings-body { padding: 14px 18px; }
+.settings-body { padding: 10px 16px 16px; }
+.sm-group { margin-bottom: 16px; }
+.sm-group-title {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-dim); margin-bottom: 8px; padding-left: 2px;
+}
+.sm-card {
+  background: var(--bg-input); border-radius: 10px; padding: 12px; margin-bottom: 8px;
+}
+.sm-card-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
+.sm-card-desc { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 8px; line-height: 1.4; }
+.sm-btn-row { display: flex; gap: 6px; }
+.sm-btn-row .btn-action { flex: 1; }
+.sm-btn-full { width: 100%; margin-top: 4px; }
+.sm-date-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.sm-date-input {
+  flex: 1; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: 0.75rem;
+}
+.sm-date-sep { font-size: 0.72rem; color: var(--text-dim); }
+.sm-theme-toggle { display: flex; gap: 2px; background: var(--bg-input); border-radius: 8px; padding: 2px; }
+.sm-theme-btn {
+  padding: 5px 12px; border: none; border-radius: 6px; font-size: 0.75rem;
+  cursor: pointer; transition: all 0.2s; background: none; color: var(--text-dim);
+}
+.sm-result {
+  display: none; font-size: 0.78rem; padding: 8px 10px; border-radius: 6px;
+  background: var(--bg); margin-top: 8px; line-height: 1.4;
+}
+.sm-progress-info { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim); margin-bottom: 4px; }
+.sm-progress-bar { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
+.sm-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.3s; }
 .settings-row {
   display: flex;
   justify-content: space-between;

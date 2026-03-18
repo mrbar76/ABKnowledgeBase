@@ -64,83 +64,88 @@
         <button class="modal-close" onclick="closeSettingsMenu()">&times;</button>
       </div>
       <div class="settings-body">
-        <div class="settings-row">
-          <div class="settings-row-label">Appearance</div>
-          <div style="display:flex;gap:3px;background:var(--bg-input);border-radius:8px;padding:3px">
-            <button id="theme-btn-light" onclick="setTheme('light')" style="padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-dim)">☀️ Light</button>
-            <button id="theme-btn-auto"  onclick="setTheme('auto')"  style="padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-dim)">Auto</button>
-            <button id="theme-btn-dark"  onclick="setTheme('dark')"  style="padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-dim)">🌙 Dark</button>
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="settings-row-label">Backend</div>
-          <div class="settings-row-value" id="sm-backend-val">checking...</div>
-        </div>
-        <div class="settings-row">
-          <div class="settings-row-label">Bee Token</div>
-          <div class="settings-row-value" id="sm-bee-val">—</div>
-        </div>
-        <div class="settings-row">
-          <div class="settings-row-label">OpenAI (Intake)</div>
-          <div class="settings-row-value" id="sm-openai-val">—</div>
-        </div>
-        <div class="settings-row">
-          <div class="settings-row-label">Bee Synced</div>
-          <div class="settings-row-value" id="sm-synced-val">—</div>
-        </div>
 
-        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:4px">
-          <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">Bee Sync</div>
-          <div class="sync-actions" style="margin-bottom:8px">
-            <button class="btn-action" onclick="triggerBeeSyncFromMenu('incremental')" id="sm-btn-sync-updates">Sync Updates</button>
-            <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('full')" id="sm-btn-sync-full">Full Sync</button>
-          </div>
-          <div id="sm-sync-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
-          <div style="margin-top:10px">
-            <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:4px">Sync conversations by date range:</div>
-            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-              <input type="date" id="sm-conv-start" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:0.75rem">
-              <span style="color:var(--text-dim);font-size:0.75rem">to</span>
-              <input type="date" id="sm-conv-end" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:0.75rem">
-            </div>
-            <button class="btn-action btn-action-secondary" onclick="syncConversationsByDate()" id="sm-btn-sync-convos" style="width:100%">Sync Conversations</button>
-            <div id="sm-conv-sync-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:6px"></div>
-          </div>
-        </div>
-
-        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
-          <div style="font-size:0.85rem;font-weight:700;margin-bottom:4px">ChatGPT Import</div>
-          <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:10px">Import your ChatGPT exported conversations.json. Duplicates are skipped automatically.</div>
-          <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">
-          <button class="btn-action btn-action-secondary" onclick="document.getElementById('chatgpt-import-file').click()" id="chatgpt-import-btn" style="width:100%">Choose conversations.json</button>
-          <div id="chatgpt-import-progress" style="display:none;margin-top:10px">
-            <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-dim);margin-bottom:4px">
-              <span id="chatgpt-import-status">Importing...</span>
-              <span id="chatgpt-import-count"></span>
-            </div>
-            <div style="height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden">
-              <div id="chatgpt-import-bar" style="height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width 0.3s"></div>
+        <!-- Appearance -->
+        <div class="sm-group">
+          <div class="settings-row">
+            <div class="settings-row-label">Appearance</div>
+            <div class="sm-theme-toggle">
+              <button id="theme-btn-light" onclick="setTheme('light')" class="sm-theme-btn">Light</button>
+              <button id="theme-btn-auto"  onclick="setTheme('auto')"  class="sm-theme-btn">Auto</button>
+              <button id="theme-btn-dark"  onclick="setTheme('dark')"  class="sm-theme-btn">Dark</button>
             </div>
           </div>
-          <div id="chatgpt-import-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:8px"></div>
         </div>
 
-        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
-          <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">GPT Actions Schema</div>
-          <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px">Copy this schema into your GPT Actions configuration:</div>
-          <div style="display:flex;gap:6px;margin-bottom:4px">
-            <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema" style="flex:1">Copy Schema</button>
-            <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')" style="flex:1">View Raw</button>
+        <!-- Status -->
+        <div class="sm-group">
+          <div class="sm-group-title">Status</div>
+          <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
+          <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">—</div></div>
+          <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">—</div></div>
+          <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">—</div></div>
+        </div>
+
+        <!-- Data Sync -->
+        <div class="sm-group">
+          <div class="sm-group-title">Data Sync</div>
+          <div class="sm-card">
+            <div class="sm-card-label">Bee Wearable</div>
+            <div class="sm-btn-row">
+              <button class="btn-action" onclick="triggerBeeSyncFromMenu('incremental')" id="sm-btn-sync-updates">Sync Updates</button>
+              <button class="btn-action btn-action-secondary" onclick="triggerBeeSyncFromMenu('full')" id="sm-btn-sync-full">Full Sync</button>
+            </div>
+            <div id="sm-sync-result" class="sm-result"></div>
           </div>
-          <div id="sm-schema-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:6px"></div>
+          <div class="sm-card">
+            <div class="sm-card-label">Bee Conversations by Date</div>
+            <div class="sm-date-row">
+              <input type="date" id="sm-conv-start" class="sm-date-input">
+              <span class="sm-date-sep">to</span>
+              <input type="date" id="sm-conv-end" class="sm-date-input">
+            </div>
+            <button class="btn-action btn-action-secondary sm-btn-full" onclick="syncConversationsByDate()" id="sm-btn-sync-convos">Sync Date Range</button>
+            <div id="sm-conv-sync-result" class="sm-result"></div>
+          </div>
+          <div class="sm-card">
+            <div class="sm-card-label">ChatGPT Import</div>
+            <div class="sm-card-desc">Import exported conversations.json &mdash; duplicates auto-skipped.</div>
+            <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">
+            <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('chatgpt-import-file').click()" id="chatgpt-import-btn">Choose File</button>
+            <div id="chatgpt-import-progress" style="display:none;margin-top:8px">
+              <div class="sm-progress-info">
+                <span id="chatgpt-import-status">Importing...</span>
+                <span id="chatgpt-import-count"></span>
+              </div>
+              <div class="sm-progress-bar"><div id="chatgpt-import-bar" class="sm-progress-fill"></div></div>
+            </div>
+            <div id="chatgpt-import-result" class="sm-result"></div>
+          </div>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
-          <button class="btn-action btn-action-secondary" onclick="closeSettingsMenu();showDebugPanel()" style="width:100%">Diagnostics &amp; Logs</button>
-          <button class="btn-action btn-action-secondary" onclick="closeSettingsMenu();logout()" style="width:100%">Log Out</button>
-          <button class="btn-action btn-action-danger" id="btn-purge-settings" onclick="confirmPurgeFromMenu()" style="width:100%">Purge All Data</button>
-          <div id="purge-menu-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input)"></div>
+        <!-- Developer -->
+        <div class="sm-group">
+          <div class="sm-group-title">Developer</div>
+          <div class="sm-card">
+            <div class="sm-card-label">GPT Actions Schema</div>
+            <div class="sm-card-desc">For Custom GPT configuration</div>
+            <div class="sm-btn-row">
+              <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema">Copy Schema</button>
+              <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')">View Raw</button>
+            </div>
+            <div id="sm-schema-result" class="sm-result"></div>
+          </div>
+          <button class="btn-action btn-action-secondary sm-btn-full" onclick="closeSettingsMenu();showDebugPanel()">Diagnostics &amp; Logs</button>
         </div>
+
+        <!-- Account -->
+        <div class="sm-group">
+          <div class="sm-group-title">Account</div>
+          <button class="btn-action btn-action-secondary sm-btn-full" onclick="closeSettingsMenu();logout()">Log Out</button>
+          <button class="btn-action btn-action-danger sm-btn-full" id="btn-purge-settings" onclick="confirmPurgeFromMenu()">Purge All Data</button>
+          <div id="purge-menu-result" class="sm-result"></div>
+        </div>
+
       </div>
     </div>
   </div>
