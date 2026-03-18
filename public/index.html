@@ -127,8 +127,14 @@
         <div class="sm-group">
           <div class="sm-group-title">Developer</div>
           <div class="sm-card">
+            <div class="sm-card-label">GPT System Instructions</div>
+            <div class="sm-card-desc">Copy-paste into your Custom GPT's Instructions field</div>
+            <button class="btn-action sm-btn-full" onclick="copyGptInstructions()" id="btn-copy-instructions">Copy Instructions</button>
+            <div id="sm-instructions-result" class="sm-result"></div>
+          </div>
+          <div class="sm-card">
             <div class="sm-card-label">GPT Actions Schema</div>
-            <div class="sm-card-desc">For Custom GPT configuration</div>
+            <div class="sm-card-desc">For Custom GPT Actions configuration</div>
             <div class="sm-btn-row">
               <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema">Copy Schema</button>
               <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')">View Raw</button>
