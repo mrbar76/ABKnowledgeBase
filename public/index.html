@@ -109,6 +109,23 @@
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
+          <div style="font-size:0.85rem;font-weight:700;margin-bottom:4px">ChatGPT Import</div>
+          <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:10px">Import your ChatGPT exported conversations.json. Duplicates are skipped automatically.</div>
+          <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">
+          <button class="btn-action btn-action-secondary" onclick="document.getElementById('chatgpt-import-file').click()" id="chatgpt-import-btn" style="width:100%">Choose conversations.json</button>
+          <div id="chatgpt-import-progress" style="display:none;margin-top:10px">
+            <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-dim);margin-bottom:4px">
+              <span id="chatgpt-import-status">Importing...</span>
+              <span id="chatgpt-import-count"></span>
+            </div>
+            <div style="height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden">
+              <div id="chatgpt-import-bar" style="height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width 0.3s"></div>
+            </div>
+          </div>
+          <div id="chatgpt-import-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:8px"></div>
+        </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
           <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">GPT Actions Schema</div>
           <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px">Copy this schema into your GPT Actions configuration:</div>
           <div style="display:flex;gap:6px;margin-bottom:4px">

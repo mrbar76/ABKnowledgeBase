@@ -285,6 +285,75 @@ function toggleSettingsMenu() {
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
 
+async function handleChatGPTImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const btn = document.getElementById('chatgpt-import-btn');
+  const progress = document.getElementById('chatgpt-import-progress');
+  const bar = document.getElementById('chatgpt-import-bar');
+  const status = document.getElementById('chatgpt-import-status');
+  const count = document.getElementById('chatgpt-import-count');
+  const result = document.getElementById('chatgpt-import-result');
+
+  btn.disabled = true;
+  btn.textContent = 'Reading file...';
+  result.style.display = 'none';
+
+  let conversations;
+  try {
+    const text = await file.text();
+    conversations = JSON.parse(text);
+    if (!Array.isArray(conversations)) throw new Error('Expected a JSON array');
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Choose conversations.json';
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Error reading file: ' + err.message;
+    input.value = '';
+    return;
+  }
+
+  const total = conversations.length;
+  const BATCH = 100;
+  let imported = 0, skipped = 0, errors = 0, done = 0;
+
+  progress.style.display = 'block';
+  btn.textContent = 'Importing...';
+
+  for (let i = 0; i < total; i += BATCH) {
+    const batch = conversations.slice(i, i + BATCH);
+    try {
+      const res = await api('/conversations/import/chatgpt', {
+        method: 'POST',
+        body: JSON.stringify(batch)
+      });
+      imported += res.imported || 0;
+      skipped += res.skipped || 0;
+      errors += res.errors || 0;
+    } catch (err) {
+      errors += batch.length;
+    }
+    done = Math.min(i + BATCH, total);
+    const pct = Math.round((done / total) * 100);
+    bar.style.width = pct + '%';
+    status.textContent = `Importing... ${done} of ${total}`;
+    count.textContent = pct + '%';
+  }
+
+  progress.style.display = 'none';
+  btn.disabled = false;
+  btn.textContent = 'Choose conversations.json';
+  input.value = '';
+
+  result.style.display = 'block';
+  result.style.color = errors > 0 ? 'var(--yellow)' : 'var(--green)';
+  result.textContent = `Done: ${imported} imported, ${skipped} already existed, ${errors} errors (${total} total)`;
+
+  if (imported > 0) showToast(`Imported ${imported} ChatGPT conversations`, 'success');
+}
+
 async function copyGptActionsSchema() {
   const btn = document.getElementById('btn-copy-schema');
   const resultEl = document.getElementById('sm-schema-result');
