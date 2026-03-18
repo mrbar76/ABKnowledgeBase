@@ -814,6 +814,101 @@ async function loadTasksKanban() {
 
 // ── Calendar View ──
 let calendarDate = new Date();
+let _calDragTaskId = null;
+let _calDragGhost = null;
+let _calTouchStartX = 0, _calTouchStartY = 0, _calTouchMoved = false;
+
+function calDragStart(e, taskId) {
+  _calDragTaskId = taskId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', taskId);
+  e.target.closest('[draggable]').classList.add('cal-dragging');
+  setTimeout(() => document.querySelectorAll('.cal-cell:not(.cal-empty)').forEach(c => c.classList.add('cal-drop-zone')), 0);
+}
+function calDragEnd(e) {
+  e.target.closest('[draggable]')?.classList.remove('cal-dragging');
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-drop-zone', 'cal-drop-hover'));
+  _calDragTaskId = null;
+}
+function calDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const cell = e.target.closest('.cal-cell:not(.cal-empty)');
+  if (cell) {
+    document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-drop-hover'));
+    cell.classList.add('cal-drop-hover');
+  }
+}
+function calDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const cell = e.target.closest('.cal-cell:not(.cal-empty)');
+  if (!cell || !_calDragTaskId) return;
+  const dateStr = cell.dataset.date;
+  if (dateStr) {
+    updateTask(_calDragTaskId, 'due_date', dateStr);
+    showToast(`Moved to ${new Date(dateStr + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, 'success', 2000);
+  }
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-drop-zone', 'cal-drop-hover'));
+  _calDragTaskId = null;
+}
+
+// Touch drag for calendar (mobile)
+function calTouchStart(e, taskId) {
+  const touch = e.touches[0];
+  _calTouchStartX = touch.clientX;
+  _calTouchStartY = touch.clientY;
+  _calTouchMoved = false;
+  _calDragTaskId = taskId;
+}
+function calTouchMove(e) {
+  if (!_calDragTaskId) return;
+  const touch = e.touches[0];
+  const dx = Math.abs(touch.clientX - _calTouchStartX);
+  const dy = Math.abs(touch.clientY - _calTouchStartY);
+  if (dx > 8 || dy > 8) _calTouchMoved = true;
+  if (!_calTouchMoved) return;
+  e.preventDefault();
+
+  if (!_calDragGhost) {
+    const el = e.target.closest('[draggable]');
+    if (!el) return;
+    _calDragGhost = el.cloneNode(true);
+    _calDragGhost.classList.add('cal-ghost');
+    _calDragGhost.style.width = Math.max(el.offsetWidth, 120) + 'px';
+    document.body.appendChild(_calDragGhost);
+    el.classList.add('cal-dragging');
+    document.querySelectorAll('.cal-cell:not(.cal-empty)').forEach(c => c.classList.add('cal-drop-zone'));
+  }
+  _calDragGhost.style.left = (touch.clientX - 40) + 'px';
+  _calDragGhost.style.top = (touch.clientY - 15) + 'px';
+
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-drop-hover'));
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const cell = el?.closest('.cal-cell:not(.cal-empty)');
+  if (cell) cell.classList.add('cal-drop-hover');
+}
+function calTouchEnd(e) {
+  if (!_calDragTaskId) return;
+  if (_calTouchMoved && _calDragGhost) {
+    const touch = e.changedTouches[0];
+    _calDragGhost.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    _calDragGhost.style.display = '';
+    const cell = el?.closest('.cal-cell:not(.cal-empty)');
+    const dateStr = cell?.dataset.date;
+    if (dateStr) {
+      updateTask(_calDragTaskId, 'due_date', dateStr);
+      showToast(`Moved to ${new Date(dateStr + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, 'success', 2000);
+    }
+  }
+  if (_calDragGhost) { _calDragGhost.remove(); _calDragGhost = null; }
+  document.querySelectorAll('.cal-dragging').forEach(c => c.classList.remove('cal-dragging'));
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-drop-zone', 'cal-drop-hover'));
+  _calDragTaskId = null;
+  _calTouchMoved = false;
+}
+
 async function loadTasksCalendar() {
   const main = document.getElementById('main-content');
   try {
@@ -849,14 +944,19 @@ async function loadTasksCalendar() {
       const isToday = cellDate.toDateString() === today.toDateString();
       const dayTasks = tasksByDate[dateStr] || [];
       const dots = dayTasks.slice(0, 4).map(t =>
-        `<div class="cal-task" onclick="event.stopPropagation();showTaskDetail('${t.id}')" title="${esc(t.title)}">
+        `<div class="cal-task" draggable="true"
+            ondragstart="calDragStart(event,'${t.id}')" ondragend="calDragEnd(event)"
+            ontouchstart="calTouchStart(event,'${t.id}')" ontouchmove="calTouchMove(event)" ontouchend="calTouchEnd(event)"
+            onclick="event.stopPropagation();if(!_calTouchMoved)showTaskDetail('${t.id}')" title="${esc(t.title)}">
           <span class="priority-dot priority-${t.priority}"></span>
           <span class="cal-task-title">${esc(t.title)}</span>
         </div>`
       ).join('');
       const more = dayTasks.length > 4 ? `<div class="cal-more">+${dayTasks.length - 4} more</div>` : '';
       cells += `
-        <div class="cal-cell${isToday ? ' cal-today' : ''}" onclick="setTaskDueByCalendar('${dateStr}')">
+        <div class="cal-cell${isToday ? ' cal-today' : ''}" data-date="${dateStr}"
+          ondragover="calDragOver(event)" ondrop="calDrop(event)"
+          onclick="if(!_calDragTaskId)setTaskDueByCalendar('${dateStr}')">
           <div class="cal-day">${day}</div>
           ${dots}${more}
         </div>`;
@@ -879,10 +979,13 @@ async function loadTasksCalendar() {
       </div>
       ${unscheduled.length ? `
         <div style="margin-top:16px">
-          <div style="font-size:0.8rem;font-weight:700;color:var(--text-dim);margin-bottom:6px">Unscheduled (${unscheduled.length})</div>
+          <div style="font-size:0.8rem;font-weight:700;color:var(--text-dim);margin-bottom:6px">Unscheduled (${unscheduled.length}) — drag to a date</div>
           <div class="cal-unscheduled">
             ${unscheduled.slice(0, 10).map(t => `
-              <div class="list-item list-item-compact" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:8px">
+              <div class="list-item list-item-compact" draggable="true"
+                ondragstart="calDragStart(event,'${t.id}')" ondragend="calDragEnd(event)"
+                ontouchstart="calTouchStart(event,'${t.id}')" ontouchmove="calTouchMove(event)" ontouchend="calTouchEnd(event)"
+                onclick="if(!_calTouchMoved)showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:8px;cursor:grab">
                 <span class="priority-badge priority-${t.priority}" style="font-size:0.65rem">${t.priority[0].toUpperCase()}</span>
                 <span style="flex:1;font-size:0.8rem">${esc(t.title)}</span>
               </div>`).join('')}
