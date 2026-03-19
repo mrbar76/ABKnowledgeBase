@@ -87,6 +87,7 @@
             <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
             <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">&mdash;</div></div>
             <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">&mdash;</div></div>
+            <div class="settings-row"><div class="settings-row-label">Outlook</div><div class="settings-row-value" id="sm-outlook-val">&mdash;</div></div>
             <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">&mdash;</div></div>
           </div>
         </div>
@@ -112,6 +113,12 @@
               </div>
               <button class="btn-action btn-action-secondary sm-btn-full" onclick="syncConversationsByDate()" id="sm-btn-sync-convos">Sync Date Range</button>
               <div id="sm-conv-sync-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Outlook Email</div>
+              <div class="sm-card-desc">Sync flagged emails as tasks. Unflagged = done.</div>
+              <button class="btn-action sm-btn-full" onclick="triggerOutlookSync()" id="sm-btn-outlook-sync">Sync Flagged Emails</button>
+              <div id="sm-outlook-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
               <div class="sm-card-label">ChatGPT Import</div>

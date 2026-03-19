@@ -351,4 +351,5 @@ router.put('/email/complete', async (req, res) => {
   }
 });
 
+router.classify = classify;
 module.exports = router;

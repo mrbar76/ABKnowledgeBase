@@ -21,6 +21,7 @@ const bodyMetricsRoutes = require('./routes/body-metrics');
 const mealsRoutes = require('./routes/meals');
 const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
+const outlookRoutes = require('./routes/outlook');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -119,6 +120,7 @@ app.use('/api/body-metrics', bodyMetricsRoutes);
 app.use('/api/meals', mealsRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/training', trainingRoutes);
+app.use('/api/outlook', outlookRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
@@ -159,6 +161,7 @@ async function start() {
   syncStatus.initSource('chatgpt', { label: 'ChatGPT Import' });
   syncStatus.initSource('claude', { label: 'Claude Import' });
   syncStatus.initSource('intake', { label: 'Smart Intake' });
+  syncStatus.initSource('outlook', { label: 'Outlook Email', cron_enabled: !!process.env.MS_CLIENT_ID });
 
   // ─── Cron: scheduled Bee auto-sync ─────────────────────────────
   const BEE_TOKEN = process.env.BEE_API_TOKEN;
@@ -208,7 +211,39 @@ async function start() {
     setInterval(runScheduledSync, SYNC_INTERVAL);
     console.log(`[cron] Scheduled every ${SYNC_INTERVAL/60000} min (BEE_API_TOKEN configured)`);
   } else {
-    console.log('[cron] No sync sources configured (set BEE_API_TOKEN to enable)');
+    console.log('[cron] Bee sync disabled (set BEE_API_TOKEN to enable)');
+  }
+
+  // ─── Cron: scheduled Outlook email sync ─────────────────────
+  if (process.env.MS_CLIENT_ID && process.env.MS_CLIENT_SECRET && process.env.MS_REFRESH_TOKEN) {
+    const OUTLOOK_INTERVAL = Number(process.env.OUTLOOK_SYNC_INTERVAL || 5) * 60 * 1000; // default 5 min
+    const outlookSource = syncStatus.getSource('outlook');
+    outlookSource.cron_enabled = true;
+    outlookSource.cron_interval_min = OUTLOOK_INTERVAL / 60000;
+
+    async function runOutlookSync() {
+      console.log('[cron] Starting Outlook sync...');
+      const job = syncStatus.startJob('outlook', 'Scheduled flagged email sync');
+      try {
+        const results = await outlookRoutes.syncFlaggedEmails();
+        console.log(`[cron] Outlook: ${results.created} created, ${results.completed} completed, ${results.skipped} skipped`);
+        syncStatus.completeJob('outlook', job, {
+          imported: results.created,
+          skipped: results.skipped,
+          errors: results.errors,
+          details: { created: results.created, completed: results.completed }
+        });
+      } catch (e) {
+        console.error(`[cron] Outlook sync failed: ${e.message}`);
+        syncStatus.failJob('outlook', job, e.message);
+      }
+    }
+
+    setTimeout(runOutlookSync, 15000); // Start 15s after boot
+    setInterval(runOutlookSync, OUTLOOK_INTERVAL);
+    console.log(`[cron] Outlook sync every ${OUTLOOK_INTERVAL / 60000} min (MS credentials configured)`);
+  } else {
+    console.log('[cron] Outlook sync disabled (set MS_CLIENT_ID, MS_CLIENT_SECRET, MS_REFRESH_TOKEN)');
   }
 }
 
