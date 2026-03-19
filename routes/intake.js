@@ -28,7 +28,8 @@ Return ONLY valid JSON with these fields:
   "priority": for tasks only, one of: "low", "medium", "high", "urgent",
   "status": for tasks only, one of: "todo", "in_progress", "review", "done",
   "summary": a 1-2 sentence summary of the content,
-  "ai_source": which AI or source created this, one of: "claude", "gemini", "chatgpt", "bee", "manual", or null if unknown
+  "ai_source": which AI or source created this, one of: "claude", "gemini", "chatgpt", "bee", "manual", or null if unknown,
+  "context": one of: "work" or "personal" — detect from content and topics
 }
 
 Rules:
@@ -38,7 +39,9 @@ Rules:
 - Extract meaningful tags from the content (topics, people, projects mentioned)
 - Detect the AI source from context clues (e.g., "Claude suggested..." → "claude")
 - If the input already specifies a category or tags, respect those
-- Keep the title descriptive but concise`;
+- Keep the title descriptive but concise
+- Detect context: work indicators (meetings, projects, clients, deadlines, budgets, team, deliverables) → "work"; personal indicators (family, health, hobbies, errands, appointments, personal finance) → "personal"
+- If context is ambiguous, default to "work"`;
 
 async function classify(userMessage) {
   const client = getOpenAIClient();
@@ -79,10 +82,11 @@ router.post('/', async (req, res) => {
 
     if (db === 'tasks') {
       const result = await query(
-        `INSERT INTO tasks (title, description, status, priority, ai_agent)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO tasks (title, description, status, priority, ai_agent, context)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [classification.title || input.substring(0, 80), input,
-         classification.status || 'todo', classification.priority || 'medium', aiSource]
+         classification.status || 'todo', classification.priority || 'medium', aiSource,
+         classification.context || null]
       );
       rowId = result.rows[0].id;
     } else if (db === 'transcripts') {
@@ -252,6 +256,97 @@ router.post('/distill', async (req, res) => {
     res.json({ message: 'Distillation complete', extracted: results, project: extracted.project, tags: extracted.tags || [] });
   } catch (err) {
     console.error('[distill] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Email Intake (Power Automate → flagged Outlook email → task) ──
+
+router.post('/email', async (req, res) => {
+  try {
+    const { subject, body, sender, sender_email, message_id, received_at, importance } = req.body;
+    if (!subject && !body) return res.status(400).json({ error: 'subject or body is required' });
+
+    // Prevent duplicates on Power Automate retries
+    if (message_id) {
+      const existing = await query('SELECT id FROM tasks WHERE source_id = $1', [message_id]);
+      if (existing.rows.length) {
+        return res.status(200).json({ message: 'Task already exists', id: existing.rows[0].id, duplicate: true });
+      }
+    }
+
+    // Build formatted message for classification
+    const bodyTruncated = (body || '').substring(0, 3000);
+    const userMessage = [
+      '[Source: outlook-email]',
+      sender ? `From: ${sender}${sender_email ? ` <${sender_email}>` : ''}` : '',
+      `Subject: ${subject || '(no subject)'}`,
+      importance ? `Importance: ${importance}` : '',
+      received_at ? `Received: ${received_at}` : '',
+      '',
+      bodyTruncated
+    ].filter(Boolean).join('\n');
+
+    const classification = await classify(userMessage);
+
+    // Priority: use classifier result, but boost if Outlook importance is high
+    let priority = classification.priority || 'medium';
+    if (importance === 'high' && (priority === 'medium' || priority === 'low')) {
+      priority = 'high';
+    }
+
+    // M365 source = always work context
+    const context = 'work';
+
+    const result = await query(
+      `INSERT INTO tasks (title, description, status, priority, ai_agent, context, source_id, due_date)
+       VALUES ($1, $2, 'todo', $3, 'outlook', $4, $5, $6) RETURNING id`,
+      [
+        classification.title || (subject || '').substring(0, 80) || 'Email task',
+        `From: ${sender || 'Unknown'}${sender_email ? ` <${sender_email}>` : ''}\n\n${bodyTruncated}`,
+        priority, context, message_id || null, null
+      ]
+    );
+
+    const taskId = result.rows[0].id;
+    await logActivity('create', 'task', taskId, 'outlook', `Email intake: ${classification.title || subject}`);
+
+    const intakeJob = syncStatus.startJob('intake', `Email: ${classification.title || subject}`);
+    syncStatus.completeJob('intake', intakeJob, { imported: 1, details: { source: 'outlook', context } });
+
+    res.status(201).json({
+      message: 'Email filed as task',
+      id: taskId,
+      title: classification.title || subject,
+      context,
+      priority,
+      tags: classification.tags || []
+    });
+  } catch (err) {
+    console.error('[intake/email] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/email/complete', async (req, res) => {
+  try {
+    const { message_id } = req.body;
+    if (!message_id) return res.status(400).json({ error: 'message_id is required' });
+
+    const result = await query(
+      `UPDATE tasks SET status = 'done', updated_at = NOW()
+       WHERE source_id = $1 AND status != 'done' RETURNING id, title`,
+      [message_id]
+    );
+
+    if (!result.rows.length) return res.status(404).json({ error: 'No matching task found for this message_id' });
+
+    const task = result.rows[0];
+    await logActivity('update', 'task', task.id, 'outlook', `Completed via Outlook unflag: ${task.title}`);
+
+    res.json({ message: 'Task marked done', id: task.id, title: task.title });
+  } catch (err) {
+    console.error('[intake/email/complete] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -486,6 +486,10 @@ async function initDB() {
   await safeQuery('tasks +next_steps', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS next_steps TEXT`);
   await safeQuery('tasks +output_log', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS output_log TEXT`);
   await safeQuery('tasks +updated_at', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+  await safeQuery('tasks +context', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS context TEXT`);
+  await safeQuery('tasks +source_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id TEXT`);
+  await safeQuery('tasks idx_source_id', `CREATE INDEX IF NOT EXISTS idx_tasks_source_id ON tasks(source_id)`);
+  await safeQuery('tasks idx_context', `CREATE INDEX IF NOT EXISTS idx_tasks_context ON tasks(context)`);
 
   // -- transcripts migrations --
   await safeQuery('transcripts +raw_text', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS raw_text TEXT`);

@@ -1083,12 +1083,14 @@ async function loadTasks() {
 // ── List View ──
 let taskListFilter = '';
 let taskPriorityFilter = '';
+let taskContextFilter = '';
 async function loadTasksList() {
   const main = document.getElementById('main-content');
   try {
     const params = new URLSearchParams({ limit: '200' });
     if (taskListFilter) params.set('status', taskListFilter);
     if (taskPriorityFilter) params.set('priority', taskPriorityFilter);
+    if (taskContextFilter) params.set('context', taskContextFilter);
     const data = await api('/tasks?' + params.toString());
 
     const statusLabels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', done: 'Done' };
@@ -1112,6 +1114,15 @@ async function loadTasksList() {
             ).join('')}
             ${taskPriorityFilter ? `<button class="filter-btn filter-btn-sm" onclick="taskPriorityFilter='';loadTasksList()" style="color:var(--text-dim)">Clear</button>` : ''}
           </div>
+          <div class="filter-row">
+            <button class="filter-btn filter-btn-sm ${taskContextFilter === '' ? 'active' : ''}" onclick="taskContextFilter='';loadTasksList()">All</button>
+            <button class="filter-btn filter-btn-sm ${taskContextFilter === 'work' ? 'active' : ''}" onclick="taskContextFilter=taskContextFilter==='work'?'':'work';loadTasksList()">
+              <span style="color:var(--blue)">&#9679;</span> Work
+            </button>
+            <button class="filter-btn filter-btn-sm ${taskContextFilter === 'personal' ? 'active' : ''}" onclick="taskContextFilter=taskContextFilter==='personal'?'':'personal';loadTasksList()">
+              <span style="color:var(--green)">&#9679;</span> Personal
+            </button>
+          </div>
         </div>
         <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()" style="align-self:start">+ Task</button>
       </div>
@@ -1132,6 +1143,7 @@ async function loadTasksList() {
               <div class="list-item-meta">
                 <span class="priority-badge priority-${t.priority}">${t.priority}</span>
                 ${t.project_name ? `<span>${esc(t.project_name)}</span>` : ''}
+                ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
                 ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
                 <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
                 ${dueBadge}
@@ -1178,6 +1190,7 @@ async function loadTasksKanban() {
                 ${t.project_name ? `<div class="kanban-card-meta">${esc(t.project_name)}</div>` : ''}
                 <div class="kanban-card-meta">
                   <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                  ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
                   ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
                   ${t.due_date ? `<span style="font-size:0.65rem;color:var(--text-dim)">${new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}
                 </div>
@@ -1331,6 +1344,9 @@ function setTaskDueByCalendar(dateStr) {
         <div class="form-group"><label>Project</label>
           <select id="new-task-project">${projectDropdownHtml()}</select>
         </div>
+        <div class="form-group"><label>Context</label>
+          <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
+        </div>
         <button type="submit" class="btn-submit">Create Task</button>
       </form>
     `);
@@ -1361,6 +1377,14 @@ async function showTaskDetail(id) {
           ${projectDropdownHtml(task.project_id)}
         </select>
       </div>
+      <div class="form-group"><label>Context</label>
+        <select onchange="updateTask('${id}', 'context', this.value||null)">
+          <option value="" ${!task.context?'selected':''}>None</option>
+          <option value="work" ${task.context==='work'?'selected':''}>Work</option>
+          <option value="personal" ${task.context==='personal'?'selected':''}>Personal</option>
+        </select>
+      </div>
+      ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from Outlook email</div>' : ''}
       ${task.description ? `<div class="form-group"><label>Description</label><div style="font-size:0.85rem;white-space:pre-wrap">${esc(task.description)}</div></div>` : ''}
       ${task.next_steps ? `<div class="form-group"><label>Next Steps</label><div style="font-size:0.85rem">${esc(task.next_steps)}</div></div>` : ''}
       <div style="margin-top:16px;display:flex;gap:8px">
@@ -1503,6 +1527,9 @@ function showNewTaskModal(defaultProjectId) {
         <div class="form-group"><label>Project</label>
           <select id="new-task-project">${projectDropdownHtml(defaultProjectId)}</select>
         </div>
+        <div class="form-group"><label>Context</label>
+          <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
+        </div>
         <button type="submit" class="btn-submit">Create Task</button>
       </form>
     `);
@@ -1519,6 +1546,7 @@ async function createTask(e) {
       priority: document.getElementById('new-task-priority').value,
       project_id: document.getElementById('new-task-project').value || null,
       due_date: dueEl ? dueEl.value || null : null,
+      context: document.getElementById('new-task-context').value || null,
     }) });
     closeModal();
     if (currentTab === 'tasks') loadTasks();
