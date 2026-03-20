@@ -649,6 +649,7 @@ async function initDB() {
       original_name TEXT,
       file_size INTEGER,
       mime_type TEXT,
+      image_data TEXT,
       notes TEXT,
       excluded_from_analysis BOOLEAN DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT NOW()
@@ -656,7 +657,8 @@ async function initDB() {
   await safeQuery('progress_photos indexes', `
     CREATE INDEX IF NOT EXISTS idx_progress_photos_checkin ON progress_photos(checkin_id);
     CREATE INDEX IF NOT EXISTS idx_progress_photos_pose ON progress_photos(pose_type);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_progress_photos_unique_pose ON progress_photos(checkin_id, pose_type)`);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_progress_photos_unique_pose ON progress_photos(checkin_id, pose_type);
+    CREATE INDEX IF NOT EXISTS idx_progress_photos_filename ON progress_photos(filename)`);
 
   await safeQuery('progress_settings table', `
     CREATE TABLE IF NOT EXISTS progress_settings (
@@ -933,6 +935,7 @@ async function initDB() {
   await safeQuery('progress_photos +mime_type', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS mime_type TEXT`);
   await safeQuery('progress_photos +notes', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS notes TEXT`);
   await safeQuery('progress_photos +excluded_from_analysis', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS excluded_from_analysis BOOLEAN DEFAULT false`);
+  await safeQuery('progress_photos +image_data', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS image_data TEXT`);
 
   // Backfill search vectors for any existing rows
   await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);

@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { query, logActivity } = require('../db');
 const router = express.Router();
 
@@ -16,24 +15,13 @@ function getOpenAIClient() {
   return openai;
 }
 
-// ─── Photo Upload Config ─────────────────────────────────────
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'progress');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
-
+// ─── Photo Upload Config (memory storage → base64 → PostgreSQL) ──
 const upload = multer({
-  storage,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
     const allowed = /\.(jpg|jpeg|png|webp|heic)$/i;
-    if (allowed.test(path.extname(file.originalname))) cb(null, true);
+    if (allowed.test(path.extname(file.originalname)) || /^image\//i.test(file.mimetype)) cb(null, true);
     else cb(new Error('Only image files (jpg, png, webp, heic) are allowed'));
   },
 });
@@ -236,16 +224,9 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// ─── Delete Check-in (cascades photos) ──────────────────────
+// ─── Delete Check-in (cascades photos via FK) ────────────────
 router.delete('/:id', async (req, res) => {
   try {
-    // Get photo filenames to delete from disk
-    const photos = await query('SELECT filename FROM progress_photos WHERE checkin_id = $1', [req.params.id]);
-    for (const p of photos.rows) {
-      const filePath = path.join(UPLOAD_DIR, p.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
-
     const result = await query('DELETE FROM progress_checkins WHERE id = $1 RETURNING id, checkin_date', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     await logActivity('delete', 'progress_checkin', req.params.id, 'manual', `Deleted check-in: ${result.rows[0].checkin_date}`);
@@ -256,7 +237,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// PHOTOS
+// PHOTOS — stored as base64 in PostgreSQL (persists on Railway)
 // ═══════════════════════════════════════════════════════════════
 
 // ─── Upload Photo to Check-in ────────────────────────────────
@@ -265,43 +246,39 @@ router.post('/:id/photos', upload.single('photo'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No photo file provided' });
 
     const checkin = await query('SELECT id FROM progress_checkins WHERE id = $1', [req.params.id]);
-    if (!checkin.rows.length) {
-      fs.unlinkSync(req.file.path);
-      return res.status(404).json({ error: 'Check-in not found' });
-    }
+    if (!checkin.rows.length) return res.status(404).json({ error: 'Check-in not found' });
 
     const pose = req.body.pose_type;
     if (!VALID_POSES.includes(pose)) {
-      fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: `pose_type must be one of: ${VALID_POSES.join(', ')}` });
     }
 
     const poseOrder = VALID_POSES.indexOf(pose);
+    const base64Data = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const filename = `${Date.now()}-${pose}${path.extname(req.file.originalname) || '.jpg'}`;
 
     // Upsert: replace existing photo for same pose in same check-in
     const existing = await query(
-      'SELECT id, filename FROM progress_photos WHERE checkin_id = $1 AND pose_type = $2',
+      'SELECT id FROM progress_photos WHERE checkin_id = $1 AND pose_type = $2',
       [req.params.id, pose]
     );
     if (existing.rows.length) {
-      const oldFile = path.join(UPLOAD_DIR, existing.rows[0].filename);
-      if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
       await query('DELETE FROM progress_photos WHERE id = $1', [existing.rows[0].id]);
     }
 
     const result = await query(
-      `INSERT INTO progress_photos (checkin_id, pose_type, pose_order, filename, original_name, file_size, mime_type, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO progress_photos (checkin_id, pose_type, pose_order, filename, original_name, file_size, mime_type, image_data, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, pose_type, pose_order, filename, file_size, mime_type, created_at`,
       [
-        req.params.id, pose, poseOrder, req.file.filename,
-        req.file.originalname, req.file.size, req.file.mimetype,
-        req.body.notes || null,
+        req.params.id, pose, poseOrder, filename,
+        req.file.originalname, req.file.size, mimeType,
+        base64Data, req.body.notes || null,
       ]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     res.status(500).json({ error: err.message });
   }
 });
@@ -309,23 +286,34 @@ router.post('/:id/photos', upload.single('photo'), async (req, res) => {
 // ─── Delete Single Photo ─────────────────────────────────────
 router.delete('/photos/:photoId', async (req, res) => {
   try {
-    const result = await query('DELETE FROM progress_photos WHERE id = $1 RETURNING filename', [req.params.photoId]);
+    const result = await query('DELETE FROM progress_photos WHERE id = $1 RETURNING id', [req.params.photoId]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-
-    const filePath = path.join(UPLOAD_DIR, result.rows[0].filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── Serve Photo File ────────────────────────────────────────
-router.get('/photos/file/:filename', (req, res) => {
-  const filePath = path.join(UPLOAD_DIR, path.basename(req.params.filename));
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
-  res.sendFile(filePath);
+// ─── Serve Photo from DB ─────────────────────────────────────
+router.get('/photos/file/:filename', async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT image_data, mime_type FROM progress_photos WHERE filename = $1',
+      [req.params.filename]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Photo not found' });
+
+    const { image_data, mime_type } = result.rows[0];
+    const buffer = Buffer.from(image_data, 'base64');
+    res.set({
+      'Content-Type': mime_type || 'image/jpeg',
+      'Content-Length': buffer.length,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+    });
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -420,15 +408,15 @@ router.post('/assess/:fromId/:toId', async (req, res) => {
   try {
     const client = getOpenAIClient();
 
-    // Load both check-ins with photos
+    // Load both check-ins with photos (including image_data for AI)
     const [fromResult, toResult] = await Promise.all([
       query(
-        `SELECT c.*, (SELECT json_agg(json_build_object('id', p.id, 'pose_type', p.pose_type, 'filename', p.filename, 'pose_order', p.pose_order) ORDER BY p.pose_order)
+        `SELECT c.*, (SELECT json_agg(json_build_object('id', p.id, 'pose_type', p.pose_type, 'filename', p.filename, 'pose_order', p.pose_order, 'image_data', p.image_data, 'mime_type', p.mime_type) ORDER BY p.pose_order)
          FROM progress_photos p WHERE p.checkin_id = c.id AND p.excluded_from_analysis = false) AS photos
          FROM progress_checkins c WHERE c.id = $1`, [req.params.fromId]
       ),
       query(
-        `SELECT c.*, (SELECT json_agg(json_build_object('id', p.id, 'pose_type', p.pose_type, 'filename', p.filename, 'pose_order', p.pose_order) ORDER BY p.pose_order)
+        `SELECT c.*, (SELECT json_agg(json_build_object('id', p.id, 'pose_type', p.pose_type, 'filename', p.filename, 'pose_order', p.pose_order, 'image_data', p.image_data, 'mime_type', p.mime_type) ORDER BY p.pose_order)
          FROM progress_photos p WHERE p.checkin_id = c.id AND p.excluded_from_analysis = false) AS photos
          FROM progress_checkins c WHERE c.id = $1`, [req.params.toId]
       ),
@@ -447,33 +435,25 @@ router.post('/assess/:fromId/:toId', async (req, res) => {
       return res.status(400).json({ error: 'No photos available for assessment' });
     }
 
-    // Build matched pose pairs and encode images as base64
+    // Build matched pose pairs with base64 image data
     const matchedPoses = [];
     const imageMessages = [];
 
     for (const pose of VALID_POSES) {
       const fp = fromPhotos.find(p => p.pose_type === pose);
       const tp = toPhotos.find(p => p.pose_type === pose);
-      if (fp && tp) {
+      if (fp && tp && fp.image_data && tp.image_data) {
         matchedPoses.push(pose);
 
-        // Read and encode both images
-        const fromPath = path.join(UPLOAD_DIR, fp.filename);
-        const toPath = path.join(UPLOAD_DIR, tp.filename);
+        const fromMime = fp.mime_type || 'image/jpeg';
+        const toMime = tp.mime_type || 'image/jpeg';
 
-        if (fs.existsSync(fromPath) && fs.existsSync(toPath)) {
-          const fromBase64 = fs.readFileSync(fromPath).toString('base64');
-          const toBase64 = fs.readFileSync(toPath).toString('base64');
-          const fromMime = fp.filename.match(/\.png$/i) ? 'image/png' : 'image/jpeg';
-          const toMime = tp.filename.match(/\.png$/i) ? 'image/png' : 'image/jpeg';
-
-          imageMessages.push(
-            { type: 'text', text: `--- ${pose.replace(/_/g, ' ').toUpperCase()} ---\nBefore (${from.checkin_date}):` },
-            { type: 'image_url', image_url: { url: `data:${fromMime};base64,${fromBase64}`, detail: 'low' } },
-            { type: 'text', text: `After (${to.checkin_date}):` },
-            { type: 'image_url', image_url: { url: `data:${toMime};base64,${toBase64}`, detail: 'low' } }
-          );
-        }
+        imageMessages.push(
+          { type: 'text', text: `--- ${pose.replace(/_/g, ' ').toUpperCase()} ---\nBefore (${from.checkin_date}):` },
+          { type: 'image_url', image_url: { url: `data:${fromMime};base64,${fp.image_data}`, detail: 'low' } },
+          { type: 'text', text: `After (${to.checkin_date}):` },
+          { type: 'image_url', image_url: { url: `data:${toMime};base64,${tp.image_data}`, detail: 'low' } }
+        );
       }
     }
 

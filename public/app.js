@@ -1,6 +1,10 @@
 // --- AB Brain — Full SPA with bottom tabs ---
 
 const API = '/api';
+function photoUrl(filename) {
+  const key = sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key') || '';
+  return `${API}/progress/photos/file/${encodeURIComponent(filename)}?api_key=${encodeURIComponent(key)}`;
+}
 let currentTab = 'home';
 let cachedProjects = []; // cached for dropdowns
 
@@ -4826,7 +4830,7 @@ function renderTimeline(el, checkins) {
           </div>
           ${thumbs.length ? `<div style="display:flex;gap:4px;margin:6px 0">${thumbs.map(p =>
             `<div style="width:40px;height:40px;border-radius:6px;overflow:hidden;background:var(--bg-input)">
-              <img src="${API}/progress/photos/file/${p.filename}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentNode.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:0.5rem;color:var(--text-dim)\\'>📷</div>'">
+              <img src="${photoUrl(p.filename)}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentNode.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:0.5rem;color:var(--text-dim)\\'>📷</div>'">
             </div>`
           ).join('')}${photoCount > 4 ? `<div style="width:40px;height:40px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--text-dim)">+${photoCount - 4}</div>` : ''}</div>` : ''}
           <div class="list-item-meta">
@@ -4909,11 +4913,11 @@ async function runProgressCompare() {
             <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">${PROGRESS_POSES.find(p => p.key === mp.pose)?.label || mp.pose}</div>
             <div style="display:flex;gap:4px;position:relative">
               <div style="flex:1;position:relative">
-                <img src="${API}/progress/photos/file/${mp.from.filename}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
+                <img src="${photoUrl(mp.from.filename)}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
                 <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">${fromDate}</div>
               </div>
               <div style="flex:1;position:relative">
-                <img src="${API}/progress/photos/file/${mp.to.filename}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
+                <img src="${photoUrl(mp.to.filename)}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
                 <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">${toDate}</div>
               </div>
             </div>
@@ -5055,7 +5059,7 @@ async function showProgressDetail(id) {
           const pose = PROGRESS_POSES.find(pp => pp.key === p.pose_type);
           return `
           <div style="position:relative;border-radius:8px;overflow:hidden;background:var(--bg-input)">
-            <img src="${API}/progress/photos/file/${p.filename}" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block" loading="lazy">
+            <img src="${photoUrl(p.filename)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block" loading="lazy">
             <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.8));padding:4px 6px;font-size:0.65rem;color:#fff">${pose ? pose.label : p.pose_type}</div>
           </div>`;
         }).join('')}
