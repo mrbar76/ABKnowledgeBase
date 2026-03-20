@@ -3,7 +3,9 @@ info:
   title: AB Brain Unified AI Platform
   version: 1.1.0
   description: |
-    AB Brain action for workout logging, training plans, coaching sessions, injury tracking, meal tracking, nutrition context, and task creation.
+    AB Brain action for workout logging, training plans, coaching sessions, injury tracking, meal tracking, nutrition context, task creation, and gamification (activity rings, streaks, badges, dynamic goals).
+
+    Gamification: Call GET /gamification to see ring progress (Train/Execute/Recover), streaks, badges, and smart goal suggestions. Use PUT /gamification/settings to adjust ring goals based on the user's capacity. The system auto-suggests raising goals when the user closes a ring 6+/7 days, or lowering when they struggle.
 servers:
   - url: https://ab-brain.up.railway.app/api
     description: Production server
@@ -881,6 +883,71 @@ paths:
           description: Unauthorized
         '500':
           description: Server error
+  /gamification:
+    get:
+      operationId: getGamification
+      summary: Get activity rings, streaks, badges, weekly progress, and smart suggestions
+      description: >
+        Returns today's ring progress (Train/Execute/Recover), current streaks,
+        all badges (unlocked and locked with descriptions), weekly summary,
+        nudges for incomplete goals, and smart goal adjustment suggestions based
+        on trailing 7-day averages. Train = workouts logged today. Execute = tasks
+        completed today. Recover = meals + daily context entries logged today.
+        Use streaks data to motivate ("You've got a 12-day train streak!").
+        Check suggestions[] for system-recommended goal adjustments.
+      responses:
+        '200':
+          description: Gamification data including rings, streaks, badges, weekly, suggestions, nudges
+  /gamification/settings:
+    put:
+      operationId: updateGamificationSettings
+      summary: Update ring goals and notification preferences
+      description: >
+        Adjust daily ring goals (how many workouts/tasks/recovery entries to
+        close each ring), toggle notifications, or modify the notification schedule.
+        Use this when the user wants to change their targets or when the system
+        suggests a goal adjustment. Goals should match the user's current capacity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ring_train_goal:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  description: Workouts per day to close the Train ring
+                ring_execute_goal:
+                  type: integer
+                  minimum: 1
+                  maximum: 15
+                  description: Tasks completed per day to close the Execute ring
+                ring_recover_goal:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  description: Meals + daily context entries per day to close the Recover ring
+                notification_enabled:
+                  type: boolean
+                  description: Enable/disable push notifications
+                notification_schedule:
+                  type: array
+                  description: Array of {time, type, label} notification slots
+                  items:
+                    type: object
+                    properties:
+                      time:
+                        type: string
+                        description: 24h time like "06:30"
+                      type:
+                        type: string
+                      label:
+                        type: string
+      responses:
+        '200':
+          description: Settings updated
 components:
   securitySchemes:
     ApiKeyAuth:

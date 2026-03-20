@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` — check for contraindications FIRST\n2. Call `GET /training/day/{today}` — see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` — understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` — save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` — log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` — update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` — include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries",
+    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` — check for contraindications FIRST\n2. Call `GET /training/day/{today}` — see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` — understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` — save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` — log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` — update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` — include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` — rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` — adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array — the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -1177,6 +1177,108 @@
         "summary": "Cross-reference ALL fitness data for a specific date: workouts, meals, nutrition context, body metrics, coaching sessions, active injuries, and current training plan",
         "parameters": [ { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "format": "date" }, "description": "Date in YYYY-MM-DD format" } ],
         "responses": { "200": { "description": "Complete training day view with all cross-referenced data" } }
+      }
+    },
+    "/gamification": {
+      "get": {
+        "operationId": "getGamification",
+        "summary": "Get activity rings, streaks, badges, weekly progress, and smart suggestions",
+        "description": "Returns today's ring progress (Train/Execute/Recover), current streaks, all badges (unlocked and locked with descriptions), weekly summary, nudges for incomplete goals, and smart goal adjustment suggestions based on trailing 7-day averages. Use this to understand Avi's current momentum and consistency.",
+        "responses": {
+          "200": {
+            "description": "Gamification data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rings": {
+                      "type": "object",
+                      "description": "Today's ring progress. Train = workouts logged, Execute = tasks completed, Recover = meals + daily context logged",
+                      "properties": {
+                        "train": { "type": "object", "properties": { "current": { "type": "integer" }, "goal": { "type": "integer" }, "percent": { "type": "integer" } } },
+                        "execute": { "type": "object", "properties": { "current": { "type": "integer" }, "goal": { "type": "integer" }, "percent": { "type": "integer" } } },
+                        "recover": { "type": "object", "properties": { "current": { "type": "integer" }, "goal": { "type": "integer" }, "percent": { "type": "integer" } } }
+                      }
+                    },
+                    "streaks": {
+                      "type": "object",
+                      "description": "Consecutive days for each category. Perfect = all 3 rings closed.",
+                      "properties": {
+                        "train": { "type": "integer" },
+                        "execute": { "type": "integer" },
+                        "recover": { "type": "integer" },
+                        "perfect_day": { "type": "integer" },
+                        "weigh_in": { "type": "integer" }
+                      }
+                    },
+                    "badges": {
+                      "type": "object",
+                      "properties": {
+                        "unlocked": { "type": "array", "items": { "type": "object" } },
+                        "locked": { "type": "array", "items": { "type": "object" } },
+                        "newly_unlocked": { "type": "array", "items": { "type": "object" } },
+                        "total_unlocked": { "type": "integer" },
+                        "total_available": { "type": "integer" }
+                      }
+                    },
+                    "nudges": { "type": "array", "items": { "type": "object" } },
+                    "suggestions": {
+                      "type": "array",
+                      "description": "Smart goal adjustment suggestions based on trailing 7-day averages. direction=up means user is crushing it and should raise goal, direction=down means goal may be too ambitious.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ring": { "type": "string" },
+                          "direction": { "type": "string", "enum": ["up", "down"] },
+                          "current_goal": { "type": "integer" },
+                          "suggested_goal": { "type": "integer" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "weekly": {
+                      "type": "object",
+                      "description": "This week's progress (Mon-Sun)",
+                      "properties": {
+                        "train": { "type": "object" },
+                        "execute": { "type": "object" },
+                        "recover": { "type": "object" },
+                        "perfect_days": { "type": "integer" }
+                      }
+                    },
+                    "settings": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gamification/settings": {
+      "put": {
+        "operationId": "updateGamificationSettings",
+        "summary": "Update ring goals and notification preferences",
+        "description": "Adjust daily ring goals (how many workouts/tasks/recovery entries to close each ring), toggle notifications, or modify the notification schedule. Goals should be adjusted based on the user's current capacity and consistency.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ring_train_goal": { "type": "integer", "minimum": 1, "maximum": 5, "description": "Workouts per day to close Train ring" },
+                  "ring_execute_goal": { "type": "integer", "minimum": 1, "maximum": 15, "description": "Tasks completed per day to close Execute ring" },
+                  "ring_recover_goal": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Meals + daily context entries per day to close Recover ring" },
+                  "notification_enabled": { "type": "boolean" },
+                  "notification_schedule": { "type": "array", "items": { "type": "object" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Settings updated" } }
       }
     }
   },
