@@ -138,7 +138,7 @@ function switchTab(tab) {
   main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the unified fitness tab
-  if (['workouts', 'nutrition', 'body', 'training'].includes(tab)) {
+  if (['workouts', 'nutrition', 'body', 'training', 'progress'].includes(tab)) {
     fitnessSubTab = tab;
     tab = 'fitness';
     currentTab = 'fitness';
@@ -2901,6 +2901,7 @@ function loadFitness() {
     { key: 'nutrition', label: 'Nutrition', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M18.06 22.99h1.66c.84 0 1.53-.64 1.63-1.46L23 5.05h-5V1h-1.97v4.05h-4.97l.3 2.34c1.71.47 3.31 1.32 4.27 2.26 1.44 1.42 2.43 2.89 2.43 5.29v8.05zM1 21.99V21h15.03v.99c0 .55-.45 1-1.01 1H2.01c-.56 0-1.01-.45-1.01-1zm15.03-7c0-4.5-6.83-5-9.52-5C3.92 9.99 1 10.99 1 14.99h15.03zm-15.03 2h15.03v2H1v-2z"/></svg>' },
     { key: 'body', label: 'Body', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>' },
     { key: 'training', label: 'Training', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' },
+    { key: 'progress', label: 'Progress', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 11.75c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zm6 0c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -2912,6 +2913,7 @@ function loadFitness() {
   else if (fitnessSubTab === 'nutrition') loadNutrition();
   else if (fitnessSubTab === 'body') loadBodyMetrics();
   else if (fitnessSubTab === 'training') loadTraining();
+  else if (fitnessSubTab === 'progress') loadProgress();
 }
 
 // ─── Workouts ─────────────────────────────────────────────────
@@ -4730,6 +4732,464 @@ function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// ─── Body Progress Photos ─────────────────────────────────────
+const PROGRESS_POSES = [
+  { key: 'front_relaxed', label: 'Front Relaxed', instruction: 'Face camera. Feet hip-width apart, arms slightly away from sides. Neutral posture, don\'t flex.' },
+  { key: 'front_flexed', label: 'Front Flexed', instruction: 'Face camera. Double bicep pose or most muscular. Show your best front.' },
+  { key: 'side_relaxed_left', label: 'Left Side', instruction: 'Left side to camera. Arms at sides, stand tall. Don\'t suck in stomach.' },
+  { key: 'side_relaxed_right', label: 'Right Side', instruction: 'Right side to camera. Arms at sides, stand tall. Don\'t suck in stomach.' },
+  { key: 'back_relaxed', label: 'Back Relaxed', instruction: 'Back to camera. Arms slightly away from sides. Natural posture.' },
+  { key: 'back_flexed', label: 'Back Flexed', instruction: 'Back to camera. Lat spread or double bicep. Show back width.' },
+  { key: 'quarter_turn_left', label: 'Quarter Left', instruction: 'Turn 45° left from front-facing. Arms relaxed at sides.' },
+  { key: 'quarter_turn_right', label: 'Quarter Right', instruction: 'Turn 45° right from front-facing. Arms relaxed at sides.' },
+];
+
+function poseSvg(key) {
+  const svgs = {
+    front_relaxed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="14" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="46" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+    front_flexed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="14" y2="28" stroke="currentColor" stroke-width="2"/><line x1="14" y1="28" x2="16" y2="16" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="46" y2="28" stroke="currentColor" stroke-width="2"/><line x1="46" y1="28" x2="44" y2="16" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+    side_relaxed_left: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="28" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="28" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="28" y1="30" x2="22" y2="52" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="26" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="34" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+    side_relaxed_right: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="32" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="32" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="32" y1="30" x2="38" y2="52" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="26" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="34" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+    back_relaxed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="14" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="46" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/><line x1="26" y1="24" x2="34" y2="24" stroke="currentColor" stroke-width="1.5" opacity="0.5"/></svg>`,
+    back_flexed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="12" y2="28" stroke="currentColor" stroke-width="2"/><line x1="12" y1="28" x2="10" y2="40" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="48" y2="28" stroke="currentColor" stroke-width="2"/><line x1="48" y1="28" x2="50" y2="40" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/><line x1="26" y1="24" x2="34" y2="24" stroke="currentColor" stroke-width="1.5" opacity="0.5"/></svg>`,
+    quarter_turn_left: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="26" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="28" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="28" y1="30" x2="16" y2="48" stroke="currentColor" stroke-width="2"/><line x1="28" y1="30" x2="40" y2="48" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="22" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="38" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+    quarter_turn_right: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="34" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="32" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="32" y1="30" x2="20" y2="48" stroke="currentColor" stroke-width="2"/><line x1="32" y1="30" x2="44" y2="48" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="22" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="38" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+  };
+  return svgs[key] || svgs.front_relaxed;
+}
+
+let progressViewMode = 'timeline'; // 'timeline' | 'compare'
+let progressCompareFrom = null;
+let progressCompareTo = null;
+
+async function loadProgress() {
+  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
+  main.innerHTML = skeletonCards(4);
+  try {
+    const data = await api('/progress?limit=50');
+
+    main.innerHTML = `
+      <div class="list-search-row">
+        <div class="filter-row" style="flex:1;margin:0">
+          <button class="filter-btn ${progressViewMode === 'timeline' ? 'active' : ''}" onclick="progressViewMode='timeline';loadProgress()">Timeline</button>
+          <button class="filter-btn ${progressViewMode === 'compare' ? 'active' : ''}" onclick="progressViewMode='compare';loadProgress()">Compare</button>
+          <button class="filter-btn ${progressViewMode === 'poses' ? 'active' : ''}" onclick="progressViewMode='poses';loadProgress()">Pose Guide</button>
+        </div>
+        <button class="btn-submit btn-compact" onclick="showProgressCheckinForm()">+ Check-in</button>
+      </div>
+      <div id="progress-view-content"></div>
+    `;
+
+    const viewEl = document.getElementById('progress-view-content');
+
+    if (progressViewMode === 'poses') {
+      renderPoseGuide(viewEl);
+    } else if (progressViewMode === 'compare') {
+      renderCompareView(viewEl, data.checkins);
+    } else {
+      renderTimeline(viewEl, data.checkins);
+    }
+  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+function renderTimeline(el, checkins) {
+  if (!checkins.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div style="font-size:1.1rem;margin-bottom:8px">No progress check-ins yet</div>
+        <div style="font-size:0.8rem;color:var(--text-dim)">Tap "+ Check-in" to capture your first set of progress photos.</div>
+        <div style="margin-top:12px">
+          <button class="btn-submit btn-compact" onclick="progressViewMode='poses';loadProgress()">View Pose Guide</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="transcript-count">${checkins.length} check-in${checkins.length !== 1 ? 's' : ''}</div>
+    <div class="fade-in">
+      ${checkins.map(c => {
+        const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00');
+        const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        const photoCount = c.photo_count || (c.photos ? c.photos.length : 0);
+        const consistency = photoCount >= 7 ? 'high' : photoCount >= 4 ? 'moderate' : 'low';
+        const consistencyColor = consistency === 'high' ? '#10b981' : consistency === 'moderate' ? '#f59e0b' : '#ef4444';
+        const thumbs = (c.photos || []).slice(0, 4);
+
+        return `
+        <div class="list-item workout-card" onclick="showProgressDetail('${c.id}')" style="border-left:3px solid ${consistencyColor}">
+          <div class="transcript-card-header">
+            <div class="list-item-title">${dateLabel}${c.is_baseline ? ' <span style="color:#8b5cf6;font-size:0.7rem">BASELINE</span>' : ''}</div>
+            <span class="badge-dynamic" style="background:${consistencyColor}22;color:${consistencyColor}">${photoCount}/8 poses</span>
+          </div>
+          ${thumbs.length ? `<div style="display:flex;gap:4px;margin:6px 0">${thumbs.map(p =>
+            `<div style="width:40px;height:40px;border-radius:6px;overflow:hidden;background:var(--bg-input)">
+              <img src="${API}/progress/photos/file/${p.filename}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentNode.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:0.5rem;color:var(--text-dim)\\'>📷</div>'">
+            </div>`
+          ).join('')}${photoCount > 4 ? `<div style="width:40px;height:40px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--text-dim)">+${photoCount - 4}</div>` : ''}</div>` : ''}
+          <div class="list-item-meta">
+            ${c.weight_lb ? `<span>${c.weight_lb} lb</span>` : ''}
+            ${c.waist_inches ? `<span>Waist: ${c.waist_inches}"</span>` : ''}
+            ${c.calorie_phase ? `<span>${c.calorie_phase}</span>` : ''}
+            <span style="color:${consistencyColor}">${consistency} consistency</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function renderCompareView(el, checkins) {
+  if (checkins.length < 2) {
+    el.innerHTML = '<div class="empty-state">Need at least 2 check-ins to compare.</div>';
+    return;
+  }
+
+  const fromOptions = checkins.map(c => {
+    const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `<option value="${c.id}" ${progressCompareFrom === c.id ? 'selected' : ''}>${d}${c.is_baseline ? ' (Baseline)' : ''}</option>`;
+  }).join('');
+  const toOptions = checkins.map(c => {
+    const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `<option value="${c.id}" ${progressCompareTo === c.id ? 'selected' : ''}>${d}${c.is_baseline ? ' (Baseline)' : ''}</option>`;
+  }).join('');
+
+  if (!progressCompareFrom) progressCompareFrom = checkins[checkins.length - 1].id;
+  if (!progressCompareTo) progressCompareTo = checkins[0].id;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;margin:12px 0;align-items:center">
+      <div style="flex:1">
+        <label class="form-label" style="font-size:0.7rem">Before</label>
+        <select class="brain-search" onchange="progressCompareFrom=this.value" style="font-size:0.8rem">${fromOptions}</select>
+      </div>
+      <div style="padding-top:14px;color:var(--text-dim)">vs</div>
+      <div style="flex:1">
+        <label class="form-label" style="font-size:0.7rem">After</label>
+        <select class="brain-search" onchange="progressCompareTo=this.value" style="font-size:0.8rem">${toOptions}</select>
+      </div>
+      <button class="btn-submit btn-compact" style="margin-top:14px" onclick="runProgressCompare()">Compare</button>
+    </div>
+    <div id="compare-results"></div>`;
+}
+
+async function runProgressCompare() {
+  const el = document.getElementById('compare-results');
+  if (!el || !progressCompareFrom || !progressCompareTo) return;
+  if (progressCompareFrom === progressCompareTo) { el.innerHTML = '<div class="empty-state">Select two different check-ins.</div>'; return; }
+
+  el.innerHTML = skeletonCards(2);
+  try {
+    const data = await api(`/progress/compare/${progressCompareFrom}/${progressCompareTo}`);
+    const fromDate = new Date(data.from.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const toDate = new Date(data.to.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    let deltasHtml = '';
+    const d = data.measurement_deltas;
+    if (d.weight_lb != null) deltasHtml += `<div class="stat-card"><div class="stat-value" style="color:${d.weight_lb < 0 ? '#10b981' : d.weight_lb > 0 ? '#ef4444' : 'var(--text)'}">${d.weight_lb > 0 ? '+' : ''}${d.weight_lb} lb</div><div class="stat-label">Weight</div></div>`;
+    if (d.waist_inches != null) deltasHtml += `<div class="stat-card"><div class="stat-value" style="color:${d.waist_inches < 0 ? '#10b981' : d.waist_inches > 0 ? '#ef4444' : 'var(--text)'}">${d.waist_inches > 0 ? '+' : ''}${d.waist_inches}"</div><div class="stat-label">Waist</div></div>`;
+    if (d.chest_inches != null) deltasHtml += `<div class="stat-card"><div class="stat-value">${d.chest_inches > 0 ? '+' : ''}${d.chest_inches}"</div><div class="stat-label">Chest</div></div>`;
+    if (d.arm_inches != null) deltasHtml += `<div class="stat-card"><div class="stat-value">${d.arm_inches > 0 ? '+' : ''}${d.arm_inches}"</div><div class="stat-label">Arm</div></div>`;
+
+    el.innerHTML = `
+      ${deltasHtml ? `<div class="stats-grid" style="margin:8px 0">${deltasHtml}</div>` : ''}
+      <div style="text-align:center;margin:8px 0;font-size:0.75rem;color:var(--text-dim)">
+        Comparison quality: <strong style="color:${data.comparison_quality === 'high' ? '#10b981' : data.comparison_quality === 'moderate' ? '#f59e0b' : '#ef4444'}">${data.comparison_quality}</strong>
+        · ${data.matched_poses.length} matched poses
+      </div>
+      ${data.matched_poses.length ? `
+        <div style="font-size:0.8rem;font-weight:600;margin:12px 0 8px">Side-by-Side</div>
+        ${data.matched_poses.map(mp => `
+          <div style="margin-bottom:12px">
+            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">${PROGRESS_POSES.find(p => p.key === mp.pose)?.label || mp.pose}</div>
+            <div style="display:flex;gap:4px;position:relative">
+              <div style="flex:1;position:relative">
+                <img src="${API}/progress/photos/file/${mp.from.filename}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
+                <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">${fromDate}</div>
+              </div>
+              <div style="flex:1;position:relative">
+                <img src="${API}/progress/photos/file/${mp.to.filename}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
+                <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">${toDate}</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      ` : '<div class="empty-state">No matching poses between these check-ins.</div>'}
+    `;
+  } catch (e) { el.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+function renderPoseGuide(el) {
+  el.innerHTML = `
+    <div style="padding:8px 0">
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:4px">Photo Capture Guide</div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px;line-height:1.5">
+        Follow these 8 poses each check-in for consistent progress tracking.
+      </div>
+      <div style="background:var(--bg-input);border-radius:10px;padding:10px;margin-bottom:12px">
+        <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px;color:var(--accent)">Best Practices</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.6">
+          &bull; Morning, before food & workout<br>
+          &bull; Same lighting, distance, clothing<br>
+          &bull; Same camera height every time<br>
+          &bull; Neutral chin and posture<br>
+          &bull; Don't suck in stomach (unless flexed pose)
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${PROGRESS_POSES.map(p => `
+          <div style="background:var(--bg-input);border-radius:10px;padding:10px;text-align:center">
+            <div style="color:var(--accent);margin-bottom:4px">${poseSvg(p.key)}</div>
+            <div style="font-size:0.75rem;font-weight:600;margin-bottom:2px">${esc(p.label)}</div>
+            <div style="font-size:0.65rem;color:var(--text-dim);line-height:1.4">${esc(p.instruction)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+async function showProgressDetail(id) {
+  try {
+    const c = await api(`/progress/${id}`);
+    const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00');
+    const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const photos = c.photos || [];
+    const consistency = c.consistency_score || 'low';
+    const consistencyColor = consistency === 'high' ? '#10b981' : consistency === 'moderate' ? '#f59e0b' : '#ef4444';
+
+    let html = `
+      <div class="flex-row-wrap mb-md">
+        <span class="badge-dynamic" style="background:${consistencyColor}22;color:${consistencyColor}">${consistency} consistency</span>
+        <span class="text-meta">${dateLabel}</span>
+        ${c.is_baseline ? '<span class="badge-dynamic" style="background:#8b5cf622;color:#8b5cf6">Baseline</span>' : ''}
+        ${c.calorie_phase ? `<span class="badge-dynamic" style="background:var(--bg-input);color:var(--text-dim)">${esc(c.calorie_phase)}</span>` : ''}
+      </div>
+
+      ${c.weight_lb || c.waist_inches || c.chest_inches || c.arm_inches || c.thigh_inches ? `
+      <div class="stats-grid mb-md">
+        ${c.weight_lb ? `<div class="stat-card"><div class="stat-value">${c.weight_lb}</div><div class="stat-label">Weight (lb)</div></div>` : ''}
+        ${c.waist_inches ? `<div class="stat-card"><div class="stat-value">${c.waist_inches}"</div><div class="stat-label">Waist</div></div>` : ''}
+        ${c.chest_inches ? `<div class="stat-card"><div class="stat-value">${c.chest_inches}"</div><div class="stat-label">Chest</div></div>` : ''}
+        ${c.arm_inches ? `<div class="stat-card"><div class="stat-value">${c.arm_inches}"</div><div class="stat-label">Arm</div></div>` : ''}
+        ${c.thigh_inches ? `<div class="stat-card"><div class="stat-value">${c.thigh_inches}"</div><div class="stat-label">Thigh</div></div>` : ''}
+      </div>` : ''}
+
+      <div style="font-size:0.8rem;font-weight:600;margin-bottom:8px">Photos (${photos.length}/8)</div>
+      ${photos.length ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+        ${photos.map(p => {
+          const pose = PROGRESS_POSES.find(pp => pp.key === p.pose_type);
+          return `
+          <div style="position:relative;border-radius:8px;overflow:hidden;background:var(--bg-input)">
+            <img src="${API}/progress/photos/file/${p.filename}" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block" loading="lazy">
+            <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.8));padding:4px 6px;font-size:0.65rem;color:#fff">${pose ? pose.label : p.pose_type}</div>
+          </div>`;
+        }).join('')}
+      </div>` : '<div class="empty-state" style="margin-bottom:12px">No photos yet. Add photos to this check-in.</div>'}
+
+      <button class="btn-submit btn-secondary mb-sm" onclick="closeModal();showProgressPhotoUpload('${c.id}')" style="width:100%">Add / Replace Photos</button>
+
+      ${c.training_phase ? `<div class="detail-info mt-sm"><strong>Training:</strong> ${esc(c.training_phase)}</div>` : ''}
+      ${c.pump_state ? `<div class="detail-info mt-sm"><strong>Pump:</strong> ${esc(c.pump_state)}</div>` : ''}
+      ${c.notes ? `<div class="detail-info mt-sm"><strong>Notes:</strong> ${esc(c.notes)}</div>` : ''}
+      ${c.tags && c.tags.length ? `<div class="mt-sm">${c.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
+
+      <div class="action-row">
+        <button class="btn-submit flex-1" onclick="closeModal();showProgressCheckinForm('${c.id}')">Edit</button>
+        <button class="btn-action btn-action-danger flex-half" onclick="deleteProgressCheckin('${c.id}')">Delete</button>
+      </div>
+    `;
+    openModal(`Progress — ${dateLabel}`, html);
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+async function showProgressCheckinForm(editId) {
+  let existing = null;
+  if (editId) {
+    try { existing = await api(`/progress/${editId}`); } catch {}
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Date *</label>
+      <input type="date" id="pc-date" class="brain-search" value="${existing ? existing.checkin_date.slice(0,10) : today}">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group">
+        <label class="form-label">Weight (lb)</label>
+        <input type="number" step="0.1" id="pc-weight" class="brain-search" placeholder="185" value="${existing?.weight_lb || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Waist (in)</label>
+        <input type="number" step="0.1" id="pc-waist" class="brain-search" placeholder="33" value="${existing?.waist_inches || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chest (in)</label>
+        <input type="number" step="0.1" id="pc-chest" class="brain-search" placeholder="42" value="${existing?.chest_inches || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Arm (in)</label>
+        <input type="number" step="0.1" id="pc-arm" class="brain-search" placeholder="15" value="${existing?.arm_inches || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Thigh (in)</label>
+        <input type="number" step="0.1" id="pc-thigh" class="brain-search" placeholder="24" value="${existing?.thigh_inches || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phase</label>
+        <select id="pc-phase" class="brain-search">
+          <option value="">—</option>
+          <option value="cut" ${existing?.calorie_phase === 'cut' ? 'selected' : ''}>Cut</option>
+          <option value="maintenance" ${existing?.calorie_phase === 'maintenance' ? 'selected' : ''}>Maintenance</option>
+          <option value="bulk" ${existing?.calorie_phase === 'bulk' ? 'selected' : ''}>Bulk</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Training Phase</label>
+      <input type="text" id="pc-training" class="brain-search" placeholder="e.g., Hypertrophy Block 2" value="${existing?.training_phase || ''}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Pump / State</label>
+      <input type="text" id="pc-pump" class="brain-search" placeholder="e.g., fasted, post-workout pump" value="${existing?.pump_state || ''}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea id="pc-notes" class="brain-search" rows="2" placeholder="Any context...">${existing?.notes || ''}</textarea>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;cursor:pointer">
+        <input type="checkbox" id="pc-baseline" ${existing?.is_baseline ? 'checked' : ''}>
+        Mark as baseline
+      </label>
+    </div>
+    <button class="btn-submit" style="width:100%" onclick="saveProgressCheckin(${editId ? `'${editId}'` : 'null'})">${editId ? 'Update' : 'Create'} Check-in</button>
+  `;
+  openModal(editId ? 'Edit Check-in' : 'New Progress Check-in', html);
+}
+
+async function saveProgressCheckin(editId) {
+  const body = {
+    checkin_date: document.getElementById('pc-date').value,
+    weight_lb: document.getElementById('pc-weight').value ? Number(document.getElementById('pc-weight').value) : null,
+    waist_inches: document.getElementById('pc-waist').value ? Number(document.getElementById('pc-waist').value) : null,
+    chest_inches: document.getElementById('pc-chest').value ? Number(document.getElementById('pc-chest').value) : null,
+    arm_inches: document.getElementById('pc-arm').value ? Number(document.getElementById('pc-arm').value) : null,
+    thigh_inches: document.getElementById('pc-thigh').value ? Number(document.getElementById('pc-thigh').value) : null,
+    calorie_phase: document.getElementById('pc-phase').value || null,
+    training_phase: document.getElementById('pc-training').value || null,
+    pump_state: document.getElementById('pc-pump').value || null,
+    notes: document.getElementById('pc-notes').value || null,
+    is_baseline: document.getElementById('pc-baseline').checked,
+  };
+
+  if (!body.checkin_date) { showToast('Date is required'); return; }
+
+  try {
+    if (editId) {
+      await api(`/progress/${editId}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+      showToast('Check-in updated', 'success');
+    } else {
+      const result = await api('/progress', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+      showToast('Check-in created', 'success');
+      // Open photo upload for new check-in
+      closeModal();
+      setTimeout(() => showProgressPhotoUpload(result.id), 300);
+      return;
+    }
+    closeModal();
+    loadProgress();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+async function deleteProgressCheckin(id) {
+  if (!confirm('Delete this check-in and all its photos?')) return;
+  try {
+    await api(`/progress/${id}`, { method: 'DELETE' });
+    showToast('Deleted', 'success');
+    closeModal();
+    loadProgress();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+function showProgressPhotoUpload(checkinId) {
+  const html = `
+    <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px">
+      Upload photos for each pose. Tap a pose card to add/replace its photo.
+    </div>
+    <div id="photo-upload-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${PROGRESS_POSES.map(p => `
+        <div class="progress-pose-upload" id="pose-card-${p.key}"
+             style="background:var(--bg-input);border-radius:10px;padding:8px;text-align:center;cursor:pointer;border:2px solid transparent;transition:border-color 0.2s"
+             onclick="triggerPoseUpload('${checkinId}','${p.key}')">
+          <div style="color:var(--accent);margin-bottom:2px;opacity:0.7">${poseSvg(p.key)}</div>
+          <div style="font-size:0.7rem;font-weight:600">${esc(p.label)}</div>
+          <div id="pose-status-${p.key}" style="font-size:0.6rem;color:var(--text-dim);margin-top:2px">Tap to add</div>
+        </div>
+      `).join('')}
+    </div>
+    <input type="file" id="progress-photo-input" accept="image/*" capture="environment" style="display:none" onchange="handlePosePhotoSelect(this)">
+    <div style="margin-top:12px;text-align:center">
+      <button class="btn-submit" onclick="closeModal();loadProgress()">Done</button>
+    </div>
+  `;
+  openModal('Add Progress Photos', html);
+
+  // Load existing photos for this check-in
+  api(`/progress/${checkinId}`).then(c => {
+    if (c.photos) {
+      for (const photo of c.photos) {
+        const statusEl = document.getElementById(`pose-status-${photo.pose_type}`);
+        const cardEl = document.getElementById(`pose-card-${photo.pose_type}`);
+        if (statusEl) statusEl.innerHTML = '<span style="color:#10b981">Uploaded</span>';
+        if (cardEl) cardEl.style.borderColor = '#10b981';
+      }
+    }
+  }).catch(() => {});
+}
+
+let _pendingPoseUpload = { checkinId: null, poseKey: null };
+
+function triggerPoseUpload(checkinId, poseKey) {
+  _pendingPoseUpload = { checkinId, poseKey };
+  const input = document.getElementById('progress-photo-input');
+  if (input) { input.value = ''; input.click(); }
+}
+
+async function handlePosePhotoSelect(input) {
+  if (!input.files || !input.files[0]) return;
+  const { checkinId, poseKey } = _pendingPoseUpload;
+  if (!checkinId || !poseKey) return;
+
+  const statusEl = document.getElementById(`pose-status-${poseKey}`);
+  const cardEl = document.getElementById(`pose-card-${poseKey}`);
+  if (statusEl) statusEl.innerHTML = '<span style="color:#f59e0b">Uploading...</span>';
+
+  const formData = new FormData();
+  formData.append('photo', input.files[0]);
+  formData.append('pose_type', poseKey);
+
+  try {
+    const key = sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key');
+    const resp = await fetch(`${API}/progress/${checkinId}/photos`, {
+      method: 'POST',
+      headers: { 'X-Api-Key': key },
+      body: formData,
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Upload failed');
+    }
+    if (statusEl) statusEl.innerHTML = '<span style="color:#10b981">Uploaded</span>';
+    if (cardEl) cardEl.style.borderColor = '#10b981';
+    showToast('Photo uploaded', 'success');
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">${esc(e.message)}</span>`;
+    showToast('Upload error: ' + e.message);
+  }
 }
 
 // ─── Utilities ────────────────────────────────────────────────

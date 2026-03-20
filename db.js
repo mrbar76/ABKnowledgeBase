@@ -614,6 +614,59 @@ async function initDB() {
   await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
   await safeQuery('body_metrics +search_vector', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
 
+  // ===== PROGRESS PHOTOS =====
+  await safeQuery('progress_checkins table', `
+    CREATE TABLE IF NOT EXISTS progress_checkins (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      checkin_date DATE NOT NULL,
+      weight_lb NUMERIC(6,2),
+      waist_inches NUMERIC(5,2),
+      chest_inches NUMERIC(5,2),
+      arm_inches NUMERIC(5,2),
+      thigh_inches NUMERIC(5,2),
+      training_phase TEXT,
+      calorie_phase TEXT CHECK(calorie_phase IS NULL OR calorie_phase IN ('cut','maintenance','bulk')),
+      pump_state TEXT,
+      is_baseline BOOLEAN DEFAULT false,
+      notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      search_vector TSVECTOR,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('progress_checkins indexes', `
+    CREATE INDEX IF NOT EXISTS idx_progress_checkins_date ON progress_checkins(checkin_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_progress_checkins_baseline ON progress_checkins(is_baseline) WHERE is_baseline = true;
+    CREATE INDEX IF NOT EXISTS idx_progress_checkins_search ON progress_checkins USING gin(search_vector)`);
+
+  await safeQuery('progress_photos table', `
+    CREATE TABLE IF NOT EXISTS progress_photos (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      checkin_id UUID NOT NULL REFERENCES progress_checkins(id) ON DELETE CASCADE,
+      pose_type TEXT NOT NULL,
+      pose_order INTEGER DEFAULT 0,
+      filename TEXT NOT NULL,
+      original_name TEXT,
+      file_size INTEGER,
+      mime_type TEXT,
+      notes TEXT,
+      excluded_from_analysis BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('progress_photos indexes', `
+    CREATE INDEX IF NOT EXISTS idx_progress_photos_checkin ON progress_photos(checkin_id);
+    CREATE INDEX IF NOT EXISTS idx_progress_photos_pose ON progress_photos(pose_type);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_progress_photos_unique_pose ON progress_photos(checkin_id, pose_type)`);
+
+  await safeQuery('progress_settings table', `
+    CREATE TABLE IF NOT EXISTS progress_settings (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      frequency TEXT DEFAULT 'biweekly' CHECK(frequency IN ('weekly','biweekly','monthly')),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('progress_settings seed', `INSERT INTO progress_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+
   // ===== GAMIFICATION =====
   await safeQuery('gamification_settings table', `
     CREATE TABLE IF NOT EXISTS gamification_settings (
@@ -779,6 +832,18 @@ async function initDB() {
     DROP TRIGGER IF EXISTS trg_injuries_search ON injuries;
     CREATE TRIGGER trg_injuries_search BEFORE INSERT OR UPDATE OF title, body_area, symptoms, treatment, prevention_notes, modifications ON injuries
       FOR EACH ROW EXECUTE FUNCTION update_injuries_search();
+
+    CREATE OR REPLACE FUNCTION update_progress_checkins_search() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.training_phase,'') || ' ' || coalesce(NEW.calorie_phase,'') || ' ' || coalesce(NEW.pump_state,'') || ' ' || coalesce(NEW.notes,''));
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_progress_checkins_search ON progress_checkins;
+    CREATE TRIGGER trg_progress_checkins_search BEFORE INSERT OR UPDATE OF training_phase, calorie_phase, pump_state, notes ON progress_checkins
+      FOR EACH ROW EXECUTE FUNCTION update_progress_checkins_search();
   `);
 
   // -- training_plans migrations --
@@ -846,6 +911,29 @@ async function initDB() {
   await safeQuery('injuries +search_vector', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('injuries +updated_at', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
+  // -- progress_checkins migrations --
+  await safeQuery('progress_checkins +weight_lb', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS weight_lb NUMERIC(6,2)`);
+  await safeQuery('progress_checkins +waist_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS waist_inches NUMERIC(5,2)`);
+  await safeQuery('progress_checkins +chest_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS chest_inches NUMERIC(5,2)`);
+  await safeQuery('progress_checkins +arm_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS arm_inches NUMERIC(5,2)`);
+  await safeQuery('progress_checkins +thigh_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS thigh_inches NUMERIC(5,2)`);
+  await safeQuery('progress_checkins +training_phase', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS training_phase TEXT`);
+  await safeQuery('progress_checkins +calorie_phase', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS calorie_phase TEXT`);
+  await safeQuery('progress_checkins +pump_state', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS pump_state TEXT`);
+  await safeQuery('progress_checkins +is_baseline', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS is_baseline BOOLEAN DEFAULT false`);
+  await safeQuery('progress_checkins +notes', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await safeQuery('progress_checkins +tags', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('progress_checkins +search_vector', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+  await safeQuery('progress_checkins +updated_at', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+
+  // -- progress_photos migrations --
+  await safeQuery('progress_photos +pose_order', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS pose_order INTEGER DEFAULT 0`);
+  await safeQuery('progress_photos +original_name', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS original_name TEXT`);
+  await safeQuery('progress_photos +file_size', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS file_size INTEGER`);
+  await safeQuery('progress_photos +mime_type', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS mime_type TEXT`);
+  await safeQuery('progress_photos +notes', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await safeQuery('progress_photos +excluded_from_analysis', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS excluded_from_analysis BOOLEAN DEFAULT false`);
+
   // Backfill search vectors for any existing rows
   await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill facts search', `UPDATE facts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
@@ -858,6 +946,7 @@ async function initDB() {
   await safeQuery('backfill training_plans search', `UPDATE training_plans SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(goal,'') || ' ' || coalesce(rationale,'') || ' ' || coalesce(progression_notes,'') || ' ' || coalesce(phase,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(prevention_notes,'') || ' ' || coalesce(modifications,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill progress_checkins search', `UPDATE progress_checkins SET search_vector = to_tsvector('english', coalesce(training_phase,'') || ' ' || coalesce(calorie_phase,'') || ' ' || coalesce(pump_state,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
 
   console.log('PostgreSQL database initialized successfully');
 }
