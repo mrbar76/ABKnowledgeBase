@@ -316,12 +316,16 @@ async function loadDashboardStats() {
 // ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
 
 const RING_COLORS = { train: '#ef4444', execute: '#818cf8', recover: '#22c55e' };
-const RING_ICONS = { train: '🔴', execute: '⚡', recover: '🌿' };
 const RING_LABELS = { train: 'Train', execute: 'Execute', recover: 'Recover' };
+const RING_DESCRIPTIONS = {
+  train: { what: 'Log workouts', how: 'Go to Fitness > Workouts and log a workout session' },
+  execute: { what: 'Complete tasks', how: 'Mark tasks as Done in the Tasks tab' },
+  recover: { what: 'Log meals + daily context', how: 'Log meals in Fitness > Nutrition and fill in your daily context (sleep, hydration, energy)' },
+};
 let _badgesOpen = false;
+let _ringsDetailOpen = false;
 
 function buildRingSVG(rings) {
-  // 3 concentric rings: outer=train, middle=execute, inner=recover
   const defs = [
     { key: 'train', r: 78, sw: 14 },
     { key: 'execute', r: 60, sw: 14 },
@@ -339,20 +343,41 @@ function buildRingSVG(rings) {
   return `<svg viewBox="0 0 180 180" class="rings-svg">${paths}</svg>`;
 }
 
+function buildRingDetailCards(rings) {
+  return Object.keys(RING_COLORS).map(k => {
+    const ring = rings[k] || { current: 0, goal: 1, percent: 0 };
+    const closed = ring.percent >= 100;
+    const desc = RING_DESCRIPTIONS[k];
+    const remaining = Math.max(0, ring.goal - ring.current);
+    const statusText = closed ? 'Closed!' : `${remaining} more to close`;
+    return `<div class="ring-detail-card ${closed ? 'ring-closed' : ''}" style="--ring-color:${RING_COLORS[k]}">
+      <div class="ring-detail-header">
+        <span class="ring-detail-dot" style="background:${RING_COLORS[k]}"></span>
+        <span class="ring-detail-name">${RING_LABELS[k]}</span>
+        <span class="ring-detail-progress" style="color:${RING_COLORS[k]}">${ring.current}/${ring.goal}</span>
+        ${closed ? '<span class="ring-detail-check">&#10003;</span>' : ''}
+      </div>
+      <div class="ring-detail-bar-track"><div class="ring-detail-bar-fill" style="width:${ring.percent}%;background:${RING_COLORS[k]}"></div></div>
+      <div class="ring-detail-desc"><strong>${desc.what}</strong> &mdash; ${statusText}</div>
+      ${!closed ? `<div class="ring-detail-how">${desc.how}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 function buildStreakChips(streaks) {
   const defs = [
-    { key: 'train', icon: '🔥', label: 'Train' },
-    { key: 'execute', icon: '⚡', label: 'Execute' },
-    { key: 'recover', icon: '🌿', label: 'Recover' },
-    { key: 'perfect_day', icon: '💎', label: 'Perfect' },
-    { key: 'weigh_in', icon: '📊', label: 'Weigh-in' },
+    { key: 'train', icon: '🔥', label: 'Train', desc: 'Consecutive days with at least 1 workout logged' },
+    { key: 'execute', icon: '⚡', label: 'Execute', desc: 'Consecutive days with at least 1 task completed' },
+    { key: 'recover', icon: '🌿', label: 'Recover', desc: 'Consecutive days with meals + daily context logged' },
+    { key: 'perfect_day', icon: '💎', label: 'Perfect', desc: 'Consecutive days with all 3 rings closed' },
+    { key: 'weigh_in', icon: '📊', label: 'Weigh-in', desc: 'Consecutive days with a body metric logged' },
   ];
   return defs.map(d => {
     const val = streaks[d.key] || 0;
     const active = val > 0 ? ' active' : '';
-    return `<div class="streak-chip${active}" title="${d.label} streak: ${val} days">
+    return `<div class="streak-chip${active}" title="${d.desc}">
       <span class="streak-icon">${d.icon}</span>
-      <span class="streak-count">${val}</span>
+      <span class="streak-count">${val}d</span>
       <span>${d.label}</span>
     </div>`;
   }).join('');
@@ -362,21 +387,74 @@ function buildNudges(nudges) {
   if (!nudges?.length) return '';
   return nudges.map(n => {
     const type = n.type === 'success' ? 'success' : n.type === 'warning' ? 'warning' : 'info';
-    const icon = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
-    return `<div class="nudge-banner nudge-${type}"><span class="nudge-icon">${icon}</span><span>${esc(n.message)}</span></div>`;
+    const icon = type === 'success' ? '&#10003;' : type === 'warning' ? '!' : 'i';
+    return `<div class="nudge-banner nudge-${type}"><span class="nudge-icon-circle nudge-icon-${type}">${icon}</span><span>${esc(n.message)}</span></div>`;
   }).join('');
 }
 
 function buildBadgeGrid(badges) {
-  const all = [...(badges.unlocked || []).map(b => ({ ...b, isUnlocked: true })), ...(badges.locked || []).map(b => ({ ...b, isUnlocked: false }))];
-  return all.map(b => {
-    const cls = b.isUnlocked ? '' : ' locked';
-    const title = b.isUnlocked ? `${b.name} — ${b.description}` : `🔒 ${b.name} — ${b.description}`;
-    return `<div class="badge-item${cls}" title="${esc(title)}">
-      <span class="badge-icon">${b.icon}</span>
-      <span class="badge-name">${esc(b.name)}</span>
-    </div>`;
-  }).join('');
+  const unlocked = (badges.unlocked || []).map(b => ({ ...b, isUnlocked: true }));
+  const locked = (badges.locked || []).map(b => ({ ...b, isUnlocked: false }));
+  const all = [...unlocked, ...locked];
+
+  // Group by category
+  const categories = { milestone: 'Milestones', streak: 'Streak Badges', variety: 'Variety' };
+  const grouped = {};
+  for (const b of all) {
+    const cat = b.category || 'other';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(b);
+  }
+
+  let html = '';
+  for (const [cat, catBadges] of Object.entries(grouped)) {
+    const catLabel = categories[cat] || cat;
+    const catUnlocked = catBadges.filter(b => b.isUnlocked).length;
+    html += `<div class="badge-category-label">${catLabel} <span class="badge-category-count">${catUnlocked}/${catBadges.length}</span></div>`;
+    html += `<div class="badge-list">`;
+    for (const b of catBadges) {
+      const cls = b.isUnlocked ? 'unlocked' : 'locked';
+      const dateStr = b.isUnlocked && b.unlocked_at ? new Date(b.unlocked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      html += `<div class="badge-row badge-${cls}" onclick="showBadgeDetail(this)" data-name="${esc(b.name)}" data-desc="${esc(b.description)}" data-icon="${b.icon}" data-unlocked="${b.isUnlocked ? '1' : '0'}" data-date="${dateStr}">
+        <span class="badge-row-icon">${b.icon}</span>
+        <div class="badge-row-info">
+          <div class="badge-row-name">${esc(b.name)}</div>
+          <div class="badge-row-desc">${esc(b.description)}</div>
+        </div>
+        ${b.isUnlocked ? `<span class="badge-row-date">${dateStr}</span>` : '<span class="badge-row-lock">&#128274;</span>'}
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  return html;
+}
+
+function showBadgeDetail(el) {
+  const name = el.dataset.name;
+  const desc = el.dataset.desc;
+  const icon = el.dataset.icon;
+  const unlocked = el.dataset.unlocked === '1';
+  const date = el.dataset.date;
+
+  // Remove any existing expanded detail
+  document.querySelectorAll('.badge-detail-expanded').forEach(e => e.remove());
+
+  const detail = document.createElement('div');
+  detail.className = 'badge-detail-expanded';
+  detail.innerHTML = `
+    <div class="badge-detail-icon">${icon}</div>
+    <div class="badge-detail-body">
+      <div class="badge-detail-name">${name}</div>
+      <div class="badge-detail-desc">${desc}</div>
+      ${unlocked ? `<div class="badge-detail-status unlocked">Unlocked ${date}</div>` : `<div class="badge-detail-status locked">Not yet unlocked &mdash; keep going!</div>`}
+    </div>
+  `;
+  el.after(detail);
+  // Toggle off on second click
+  el.addEventListener('click', function handler() {
+    detail.remove();
+    el.removeEventListener('click', handler);
+  }, { once: true });
 }
 
 async function loadGamification() {
@@ -401,22 +479,31 @@ async function loadGamification() {
       }
     }
 
+    const allClosed = rings.train?.percent >= 100 && rings.execute?.percent >= 100 && rings.recover?.percent >= 100;
+
     container.innerHTML = `
       ${pushBanner}
-      <div class="rings-hero fade-in">
+      <div class="rings-hero fade-in" onclick="toggleRingsDetail()">
         <div class="rings-container">
           ${buildRingSVG(rings)}
-          <div class="rings-center-label"><span class="rings-a">A</span></div>
+          <div class="rings-center-label"><span class="rings-a">${allClosed ? '&#10003;' : 'A'}</span></div>
         </div>
         <div class="rings-legend">
-          ${Object.keys(RING_COLORS).map(k => `
-            <div class="rings-legend-item">
+          ${Object.keys(RING_COLORS).map(k => {
+            const r = rings[k] || {};
+            const closed = r.percent >= 100;
+            return `<div class="rings-legend-item">
               <span class="rings-legend-dot" style="background:${RING_COLORS[k]}"></span>
               <span>${RING_LABELS[k]}</span>
-              <span class="rings-legend-value" style="color:${RING_COLORS[k]}">${rings[k]?.current || 0}/${rings[k]?.goal || 0}</span>
-            </div>
-          `).join('')}
+              <span class="rings-legend-value" style="color:${RING_COLORS[k]}">${r.current || 0}/${r.goal || 0}${closed ? ' &#10003;' : ''}</span>
+            </div>`;
+          }).join('')}
         </div>
+        <div class="rings-tap-hint">Tap for details</div>
+      </div>
+      <div class="rings-detail-panel${_ringsDetailOpen ? ' open' : ''}" id="rings-detail-panel">
+        <div class="rings-detail-title">How to close your rings</div>
+        ${buildRingDetailCards(rings)}
       </div>
       <div class="streaks-row fade-in stagger-1">${buildStreakChips(streaks)}</div>
       <div id="nudges-container" class="fade-in stagger-1">${buildNudges(nudges)}</div>
@@ -424,9 +511,9 @@ async function loadGamification() {
         <div class="badges-toggle${_badgesOpen ? ' open' : ''}" onclick="toggleBadges()">
           <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
           Badges
-          <span class="badge-progress-text">${badges.total_unlocked}/${badges.total_available}</span>
+          <span class="badge-progress-text">${badges.total_unlocked}/${badges.total_available} unlocked</span>
         </div>
-        <div class="badge-grid" id="badge-grid" style="display:${_badgesOpen ? 'grid' : 'none'}">
+        <div id="badge-grid" style="display:${_badgesOpen ? 'block' : 'none'}">
           ${buildBadgeGrid(badges)}
         </div>
       </div>
@@ -444,20 +531,25 @@ async function loadGamification() {
     // Show badge unlock toasts
     if (badges.newly_unlocked?.length) {
       for (const b of badges.newly_unlocked) {
-        showToast(`${b.icon} Badge unlocked: ${b.name}`, 'success', 5000);
+        showToast(`${b.icon} Badge unlocked: ${b.name} — ${b.description}`, 'success', 5000);
       }
     }
   } catch (err) {
-    // Gamification is non-critical, silently fail
     console.warn('[gamification]', err.message);
   }
+}
+
+function toggleRingsDetail() {
+  _ringsDetailOpen = !_ringsDetailOpen;
+  const panel = document.getElementById('rings-detail-panel');
+  if (panel) panel.classList.toggle('open', _ringsDetailOpen);
 }
 
 function toggleBadges() {
   _badgesOpen = !_badgesOpen;
   const grid = document.getElementById('badge-grid');
   const toggle = document.querySelector('.badges-toggle');
-  if (grid) grid.style.display = _badgesOpen ? 'grid' : 'none';
+  if (grid) grid.style.display = _badgesOpen ? 'block' : 'none';
   if (toggle) toggle.classList.toggle('open', _badgesOpen);
 }
 

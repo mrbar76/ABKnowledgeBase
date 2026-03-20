@@ -1868,6 +1868,8 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   line-height: 1;
 }
 
+.rings-hero { cursor: pointer; }
+
 .rings-legend {
   display: flex;
   gap: 16px;
@@ -1895,6 +1897,115 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
 .rings-legend-value {
   font-weight: 700;
   color: var(--text);
+}
+
+.rings-tap-hint {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  margin-top: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+}
+
+/* ═══ Ring Detail Panel (expandable) ═══ */
+
+.rings-detail-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+  opacity: 0;
+  padding: 0 4px;
+}
+
+.rings-detail-panel.open {
+  max-height: 500px;
+  opacity: 1;
+  margin-bottom: 12px;
+}
+
+.rings-detail-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 0 6px;
+}
+
+.ring-detail-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ring-detail-card.ring-closed {
+  border-color: var(--ring-color, var(--green));
+}
+
+.ring-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ring-detail-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ring-detail-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ring-detail-progress {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ring-detail-check {
+  color: var(--green);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.ring-detail-bar-track {
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.ring-detail-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ring-detail-desc {
+  font-size: 0.72rem;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.ring-detail-desc strong { color: var(--text); }
+
+.ring-detail-how {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-style: italic;
+  padding-top: 2px;
 }
 
 /* ═══ Streaks Row ═══ */
@@ -1973,9 +2084,24 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   color: var(--green);
 }
 
-.nudge-icon { font-size: 0.9rem; flex-shrink: 0; }
+/* Nudge icon circles */
+.nudge-icon-circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.nudge-icon-success { background: rgba(34,197,94,0.2); color: var(--green); }
+.nudge-icon-warning { background: rgba(249,115,22,0.2); color: var(--orange); }
+.nudge-icon-info { background: rgba(59,130,246,0.2); color: var(--blue); }
 
-/* ═══ Badge Grid ═══ */
+/* ═══ Badge List (row-based) ═══ */
 
 .badges-section {
   margin-top: 8px;
@@ -1995,13 +2121,8 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   user-select: none;
 }
 
-.badges-toggle svg {
-  transition: transform 0.2s;
-}
-
-.badges-toggle.open svg {
-  transform: rotate(180deg);
-}
+.badges-toggle svg { transition: transform 0.2s; }
+.badges-toggle.open svg { transform: rotate(180deg); }
 
 .badge-progress-text {
   font-weight: 400;
@@ -2011,53 +2132,131 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   letter-spacing: 0;
 }
 
-.badge-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
-  gap: 8px;
-  padding: 8px 0;
+.badge-category-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 10px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.badge-item {
+.badge-category-count {
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.badge-list {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 4px;
-  padding: 8px 4px;
+}
+
+.badge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  text-align: center;
-  cursor: default;
+  cursor: pointer;
   transition: all var(--transition);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.badge-item:hover {
+.badge-row:active { transform: scale(0.98); }
+
+.badge-row.badge-unlocked:hover {
   border-color: var(--accent);
-  transform: scale(1.04);
 }
 
-.badge-item .badge-icon {
-  font-size: 1.5rem;
-  line-height: 1;
+.badge-row.badge-locked {
+  opacity: 0.45;
 }
 
-.badge-item .badge-name {
-  font-size: 0.58rem;
-  font-weight: 600;
+.badge-row.badge-locked:hover {
+  opacity: 0.65;
+}
+
+.badge-row-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+}
+
+.badge-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.badge-row-name {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.badge-row-desc {
+  font-size: 0.66rem;
   color: var(--text-dim);
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
-.badge-item.locked {
-  opacity: 0.3;
-  filter: grayscale(1);
+.badge-row-date {
+  font-size: 0.62rem;
+  color: var(--green);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.badge-item.locked:hover {
-  opacity: 0.5;
-  transform: scale(1.02);
+.badge-row-lock {
+  font-size: 0.72rem;
+  opacity: 0.4;
 }
+
+/* Badge expanded detail (on tap) */
+.badge-detail-expanded {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 2px 0 4px;
+  border-radius: 10px;
+  background: var(--accent-glow);
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  animation: badge-pop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.badge-detail-icon { font-size: 1.8rem; flex-shrink: 0; }
+
+.badge-detail-body { flex: 1; }
+
+.badge-detail-name {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.badge-detail-desc {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin: 2px 0;
+}
+
+.badge-detail-status {
+  font-size: 0.66rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.badge-detail-status.unlocked { color: var(--green); }
+.badge-detail-status.locked { color: var(--text-dim); font-style: italic; }
 
 /* ═══ Push Notification Permission Banner ═══ */
 
