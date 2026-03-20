@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Monochrome white version - for use on dark/colored backgrounds -->
+
+  <!-- Top-Left Panel -->
+  <rect x="112" y="112" width="388" height="388" rx="60" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+  <!-- Top-Right Panel -->
+  <rect x="524" y="112" width="388" height="388" rx="60" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+  <!-- Bottom-Left Panel -->
+  <rect x="112" y="524" width="388" height="388" rx="60" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+  <!-- Bottom-Right Panel -->
+  <rect x="524" y="524" width="388" height="388" rx="60" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+
+  <!-- Filled quadrants with low opacity for structure -->
+  <rect x="112" y="112" width="388" height="388" rx="60" fill="#FFFFFF" fill-opacity="0.12"/>
+  <rect x="524" y="112" width="388" height="388" rx="60" fill="#FFFFFF" fill-opacity="0.08"/>
+  <rect x="112" y="524" width="388" height="388" rx="60" fill="#FFFFFF" fill-opacity="0.08"/>
+  <rect x="524" y="524" width="388" height="388" rx="60" fill="#FFFFFF" fill-opacity="0.05"/>
+
+  <!-- Letter A -->
+  <text x="512" y="640" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+    font-size="520" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="-10">A</text>
+</svg>

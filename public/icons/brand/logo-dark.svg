@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Brighter, more saturated gradients for dark backgrounds -->
+    <linearGradient id="tl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5B8FF9"/>
+      <stop offset="50%" stop-color="#7B6EF6"/>
+      <stop offset="100%" stop-color="#8B5FE8"/>
+    </linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#AB6EF0"/>
+      <stop offset="50%" stop-color="#E06AAE"/>
+      <stop offset="100%" stop-color="#F578A0"/>
+    </linearGradient>
+    <linearGradient id="bl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#50C8F5"/>
+      <stop offset="50%" stop-color="#68ACF8"/>
+      <stop offset="100%" stop-color="#7590F0"/>
+    </linearGradient>
+    <linearGradient id="br" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F070A0"/>
+      <stop offset="50%" stop-color="#F89080"/>
+      <stop offset="100%" stop-color="#FFB080"/>
+    </linearGradient>
+    <linearGradient id="glass-tl" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.01"/>
+    </linearGradient>
+    <linearGradient id="glass-tr" x1="0.8" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.01"/>
+    </linearGradient>
+    <linearGradient id="glass-bl" x1="0.2" y1="1" x2="0.8" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.01"/>
+    </linearGradient>
+    <linearGradient id="glass-br" x1="0.8" y1="1" x2="0.2" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.01"/>
+    </linearGradient>
+    <filter id="glow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#6B5CE7" flood-opacity="0.25"/>
+    </filter>
+    <clipPath id="clip-tl"><rect x="112" y="112" width="388" height="388" rx="60"/></clipPath>
+    <clipPath id="clip-tr"><rect x="524" y="112" width="388" height="388" rx="60"/></clipPath>
+    <clipPath id="clip-bl"><rect x="112" y="524" width="388" height="388" rx="60"/></clipPath>
+    <clipPath id="clip-br"><rect x="524" y="524" width="388" height="388" rx="60"/></clipPath>
+  </defs>
+
+  <g filter="url(#glow)">
+    <rect x="112" y="112" width="388" height="388" rx="60" fill="url(#tl)"/>
+    <path d="M112 172 C112 139, 139 112, 172 112 L440 112 C440 112, 380 200, 300 300 C220 400, 112 440, 112 440 L112 172 Z" clip-path="url(#clip-tl)" fill="url(#glass-tl)"/>
+    <rect x="112" y="112" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+  </g>
+  <g filter="url(#glow)">
+    <rect x="524" y="112" width="388" height="388" rx="60" fill="url(#tr)"/>
+    <path d="M912 172 C912 139, 885 112, 852 112 L584 112 C584 112, 644 200, 724 300 C804 400, 912 440, 912 440 L912 172 Z" clip-path="url(#clip-tr)" fill="url(#glass-tr)"/>
+    <rect x="524" y="112" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+  </g>
+  <g filter="url(#glow)">
+    <rect x="112" y="524" width="388" height="388" rx="60" fill="url(#bl)"/>
+    <path d="M112 852 C112 885, 139 912, 172 912 L440 912 C440 912, 380 824, 300 724 C220 624, 112 584, 112 584 L112 852 Z" clip-path="url(#clip-bl)" fill="url(#glass-bl)"/>
+    <rect x="112" y="524" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+  </g>
+  <g filter="url(#glow)">
+    <rect x="524" y="524" width="388" height="388" rx="60" fill="url(#br)"/>
+    <path d="M912 852 C912 885, 885 912, 852 912 L584 912 C584 912, 644 824, 724 724 C804 624, 912 584, 912 584 L912 852 Z" clip-path="url(#clip-br)" fill="url(#glass-br)"/>
+    <rect x="524" y="524" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+  </g>
+
+  <text x="512" y="640" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+    font-size="520" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="-10">A</text>
+</svg>

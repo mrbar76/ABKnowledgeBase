@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Top-left quadrant: blue -->
+    <linearGradient id="tl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4F7DF7"/>
+      <stop offset="50%" stop-color="#6B5CE7"/>
+      <stop offset="100%" stop-color="#7B4FD8"/>
+    </linearGradient>
+    <!-- Top-right quadrant: purple to pink -->
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9B5DE5"/>
+      <stop offset="50%" stop-color="#D45BA0"/>
+      <stop offset="100%" stop-color="#F06292"/>
+    </linearGradient>
+    <!-- Bottom-left quadrant: cyan to blue -->
+    <linearGradient id="bl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#42B4E6"/>
+      <stop offset="50%" stop-color="#5A9BF0"/>
+      <stop offset="100%" stop-color="#6580E8"/>
+    </linearGradient>
+    <!-- Bottom-right quadrant: pink to coral -->
+    <linearGradient id="br" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E06090"/>
+      <stop offset="50%" stop-color="#F08070"/>
+      <stop offset="100%" stop-color="#F5A070"/>
+    </linearGradient>
+
+    <!-- Glass overlay gradients for each quadrant -->
+    <linearGradient id="glass-tl" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="glass-tr" x1="0.8" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="glass-bl" x1="0.2" y1="1" x2="0.8" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="glass-br" x1="0.8" y1="1" x2="0.2" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+
+    <!-- Petal/leaf clip paths for inner curves -->
+    <clipPath id="clip-tl">
+      <rect x="112" y="112" width="388" height="388" rx="60"/>
+    </clipPath>
+    <clipPath id="clip-tr">
+      <rect x="524" y="112" width="388" height="388" rx="60"/>
+    </clipPath>
+    <clipPath id="clip-bl">
+      <rect x="112" y="524" width="388" height="388" rx="60"/>
+    </clipPath>
+    <clipPath id="clip-br">
+      <rect x="524" y="524" width="388" height="388" rx="60"/>
+    </clipPath>
+
+    <!-- Drop shadow filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="20" flood-color="#000000" flood-opacity="0.12"/>
+    </filter>
+
+    <!-- Subtle inner glow -->
+    <filter id="inner-glow" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blur"/>
+      <feOffset dx="0" dy="2"/>
+      <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1"/>
+      <feFlood flood-color="#ffffff" flood-opacity="0.15"/>
+      <feComposite operator="in" in2="blur"/>
+      <feComposite in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <!-- ═══ QUADRANT PANELS ═══ -->
+
+  <!-- Top-Left Panel -->
+  <g filter="url(#shadow)">
+    <rect x="112" y="112" width="388" height="388" rx="60" fill="url(#tl)"/>
+    <!-- Petal curve overlay -->
+    <path d="M112 172 C112 139, 139 112, 172 112 L440 112 C440 112, 380 200, 300 300 C220 400, 112 440, 112 440 L112 172 Z" clip-path="url(#clip-tl)" fill="url(#glass-tl)"/>
+    <!-- Border highlight -->
+    <rect x="112" y="112" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"/>
+  </g>
+
+  <!-- Top-Right Panel -->
+  <g filter="url(#shadow)">
+    <rect x="524" y="112" width="388" height="388" rx="60" fill="url(#tr)"/>
+    <path d="M912 172 C912 139, 885 112, 852 112 L584 112 C584 112, 644 200, 724 300 C804 400, 912 440, 912 440 L912 172 Z" clip-path="url(#clip-tr)" fill="url(#glass-tr)"/>
+    <rect x="524" y="112" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.20)" stroke-width="1.5"/>
+  </g>
+
+  <!-- Bottom-Left Panel -->
+  <g filter="url(#shadow)">
+    <rect x="112" y="524" width="388" height="388" rx="60" fill="url(#bl)"/>
+    <path d="M112 852 C112 885, 139 912, 172 912 L440 912 C440 912, 380 824, 300 724 C220 624, 112 584, 112 584 L112 852 Z" clip-path="url(#clip-bl)" fill="url(#glass-bl)"/>
+    <rect x="112" y="524" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.20)" stroke-width="1.5"/>
+  </g>
+
+  <!-- Bottom-Right Panel -->
+  <g filter="url(#shadow)">
+    <rect x="524" y="524" width="388" height="388" rx="60" fill="url(#br)"/>
+    <path d="M912 852 C912 885, 885 912, 852 912 L584 912 C584 912, 644 824, 724 724 C804 624, 912 584, 912 584 L912 852 Z" clip-path="url(#clip-br)" fill="url(#glass-br)"/>
+    <rect x="524" y="524" width="388" height="388" rx="60" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+  </g>
+
+  <!-- ═══ CENTERED LETTER A ═══ -->
+  <g>
+    <!-- A shadow for depth -->
+    <text x="512" y="640" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+      font-size="520" font-weight="700" fill="rgba(0,0,0,0.12)" text-anchor="middle"
+      dy="4" letter-spacing="-10">A</text>
+    <!-- Main A - white with slight transparency for glass feel -->
+    <text x="512" y="640" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+      font-size="520" font-weight="700" fill="#FFFFFF" fill-opacity="0.95" text-anchor="middle"
+      letter-spacing="-10">A</text>
+  </g>
+</svg>
