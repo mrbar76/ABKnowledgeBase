@@ -318,12 +318,14 @@ async function loadDashboardStats() {
 const RING_COLORS = { train: '#ef4444', execute: '#818cf8', recover: '#22c55e' };
 const RING_LABELS = { train: 'Train', execute: 'Execute', recover: 'Recover' };
 const RING_DESCRIPTIONS = {
-  train: { what: 'Log workouts', how: 'Go to Fitness > Workouts and log a workout session' },
-  execute: { what: 'Complete tasks', how: 'Mark tasks as Done in the Tasks tab' },
-  recover: { what: 'Log meals + daily context', how: 'Log meals in Fitness > Nutrition and fill in your daily context (sleep, hydration, energy)' },
+  train: { what: 'Log workouts', how: 'Go to Fitness > Workouts and log a workout session', unit: 'workouts', min: 1, max: 5 },
+  execute: { what: 'Complete tasks', how: 'Mark tasks as Done in the Tasks tab', unit: 'tasks', min: 1, max: 15 },
+  recover: { what: 'Log meals + daily context', how: 'Log meals in Fitness > Nutrition and fill in your daily context (sleep, hydration, energy)', unit: 'entries', min: 1, max: 10 },
 };
+const RING_GOAL_KEYS = { train: 'ring_train_goal', execute: 'ring_execute_goal', recover: 'ring_recover_goal' };
 let _badgesOpen = false;
 let _ringsDetailOpen = false;
+let _gamificationData = null; // cached for re-renders
 
 function buildRingSVG(rings) {
   const defs = [
@@ -360,8 +362,103 @@ function buildRingDetailCards(rings) {
       <div class="ring-detail-bar-track"><div class="ring-detail-bar-fill" style="width:${ring.percent}%;background:${RING_COLORS[k]}"></div></div>
       <div class="ring-detail-desc"><strong>${desc.what}</strong> &mdash; ${statusText}</div>
       ${!closed ? `<div class="ring-detail-how">${desc.how}</div>` : ''}
+      <div class="ring-goal-editor" onclick="event.stopPropagation()">
+        <span class="ring-goal-label">Daily goal:</span>
+        <button class="ring-goal-btn" onclick="adjustRingGoal('${k}', -1)" ${ring.goal <= desc.min ? 'disabled' : ''}>-</button>
+        <span class="ring-goal-value" id="goal-val-${k}">${ring.goal}</span>
+        <button class="ring-goal-btn" onclick="adjustRingGoal('${k}', 1)" ${ring.goal >= desc.max ? 'disabled' : ''}>+</button>
+        <span class="ring-goal-unit">${desc.unit}/day</span>
+      </div>
     </div>`;
   }).join('');
+}
+
+function buildWeeklyBar(weekly) {
+  if (!weekly || !weekly.train) return '';
+  const w = weekly;
+  const bars = [
+    { label: 'Train', value: w.train.days_active, target: w.train.target_days, color: RING_COLORS.train, detail: `${w.train.total_workouts} workouts across ${w.train.days_active} days` },
+    { label: 'Execute', value: w.execute.days_active, target: Math.min(7, Math.ceil(w.execute.target_tasks / (_gamificationData?.settings?.ring_execute_goal || 3))), color: RING_COLORS.execute, detail: `${w.execute.total_tasks} tasks across ${w.execute.days_active} days` },
+    { label: 'Recover', value: w.recover.days_closed, target: w.recover.target_days, color: RING_COLORS.recover, detail: `${w.recover.total_entries} entries across ${w.recover.days_closed} days` },
+  ];
+  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const today = (new Date().getDay() + 6) % 7; // 0=Mon
+
+  return `
+    <div class="weekly-section">
+      <div class="weekly-header">
+        <span class="weekly-title">This Week</span>
+        <span class="weekly-perfect">${w.perfect_days} perfect day${w.perfect_days !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="weekly-bars">
+        ${bars.map(b => {
+          const pct = Math.min(100, Math.round((b.value / Math.max(1, b.target)) * 100));
+          return `<div class="weekly-bar-row" title="${b.detail}">
+            <span class="weekly-bar-label" style="color:${b.color}">${b.label}</span>
+            <div class="weekly-bar-track"><div class="weekly-bar-fill" style="width:${pct}%;background:${b.color}"></div></div>
+            <span class="weekly-bar-count">${b.value}/${b.target}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="weekly-day-dots">
+        ${dayLabels.map((l, i) => `<span class="weekly-dot${i <= today ? ' past' : ''}${i === today ? ' today' : ''}">${l}</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function buildSuggestionCards(suggestions) {
+  if (!suggestions?.length) return '';
+  return suggestions.map(s => {
+    const color = RING_COLORS[s.ring] || 'var(--accent)';
+    const icon = s.direction === 'up' ? '&#9650;' : '&#9660;';
+    const actionLabel = s.direction === 'up' ? 'Level Up' : 'Adjust';
+    return `<div class="suggestion-card" style="--sug-color:${color}">
+      <div class="suggestion-body">
+        <span class="suggestion-icon" style="color:${color}">${icon}</span>
+        <span class="suggestion-text">${esc(s.reason)}</span>
+      </div>
+      <button class="suggestion-apply" onclick="event.stopPropagation();applySuggestion('${s.ring}', ${s.suggested_goal})" style="background:${color}">
+        ${actionLabel} to ${s.suggested_goal}
+      </button>
+    </div>`;
+  }).join('');
+}
+
+async function adjustRingGoal(ring, delta) {
+  const desc = RING_DESCRIPTIONS[ring];
+  const valEl = document.getElementById(`goal-val-${ring}`);
+  if (!valEl) return;
+  const current = parseInt(valEl.textContent) || 1;
+  const newVal = Math.max(desc.min, Math.min(desc.max, current + delta));
+  if (newVal === current) return;
+
+  valEl.textContent = newVal;
+  try {
+    await api('/gamification/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ [RING_GOAL_KEYS[ring]]: newVal }),
+    });
+    showToast(`${RING_LABELS[ring]} goal updated to ${newVal}`, 'success', 2000);
+    // Refresh gamification to reflect new percentages
+    setTimeout(() => loadGamification(), 300);
+  } catch (err) {
+    valEl.textContent = current; // revert
+    showToast(`Failed to update: ${err.message}`, 'error');
+  }
+}
+
+async function applySuggestion(ring, newGoal) {
+  try {
+    await api('/gamification/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ [RING_GOAL_KEYS[ring]]: newGoal }),
+    });
+    showToast(`${RING_LABELS[ring]} goal updated to ${newGoal}`, 'success', 2000);
+    setTimeout(() => loadGamification(), 300);
+  } catch (err) {
+    showToast(`Failed: ${err.message}`, 'error');
+  }
 }
 
 function buildStreakChips(streaks) {
@@ -463,7 +560,11 @@ async function loadGamification() {
 
   try {
     const data = await api('/gamification');
-    const { rings, streaks, badges, nudges } = data;
+    _gamificationData = data;
+    const { rings, streaks, badges, nudges, suggestions, weekly } = data;
+
+    // Filter nudges: separate level-up suggestions from regular nudges
+    const regularNudges = (nudges || []).filter(n => n.type !== 'level_up');
 
     // Check push permission
     let pushBanner = '';
@@ -499,14 +600,16 @@ async function loadGamification() {
             </div>`;
           }).join('')}
         </div>
-        <div class="rings-tap-hint">Tap for details</div>
+        <div class="rings-tap-hint">Tap for details &amp; adjust goals</div>
       </div>
       <div class="rings-detail-panel${_ringsDetailOpen ? ' open' : ''}" id="rings-detail-panel">
         <div class="rings-detail-title">How to close your rings</div>
         ${buildRingDetailCards(rings)}
       </div>
+      ${buildWeeklyBar(weekly)}
       <div class="streaks-row fade-in stagger-1">${buildStreakChips(streaks)}</div>
-      <div id="nudges-container" class="fade-in stagger-1">${buildNudges(nudges)}</div>
+      ${suggestions?.length ? `<div class="suggestions-container fade-in stagger-1">${buildSuggestionCards(suggestions)}</div>` : ''}
+      <div id="nudges-container" class="fade-in stagger-1">${buildNudges(regularNudges)}</div>
       <div class="badges-section fade-in stagger-2">
         <div class="badges-toggle${_badgesOpen ? ' open' : ''}" onclick="toggleBadges()">
           <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>

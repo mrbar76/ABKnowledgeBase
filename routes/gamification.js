@@ -217,7 +217,117 @@ router.get('/', async (req, res) => {
       nudges.push({ type: 'success', message: 'All rings closed! Perfect day.' });
     }
 
-    res.json({ rings, streaks, badges, nudges, settings: { ring_train_goal: goals.ring_train_goal, ring_execute_goal: goals.ring_execute_goal, ring_recover_goal: goals.ring_recover_goal, notification_enabled: goals.notification_enabled } });
+    // ── Smart goal suggestions (trailing 7-day averages) ──
+    const suggestions = [];
+    try {
+      const [avgTrain, avgExec, avgRecover, closeRate] = await Promise.all([
+        query(`SELECT COALESCE(ROUND(AVG(cnt), 1), 0) AS avg FROM (SELECT COUNT(*)::numeric AS cnt FROM workouts WHERE workout_date >= CURRENT_DATE - 7 GROUP BY workout_date) t`).then(r => parseFloat(r.rows[0]?.avg || 0)),
+        query(`SELECT COALESCE(ROUND(AVG(cnt), 1), 0) AS avg FROM (SELECT COUNT(*)::numeric AS cnt FROM tasks WHERE status = 'done' AND updated_at::date >= CURRENT_DATE - 7 GROUP BY updated_at::date) t`).then(r => parseFloat(r.rows[0]?.avg || 0)),
+        query(`SELECT COALESCE(ROUND(AVG(cnt), 1), 0) AS avg FROM (SELECT (SELECT COUNT(*) FROM meals WHERE meal_date = d)::numeric + (SELECT COUNT(*) FROM daily_nutrition_context WHERE date = d)::numeric AS cnt FROM generate_series(CURRENT_DATE - 7, CURRENT_DATE - 1, '1 day') d) t`).then(r => parseFloat(r.rows[0]?.avg || 0)),
+        query(`
+          WITH days AS (
+            SELECT d,
+              (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS train,
+              (SELECT COUNT(*)::int FROM tasks WHERE status = 'done' AND updated_at::date = d) AS exec,
+              (SELECT COUNT(*)::int FROM meals WHERE meal_date = d) + (SELECT COUNT(*)::int FROM daily_nutrition_context WHERE date = d) AS recover
+            FROM generate_series(CURRENT_DATE - 7, CURRENT_DATE - 1, '1 day') d
+          )
+          SELECT COUNT(*) FILTER (WHERE train >= $1)::int AS train_closed,
+                 COUNT(*) FILTER (WHERE exec >= $2)::int AS exec_closed,
+                 COUNT(*) FILTER (WHERE recover >= $3)::int AS recover_closed,
+                 COUNT(*)::int AS total_days
+          FROM days
+        `, [goals.ring_train_goal, goals.ring_execute_goal, goals.ring_recover_goal]).then(r => r.rows[0]),
+      ]);
+
+      // Level-up: if you closed the ring 6+ of the last 7 days, suggest raising the goal
+      if (closeRate.train_closed >= 6 && goals.ring_train_goal < 3) {
+        const suggested = Math.min(3, goals.ring_train_goal + 1);
+        suggestions.push({ ring: 'train', direction: 'up', current_goal: goals.ring_train_goal, suggested_goal: suggested, reason: `You trained ${closeRate.train_closed}/7 days — try ${suggested} workouts/day` });
+      }
+      if (closeRate.exec_closed >= 6 && avgExec > goals.ring_execute_goal * 1.3) {
+        const suggested = Math.min(10, Math.ceil(avgExec));
+        if (suggested > goals.ring_execute_goal) {
+          suggestions.push({ ring: 'execute', direction: 'up', current_goal: goals.ring_execute_goal, suggested_goal: suggested, reason: `You averaged ${avgExec} tasks/day — try ${suggested}` });
+        }
+      }
+      if (closeRate.recover_closed >= 6 && avgRecover > goals.ring_recover_goal * 1.3) {
+        const suggested = Math.min(8, Math.ceil(avgRecover));
+        if (suggested > goals.ring_recover_goal) {
+          suggestions.push({ ring: 'recover', direction: 'up', current_goal: goals.ring_recover_goal, suggested_goal: suggested, reason: `You averaged ${avgRecover} recovery entries/day — try ${suggested}` });
+        }
+      }
+
+      // Level-down: if you closed the ring 1 or fewer times in 7 days, suggest lowering
+      if (closeRate.train_closed <= 1 && goals.ring_train_goal > 1) {
+        suggestions.push({ ring: 'train', direction: 'down', current_goal: goals.ring_train_goal, suggested_goal: Math.max(1, goals.ring_train_goal - 1), reason: `Only closed ${closeRate.train_closed}/7 days — lower to build momentum` });
+      }
+      if (closeRate.exec_closed <= 1 && goals.ring_execute_goal > 1) {
+        const suggested = Math.max(1, Math.round(avgExec) || 1);
+        suggestions.push({ ring: 'execute', direction: 'down', current_goal: goals.ring_execute_goal, suggested_goal: suggested, reason: `Only closed ${closeRate.exec_closed}/7 days — try ${suggested} to build consistency` });
+      }
+      if (closeRate.recover_closed <= 1 && goals.ring_recover_goal > 1) {
+        suggestions.push({ ring: 'recover', direction: 'down', current_goal: goals.ring_recover_goal, suggested_goal: Math.max(1, goals.ring_recover_goal - 1), reason: `Only closed ${closeRate.recover_closed}/7 days — lower to build habit` });
+      }
+
+      // Add level-up nudges
+      for (const s of suggestions) {
+        if (s.direction === 'up') {
+          nudges.push({ type: 'level_up', ring: s.ring, message: s.reason, suggested_goal: s.suggested_goal });
+        }
+      }
+    } catch (e) {
+      console.warn('[gamification] Suggestion computation failed:', e.message);
+    }
+
+    // ── Weekly summary ──
+    let weekly = {};
+    try {
+      const [wTrain, wExec, wRecover, wPerfect] = await Promise.all([
+        query(`SELECT COUNT(DISTINCT workout_date)::int AS days, COUNT(*)::int AS total FROM workouts WHERE workout_date >= date_trunc('week', CURRENT_DATE)`).then(r => r.rows[0]),
+        query(`SELECT COUNT(DISTINCT updated_at::date)::int AS days, COUNT(*)::int AS total FROM tasks WHERE status = 'done' AND updated_at::date >= date_trunc('week', CURRENT_DATE)`).then(r => r.rows[0]),
+        query(`
+          WITH days AS (
+            SELECT d,
+              (SELECT COUNT(*) FROM meals WHERE meal_date = d) + (SELECT COUNT(*) FROM daily_nutrition_context WHERE date = d) AS cnt
+            FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d
+          )
+          SELECT COUNT(*) FILTER (WHERE cnt >= $1)::int AS days_closed, SUM(cnt)::int AS total FROM days
+        `, [goals.ring_recover_goal]).then(r => r.rows[0]),
+        query(`
+          WITH days AS (
+            SELECT d,
+              (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS train,
+              (SELECT COUNT(*)::int FROM tasks WHERE status = 'done' AND updated_at::date = d) AS exec,
+              (SELECT COUNT(*)::int FROM meals WHERE meal_date = d) + (SELECT COUNT(*)::int FROM daily_nutrition_context WHERE date = d) AS recover
+            FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d
+          )
+          SELECT COUNT(*) FILTER (WHERE train >= $1 AND exec >= $2 AND recover >= $3)::int AS perfect_days
+          FROM days
+        `, [goals.ring_train_goal, goals.ring_execute_goal, goals.ring_recover_goal]).then(r => r.rows[0]),
+      ]);
+
+      const dayOfWeek = new Date().getDay() || 7; // 1-7 Mon-Sun (treat Sun as 7)
+      weekly = {
+        day_of_week: dayOfWeek,
+        train: { days_active: wTrain.days, total_workouts: wTrain.total, target_days: 5 },
+        execute: { days_active: wExec.days, total_tasks: wExec.total, target_tasks: goals.ring_execute_goal * 5 },
+        recover: { days_closed: wRecover.days_closed, total_entries: wRecover.total || 0, target_days: 5 },
+        perfect_days: wPerfect.perfect_days,
+      };
+    } catch (e) {
+      console.warn('[gamification] Weekly computation failed:', e.message);
+    }
+
+    res.json({
+      rings, streaks, badges, nudges, suggestions, weekly,
+      settings: {
+        ring_train_goal: goals.ring_train_goal,
+        ring_execute_goal: goals.ring_execute_goal,
+        ring_recover_goal: goals.ring_recover_goal,
+        notification_enabled: goals.notification_enabled,
+      },
+    });
   } catch (err) {
     console.error('[gamification] Error:', err.message);
     res.status(500).json({ error: err.message });
