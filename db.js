@@ -614,6 +614,38 @@ async function initDB() {
   await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
   await safeQuery('body_metrics +search_vector', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
 
+  // ===== GAMIFICATION =====
+  await safeQuery('gamification_settings table', `
+    CREATE TABLE IF NOT EXISTS gamification_settings (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      ring_train_goal INTEGER DEFAULT 1,
+      ring_execute_goal INTEGER DEFAULT 3,
+      ring_recover_goal INTEGER DEFAULT 3,
+      notification_enabled BOOLEAN DEFAULT true,
+      notification_schedule JSONB DEFAULT '[
+        {"time":"06:30","type":"morning_briefing","label":"Morning Briefing"},
+        {"time":"11:30","type":"pre_lunch","label":"Midday Check"},
+        {"time":"14:00","type":"post_lunch","label":"Post Lunch"},
+        {"time":"17:30","type":"end_of_work","label":"End of Work"},
+        {"time":"20:30","type":"evening_close","label":"Evening Close"}
+      ]'::jsonb,
+      push_subscription JSONB,
+      vapid_public_key TEXT,
+      vapid_private_key TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('gamification_settings seed', `INSERT INTO gamification_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+
+  await safeQuery('badges table', `
+    CREATE TABLE IF NOT EXISTS badges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      badge_key TEXT NOT NULL UNIQUE,
+      unlocked_at TIMESTAMPTZ DEFAULT NOW(),
+      metadata JSONB DEFAULT '{}'::jsonb
+    )`);
+  await safeQuery('badges idx', `CREATE INDEX IF NOT EXISTS idx_badges_key ON badges(badge_key)`);
+
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
     CREATE OR REPLACE FUNCTION update_knowledge_search() RETURNS TRIGGER AS $$

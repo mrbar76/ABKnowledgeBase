@@ -176,6 +176,7 @@ async function loadDashboard() {
   main.innerHTML = `
     <div class="dash-greeting">${greeting}.</div>
     <div class="dash-date">${dateStr}</div>
+    <div id="gamification-section"></div>
     <div id="dash-content">
       <div class="dash-section">
         <div class="dash-section-header">
@@ -202,6 +203,7 @@ async function loadDashboard() {
   `;
 
   loadDashboardStats();
+  loadGamification();
 }
 
 async function loadDashboardStats() {
@@ -309,6 +311,203 @@ async function loadDashboardStats() {
     const container = document.getElementById('dash-content');
     if (container) container.innerHTML = '<div class="empty-state">Could not load stats</div>';
   }
+}
+
+// ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
+
+const RING_COLORS = { train: '#ef4444', execute: '#818cf8', recover: '#22c55e' };
+const RING_ICONS = { train: '🔴', execute: '⚡', recover: '🌿' };
+const RING_LABELS = { train: 'Train', execute: 'Execute', recover: 'Recover' };
+let _badgesOpen = false;
+
+function buildRingSVG(rings) {
+  // 3 concentric rings: outer=train, middle=execute, inner=recover
+  const defs = [
+    { key: 'train', r: 78, sw: 14 },
+    { key: 'execute', r: 60, sw: 14 },
+    { key: 'recover', r: 42, sw: 14 },
+  ];
+  let paths = '';
+  for (const d of defs) {
+    const circ = 2 * Math.PI * d.r;
+    const pct = rings[d.key]?.percent || 0;
+    const offset = circ - (pct / 100) * circ;
+    const color = RING_COLORS[d.key];
+    paths += `<circle cx="90" cy="90" r="${d.r}" stroke="${color}" stroke-width="${d.sw}" class="ring-bg"/>`;
+    paths += `<circle cx="90" cy="90" r="${d.r}" stroke="${color}" stroke-width="${d.sw}" class="ring-progress" stroke-dasharray="${circ}" stroke-dashoffset="${circ}" data-target-offset="${offset}" data-circ="${circ}"/>`;
+  }
+  return `<svg viewBox="0 0 180 180" class="rings-svg">${paths}</svg>`;
+}
+
+function buildStreakChips(streaks) {
+  const defs = [
+    { key: 'train', icon: '🔥', label: 'Train' },
+    { key: 'execute', icon: '⚡', label: 'Execute' },
+    { key: 'recover', icon: '🌿', label: 'Recover' },
+    { key: 'perfect_day', icon: '💎', label: 'Perfect' },
+    { key: 'weigh_in', icon: '📊', label: 'Weigh-in' },
+  ];
+  return defs.map(d => {
+    const val = streaks[d.key] || 0;
+    const active = val > 0 ? ' active' : '';
+    return `<div class="streak-chip${active}" title="${d.label} streak: ${val} days">
+      <span class="streak-icon">${d.icon}</span>
+      <span class="streak-count">${val}</span>
+      <span>${d.label}</span>
+    </div>`;
+  }).join('');
+}
+
+function buildNudges(nudges) {
+  if (!nudges?.length) return '';
+  return nudges.map(n => {
+    const type = n.type === 'success' ? 'success' : n.type === 'warning' ? 'warning' : 'info';
+    const icon = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+    return `<div class="nudge-banner nudge-${type}"><span class="nudge-icon">${icon}</span><span>${esc(n.message)}</span></div>`;
+  }).join('');
+}
+
+function buildBadgeGrid(badges) {
+  const all = [...(badges.unlocked || []).map(b => ({ ...b, isUnlocked: true })), ...(badges.locked || []).map(b => ({ ...b, isUnlocked: false }))];
+  return all.map(b => {
+    const cls = b.isUnlocked ? '' : ' locked';
+    const title = b.isUnlocked ? `${b.name} — ${b.description}` : `🔒 ${b.name} — ${b.description}`;
+    return `<div class="badge-item${cls}" title="${esc(title)}">
+      <span class="badge-icon">${b.icon}</span>
+      <span class="badge-name">${esc(b.name)}</span>
+    </div>`;
+  }).join('');
+}
+
+async function loadGamification() {
+  const container = document.getElementById('gamification-section');
+  if (!container) return;
+
+  try {
+    const data = await api('/gamification');
+    const { rings, streaks, badges, nudges } = data;
+
+    // Check push permission
+    let pushBanner = '';
+    if ('Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window) {
+      const perm = Notification.permission;
+      if (perm === 'default' && !localStorage.getItem('ab_push_dismissed')) {
+        pushBanner = `<div class="push-banner" id="push-permission-banner">
+          <span>🔔</span>
+          <span style="flex:1">Enable notifications to stay on track</span>
+          <button class="push-allow" onclick="requestPushPermission()">Allow</button>
+          <button class="push-later" onclick="dismissPushBanner()">Later</button>
+        </div>`;
+      }
+    }
+
+    container.innerHTML = `
+      ${pushBanner}
+      <div class="rings-hero fade-in">
+        <div class="rings-container">
+          ${buildRingSVG(rings)}
+          <div class="rings-center-label"><span class="rings-a">A</span></div>
+        </div>
+        <div class="rings-legend">
+          ${Object.keys(RING_COLORS).map(k => `
+            <div class="rings-legend-item">
+              <span class="rings-legend-dot" style="background:${RING_COLORS[k]}"></span>
+              <span>${RING_LABELS[k]}</span>
+              <span class="rings-legend-value" style="color:${RING_COLORS[k]}">${rings[k]?.current || 0}/${rings[k]?.goal || 0}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="streaks-row fade-in stagger-1">${buildStreakChips(streaks)}</div>
+      <div id="nudges-container" class="fade-in stagger-1">${buildNudges(nudges)}</div>
+      <div class="badges-section fade-in stagger-2">
+        <div class="badges-toggle${_badgesOpen ? ' open' : ''}" onclick="toggleBadges()">
+          <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+          Badges
+          <span class="badge-progress-text">${badges.total_unlocked}/${badges.total_available}</span>
+        </div>
+        <div class="badge-grid" id="badge-grid" style="display:${_badgesOpen ? 'grid' : 'none'}">
+          ${buildBadgeGrid(badges)}
+        </div>
+      </div>
+    `;
+
+    // Animate ring progress after render
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        container.querySelectorAll('.ring-progress').forEach(el => {
+          el.style.strokeDashoffset = el.dataset.targetOffset;
+        });
+      }, 100);
+    });
+
+    // Show badge unlock toasts
+    if (badges.newly_unlocked?.length) {
+      for (const b of badges.newly_unlocked) {
+        showToast(`${b.icon} Badge unlocked: ${b.name}`, 'success', 5000);
+      }
+    }
+  } catch (err) {
+    // Gamification is non-critical, silently fail
+    console.warn('[gamification]', err.message);
+  }
+}
+
+function toggleBadges() {
+  _badgesOpen = !_badgesOpen;
+  const grid = document.getElementById('badge-grid');
+  const toggle = document.querySelector('.badges-toggle');
+  if (grid) grid.style.display = _badgesOpen ? 'grid' : 'none';
+  if (toggle) toggle.classList.toggle('open', _badgesOpen);
+}
+
+// ─── Push Notification Permission ────────────────────────────
+
+async function requestPushPermission() {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      dismissPushBanner();
+      return;
+    }
+
+    // Get VAPID public key
+    const { key: vapidKey } = await api('/gamification/notifications/vapid-public-key');
+    if (!vapidKey) { showToast('Push setup incomplete — VAPID key missing', 'warning'); return; }
+
+    // Subscribe
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidKey),
+    });
+
+    // Send subscription to backend
+    await api('/gamification/notifications/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+
+    dismissPushBanner();
+    showToast('Notifications enabled!', 'success');
+  } catch (err) {
+    showToast(`Push setup failed: ${err.message}`, 'error');
+  }
+}
+
+function dismissPushBanner() {
+  localStorage.setItem('ab_push_dismissed', '1');
+  const banner = document.getElementById('push-permission-banner');
+  if (banner) banner.remove();
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
 }
 
 // ─── Settings Menu (logo tap) ────────────────────────────────

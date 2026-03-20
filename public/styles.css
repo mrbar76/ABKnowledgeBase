@@ -1818,3 +1818,296 @@ html[data-theme="light"] .stat-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
 
 @media (prefers-color-scheme: light) { html:not([data-theme="dark"]) .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.1); } }
 html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+
+/* ═══ GAMIFICATION: Activity Rings ═══ */
+
+.rings-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0 12px;
+  margin-bottom: 4px;
+}
+
+.rings-container {
+  position: relative;
+  width: 180px;
+  height: 180px;
+}
+
+.rings-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-bg {
+  fill: none;
+  opacity: 0.15;
+}
+
+.ring-progress {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rings-center-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.rings-center-label .rings-a {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+.rings-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.rings-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.rings-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rings-legend-value {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ═══ Streaks Row ═══ */
+
+.streaks-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 4px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.streaks-row::-webkit-scrollbar { display: none; }
+
+.streak-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.streak-chip .streak-icon {
+  font-size: 0.85rem;
+}
+
+.streak-chip .streak-count {
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+
+.streak-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* ═══ Nudge Banners ═══ */
+
+.nudge-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 6px;
+  border: 1px solid;
+}
+
+.nudge-banner.nudge-warning {
+  background: rgba(249, 115, 22, 0.08);
+  border-color: rgba(249, 115, 22, 0.25);
+  color: var(--orange);
+}
+
+.nudge-banner.nudge-info {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.25);
+  color: var(--blue);
+}
+
+.nudge-banner.nudge-success {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.25);
+  color: var(--green);
+}
+
+.nudge-icon { font-size: 0.9rem; flex-shrink: 0; }
+
+/* ═══ Badge Grid ═══ */
+
+.badges-section {
+  margin-top: 8px;
+}
+
+.badges-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 8px 4px;
+  user-select: none;
+}
+
+.badges-toggle svg {
+  transition: transform 0.2s;
+}
+
+.badges-toggle.open svg {
+  transform: rotate(180deg);
+}
+
+.badge-progress-text {
+  font-weight: 400;
+  color: var(--accent);
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.badge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  text-align: center;
+  cursor: default;
+  transition: all var(--transition);
+}
+
+.badge-item:hover {
+  border-color: var(--accent);
+  transform: scale(1.04);
+}
+
+.badge-item .badge-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.badge-item .badge-name {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+
+.badge-item.locked {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+.badge-item.locked:hover {
+  opacity: 0.5;
+  transform: scale(1.02);
+}
+
+/* ═══ Push Notification Permission Banner ═══ */
+
+.push-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--accent-glow);
+  border: 1px solid rgba(129, 140, 248, 0.25);
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+.push-banner button {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.push-banner .push-allow {
+  background: var(--accent);
+  color: #fff;
+}
+
+.push-banner .push-later {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+/* ═══ Badge unlock toast animation ═══ */
+
+@keyframes badge-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.badge-unlock-toast {
+  animation: badge-pop 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ═══ Responsive ═══ */
+@media (min-width: 768px) {
+  .rings-container { width: 200px; height: 200px; }
+  .badge-grid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); }
+}

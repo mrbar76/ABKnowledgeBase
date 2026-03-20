@@ -22,6 +22,7 @@ const mealsRoutes = require('./routes/meals');
 const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
 const outlookRoutes = require('./routes/outlook');
+const gamificationRoutes = require('./routes/gamification');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -121,6 +122,7 @@ app.use('/api/meals', mealsRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/outlook', outlookRoutes);
+app.use('/api/gamification', gamificationRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
@@ -155,6 +157,129 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AB Brain (PostgreSQL backend) running on port ${PORT}`);
   });
+
+  // ─── VAPID key generation (one-time) ──────────────────────────
+  try {
+    const webpush = require('web-push');
+    const { rows: [gs] } = await query(`SELECT vapid_public_key, vapid_private_key FROM gamification_settings WHERE id = 1`);
+    if (gs && !gs.vapid_public_key) {
+      const vapidKeys = webpush.generateVAPIDKeys();
+      await query(`UPDATE gamification_settings SET vapid_public_key = $1, vapid_private_key = $2 WHERE id = 1`, [vapidKeys.publicKey, vapidKeys.privateKey]);
+      console.log('[push] VAPID keys generated');
+    } else if (gs?.vapid_public_key) {
+      console.log('[push] VAPID keys already configured');
+    }
+  } catch (err) {
+    console.error(`[push] VAPID setup failed: ${err.message}`);
+  }
+
+  // ─── Notification scheduler (checks every minute) ─────────────
+  const notifState = { lastSent: {} };
+
+  async function checkNotifications() {
+    try {
+      const webpush = require('web-push');
+      const { rows: [settings] } = await query(`SELECT * FROM gamification_settings WHERE id = 1`);
+      if (!settings?.notification_enabled || !settings.push_subscription || !settings.vapid_public_key) return;
+
+      const schedule = settings.notification_schedule || [];
+      const now = new Date();
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const today = now.toISOString().slice(0, 10);
+
+      for (const slot of schedule) {
+        const sentKey = `${today}-${slot.type}`;
+        if (notifState.lastSent[sentKey]) continue;
+        if (currentTime < slot.time) continue;
+        // Check within 2-minute window
+        const [slotH, slotM] = slot.time.split(':').map(Number);
+        const slotMins = slotH * 60 + slotM;
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        if (nowMins - slotMins > 2) continue;
+
+        // Build contextual message
+        let title = 'AB Brain';
+        let body = '';
+        try {
+          const [trainR, execR, mealsR, ctxR, tasksR] = await Promise.all([
+            query(`SELECT COUNT(*)::int AS n FROM workouts WHERE workout_date = CURRENT_DATE`),
+            query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status = 'done' AND updated_at::date = CURRENT_DATE`),
+            query(`SELECT COUNT(*)::int AS n FROM meals WHERE meal_date = CURRENT_DATE`),
+            query(`SELECT COUNT(*)::int AS n FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
+            query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status IN ('todo', 'in_progress') AND (due_date IS NULL OR due_date <= CURRENT_DATE)`),
+          ]);
+          const train = trainR.rows[0].n;
+          const exec = execR.rows[0].n;
+          const meals = mealsR.rows[0].n;
+          const ctx = ctxR.rows[0].n;
+          const pending = tasksR.rows[0].n;
+
+          const tG = settings.ring_train_goal;
+          const eG = settings.ring_execute_goal;
+          const rG = settings.ring_recover_goal;
+          const trainDone = train >= tG;
+          const execDone = exec >= eG;
+          const recoverDone = (meals + ctx) >= rG;
+
+          switch (slot.type) {
+            case 'morning_briefing':
+              title = 'Morning Briefing';
+              body = `${pending} tasks pending. Rings: 0/0/0. Time to train and execute.`;
+              break;
+            case 'pre_lunch':
+              title = 'Midday Check';
+              body = `Tasks: ${exec}/${eG}.` + (!trainDone ? ' No workout yet.' : ' Train: done!') + (meals === 0 ? ' Log your meals.' : '');
+              if (trainDone && execDone && meals > 0) return; // suppress if ahead
+              break;
+            case 'post_lunch':
+              title = 'Post Lunch';
+              if (meals < 2) body = 'Log lunch. ';
+              body += `Execute: ${exec}/${eG}. Keep pushing.`;
+              if (execDone && meals >= 2) return;
+              break;
+            case 'end_of_work':
+              title = 'End of Work';
+              body = `${exec} tasks done today.` + (!trainDone ? ' Still need to train.' : '') + ' Review tomorrow\'s priorities.';
+              break;
+            case 'evening_close':
+              title = 'Close Your Rings';
+              body = `Train: ${trainDone ? '✓' : '✗'} | Execute: ${exec}/${eG} | Recover: ${meals + ctx}/${rG}`;
+              if (!recoverDone) body += '. Log dinner + recovery data.';
+              break;
+            default:
+              body = slot.label || 'Check your progress';
+          }
+        } catch { body = slot.label || 'Check AB Brain'; }
+
+        webpush.setVapidDetails('mailto:avi@abbrain.app', settings.vapid_public_key, settings.vapid_private_key);
+        try {
+          await webpush.sendNotification(settings.push_subscription, JSON.stringify({
+            title, body,
+            icon: '/icons/brand/icon-app-180.png',
+            badge: '/icons/brand/icon-app-64.png',
+            url: '/',
+          }));
+          notifState.lastSent[sentKey] = true;
+          console.log(`[push] Sent: ${slot.type} at ${currentTime}`);
+        } catch (pushErr) {
+          if (pushErr.statusCode === 410) {
+            // Subscription expired, clean up
+            await query(`UPDATE gamification_settings SET push_subscription = NULL WHERE id = 1`);
+            console.log('[push] Subscription expired, cleared');
+          } else {
+            console.error(`[push] Send failed: ${pushErr.message}`);
+          }
+        }
+      }
+    } catch (err) {
+      // Silently skip if DB not ready
+    }
+  }
+
+  // Check every 60 seconds
+  setInterval(checkNotifications, 60000);
+  setTimeout(checkNotifications, 5000); // first check 5s after boot
+  console.log('[push] Notification scheduler active');
 
   // Initialize sync sources
   syncStatus.initSource('bee', { label: 'Bee Wearable', cron_enabled: !!process.env.BEE_API_TOKEN });

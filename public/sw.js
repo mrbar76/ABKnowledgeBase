@@ -1,4 +1,4 @@
-const CACHE_NAME = 'abkb-v25';
+const CACHE_NAME = 'abkb-v26';
 const SHELL_FILES = [
   '/',
   '/styles.css',
@@ -21,6 +21,48 @@ self.addEventListener('activate', e => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Push notifications
+self.addEventListener('push', e => {
+  if (!e.data) return;
+  try {
+    const data = e.data.json();
+    e.waitUntil(
+      self.registration.showNotification(data.title || 'AB Brain', {
+        body: data.body || '',
+        icon: data.icon || '/icons/brand/icon-app-180.png',
+        badge: data.badge || '/icons/brand/icon-app-64.png',
+        data: { url: data.url || '/' },
+        vibrate: [100, 50, 100],
+        tag: data.tag || 'ab-brain-notification',
+        renotify: true,
+      })
+    );
+  } catch {
+    e.waitUntil(
+      self.registration.showNotification('AB Brain', {
+        body: e.data.text(),
+        icon: '/icons/brand/icon-app-180.png',
+      })
+    );
+  }
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/';
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      // Focus existing window if available
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
   );
 });
 
