@@ -4899,7 +4899,11 @@ async function runProgressCompare() {
         · ${data.matched_poses.length} matched poses
       </div>
       ${data.matched_poses.length ? `
-        <div style="font-size:0.8rem;font-weight:600;margin:12px 0 8px">Side-by-Side</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px">
+          <div style="font-size:0.8rem;font-weight:600">Side-by-Side</div>
+          <button class="btn-submit btn-compact btn-secondary" onclick="runAIAssessment('${progressCompareFrom}','${progressCompareTo}')" id="ai-assess-btn">AI Assessment</button>
+        </div>
+        <div id="ai-assessment-report"></div>
         ${data.matched_poses.map(mp => `
           <div style="margin-bottom:12px">
             <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">${PROGRESS_POSES.find(p => p.key === mp.pose)?.label || mp.pose}</div>
@@ -4918,6 +4922,75 @@ async function runProgressCompare() {
       ` : '<div class="empty-state">No matching poses between these check-ins.</div>'}
     `;
   } catch (e) { el.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function runAIAssessment(fromId, toId) {
+  const btn = document.getElementById('ai-assess-btn');
+  const reportEl = document.getElementById('ai-assessment-report');
+  if (!reportEl) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
+  reportEl.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:0.75rem">
+    Sending photos to AI for visual analysis. This may take 10-20 seconds...
+  </div>`;
+
+  try {
+    const key = sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key');
+    const resp = await fetch(`${API}/progress/assess/${fromId}/${toId}`, {
+      method: 'POST',
+      headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Assessment failed');
+    }
+    const a = await resp.json();
+
+    const confColor = a.confidence === 'high' ? '#10b981' : a.confidence === 'medium' ? '#f59e0b' : '#ef4444';
+
+    reportEl.innerHTML = `
+      <div style="background:var(--bg-input);border-radius:10px;padding:12px;margin-bottom:12px;border-left:3px solid ${confColor}">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <span style="font-size:0.75rem;font-weight:600">AI Assessment</span>
+          <span class="badge-dynamic" style="background:${confColor}22;color:${confColor};font-size:0.6rem">${a.confidence || 'medium'} confidence</span>
+        </div>
+        <div style="font-size:0.8rem;line-height:1.5;margin-bottom:10px">${esc(a.summary || '')}</div>
+
+        ${a.likely_changes && a.likely_changes.length ? `
+          <div style="font-size:0.7rem;font-weight:600;color:#10b981;margin-bottom:4px">Likely Changes</div>
+          <ul style="font-size:0.7rem;margin:0 0 10px 16px;padding:0;line-height:1.6;color:var(--text)">
+            ${a.likely_changes.map(c => `<li>${esc(c)}</li>`).join('')}
+          </ul>
+        ` : ''}
+
+        ${a.uncertain_observations && a.uncertain_observations.length ? `
+          <div style="font-size:0.7rem;font-weight:600;color:#f59e0b;margin-bottom:4px">Uncertain Observations</div>
+          <ul style="font-size:0.7rem;margin:0 0 10px 16px;padding:0;line-height:1.6;color:var(--text-dim)">
+            ${a.uncertain_observations.map(o => `<li>${esc(o)}</li>`).join('')}
+          </ul>
+        ` : ''}
+
+        ${a.pose_specific_notes && Object.keys(a.pose_specific_notes).length ? `
+          <div style="font-size:0.7rem;font-weight:600;margin-bottom:4px">Pose Notes</div>
+          <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:10px">
+            ${Object.entries(a.pose_specific_notes).map(([k, v]) => {
+              const pose = PROGRESS_POSES.find(p => p.key === k);
+              return `<div><strong>${pose ? pose.label : k}:</strong> ${esc(v)}</div>`;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        ${a.coaching_interpretation ? `
+          <div style="font-size:0.7rem;font-weight:600;color:var(--accent);margin-bottom:4px">Coaching Take</div>
+          <div style="font-size:0.75rem;line-height:1.5;font-style:italic">${esc(a.coaching_interpretation)}</div>
+        ` : ''}
+      </div>
+    `;
+    if (btn) { btn.textContent = 'Re-run Assessment'; btn.disabled = false; }
+  } catch (e) {
+    reportEl.innerHTML = `<div style="background:#ef444422;border-radius:8px;padding:10px;font-size:0.75rem;color:#ef4444">${esc(e.message)}</div>`;
+    if (btn) { btn.textContent = 'Retry Assessment'; btn.disabled = false; }
+  }
 }
 
 function renderPoseGuide(el) {

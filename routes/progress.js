@@ -5,6 +5,17 @@ const fs = require('fs');
 const { query, logActivity } = require('../db');
 const router = express.Router();
 
+// ─── OpenAI Client (lazy init, reuses intake pattern) ────────
+let openai = null;
+function getOpenAIClient() {
+  if (openai) return openai;
+  const OpenAI = require('openai');
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('OPENAI_API_KEY not configured — required for AI assessment');
+  openai = new OpenAI({ apiKey: key });
+  return openai;
+}
+
 // ─── Photo Upload Config ─────────────────────────────────────
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'progress');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -375,6 +386,150 @@ router.get('/compare/:fromId/:toId', async (req, res) => {
       measurement_deltas: deltas,
       comparison_quality: matchedPoses.length >= 6 ? 'high' : matchedPoses.length >= 3 ? 'moderate' : 'low',
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── AI Visual Assessment ────────────────────────────────────
+const ASSESSMENT_PROMPT = `You are a conservative, objective body composition analyst. You are comparing two sets of progress photos taken at different dates.
+
+RULES — follow these strictly:
+- Be objective and conservative. Never overstate changes.
+- Do NOT estimate exact body fat percentages.
+- Do NOT diagnose injuries or medical conditions.
+- Explicitly flag when lighting, pump, posture, clothing, or camera angle may distort interpretation.
+- Clearly separate LIKELY real changes from UNCERTAIN observations.
+- If changes are minimal, say so honestly.
+- Use the measurement context provided (weight, waist, phase, pump state) only as supporting context, not as proof.
+
+Return ONLY valid JSON matching this schema exactly:
+{
+  "comparison_type": "latest_vs_baseline" | "custom",
+  "date_range": { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" },
+  "consistency_score": "high" | "medium" | "low",
+  "confidence": "high" | "medium" | "low",
+  "summary": "1-2 sentence overview of visible progress",
+  "likely_changes": ["array of likely real physical changes observed"],
+  "uncertain_observations": ["array of observations that may be artifacts of photo conditions"],
+  "pose_specific_notes": { "pose_key": "observation for that pose" },
+  "coaching_interpretation": "1-2 sentence practical coaching language: fat loss trend, muscle retention, recomposition signs, posture improvement, or no clear visual change yet"
+}`;
+
+router.post('/assess/:fromId/:toId', async (req, res) => {
+  try {
+    const client = getOpenAIClient();
+
+    // Load both check-ins with photos
+    const [fromResult, toResult] = await Promise.all([
+      query(
+        `SELECT c.*, (SELECT json_agg(json_build_object('id', p.id, 'pose_type', p.pose_type, 'filename', p.filename, 'pose_order', p.pose_order) ORDER BY p.pose_order)
+         FROM progress_photos p WHERE p.checkin_id = c.id AND p.excluded_from_analysis = false) AS photos
+         FROM progress_checkins c WHERE c.id = $1`, [req.params.fromId]
+      ),
+      query(
+        `SELECT c.*, (SELECT json_agg(json_build_object('id', p.id, 'pose_type', p.pose_type, 'filename', p.filename, 'pose_order', p.pose_order) ORDER BY p.pose_order)
+         FROM progress_photos p WHERE p.checkin_id = c.id AND p.excluded_from_analysis = false) AS photos
+         FROM progress_checkins c WHERE c.id = $1`, [req.params.toId]
+      ),
+    ]);
+
+    if (!fromResult.rows.length || !toResult.rows.length) {
+      return res.status(404).json({ error: 'One or both check-ins not found' });
+    }
+
+    const from = fromResult.rows[0];
+    const to = toResult.rows[0];
+    const fromPhotos = from.photos || [];
+    const toPhotos = to.photos || [];
+
+    if (!fromPhotos.length && !toPhotos.length) {
+      return res.status(400).json({ error: 'No photos available for assessment' });
+    }
+
+    // Build matched pose pairs and encode images as base64
+    const matchedPoses = [];
+    const imageMessages = [];
+
+    for (const pose of VALID_POSES) {
+      const fp = fromPhotos.find(p => p.pose_type === pose);
+      const tp = toPhotos.find(p => p.pose_type === pose);
+      if (fp && tp) {
+        matchedPoses.push(pose);
+
+        // Read and encode both images
+        const fromPath = path.join(UPLOAD_DIR, fp.filename);
+        const toPath = path.join(UPLOAD_DIR, tp.filename);
+
+        if (fs.existsSync(fromPath) && fs.existsSync(toPath)) {
+          const fromBase64 = fs.readFileSync(fromPath).toString('base64');
+          const toBase64 = fs.readFileSync(toPath).toString('base64');
+          const fromMime = fp.filename.match(/\.png$/i) ? 'image/png' : 'image/jpeg';
+          const toMime = tp.filename.match(/\.png$/i) ? 'image/png' : 'image/jpeg';
+
+          imageMessages.push(
+            { type: 'text', text: `--- ${pose.replace(/_/g, ' ').toUpperCase()} ---\nBefore (${from.checkin_date}):` },
+            { type: 'image_url', image_url: { url: `data:${fromMime};base64,${fromBase64}`, detail: 'low' } },
+            { type: 'text', text: `After (${to.checkin_date}):` },
+            { type: 'image_url', image_url: { url: `data:${toMime};base64,${toBase64}`, detail: 'low' } }
+          );
+        }
+      }
+    }
+
+    if (!imageMessages.length) {
+      return res.status(400).json({ error: 'No matching pose photos found between these check-ins' });
+    }
+
+    // Build context text
+    const contextParts = [];
+    contextParts.push(`Date range: ${from.checkin_date} to ${to.checkin_date}`);
+    contextParts.push(`Matched poses: ${matchedPoses.join(', ')}`);
+    contextParts.push(`Consistency: ${computeConsistency(fromPhotos)} (before) / ${computeConsistency(toPhotos)} (after)`);
+    if (from.weight_lb && to.weight_lb) contextParts.push(`Weight: ${from.weight_lb}lb → ${to.weight_lb}lb (${(to.weight_lb - from.weight_lb).toFixed(1)}lb)`);
+    if (from.waist_inches && to.waist_inches) contextParts.push(`Waist: ${from.waist_inches}" → ${to.waist_inches}"`);
+    if (from.chest_inches && to.chest_inches) contextParts.push(`Chest: ${from.chest_inches}" → ${to.chest_inches}"`);
+    if (from.arm_inches && to.arm_inches) contextParts.push(`Arm: ${from.arm_inches}" → ${to.arm_inches}"`);
+    if (to.calorie_phase) contextParts.push(`Current phase: ${to.calorie_phase}`);
+    if (to.pump_state) contextParts.push(`After photos state: ${to.pump_state}`);
+    if (from.pump_state) contextParts.push(`Before photos state: ${from.pump_state}`);
+    if (to.notes) contextParts.push(`Notes: ${to.notes}`);
+
+    const response = await client.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 1000,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: ASSESSMENT_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: `Context:\n${contextParts.join('\n')}\n\nPlease analyze the following matched pose comparisons:` },
+            ...imageMessages,
+          ],
+        },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    let assessment;
+    try {
+      assessment = JSON.parse(text);
+    } catch {
+      return res.status(500).json({ error: 'AI returned invalid JSON', raw: text });
+    }
+
+    // Attach metadata
+    assessment.from_id = from.id;
+    assessment.to_id = to.id;
+    assessment.matched_pose_count = matchedPoses.length;
+    assessment.total_poses = VALID_POSES.length;
+
+    await logActivity('create', 'progress_assessment', `${from.id}:${to.id}`, 'openai',
+      `AI assessment: ${from.checkin_date} → ${to.checkin_date} (${matchedPoses.length} poses)`);
+
+    res.json(assessment);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
