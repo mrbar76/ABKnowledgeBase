@@ -462,6 +462,51 @@ async function initDB() {
       (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(prevention_notes,'')) gin_trgm_ops
     )`);
 
+  // ===== GOAL PROFILES (Readiness System) =====
+  await safeQuery('goal_profiles', `CREATE TABLE IF NOT EXISTS goal_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    profile_type TEXT NOT NULL,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','completed','archived')),
+    goal_date DATE,
+    start_date DATE,
+    systems JSONB NOT NULL DEFAULT '[]'::jsonb,
+    weights JSONB NOT NULL DEFAULT '{}'::jsonb,
+    targets JSONB NOT NULL DEFAULT '{}'::jsonb,
+    phases JSONB NOT NULL DEFAULT '[]'::jsonb,
+    thresholds JSONB NOT NULL DEFAULT '{}'::jsonb,
+    scoring_rules JSONB NOT NULL DEFAULT '{}'::jsonb,
+    coaching_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await safeQuery('goal_profiles indexes', `
+    CREATE INDEX IF NOT EXISTS idx_goal_profiles_status ON goal_profiles(status);
+    CREATE INDEX IF NOT EXISTS idx_goal_profiles_type ON goal_profiles(profile_type)`);
+
+  // ===== READINESS SNAPSHOTS =====
+  await safeQuery('readiness_snapshots', `CREATE TABLE IF NOT EXISTS readiness_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id UUID NOT NULL REFERENCES goal_profiles(id) ON DELETE CASCADE,
+    snapshot_date DATE NOT NULL,
+    composite_score NUMERIC(5,2) NOT NULL,
+    system_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
+    system_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    target_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
+    gaps JSONB NOT NULL DEFAULT '{}'::jsonb,
+    phase TEXT,
+    data_confidence NUMERIC(3,2),
+    coaching_text JSONB DEFAULT '{}'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    computed_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await safeQuery('readiness_snapshots indexes', `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_readiness_snapshots_unique ON readiness_snapshots(profile_id, snapshot_date);
+    CREATE INDEX IF NOT EXISTS idx_readiness_snapshots_date ON readiness_snapshots(snapshot_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_readiness_snapshots_profile ON readiness_snapshots(profile_id)`);
+
   // ===== SCHEMA MIGRATIONS =====
   // ALTER TABLE ... ADD COLUMN IF NOT EXISTS ensures columns exist even if
   // tables were created by an older schema version (CREATE TABLE IF NOT EXISTS

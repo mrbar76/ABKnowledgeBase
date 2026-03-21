@@ -24,6 +24,7 @@ const trainingRoutes = require('./routes/training');
 const outlookRoutes = require('./routes/outlook');
 const gamificationRoutes = require('./routes/gamification');
 const progressRoutes = require('./routes/progress');
+const readinessRoutes = require('./routes/readiness');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -125,6 +126,7 @@ app.use('/api/training', trainingRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/readiness', readinessRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));

@@ -2523,6 +2523,78 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   animation: badge-pop 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ═══ Readiness System ═══ */
+.readiness-dashboard { display: flex; flex-direction: column; gap: 16px; }
+
+.readiness-profile-card {
+  background: var(--card-bg); border-radius: 12px; padding: 16px;
+  border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+}
+
+.readiness-card-header {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px;
+}
+
+.readiness-title { font-size: 1rem; font-weight: 700; margin: 0; }
+.readiness-type { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.readiness-countdown { font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-left: 8px; }
+
+.readiness-score-circle {
+  width: 64px; height: 64px; border-radius: 50%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; flex-shrink: 0;
+  border: 3px solid var(--score-color, var(--accent));
+  background: color-mix(in srgb, var(--score-color, var(--accent)) 10%, transparent);
+}
+.readiness-score-value { font-size: 1.2rem; font-weight: 800; line-height: 1; }
+.readiness-score-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; }
+
+.readiness-systems { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+
+.readiness-system-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.readiness-system-row.readiness-gap { opacity: 1; }
+.readiness-system-row.readiness-gap .readiness-sys-label { color: var(--red, #ef4444); }
+
+.readiness-sys-label {
+  width: 100px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; flex-shrink: 0;
+}
+.readiness-bar-track {
+  flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;
+}
+.readiness-bar-fill {
+  height: 100%; border-radius: 4px; transition: width 0.4s ease;
+}
+.readiness-sys-score {
+  width: 28px; text-align: right; font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+}
+
+.readiness-meta {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 12px;
+}
+.readiness-phase { color: var(--accent); font-weight: 600; }
+
+.readiness-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+
+.readiness-history-list { display: flex; flex-direction: column; gap: 4px; }
+.readiness-history-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 6px 8px; background: var(--card-bg); border-radius: 6px; font-size: 0.8rem;
+}
+
+.readiness-coaching { font-size: 0.85rem; }
+.readiness-coaching-summary { font-weight: 600; margin-bottom: 12px; padding: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 8px; }
+
+.readiness-coaching-recs { display: flex; flex-direction: column; gap: 10px; }
+.readiness-rec-item {
+  padding: 10px; border-radius: 8px; background: var(--card-bg); border: 1px solid var(--border);
+}
+.readiness-rec-system { font-weight: 700; text-transform: capitalize; color: var(--accent); }
+.readiness-rec-deficit { font-weight: 700; color: var(--red, #ef4444); margin-left: 8px; font-size: 0.8rem; }
+.readiness-rec-item p { margin: 4px 0 0; }
+
 /* ═══ Responsive ═══ */
 @media (min-width: 768px) {
   .rings-container { width: 200px; height: 200px; }

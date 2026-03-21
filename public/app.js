@@ -142,7 +142,7 @@ function switchTab(tab) {
   main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the unified fitness tab
-  if (['workouts', 'nutrition', 'body', 'training', 'progress'].includes(tab)) {
+  if (['workouts', 'nutrition', 'body', 'training', 'progress', 'readiness'].includes(tab)) {
     fitnessSubTab = tab;
     tab = 'fitness';
     currentTab = 'fitness';
@@ -3044,6 +3044,7 @@ function loadFitness() {
     { key: 'body', label: 'Body', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>' },
     { key: 'training', label: 'Training', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' },
     { key: 'progress', label: 'Progress', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 11.75c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zm6 0c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>' },
+    { key: 'readiness', label: 'Readiness', icon: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -3056,6 +3057,7 @@ function loadFitness() {
   else if (fitnessSubTab === 'body') loadBodyMetrics();
   else if (fitnessSubTab === 'training') loadTraining();
   else if (fitnessSubTab === 'progress') loadProgress();
+  else if (fitnessSubTab === 'readiness') loadReadiness();
 }
 
 // ─── Workouts ─────────────────────────────────────────────────
@@ -5507,6 +5509,323 @@ async function handlePosePhotoSelect(input) {
   } catch (e) {
     if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">${esc(e.message)}</span>`;
     showToast('Upload error: ' + e.message);
+  }
+}
+
+// ─── Readiness System ─────────────────────────────────────────
+let readinessChartInstance = null;
+
+async function loadReadiness() {
+  const container = document.getElementById('fitness-content');
+  container.innerHTML = '<div class="loading-spinner"></div>';
+
+  try {
+    const res = await apiFetch('/api/readiness/dashboard');
+    const { dashboard } = res;
+
+    if (!dashboard.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon"><svg viewBox="0 0 24 24" width="48" height="48"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg></div>
+          <h3>No Goal Profiles Yet</h3>
+          <p>Create a readiness profile to start tracking your goal readiness.</p>
+          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+            <button class="btn-submit" onclick="seedSpartanProfile()">Seed Spartan Sprint</button>
+            <button class="btn-action" onclick="openCreateProfileModal()">Create Custom</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    let html = '<div class="readiness-dashboard">';
+
+    for (const item of dashboard) {
+      const p = item.profile;
+      const snap = item.latest;
+      const score = snap ? +snap.composite_score : null;
+      const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow, #eab308)' : score >= 40 ? 'var(--orange, #f97316)' : 'var(--red, #ef4444)';
+
+      html += `
+        <div class="readiness-profile-card">
+          <div class="readiness-card-header">
+            <div>
+              <h3 class="readiness-title">${esc(p.title)}</h3>
+              <span class="readiness-type">${esc(p.profile_type)}</span>
+              ${item.days_to_goal != null ? `<span class="readiness-countdown">${item.days_to_goal}d to goal</span>` : ''}
+            </div>
+            <div class="readiness-score-circle" style="--score-color:${score != null ? scoreColor : 'var(--text-dim)'}">
+              <span class="readiness-score-value">${score != null ? score : '—'}</span>
+              <span class="readiness-score-label">Score</span>
+            </div>
+          </div>`;
+
+      if (snap) {
+        const systems = snap.system_scores || {};
+        const gaps = snap.gaps || {};
+
+        // System bars
+        html += '<div class="readiness-systems">';
+        for (const [sys, sysScore] of Object.entries(systems)) {
+          const isGap = gaps[sys];
+          const barColor = sysScore >= 80 ? 'var(--green)' : sysScore >= 60 ? 'var(--yellow, #eab308)' : sysScore >= 40 ? 'var(--orange, #f97316)' : 'var(--red, #ef4444)';
+          html += `
+            <div class="readiness-system-row ${isGap ? 'readiness-gap' : ''}">
+              <span class="readiness-sys-label">${esc(sys)}</span>
+              <div class="readiness-bar-track">
+                <div class="readiness-bar-fill" style="width:${sysScore}%;background:${barColor}"></div>
+              </div>
+              <span class="readiness-sys-score">${sysScore}</span>
+            </div>`;
+        }
+        html += '</div>';
+
+        // Phase & confidence
+        html += `<div class="readiness-meta">`;
+        if (snap.phase) html += `<span class="readiness-phase">Phase: ${esc(snap.phase)}</span>`;
+        html += `<span class="readiness-confidence">Confidence: ${Math.round((snap.data_confidence || 0) * 100)}%</span>`;
+        html += `<span class="readiness-date">Computed: ${new Date(snap.snapshot_date).toLocaleDateString()}</span>`;
+        html += `</div>`;
+      }
+
+      // Action buttons
+      html += `
+          <div class="readiness-actions">
+            <button class="btn-action" onclick="computeReadiness('${p.id}')">Compute Now</button>
+            <button class="btn-action btn-action-secondary" onclick="viewReadinessHistory('${p.id}')">History</button>
+            <button class="btn-action btn-action-secondary" onclick="getReadinessCoaching('${p.id}')">Coaching</button>
+            <button class="btn-action btn-action-secondary" onclick="editReadinessProfile('${p.id}')">Edit</button>
+          </div>
+        </div>`;
+    }
+
+    html += `
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+        <button class="btn-action" onclick="openCreateProfileModal()">+ New Profile</button>
+        <button class="btn-action btn-action-secondary" onclick="seedSpartanProfile()">Seed Spartan Sprint</button>
+      </div>
+    </div>`;
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="error-msg">Failed to load readiness: ${esc(err.message)}</div>`;
+  }
+}
+
+async function computeReadiness(profileId) {
+  try {
+    showToast('Computing readiness...');
+    const res = await apiFetch(`/api/readiness/compute/${profileId}`, { method: 'POST', body: JSON.stringify({}) });
+    showToast(`Readiness score: ${res.snapshot.composite_score}`);
+    loadReadiness();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function seedSpartanProfile() {
+  try {
+    showToast('Seeding Spartan Sprint profile...');
+    await apiFetch('/api/readiness/profiles/seed/spartan-sprint', { method: 'POST', body: JSON.stringify({}) });
+    showToast('Spartan Sprint profile created!');
+    loadReadiness();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function viewReadinessHistory(profileId) {
+  try {
+    const [histRes, profileRes] = await Promise.all([
+      apiFetch(`/api/readiness/snapshots/${profileId}/history?days=30`),
+      apiFetch(`/api/readiness/profiles/${profileId}`),
+    ]);
+    const history = histRes.history || [];
+    const profile = profileRes;
+
+    if (!history.length) { showToast('No history yet — compute readiness first'); return; }
+
+    let html = `<div style="margin-bottom:16px"><canvas id="readiness-chart" height="200"></canvas></div>`;
+    html += `<div class="readiness-history-list">`;
+    for (const snap of [...history].reverse()) {
+      html += `<div class="readiness-history-row">
+        <span>${new Date(snap.snapshot_date).toLocaleDateString()}</span>
+        <span style="font-weight:600">${(+snap.composite_score)}</span>
+        ${snap.phase ? `<span class="readiness-phase">${esc(snap.phase)}</span>` : ''}
+      </div>`;
+    }
+    html += '</div>';
+
+    openModal(`Readiness History — ${esc(profile.title)}`, html);
+
+    // Render chart after modal is open
+    setTimeout(() => {
+      const canvas = document.getElementById('readiness-chart');
+      if (!canvas || typeof Chart === 'undefined') return;
+      if (readinessChartInstance) readinessChartInstance.destroy();
+
+      const labels = history.map(h => new Date(h.snapshot_date).toLocaleDateString());
+      const scores = history.map(h => +h.composite_score);
+
+      // Collect system keys
+      const sysKeys = new Set();
+      history.forEach(h => { if (h.system_scores) Object.keys(h.system_scores).forEach(k => sysKeys.add(k)); });
+
+      const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+      const datasets = [{ label: 'Composite', data: scores, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', borderWidth: 2, fill: true, tension: 0.3 }];
+
+      let ci = 1;
+      for (const sys of sysKeys) {
+        datasets.push({
+          label: sys.charAt(0).toUpperCase() + sys.slice(1),
+          data: history.map(h => h.system_scores?.[sys] ?? null),
+          borderColor: colors[ci % colors.length],
+          borderWidth: 1,
+          borderDash: [4, 2],
+          tension: 0.3,
+          pointRadius: 0,
+        });
+        ci++;
+      }
+
+      readinessChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          scales: { y: { min: 0, max: 100, title: { display: true, text: 'Score' } } },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        },
+      });
+    }, 100);
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function getReadinessCoaching(profileId) {
+  try {
+    showToast('Generating coaching insights...');
+    const res = await apiFetch(`/api/readiness/coaching/${profileId}`, { method: 'POST', body: JSON.stringify({}) });
+    const c = res.coaching;
+
+    let html = `<div class="readiness-coaching">`;
+    html += `<div class="readiness-coaching-summary">${esc(c.summary)}</div>`;
+
+    if (c.recommendations?.length) {
+      html += '<div class="readiness-coaching-recs">';
+      for (const rec of c.recommendations) {
+        html += `<div class="readiness-rec-item">
+          <span class="readiness-rec-system">${esc(rec.system)}</span>
+          <span class="readiness-rec-deficit">-${rec.deficit}</span>
+          <p>${esc(rec.recommendation)}</p>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (c.composite_score != null) {
+      html += `<div class="readiness-meta" style="margin-top:12px">
+        <span>Composite: <strong>${c.composite_score}</strong></span>
+        ${c.phase ? `<span>Phase: ${esc(c.phase)}</span>` : ''}
+      </div>`;
+    }
+    html += '</div>';
+
+    openModal('Readiness Coaching', html);
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+function openCreateProfileModal() {
+  const html = `
+    <form onsubmit="createReadinessProfile(event)">
+      <div class="form-group"><label>Title</label><input type="text" id="rp-title" required placeholder="e.g. Marathon Prep"></div>
+      <div class="form-group"><label>Profile Type</label><input type="text" id="rp-type" required placeholder="e.g. marathon, spartan_sprint, general"></div>
+      <div class="form-group"><label>Goal Date</label><input type="date" id="rp-goal-date"></div>
+      <div class="form-group">
+        <label>Systems (comma-separated)</label>
+        <input type="text" id="rp-systems" value="strength,nutrition,recovery,execution,consistency,body_composition" placeholder="strength,nutrition,recovery,...">
+      </div>
+      <button type="submit" class="btn-submit" style="width:100%;margin-top:12px">Create Profile</button>
+    </form>`;
+  openModal('Create Goal Profile', html);
+}
+
+async function createReadinessProfile(e) {
+  e.preventDefault();
+  try {
+    const systems = document.getElementById('rp-systems').value.split(',').map(s => s.trim()).filter(Boolean);
+    const body = {
+      title: document.getElementById('rp-title').value,
+      profile_type: document.getElementById('rp-type').value,
+      goal_date: document.getElementById('rp-goal-date').value || null,
+      systems,
+    };
+    await apiFetch('/api/readiness/profiles', { method: 'POST', body: JSON.stringify(body) });
+    closeModal();
+    showToast('Profile created!');
+    loadReadiness();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function editReadinessProfile(profileId) {
+  try {
+    const profile = await apiFetch(`/api/readiness/profiles/${profileId}`);
+    const html = `
+      <form onsubmit="updateReadinessProfile(event, '${profileId}')">
+        <div class="form-group"><label>Title</label><input type="text" id="rp-edit-title" value="${esc(profile.title)}" required></div>
+        <div class="form-group"><label>Status</label>
+          <select id="rp-edit-status">
+            ${['active','paused','completed','archived'].map(s => `<option value="${s}" ${profile.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label>Goal Date</label><input type="date" id="rp-edit-goal-date" value="${profile.goal_date || ''}"></div>
+        <div class="form-group">
+          <label>Systems</label>
+          <input type="text" id="rp-edit-systems" value="${(profile.systems || []).join(',')}">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="submit" class="btn-submit" style="flex:1">Save</button>
+          <button type="button" class="btn-action btn-action-danger" onclick="deleteReadinessProfile('${profileId}')" style="flex:0">Delete</button>
+        </div>
+      </form>`;
+    openModal('Edit Profile', html);
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function updateReadinessProfile(e, profileId) {
+  e.preventDefault();
+  try {
+    const systems = document.getElementById('rp-edit-systems').value.split(',').map(s => s.trim()).filter(Boolean);
+    const body = {
+      title: document.getElementById('rp-edit-title').value,
+      status: document.getElementById('rp-edit-status').value,
+      goal_date: document.getElementById('rp-edit-goal-date').value || null,
+      systems,
+    };
+    await apiFetch(`/api/readiness/profiles/${profileId}`, { method: 'PUT', body: JSON.stringify(body) });
+    closeModal();
+    showToast('Profile updated!');
+    loadReadiness();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function deleteReadinessProfile(profileId) {
+  if (!confirm('Delete this profile and all its snapshots?')) return;
+  try {
+    await apiFetch(`/api/readiness/profiles/${profileId}`, { method: 'DELETE' });
+    closeModal();
+    showToast('Profile deleted');
+    loadReadiness();
+  } catch (err) {
+    showToast('Error: ' + err.message);
   }
 }
 
