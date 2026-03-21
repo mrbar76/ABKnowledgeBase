@@ -303,13 +303,12 @@ async function computeReadiness(profile, date) {
 const SPARTAN_SPRINT_SEED = {
   title: 'Spartan Sprint Readiness',
   profile_type: 'spartan_sprint',
-  systems: ['strength', 'nutrition', 'recovery', 'execution', 'consistency', 'body_composition'],
-  weights: { strength: 2, nutrition: 1.5, recovery: 1.5, execution: 1, consistency: 1.5, body_composition: 1 },
+  systems: ['strength', 'nutrition', 'recovery', 'consistency', 'body_composition'],
+  weights: { strength: 2.5, nutrition: 1.5, recovery: 2, consistency: 1.5, body_composition: 1 },
   targets: {
     strength: { sessions_per_week: 5, min_effort: 7 },
     nutrition: { meals_per_day: 3, context_days: 5 },
     recovery: { min_rest_days: 2, metrics_per_week: 3 },
-    execution: { daily_tasks: 3 },
     body_composition: { weight_lb: null, body_fat_pct: null }, // user fills in
   },
   phases: [
@@ -533,7 +532,7 @@ router.get('/dashboard', async (req, res) => {
     const dashboard = [];
     for (const p of profiles) {
       const { rows: snaps } = await query(
-        `SELECT snapshot_date, composite_score, system_scores, gaps, phase, data_confidence
+        `SELECT snapshot_date, composite_score, system_scores, system_details, gaps, phase, data_confidence
          FROM readiness_snapshots WHERE profile_id = $1 ORDER BY snapshot_date DESC LIMIT 1`,
         [p.id]
       );

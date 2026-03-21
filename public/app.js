@@ -5564,67 +5564,68 @@ async function loadReadiness() {
         const details = snap.system_details || {};
         const gaps = snap.gaps || {};
 
-        // System explanations
+        // System explanations — tip(d, score) uses both detail + score
         const sysInfo = {
           strength: {
             label: 'Strength',
             desc: 'Training volume and intensity over the last 14 days',
             explain: d => {
-              const parts = [`${d.sessions_14d || 0} sessions logged (target: ${d.expected || 8})`];
+              const parts = [`${d.sessions_14d || 0} sessions (target: ${d.expected || 8})`];
               if (d.avg_effort) parts.push(`Avg effort: ${d.avg_effort}/10`);
-              if (d.total_minutes) parts.push(`Total: ${d.total_minutes} min`);
+              if (d.total_minutes) parts.push(`${d.total_minutes} min total`);
               return parts.join(' · ');
             },
-            tip: d => d.sessions_14d < (d.expected || 8) ? 'Log more workouts to hit your weekly target' : d.avg_effort < 7 ? 'Push harder — aim for effort 7+ per session' : 'On track — maintain intensity',
+            tip: (d, s) => s >= 80 ? 'On track — maintain intensity and volume' : s >= 60 ? `Need ${(d.expected || 8) - (d.sessions_14d || 0)} more sessions or higher effort to hit target` : 'Training is below target — increase workout frequency and push effort above 7',
           },
           nutrition: {
             label: 'Nutrition',
             desc: 'Meal logging and daily nutrition tracking over 7 days',
-            explain: d => `${d.meals_7d || 0} meals across ${d.days_logged || 0}/7 days · ${d.context_entries || 0} daily nutrition entries`,
-            tip: d => d.days_logged < 5 ? 'Log meals every day, even rest days' : d.context_entries < 3 ? 'Add daily nutrition context (hydration, cravings, energy)' : 'Great tracking — keep it up',
+            explain: d => `${d.meals_7d || 0} meals across ${d.days_logged || 0}/7 days · ${d.context_entries || 0} daily context entries`,
+            tip: (d, s) => s >= 80 ? 'Great tracking — keep logging consistently' : s >= 50 ? `Log meals on ${7 - (d.days_logged || 0)} more days and add daily nutrition context` : 'Start logging every meal and add daily nutrition context (hydration, energy, cravings)',
           },
           recovery: {
             label: 'Recovery',
-            desc: 'Rest days, body metrics, and sleep/recovery data',
+            desc: 'Rest days, body metrics tracking, and sleep quality',
             explain: d => {
-              const parts = [`${d.rest_days || 0} rest days (target: ${d.target_rest_days || 2}+)`, `${d.body_metrics_7d || 0} weigh-ins (target: ${d.target_metrics || 2}+)`];
-              if (d.avg_sleep) parts.push(`Avg sleep: ${d.avg_sleep}h`);
+              const parts = [`${d.rest_days ?? 0} rest days (need ${d.target_rest_days || 2}+)`, `${d.body_metrics_7d || 0} weigh-ins (need ${d.target_metrics || 2}+)`];
+              if (d.avg_sleep) parts.push(`Sleep: ${d.avg_sleep}h avg`);
               return parts.join(' · ');
             },
-            tip: d => d.rest_days < 2 ? 'Schedule at least 2 rest days per week' : d.body_metrics_7d < 2 ? 'Weigh in 2-3x per week for better tracking' : 'Recovery balance looks good',
+            tip: (d, s) => s >= 80 ? 'Recovery is well-balanced' : (d.rest_days ?? 0) < 2 ? `Only ${d.rest_days ?? 0} rest days — schedule at least 2 per week to avoid overtraining` : (d.body_metrics_7d || 0) < 2 ? 'Weigh in 2-3x per week to improve this score' : 'Add sleep and recovery data via daily nutrition context',
           },
           execution: {
             label: 'Execution',
-            desc: 'Task completion rate — daily output and backlog management',
-            explain: d => `${d.today_done || 0} tasks done today (target: 3+) · ${d.completed_7d || 0} completed this week · ${d.pending || 0} pending`,
-            tip: d => d.today_done < 3 ? 'Complete at least 3 tasks today to close this ring' : d.pending > 10 ? 'Backlog growing — prioritize and clear stale tasks' : 'Execution is strong',
+            desc: 'Daily task output and backlog management',
+            explain: d => `Today: ${d.today_done || 0} done (target: 3+) · This week: ${d.completed_7d || 0} · Pending: ${d.pending || 0}`,
+            tip: (d, s) => s >= 80 ? 'Execution is strong — keep clearing tasks' : s >= 50 ? `Complete ${3 - (d.today_done || 0)} more tasks today to hit target` : 'Focus on completing at least 3 tasks per day',
           },
           consistency: {
             label: 'Consistency',
-            desc: 'How many days you closed all 3 rings (Train/Execute/Recover) over 14 days',
-            explain: d => `Train: ${d.train_days || 0}/14 · Execute: ${d.exec_days || 0}/14 · Recover: ${d.recover_days || 0}/14 · Perfect days: ${d.perfect_days || 0}/14`,
-            tip: d => d.perfect_days < 5 ? 'Focus on closing all 3 rings every day — this score rewards sustained habits' : 'Strong consistency — keep building the streak',
+            desc: 'Days you closed all 3 rings (Train/Execute/Recover) over 14 days',
+            explain: d => `Train: ${d.train_days || 0}/14 · Execute: ${d.exec_days || 0}/14 · Recover: ${d.recover_days || 0}/14 · Perfect: ${d.perfect_days || 0}/14`,
+            tip: (d, s) => s >= 80 ? 'Strong consistency — keep the streak alive' : s >= 50 ? `${14 - (d.perfect_days || 0)} days without all rings closed — focus on closing all 3 daily` : 'This score rewards sustained daily habits across all rings. It will climb as you build more consecutive days.',
           },
           body_composition: {
             label: 'Body Comp',
             desc: 'Weight and body fat tracking vs. your targets',
             explain: d => {
+              if (d.note && !d.latest_weight_lb) return d.note;
               const parts = [];
               if (d.latest_weight_lb) parts.push(`Current: ${d.latest_weight_lb} lb`);
               if (d.target_weight_lb) parts.push(`Target: ${d.target_weight_lb} lb`);
-              if (d.latest_bf) parts.push(`BF: ${d.latest_bf}%`);
+              if (d.latest_bf != null) parts.push(`BF: ${d.latest_bf}%`);
               if (d.target_bf) parts.push(`Target BF: ${d.target_bf}%`);
-              parts.push(`${d.data_points || 0} weigh-ins in 30d`);
-              if (d.note) parts.push(d.note);
-              return parts.join(' · ');
+              if (d.latest_muscle) parts.push(`Muscle: ${d.latest_muscle}%`);
+              parts.push(`${d.data_points || 0} weigh-ins (30d)`);
+              return parts.join(' · ') || 'No data';
             },
-            tip: d => !d.latest_weight_lb ? 'Log a weigh-in under the Body tab' : !d.target_weight_lb ? 'Set a target weight in your profile to track progress' : 'Keep weighing in consistently',
+            tip: (d, s) => s === 0 ? 'Log a weigh-in under the Body tab to start tracking' : !d.target_weight_lb ? 'Set a target weight in your profile Edit to track progress toward a goal' : s >= 80 ? 'Trending well toward your target' : 'Keep weighing in consistently and stay on your nutrition plan',
           },
           knowledge: {
             label: 'Knowledge',
-            desc: 'Knowledge base entries and AI conversations this week',
+            desc: 'Knowledge base growth and AI conversations this week',
             explain: d => `${d.kb_entries_7d || 0} KB entries · ${d.conversations_7d || 0} conversations`,
-            tip: d => d.kb_entries_7d < 3 ? 'Document learnings and insights to grow your knowledge base' : 'Good learning pace',
+            tip: (d, s) => s >= 80 ? 'Good learning pace' : 'Document learnings and research to build your knowledge base',
           },
         };
 
@@ -5649,7 +5650,7 @@ async function loadReadiness() {
               <div class="readiness-system-detail">
                 <div class="readiness-sys-desc">${info.desc}</div>
                 <div class="readiness-sys-data">${info.explain(d)}</div>
-                <div class="readiness-sys-tip ${isGap ? 'readiness-tip-urgent' : ''}">${info.tip(d)}</div>
+                <div class="readiness-sys-tip ${isGap ? 'readiness-tip-urgent' : ''}">${info.tip(d, sysScore)}</div>
               </div>
             </div>`;
         }
