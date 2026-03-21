@@ -54,28 +54,47 @@ const SYSTEM_SCORERS = {
   },
 
   async recovery(profile, date) {
-    // Score based on body metrics recency, sleep data, and rest days
-    const [metricsR, restR] = await Promise.all([
+    // Score based on body metrics recency, rest days, and nutrition context recovery data
+    const [metricsR, restR, sleepR] = await Promise.all([
       query(`SELECT COUNT(*)::int AS count,
-             MAX(measured_at) AS latest
+             MAX(measurement_date) AS latest
              FROM body_metrics
-             WHERE measured_at >= ($1::date - INTERVAL '7 days')`, [date]),
-      query(`SELECT COUNT(*)::int AS rest_days FROM (
+             WHERE measurement_date >= ($1::date - INTERVAL '7 days')`, [date]),
+      query(`SELECT COUNT(*)::int AS training_days FROM (
                SELECT workout_date FROM workouts
                WHERE workout_date BETWEEN ($1::date - INTERVAL '7 days') AND $1::date
                GROUP BY workout_date
              ) w`, [date]),
+      query(`SELECT COUNT(*)::int AS count, COALESCE(AVG(sleep_hours), 0) AS avg_sleep,
+             COALESCE(AVG(recovery_rating), 0) AS avg_recovery
+             FROM daily_nutrition_context
+             WHERE date BETWEEN ($1::date - INTERVAL '7 days') AND $1::date
+               AND (sleep_hours IS NOT NULL OR recovery_rating IS NOT NULL)`, [date]),
     ]);
     const metrics = metricsR.rows[0];
-    const trainingDays = restR.rows[0].rest_days;
+    const trainingDays = restR.rows[0].training_days;
     const restDays = 7 - trainingDays;
+    const sleep = sleepR.rows[0];
     const targets = profile.targets?.recovery || { min_rest_days: 2, metrics_per_week: 2 };
     const restScore = restDays >= (targets.min_rest_days || 2) ? 100 : (restDays / (targets.min_rest_days || 2)) * 100;
     const metricsScore = Math.min(100, (metrics.count / (targets.metrics_per_week || 2)) * 100);
-    const score = Math.round(restScore * 0.5 + metricsScore * 0.5);
+    const sleepScore = sleep.count > 0 ? Math.min(100, (parseFloat(sleep.avg_sleep) / 7.5) * 100) : 0;
+    // Weight: rest 40%, metrics 30%, sleep 30% (if sleep data exists, else rest 50% metrics 50%)
+    let score;
+    if (sleep.count > 0) {
+      score = Math.round(restScore * 0.4 + metricsScore * 0.3 + sleepScore * 0.3);
+    } else {
+      score = Math.round(restScore * 0.5 + metricsScore * 0.5);
+    }
     return {
       score: Math.min(100, score),
-      detail: { rest_days: restDays, training_days: trainingDays, body_metrics_7d: metrics.count, latest_metric: metrics.latest }
+      detail: {
+        rest_days: restDays, training_days: trainingDays,
+        body_metrics_7d: metrics.count, latest_metric: metrics.latest,
+        avg_sleep: sleep.count > 0 ? +parseFloat(sleep.avg_sleep).toFixed(1) : null,
+        avg_recovery_rating: sleep.count > 0 ? +parseFloat(sleep.avg_recovery).toFixed(1) : null,
+        target_rest_days: targets.min_rest_days || 2, target_metrics: targets.metrics_per_week || 2
+      }
     };
   },
 
@@ -136,47 +155,59 @@ const SYSTEM_SCORERS = {
   },
 
   async body_composition(profile, date) {
-    // Score based on trend toward body comp targets
+    // Score based on trend toward body comp targets (uses weight_lb from body_metrics)
     const { rows } = await query(`
-      SELECT weight_kg, body_fat_pct, measured_at
+      SELECT weight_lb, body_fat_pct, skeletal_muscle_pct, measurement_date
       FROM body_metrics
-      WHERE measured_at >= ($1::date - INTERVAL '30 days')
-      ORDER BY measured_at DESC LIMIT 10
+      WHERE measurement_date >= ($1::date - INTERVAL '30 days')
+      ORDER BY measurement_date DESC LIMIT 10
     `, [date]);
-    if (!rows.length) return { score: 0, detail: { note: 'no body metrics data' } };
+    if (!rows.length) return { score: 0, detail: { note: 'No weigh-ins in the last 30 days. Log a weigh-in under the Body tab.' } };
 
     const latest = rows[0];
     const targets = profile.targets?.body_composition || {};
-    let score = 50; // baseline
+    let score = 60; // baseline if data exists but no targets set
 
-    if (targets.weight_kg && latest.weight_kg) {
-      const dist = Math.abs(parseFloat(latest.weight_kg) - targets.weight_kg);
-      const maxDist = targets.weight_kg * 0.15; // 15% range
+    // Score against weight target (in lbs)
+    if (targets.weight_lb && latest.weight_lb) {
+      const dist = Math.abs(parseFloat(latest.weight_lb) - targets.weight_lb);
+      const maxDist = targets.weight_lb * 0.15;
       score = Math.round(Math.max(0, 100 - (dist / maxDist) * 100));
     }
+    // Score against body fat target
     if (targets.body_fat_pct && latest.body_fat_pct) {
       const dist = Math.abs(parseFloat(latest.body_fat_pct) - targets.body_fat_pct);
       const bfScore = Math.round(Math.max(0, 100 - (dist / 10) * 100));
-      score = Math.round(score * 0.5 + bfScore * 0.5);
+      score = targets.weight_lb ? Math.round(score * 0.5 + bfScore * 0.5) : bfScore;
     }
 
     // Trend bonus: are we moving in the right direction?
-    if (rows.length >= 3) {
+    if (rows.length >= 3 && latest.weight_lb) {
       const oldest = rows[rows.length - 1];
-      if (targets.weight_kg && latest.weight_kg && oldest.weight_kg) {
-        const direction = targets.weight_kg < parseFloat(oldest.weight_kg) ? -1 : 1;
-        const moved = (parseFloat(latest.weight_kg) - parseFloat(oldest.weight_kg)) * direction;
-        if (moved > 0) score = Math.min(100, score + 10); // trending right way
+      if (targets.weight_lb && oldest.weight_lb) {
+        const direction = targets.weight_lb < parseFloat(oldest.weight_lb) ? -1 : 1;
+        const moved = (parseFloat(latest.weight_lb) - parseFloat(oldest.weight_lb)) * direction;
+        if (moved > 0) score = Math.min(100, score + 10);
       }
+    }
+
+    // Data frequency bonus: reward consistent tracking
+    const trackingScore = Math.min(100, (rows.length / 4) * 100); // 4 weigh-ins/month = 100
+    if (!targets.weight_lb && !targets.body_fat_pct) {
+      // No targets set — score purely on tracking consistency
+      score = trackingScore;
     }
 
     return {
       score: Math.min(100, Math.max(0, score)),
       detail: {
-        latest_weight: latest.weight_kg ? +parseFloat(latest.weight_kg).toFixed(1) : null,
+        latest_weight_lb: latest.weight_lb ? +parseFloat(latest.weight_lb).toFixed(1) : null,
         latest_bf: latest.body_fat_pct ? +parseFloat(latest.body_fat_pct).toFixed(1) : null,
+        latest_muscle: latest.skeletal_muscle_pct ? +parseFloat(latest.skeletal_muscle_pct).toFixed(1) : null,
         data_points: rows.length,
-        latest_date: latest.measured_at
+        latest_date: latest.measurement_date,
+        target_weight_lb: targets.weight_lb || null,
+        target_bf: targets.body_fat_pct || null
       }
     };
   },
@@ -279,7 +310,7 @@ const SPARTAN_SPRINT_SEED = {
     nutrition: { meals_per_day: 3, context_days: 5 },
     recovery: { min_rest_days: 2, metrics_per_week: 3 },
     execution: { daily_tasks: 3 },
-    body_composition: { weight_kg: null, body_fat_pct: null }, // user fills in
+    body_composition: { weight_lb: null, body_fat_pct: null }, // user fills in
   },
   phases: [
     { name: 'Base Building', weeks: 4 },

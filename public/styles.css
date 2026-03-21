@@ -2556,21 +2556,50 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
 .readiness-score-value { font-size: 1.6rem; font-weight: 800; line-height: 1; }
 .readiness-score-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; margin-top: 2px; }
 
-.readiness-systems { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.readiness-systems { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+
+.readiness-system-card {
+  background: var(--bg); border-radius: 10px; padding: 12px 14px; cursor: pointer;
+  border: 1px solid transparent; transition: all 0.2s;
+}
+.readiness-system-card:active { transform: scale(0.99); }
+.readiness-gap-card { border-color: color-mix(in srgb, var(--red, #ef4444) 30%, transparent); }
+
+.readiness-system-detail {
+  max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+  padding-top: 0;
+}
+.readiness-system-card.expanded .readiness-system-detail {
+  max-height: 200px; padding-top: 10px;
+}
+
+.readiness-sys-desc { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 6px; }
+.readiness-sys-data { font-size: 0.82rem; font-weight: 500; margin-bottom: 6px; line-height: 1.4; }
+.readiness-sys-tip {
+  font-size: 0.8rem; color: var(--accent); font-weight: 600;
+  padding: 6px 10px; background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: 6px;
+}
+.readiness-tip-urgent { color: var(--red, #ef4444); background: color-mix(in srgb, var(--red, #ef4444) 8%, transparent); }
 
 .readiness-system-row {
   display: flex; align-items: center; gap: 10px; min-height: 28px;
 }
-.readiness-system-row.readiness-gap .readiness-sys-label { color: var(--red, #ef4444); }
+.readiness-gap-card .readiness-sys-label { color: var(--red, #ef4444); }
 
 .readiness-sys-label {
-  width: 110px; font-size: 0.85rem; font-weight: 600; text-transform: capitalize; flex-shrink: 0;
+  width: 100px; font-size: 0.85rem; font-weight: 600; flex-shrink: 0;
 }
 .readiness-bar-track {
   flex: 1; height: 12px; background: var(--border); border-radius: 6px; overflow: hidden;
+  position: relative;
 }
 .readiness-bar-fill {
   height: 100%; border-radius: 6px; transition: width 0.4s ease;
+}
+.readiness-bar-target {
+  position: absolute; top: -2px; bottom: -2px; width: 2px;
+  background: var(--text-dim); opacity: 0.5; border-radius: 1px;
 }
 .readiness-sys-score {
   width: 32px; text-align: right; font-size: 0.9rem; font-weight: 700; flex-shrink: 0;

@@ -5561,20 +5561,96 @@ async function loadReadiness() {
 
       if (snap) {
         const systems = snap.system_scores || {};
+        const details = snap.system_details || {};
         const gaps = snap.gaps || {};
 
-        // System bars
+        // System explanations
+        const sysInfo = {
+          strength: {
+            label: 'Strength',
+            desc: 'Training volume and intensity over the last 14 days',
+            explain: d => {
+              const parts = [`${d.sessions_14d || 0} sessions logged (target: ${d.expected || 8})`];
+              if (d.avg_effort) parts.push(`Avg effort: ${d.avg_effort}/10`);
+              if (d.total_minutes) parts.push(`Total: ${d.total_minutes} min`);
+              return parts.join(' · ');
+            },
+            tip: d => d.sessions_14d < (d.expected || 8) ? 'Log more workouts to hit your weekly target' : d.avg_effort < 7 ? 'Push harder — aim for effort 7+ per session' : 'On track — maintain intensity',
+          },
+          nutrition: {
+            label: 'Nutrition',
+            desc: 'Meal logging and daily nutrition tracking over 7 days',
+            explain: d => `${d.meals_7d || 0} meals across ${d.days_logged || 0}/7 days · ${d.context_entries || 0} daily nutrition entries`,
+            tip: d => d.days_logged < 5 ? 'Log meals every day, even rest days' : d.context_entries < 3 ? 'Add daily nutrition context (hydration, cravings, energy)' : 'Great tracking — keep it up',
+          },
+          recovery: {
+            label: 'Recovery',
+            desc: 'Rest days, body metrics, and sleep/recovery data',
+            explain: d => {
+              const parts = [`${d.rest_days || 0} rest days (target: ${d.target_rest_days || 2}+)`, `${d.body_metrics_7d || 0} weigh-ins (target: ${d.target_metrics || 2}+)`];
+              if (d.avg_sleep) parts.push(`Avg sleep: ${d.avg_sleep}h`);
+              return parts.join(' · ');
+            },
+            tip: d => d.rest_days < 2 ? 'Schedule at least 2 rest days per week' : d.body_metrics_7d < 2 ? 'Weigh in 2-3x per week for better tracking' : 'Recovery balance looks good',
+          },
+          execution: {
+            label: 'Execution',
+            desc: 'Task completion rate — daily output and backlog management',
+            explain: d => `${d.today_done || 0} tasks done today (target: 3+) · ${d.completed_7d || 0} completed this week · ${d.pending || 0} pending`,
+            tip: d => d.today_done < 3 ? 'Complete at least 3 tasks today to close this ring' : d.pending > 10 ? 'Backlog growing — prioritize and clear stale tasks' : 'Execution is strong',
+          },
+          consistency: {
+            label: 'Consistency',
+            desc: 'How many days you closed all 3 rings (Train/Execute/Recover) over 14 days',
+            explain: d => `Train: ${d.train_days || 0}/14 · Execute: ${d.exec_days || 0}/14 · Recover: ${d.recover_days || 0}/14 · Perfect days: ${d.perfect_days || 0}/14`,
+            tip: d => d.perfect_days < 5 ? 'Focus on closing all 3 rings every day — this score rewards sustained habits' : 'Strong consistency — keep building the streak',
+          },
+          body_composition: {
+            label: 'Body Comp',
+            desc: 'Weight and body fat tracking vs. your targets',
+            explain: d => {
+              const parts = [];
+              if (d.latest_weight_lb) parts.push(`Current: ${d.latest_weight_lb} lb`);
+              if (d.target_weight_lb) parts.push(`Target: ${d.target_weight_lb} lb`);
+              if (d.latest_bf) parts.push(`BF: ${d.latest_bf}%`);
+              if (d.target_bf) parts.push(`Target BF: ${d.target_bf}%`);
+              parts.push(`${d.data_points || 0} weigh-ins in 30d`);
+              if (d.note) parts.push(d.note);
+              return parts.join(' · ');
+            },
+            tip: d => !d.latest_weight_lb ? 'Log a weigh-in under the Body tab' : !d.target_weight_lb ? 'Set a target weight in your profile to track progress' : 'Keep weighing in consistently',
+          },
+          knowledge: {
+            label: 'Knowledge',
+            desc: 'Knowledge base entries and AI conversations this week',
+            explain: d => `${d.kb_entries_7d || 0} KB entries · ${d.conversations_7d || 0} conversations`,
+            tip: d => d.kb_entries_7d < 3 ? 'Document learnings and insights to grow your knowledge base' : 'Good learning pace',
+          },
+        };
+
         html += '<div class="readiness-systems">';
         for (const [sys, sysScore] of Object.entries(systems)) {
           const isGap = gaps[sys];
           const barColor = sysScore >= 80 ? 'var(--green)' : sysScore >= 60 ? 'var(--yellow, #eab308)' : sysScore >= 40 ? 'var(--orange, #f97316)' : 'var(--red, #ef4444)';
+          const info = sysInfo[sys] || { label: sys, desc: '', explain: () => '', tip: () => '' };
+          const d = details[sys] || {};
+          const threshold = gaps[sys]?.threshold || 70;
+
           html += `
-            <div class="readiness-system-row ${isGap ? 'readiness-gap' : ''}">
-              <span class="readiness-sys-label">${esc(sys)}</span>
-              <div class="readiness-bar-track">
-                <div class="readiness-bar-fill" style="width:${sysScore}%;background:${barColor}"></div>
+            <div class="readiness-system-card ${isGap ? 'readiness-gap-card' : ''}" onclick="this.classList.toggle('expanded')">
+              <div class="readiness-system-row">
+                <span class="readiness-sys-label">${info.label}</span>
+                <div class="readiness-bar-track">
+                  <div class="readiness-bar-fill" style="width:${sysScore}%;background:${barColor}"></div>
+                  <div class="readiness-bar-target" style="left:${threshold}%"></div>
+                </div>
+                <span class="readiness-sys-score">${sysScore}</span>
               </div>
-              <span class="readiness-sys-score">${sysScore}</span>
+              <div class="readiness-system-detail">
+                <div class="readiness-sys-desc">${info.desc}</div>
+                <div class="readiness-sys-data">${info.explain(d)}</div>
+                <div class="readiness-sys-tip ${isGap ? 'readiness-tip-urgent' : ''}">${info.tip(d)}</div>
+              </div>
             </div>`;
         }
         html += '</div>';
