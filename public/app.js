@@ -4751,15 +4751,44 @@ const PROGRESS_POSES = [
 ];
 
 function poseSvg(key) {
+  // Realistic body silhouettes for each pose
   const svgs = {
-    front_relaxed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="14" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="46" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
-    front_flexed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="14" y2="28" stroke="currentColor" stroke-width="2"/><line x1="14" y1="28" x2="16" y2="16" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="46" y2="28" stroke="currentColor" stroke-width="2"/><line x1="46" y1="28" x2="44" y2="16" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
-    side_relaxed_left: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="28" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="28" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="28" y1="30" x2="22" y2="52" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="26" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="34" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
-    side_relaxed_right: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="32" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="32" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="32" y1="30" x2="38" y2="52" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="26" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="34" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
-    back_relaxed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="14" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="46" y2="50" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/><line x1="26" y1="24" x2="34" y2="24" stroke="currentColor" stroke-width="1.5" opacity="0.5"/></svg>`,
-    back_flexed: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="30" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="12" y2="28" stroke="currentColor" stroke-width="2"/><line x1="12" y1="28" x2="10" y2="40" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="48" y2="28" stroke="currentColor" stroke-width="2"/><line x1="48" y1="28" x2="50" y2="40" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="18" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="42" y2="110" stroke="currentColor" stroke-width="2"/><line x1="26" y1="24" x2="34" y2="24" stroke="currentColor" stroke-width="1.5" opacity="0.5"/></svg>`,
-    quarter_turn_left: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="26" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="28" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="28" y1="30" x2="16" y2="48" stroke="currentColor" stroke-width="2"/><line x1="28" y1="30" x2="40" y2="48" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="22" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="38" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
-    quarter_turn_right: `<svg viewBox="0 0 60 120" width="48" height="96"><circle cx="34" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="32" y1="20" x2="30" y2="65" stroke="currentColor" stroke-width="2"/><line x1="32" y1="30" x2="20" y2="48" stroke="currentColor" stroke-width="2"/><line x1="32" y1="30" x2="44" y2="48" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="22" y2="110" stroke="currentColor" stroke-width="2"/><line x1="30" y1="65" x2="38" y2="110" stroke="currentColor" stroke-width="2"/></svg>`,
+    front_relaxed: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M33 28 C28 30,22 34,20 40 L18 56 C18 58,20 59,22 58 L28 48 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 48 L58 58 C60 59,62 58,62 56 L60 40 C58 34,52 30,47 28 Z" fill="currentColor" opacity="0.85"/>
+      <line x1="24" y1="112" x2="22" y2="148" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0"/>
+    </svg>`,
+    front_flexed: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M33 28 C28 30,24 33,22 38 L22 42 L14 34 L10 22 C9 19,12 18,14 20 L18 28 L22 34 L28 42 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 42 L58 34 L62 28 L66 20 C68 18,71 19,70 22 L66 34 L58 42 L58 38 C56 33,52 30,47 28 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    side_relaxed_left: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="38" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M34 28 C30 30,28 35,28 40 L28 68 L24 72 L22 108 C22 112,26 114,27 110 L30 80 L32 72 L34 74 L36 72 L38 80 L40 110 C41 114,45 112,44 108 L42 72 L38 68 L38 40 C38 36,40 32,42 30 L44 34 L42 52 C42 54,44 54,44 52 L46 36 L44 30 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    side_relaxed_right: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="42" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M46 28 C50 30,52 35,52 40 L52 68 L56 72 L58 108 C58 112,54 114,53 110 L50 80 L48 72 L46 74 L44 72 L42 80 L40 110 C39 114,35 112,36 108 L38 72 L42 68 L42 40 C42 36,40 32,38 30 L36 34 L38 52 C38 54,36 54,36 52 L34 36 L36 30 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    back_relaxed: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M33 28 C28 30,22 34,20 40 L18 56 C18 58,20 59,22 58 L28 48 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 48 L58 58 C60 59,62 58,62 56 L60 40 C58 34,52 30,47 28 Z" fill="currentColor" opacity="0.85"/>
+      <line x1="40" y1="30" x2="40" y2="60" stroke="var(--bg)" stroke-width="0.8" opacity="0.3"/>
+    </svg>`,
+    back_flexed: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M33 28 C26 30,20 34,18 40 L16 42 L10 34 L8 22 C7 19,10 18,12 20 L16 30 L20 38 L28 44 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 44 L60 38 L64 30 L68 20 C70 18,73 19,72 22 L70 34 L64 42 L62 40 C60 34,54 30,47 28 Z" fill="currentColor" opacity="0.85"/>
+      <line x1="40" y1="30" x2="40" y2="60" stroke="var(--bg)" stroke-width="0.8" opacity="0.3"/>
+      <path d="M32 34 Q40 38 48 34" fill="none" stroke="var(--bg)" stroke-width="0.6" opacity="0.25"/>
+    </svg>`,
+    quarter_turn_left: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="36" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M30 28 C26 30,22 35,22 40 L20 54 C20 56,22 57,23 55 L26 46 L28 68 L24 72 L22 108 C22 112,26 114,27 110 L30 80 L32 72 L36 74 L40 72 L42 80 L46 110 C47 114,51 112,50 108 L48 72 L44 68 L46 46 L50 55 C51 57,53 56,53 54 L52 40 C50 35,46 30,42 28 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    quarter_turn_right: `<svg viewBox="0 0 80 160" width="56" height="112">
+      <circle cx="44" cy="16" r="10" fill="currentColor" opacity="0.85"/>
+      <path d="M50 28 C54 30,58 35,58 40 L60 54 C60 56,58 57,57 55 L54 46 L52 68 L56 72 L58 108 C58 112,54 114,53 110 L50 80 L48 72 L44 74 L40 72 L38 80 L34 110 C33 114,29 112,30 108 L32 72 L36 68 L34 46 L30 55 C29 57,27 56,27 54 L28 40 C30 35,34 30,38 28 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
   };
   return svgs[key] || svgs.front_relaxed;
 }
@@ -5208,7 +5237,7 @@ function showProgressPhotoUpload(checkinId) {
         </div>
       `).join('')}
     </div>
-    <input type="file" id="progress-photo-input" accept="image/*" capture="environment" style="display:none" onchange="handlePosePhotoSelect(this)">
+    <input type="file" id="progress-photo-input" accept="image/*" style="display:none" onchange="handlePosePhotoSelect(this)">
     <div style="margin-top:12px;text-align:center">
       <button class="btn-submit" onclick="closeModal();loadProgress()">Done</button>
     </div>
