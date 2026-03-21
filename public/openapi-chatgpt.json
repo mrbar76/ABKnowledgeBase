@@ -791,7 +791,7 @@
         "responses": {
           "200": {
             "description": "Body metrics list or single latest entry",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMetric" } }, "total": { "type": "integer" } } } } }
           }
         }
       },
@@ -1183,7 +1183,7 @@
       "get": {
         "operationId": "getGamification",
         "summary": "Get activity rings, streaks, badges, weekly progress, and smart suggestions",
-        "description": "Returns today's ring progress (Train/Execute/Recover), current streaks, all badges (unlocked and locked with descriptions), weekly summary, nudges for incomplete goals, and smart goal adjustment suggestions based on trailing 7-day averages. Use this to understand Avi's current momentum and consistency.",
+        "description": "Returns today's ring progress (Train/Execute/Recover), current streaks, all badges (unlocked and locked), weekly summary, nudges, and smart goal adjustment suggestions based on trailing 7-day averages. Shows current momentum and consistency.",
         "responses": {
           "200": {
             "description": "Gamification data",
