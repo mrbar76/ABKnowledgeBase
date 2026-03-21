@@ -203,26 +203,6 @@
             "description": "Updated entry"
           }
         }
-      },
-      "delete": {
-        "operationId": "deleteKnowledge",
-        "summary": "Delete a knowledge entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted"
-          }
-        }
       }
     },
     "/tasks": {
@@ -1072,29 +1052,6 @@
         }
       }
     },
-    "/nutrition/daily-summary": {
-      "get": {
-        "operationId": "getDailySummary",
-        "summary": "Get computed daily nutrition summary (aggregated from meals + context)",
-        "description": "Returns macro totals computed from meals, merged with daily context if available. Meals listed chronologically.",
-        "parameters": [
-          {
-            "name": "date",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Daily summary with meals and context"
-          }
-        }
-      }
-    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",
@@ -1699,6 +1656,123 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/transcripts": {
+      "get": {
+        "operationId": "searchTranscripts",
+        "summary": "Search or list transcripts",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transcripts list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "transcripts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Transcript"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "uploadTranscript",
+        "summary": "Upload a new transcript",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "raw_text"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "raw_text": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "default": "bee"
+                  },
+                  "speaker_labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "duration_seconds": {
+                    "type": "integer"
+                  },
+                  "recorded_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transcript uploaded"
           }
         }
       }
@@ -2776,6 +2850,44 @@
           },
           "metadata": {
             "type": "object"
+          }
+        }
+      },
+      "Transcript": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "duration_seconds": {
+            "type": "integer"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }
