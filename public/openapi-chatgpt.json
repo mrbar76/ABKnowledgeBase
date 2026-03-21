@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` — check for contraindications FIRST\n2. Call `GET /training/day/{today}` — see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` — understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` — save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` — log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` — update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` — include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` — rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` — adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array — the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -45,7 +45,7 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "default": 50
+              "default": 30
             }
           },
           {
@@ -423,7 +423,7 @@
     "/intake": {
       "post": {
         "operationId": "smartIntake",
-        "summary": "AI-powered smart intake \u2014 auto-classifies text into knowledge, fact, task, or transcript",
+        "summary": "AI-powered smart intake — auto-classifies text into knowledge, fact, task, or transcript",
         "description": "Send raw text and OpenAI will classify it and store it in the appropriate table automatically.",
         "requestBody": {
           "required": true,
@@ -588,7 +588,7 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "default": 50
+              "default": 30
             }
           },
           {
@@ -643,7 +643,7 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "description": "Auto-generated if empty: 'Spartan Workout \u2013 DATE \u2013 TYPE'"
+                    "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'"
                   },
                   "workout_date": {
                     "type": "string",
@@ -965,7 +965,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "meals": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MealInput"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1455,7 +1469,7 @@
     "/training/injuries/active/summary": {
       "get": {
         "operationId": "getActiveInjuriesSummary",
-        "summary": "Get all active/monitoring injuries \u2014 use this before recommending exercises to check for contraindications",
+        "summary": "Get all active/monitoring injuries — use this before recommending exercises to check for contraindications",
         "responses": {
           "200": {
             "description": "Active injuries with body areas, severity, and modifications"
@@ -2383,7 +2397,7 @@
           },
           "rationale": {
             "type": "string",
-            "description": "WHY this plan was chosen \u2014 training philosophy, injury avoidance, periodization reasoning"
+            "description": "WHY this plan was chosen — training philosophy, injury avoidance, periodization reasoning"
           },
           "constraints": {
             "type": "string",
