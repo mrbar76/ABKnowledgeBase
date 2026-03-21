@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Complete API",
-    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` — check for contraindications FIRST\n2. Call `GET /training/day/{today}` — see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` — understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` — save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` — log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` — update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` — include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` — rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` — adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array — the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -161,17 +161,6 @@
       "get": {
         "operationId": "getKnowledge",
         "summary": "Get a single knowledge entry by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Knowledge entry"
@@ -181,17 +170,6 @@
       "put": {
         "operationId": "updateKnowledge",
         "summary": "Update a knowledge entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -227,23 +205,23 @@
       "delete": {
         "operationId": "deleteKnowledge",
         "summary": "Delete a knowledge entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/tasks": {
       "get": {
@@ -401,17 +379,6 @@
       "get": {
         "operationId": "getTask",
         "summary": "Get a single task",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Task details",
@@ -428,17 +395,6 @@
       "put": {
         "operationId": "updateTask",
         "summary": "Update a task (status, next_steps, etc.)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -489,23 +445,23 @@
       "delete": {
         "operationId": "deleteTask",
         "summary": "Delete a task",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/projects": {
       "get": {
@@ -796,17 +752,6 @@
       "get": {
         "operationId": "getFact",
         "summary": "Get a single fact by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Fact"
@@ -816,17 +761,6 @@
       "put": {
         "operationId": "updateFact",
         "summary": "Update a fact",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -865,23 +799,23 @@
       "delete": {
         "operationId": "deleteFact",
         "summary": "Delete a fact",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/conversations": {
       "get": {
@@ -982,17 +916,6 @@
       "get": {
         "operationId": "getConversation",
         "summary": "Get a conversation with full thread",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Conversation with full_thread"
@@ -1002,17 +925,6 @@
       "put": {
         "operationId": "updateConversation",
         "summary": "Update a conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1045,39 +957,28 @@
       "delete": {
         "operationId": "deleteConversation",
         "summary": "Delete a conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/transcripts/{id}": {
       "get": {
         "operationId": "getTranscript",
         "summary": "Get a single transcript with speaker data",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Transcript with speakers"
@@ -1087,39 +988,28 @@
       "delete": {
         "operationId": "deleteTranscript",
         "summary": "Delete a transcript",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/workouts/{id}": {
       "get": {
         "operationId": "getWorkout",
         "summary": "Get a single workout by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Workout detail"
@@ -1129,17 +1019,6 @@
       "put": {
         "operationId": "updateWorkout",
         "summary": "Update a workout",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1165,28 +1044,28 @@
       "delete": {
         "operationId": "deleteWorkout",
         "summary": "Delete a workout",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/workouts/stats/summary": {
       "get": {
         "operationId": "getWorkoutStats",
-        "summary": "Get workout statistics — total count, by type, average effort, recent workouts",
+        "summary": "Get workout statistics \u2014 total count, by type, average effort, recent workouts",
         "responses": {
           "200": {
             "description": "Workout stats summary"
@@ -1197,7 +1076,7 @@
     "/intake": {
       "post": {
         "operationId": "smartIntake",
-        "summary": "AI-powered smart intake — auto-classifies text into knowledge, fact, task, or transcript",
+        "summary": "AI-powered smart intake \u2014 auto-classifies text into knowledge, fact, task, or transcript",
         "description": "Send raw text and OpenAI will classify it and store it in the appropriate table automatically.",
         "requestBody": {
           "required": true,
@@ -1504,7 +1383,7 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'"
+                    "description": "Auto-generated if empty: 'Spartan Workout \u2013 DATE \u2013 TYPE'"
                   },
                   "workout_date": {
                     "type": "string",
@@ -1991,17 +1870,6 @@
       "get": {
         "operationId": "getBodyMetric",
         "summary": "Get a single body metric entry by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Body metric entry",
@@ -2018,17 +1886,6 @@
       "patch": {
         "operationId": "updateBodyMetric",
         "summary": "Update a body metric entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2055,23 +1912,23 @@
       "delete": {
         "operationId": "deleteBodyMetric",
         "summary": "Delete a body metric entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/meals": {
       "get": {
@@ -2222,17 +2079,6 @@
       "get": {
         "operationId": "getMeal",
         "summary": "Get a single meal by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Meal entry"
@@ -2242,17 +2088,6 @@
       "patch": {
         "operationId": "updateMeal",
         "summary": "Update a meal entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2272,23 +2107,23 @@
       "delete": {
         "operationId": "deleteMeal",
         "summary": "Delete a meal entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/nutrition/daily-context": {
       "get": {
@@ -2354,17 +2189,6 @@
       "patch": {
         "operationId": "updateDailyContext",
         "summary": "Update daily nutrition context",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2380,7 +2204,18 @@
             "description": "Updated context"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/nutrition/daily-summary": {
       "get": {
@@ -2586,17 +2421,6 @@
       "get": {
         "operationId": "getTrainingPlan",
         "summary": "Get a training plan with linked coaching sessions and injuries",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Training plan with related data"
@@ -2606,17 +2430,6 @@
       "put": {
         "operationId": "updateTrainingPlan",
         "summary": "Update a training plan",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2635,23 +2448,23 @@
       "delete": {
         "operationId": "deleteTrainingPlan",
         "summary": "Delete a training plan",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/training/coaching": {
       "get": {
@@ -2754,17 +2567,6 @@
       "get": {
         "operationId": "getCoachingSession",
         "summary": "Get a coaching session by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Coaching session"
@@ -2774,17 +2576,6 @@
       "put": {
         "operationId": "updateCoachingSession",
         "summary": "Update a coaching session",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2803,23 +2594,23 @@
       "delete": {
         "operationId": "deleteCoachingSession",
         "summary": "Delete a coaching session",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/training/injuries": {
       "get": {
@@ -2920,17 +2711,6 @@
       "get": {
         "operationId": "getInjury",
         "summary": "Get an injury by ID",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Injury details"
@@ -2940,17 +2720,6 @@
       "put": {
         "operationId": "updateInjury",
         "summary": "Update an injury (e.g. change status to resolved, add treatment notes)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2969,28 +2738,28 @@
       "delete": {
         "operationId": "deleteInjury",
         "summary": "Delete an injury",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Deleted"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/training/injuries/active/summary": {
       "get": {
         "operationId": "getActiveInjuriesSummary",
-        "summary": "Get all active/monitoring injuries — use this before recommending exercises to check for contraindications",
+        "summary": "Get all active/monitoring injuries \u2014 use this before recommending exercises to check for contraindications",
         "responses": {
           "200": {
             "description": "Active injuries with body areas, severity, and modifications"
@@ -3002,24 +2771,24 @@
       "get": {
         "operationId": "getTrainingDayView",
         "summary": "Cross-reference ALL fitness data for a specific date: workouts, meals, nutrition context, body metrics, coaching sessions, active injuries, and current training plan",
-        "parameters": [
-          {
-            "name": "date",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "description": "Date in YYYY-MM-DD format"
-          }
-        ],
         "responses": {
           "200": {
             "description": "Complete training day view with all cross-referenced data"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "date",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "date"
+          },
+          "description": "Date in YYYY-MM-DD format"
+        }
+      ]
     },
     "/gamification": {
       "get": {
@@ -3919,7 +3688,7 @@
           },
           "rationale": {
             "type": "string",
-            "description": "WHY this plan was chosen — training philosophy, injury avoidance, periodization reasoning"
+            "description": "WHY this plan was chosen \u2014 training philosophy, injury avoidance, periodization reasoning"
           },
           "constraints": {
             "type": "string",

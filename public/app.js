@@ -848,34 +848,36 @@ function schemaPreset(type) {
 }
 
 function updateSchemaCount() {
-  const count = document.querySelectorAll('#schema-builder-list input:checked').length;
+  const checked = document.querySelectorAll('#schema-builder-list input:checked');
+  const count = checked.length;
   const el = document.getElementById('schema-count');
-  if (el) {
-    el.textContent = count;
-    el.style.color = count > 30 ? 'var(--red)' : 'var(--accent)';
+  if (el) el.textContent = count;
+
+  // Build copy buttons — one per group of 30
+  const btnContainer = document.getElementById('schema-copy-buttons');
+  if (!btnContainer) return;
+  const groups = Math.ceil(count / 30) || 1;
+  if (count === 0) {
+    btnContainer.innerHTML = '<div class="sm-btn-row"><button class="btn-action" onclick="copyBuiltSchema(0)" id="btn-copy-0">Copy Schema</button></div>';
+    return;
   }
+  let html = '<div class="sm-btn-row" style="flex-wrap:wrap;gap:6px">';
+  if (groups === 1) {
+    html += `<button class="btn-action" onclick="copyBuiltSchema(0)" id="btn-copy-0">Copy Schema (${count})</button>`;
+  } else {
+    for (let g = 0; g < groups; g++) {
+      const start = g * 30 + 1;
+      const end = Math.min((g + 1) * 30, count);
+      html += `<button class="btn-action" onclick="copyBuiltSchema(${g})" id="btn-copy-${g}">Copy Action ${g + 1} (${start}–${end})</button>`;
+    }
+  }
+  html += '</div>';
+  btnContainer.innerHTML = html;
 }
 
-async function copyBuiltSchema() {
-  const btn = document.getElementById('btn-copy-built');
-  const resultEl = document.getElementById('sm-schema-result');
-  if (!_fullSchema) { await loadSchemaBuilder(); }
-  const checked = document.querySelectorAll('#schema-builder-list input:checked');
-  if (checked.length === 0) {
-    resultEl.style.display = 'block';
-    resultEl.style.color = '#e74c3c';
-    resultEl.textContent = 'Select at least one endpoint.';
-    return;
-  }
-  if (checked.length > 30) {
-    resultEl.style.display = 'block';
-    resultEl.style.color = '#e74c3c';
-    resultEl.textContent = `Too many endpoints (${checked.length}/30). Deselect some.`;
-    return;
-  }
-  // Build filtered schema
+function _buildSchema(checkedList) {
   const selected = new Map();
-  checked.forEach(cb => {
+  checkedList.forEach(cb => {
     const key = cb.dataset.path;
     if (!selected.has(key)) selected.set(key, []);
     selected.get(key).push(cb.dataset.method);
@@ -884,6 +886,10 @@ async function copyBuiltSchema() {
   built.paths = {};
   for (const [path, methods] of selected.entries()) {
     built.paths[path] = {};
+    // Copy path-level parameters if present
+    if (_fullSchema.paths[path] && _fullSchema.paths[path].parameters) {
+      built.paths[path].parameters = _fullSchema.paths[path].parameters;
+    }
     for (const m of methods) {
       if (_fullSchema.paths[path] && _fullSchema.paths[path][m]) {
         built.paths[path][m] = _fullSchema.paths[path][m];
@@ -899,17 +905,38 @@ async function copyBuiltSchema() {
       }
     }
   }
+  return built;
+}
+
+async function copyBuiltSchema(groupIndex) {
+  const resultEl = document.getElementById('sm-schema-result');
+  if (!_fullSchema) { await loadSchemaBuilder(); }
+  const allChecked = Array.from(document.querySelectorAll('#schema-builder-list input:checked'));
+  if (allChecked.length === 0) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Select at least one endpoint.';
+    return;
+  }
+  // Slice to the requested group of 30
+  const start = groupIndex * 30;
+  const end = Math.min(start + 30, allChecked.length);
+  const groupChecked = allChecked.slice(start, end);
+  const built = _buildSchema(groupChecked);
+  const btn = document.getElementById(`btn-copy-${groupIndex}`);
   try {
-    btn.textContent = 'Copying...';
+    if (btn) btn.textContent = 'Copying...';
     const out = JSON.stringify(built, null, 2);
     await navigator.clipboard.writeText(out);
-    btn.textContent = 'Copied!';
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => updateSchemaCount(), 3000); }
     resultEl.style.display = 'block';
     resultEl.style.color = 'var(--accent)';
-    resultEl.textContent = `Copied ${checked.length} operations to clipboard.`;
-    setTimeout(() => { btn.textContent = 'Copy Schema'; }, 3000);
+    const totalGroups = Math.ceil(allChecked.length / 30);
+    resultEl.textContent = totalGroups > 1
+      ? `Copied Action ${groupIndex + 1} (${groupChecked.length} ops) to clipboard.`
+      : `Copied ${groupChecked.length} operations to clipboard.`;
   } catch (err) {
-    btn.textContent = 'Copy Schema';
+    if (btn) btn.textContent = 'Copy Schema';
     resultEl.style.display = 'block';
     resultEl.style.color = '#e74c3c';
     resultEl.textContent = 'Error: ' + err.message;
