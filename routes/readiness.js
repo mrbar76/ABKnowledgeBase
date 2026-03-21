@@ -296,6 +296,38 @@ const SPARTAN_SPRINT_SEED = {
 //  API ROUTES — Goal Profiles
 // ══════════════════════════════════════════════════════════════════
 
+// ─── Seed Spartan Sprint profile (must be before :id routes) ────
+router.post('/profiles/seed/spartan-sprint', async (req, res) => {
+  try {
+    // Check if one already exists
+    const existing = await query(`SELECT id FROM goal_profiles WHERE profile_type = 'spartan_sprint' AND status = 'active' LIMIT 1`);
+    if (existing.rows.length) {
+      return res.json({ message: 'Active Spartan Sprint profile already exists', profile_id: existing.rows[0].id });
+    }
+
+    const seed = { ...SPARTAN_SPRINT_SEED };
+    // Merge any overrides from request
+    if (req.body.goal_date) seed.goal_date = req.body.goal_date;
+    if (req.body.targets) seed.targets = { ...seed.targets, ...req.body.targets };
+
+    const { rows } = await query(
+      `INSERT INTO goal_profiles (title, profile_type, systems, weights, targets, phases, thresholds, scoring_rules, coaching_config)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        seed.title, seed.profile_type,
+        JSON.stringify(seed.systems), JSON.stringify(seed.weights),
+        JSON.stringify(seed.targets), JSON.stringify(seed.phases),
+        JSON.stringify(seed.thresholds), JSON.stringify(seed.scoring_rules),
+        JSON.stringify(seed.coaching_config),
+      ]
+    );
+    logActivity('readiness', 'seed_profile', { type: 'spartan_sprint' });
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── List profiles ──────────────────────────────────────────────
 router.get('/profiles', async (req, res) => {
   try {
@@ -378,38 +410,6 @@ router.delete('/profiles/:id', async (req, res) => {
     const { rowCount } = await query('DELETE FROM goal_profiles WHERE id = $1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'Not found' });
     res.json({ deleted: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Seed Spartan Sprint profile ─────────────────────────────────
-router.post('/profiles/seed/spartan-sprint', async (req, res) => {
-  try {
-    // Check if one already exists
-    const existing = await query(`SELECT id FROM goal_profiles WHERE profile_type = 'spartan_sprint' AND status = 'active' LIMIT 1`);
-    if (existing.rows.length) {
-      return res.json({ message: 'Active Spartan Sprint profile already exists', profile_id: existing.rows[0].id });
-    }
-
-    const seed = { ...SPARTAN_SPRINT_SEED };
-    // Merge any overrides from request
-    if (req.body.goal_date) seed.goal_date = req.body.goal_date;
-    if (req.body.targets) seed.targets = { ...seed.targets, ...req.body.targets };
-
-    const { rows } = await query(
-      `INSERT INTO goal_profiles (title, profile_type, systems, weights, targets, phases, thresholds, scoring_rules, coaching_config)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [
-        seed.title, seed.profile_type,
-        JSON.stringify(seed.systems), JSON.stringify(seed.weights),
-        JSON.stringify(seed.targets), JSON.stringify(seed.phases),
-        JSON.stringify(seed.thresholds), JSON.stringify(seed.scoring_rules),
-        JSON.stringify(seed.coaching_config),
-      ]
-    );
-    logActivity('readiness', 'seed_profile', { type: 'spartan_sprint' });
-    res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
