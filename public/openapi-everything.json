@@ -163,7 +163,14 @@
         "summary": "Get a single knowledge entry by ID",
         "responses": {
           "200": {
-            "description": "Knowledge entry"
+            "description": "Single knowledge entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Knowledge"
+                }
+              }
+            }
           }
         }
       },
@@ -675,7 +682,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Facts list"
+            "description": "Facts list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "facts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Fact"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -732,7 +757,14 @@
         "summary": "Get a single fact by ID",
         "responses": {
           "200": {
-            "description": "Fact"
+            "description": "Single fact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fact"
+                }
+              }
+            }
           }
         }
       },
@@ -824,7 +856,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Conversations list"
+            "description": "Conversations list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "conversations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Conversation"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -885,7 +935,14 @@
         "summary": "Get a conversation with full thread",
         "responses": {
           "200": {
-            "description": "Conversation with full_thread"
+            "description": "Single conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
           }
         }
       },
@@ -937,7 +994,14 @@
         "summary": "Get a single transcript with speaker data",
         "responses": {
           "200": {
-            "description": "Transcript with speakers"
+            "description": "Single transcript",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       },
@@ -957,7 +1021,14 @@
         "summary": "Get a single workout by ID",
         "responses": {
           "200": {
-            "description": "Workout detail"
+            "description": "Single workout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workout"
+                }
+              }
+            }
           }
         }
       },
@@ -1002,7 +1073,14 @@
         "summary": "Get workout statistics \u2014 total count, by type, average effort, recent workouts",
         "responses": {
           "200": {
-            "description": "Workout stats summary"
+            "description": "Workout statistics summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -1036,7 +1114,14 @@
         },
         "responses": {
           "201": {
-            "description": "Classified and stored result"
+            "description": "Smart intake result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -1064,7 +1149,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Activity log entries"
+            "description": "Activity log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "logs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1709,7 +1812,7 @@
                     "count": {
                       "type": "integer"
                     },
-                    "data": {
+                    "body_metrics": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/BodyMetric"
@@ -2004,7 +2107,14 @@
         "summary": "Get a single meal by ID",
         "responses": {
           "200": {
-            "description": "Meal entry"
+            "description": "Single meal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meal"
+                }
+              }
+            }
           }
         }
       },
@@ -2070,7 +2180,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Daily context"
+            "description": "Daily context entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "contexts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -2136,7 +2267,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Daily summary with meals and context"
+            "description": "Daily nutrition summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -2167,7 +2305,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Range summary with daily breakdowns"
+            "description": "Daily nutrition summaries for date range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "since": {
+                      "type": "string"
+                    },
+                    "before": {
+                      "type": "string"
+                    },
+                    "daily": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2324,7 +2483,14 @@
         "summary": "Get a training plan with linked coaching sessions and injuries",
         "responses": {
           "200": {
-            "description": "Training plan with related data"
+            "description": "Single training plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingPlan"
+                }
+              }
+            }
           }
         }
       },
@@ -2459,7 +2625,14 @@
         "summary": "Get a coaching session by ID",
         "responses": {
           "200": {
-            "description": "Coaching session"
+            "description": "Single coaching session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachingSession"
+                }
+              }
+            }
           }
         }
       },
@@ -2592,7 +2765,14 @@
         "summary": "Get an injury by ID",
         "responses": {
           "200": {
-            "description": "Injury details"
+            "description": "Single injury record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Injury"
+                }
+              }
+            }
           }
         }
       },
@@ -2630,7 +2810,25 @@
         "summary": "Get all active/monitoring injuries \u2014 use this before recommending exercises to check for contraindications",
         "responses": {
           "200": {
-            "description": "Active injuries with body areas, severity, and modifications"
+            "description": "Active injuries summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "injuries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Injury"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2641,7 +2839,14 @@
         "summary": "Cross-reference ALL fitness data for a specific date: workouts, meals, nutrition context, body metrics, coaching sessions, active injuries, and current training plan",
         "responses": {
           "200": {
-            "description": "Complete training day view with all cross-referenced data"
+            "description": "Full training day context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
