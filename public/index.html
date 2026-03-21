@@ -156,11 +156,18 @@
               <div id="sm-fitness-instructions-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
-              <div class="sm-card-label">Actions Schema (OpenAPI)</div>
-              <div class="sm-card-desc">Paste into your GPT&rsquo;s Actions configuration</div>
+              <div class="sm-card-label">Actions Schema Builder</div>
+              <div class="sm-card-desc">Select endpoints to include (max 30 for ChatGPT)</div>
+              <div class="sm-btn-row" style="margin-bottom:8px">
+                <button class="btn-action btn-action-secondary" onclick="schemaPreset('spartan')" style="font-size:0.7rem">Spartan</button>
+                <button class="btn-action btn-action-secondary" onclick="schemaPreset('brain')" style="font-size:0.7rem">Brain</button>
+                <button class="btn-action btn-action-secondary" onclick="schemaPreset('all')" style="font-size:0.7rem">All</button>
+                <button class="btn-action btn-action-secondary" onclick="schemaPreset('none')" style="font-size:0.7rem">None</button>
+              </div>
+              <div id="schema-builder-list" style="max-height:300px;overflow-y:auto;font-size:0.75rem;margin-bottom:8px"></div>
+              <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px"><span id="schema-count">0</span>/30 selected</div>
               <div class="sm-btn-row">
-                <button class="btn-action" onclick="copyGptActionsSchema()" id="btn-copy-schema">Copy Schema</button>
-                <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-chatgpt.json','_blank')">View Raw</button>
+                <button class="btn-action" onclick="copyBuiltSchema()" id="btn-copy-built">Copy Schema</button>
               </div>
               <div id="sm-schema-result" class="sm-result"></div>
             </div>

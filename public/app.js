@@ -715,6 +715,7 @@ function toggleSettingsMenu() {
   if (menu.classList.contains('open')) { closeSettingsMenu(); return; }
   menu.classList.add('open');
   loadSettingsMenuInfo();
+  loadSchemaBuilder();
   updateThemeButtons(getThemeMode());
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
@@ -788,20 +789,124 @@ async function handleChatGPTImport(input) {
   if (imported > 0) showToast(`Imported ${imported} ChatGPT conversations`, 'success');
 }
 
-async function copyGptActionsSchema() {
-  const btn = document.getElementById('btn-copy-schema');
+/* ── Schema Builder ── */
+let _fullSchema = null;
+const SPARTAN_PATHS = ['/workouts','/workouts/{id}','/workouts/stats/summary','/body-metrics','/body-metrics/{id}',
+  '/meals','/meals/{id}','/nutrition/daily-context','/nutrition/daily-summary',
+  '/training/plans','/training/plans/{id}','/training/coaching','/training/coaching/{id}',
+  '/training/injuries','/training/injuries/{id}','/training/injuries/active/summary',
+  '/training/day/{date}','/gamification','/gamification/settings','/intake','/search','/dashboard'];
+
+async function loadSchemaBuilder() {
+  if (_fullSchema) return;
+  const resp = await fetch('/openapi-everything.json');
+  if (!resp.ok) return;
+  _fullSchema = await resp.json();
+  renderSchemaBuilder();
+}
+
+function renderSchemaBuilder() {
+  const container = document.getElementById('schema-builder-list');
+  if (!container || !_fullSchema) return;
+  // Group by path prefix
+  const groups = {};
+  for (const [path, methods] of Object.entries(_fullSchema.paths)) {
+    const prefix = path.split('/').filter(Boolean)[0] || 'other';
+    const label = prefix.replace('training','training').replace('nutrition','nutrition');
+    if (!groups[label]) groups[label] = [];
+    for (const method of Object.keys(methods)) {
+      if (!['get','post','put','patch','delete'].includes(method)) continue;
+      const op = methods[method];
+      groups[label].push({ path, method, opId: op.operationId, summary: op.summary || '' });
+    }
+  }
+  let html = '';
+  for (const [group, ops] of Object.entries(groups)) {
+    html += `<div style="margin-top:6px;font-weight:600;color:var(--accent);text-transform:capitalize">${group}</div>`;
+    for (const op of ops) {
+      const id = `schema-cb-${op.opId}`;
+      html += `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer">
+        <input type="checkbox" id="${id}" data-path="${op.path}" data-method="${op.method}" onchange="updateSchemaCount()">
+        <span style="color:var(--text-dim);min-width:42px;font-size:0.65rem;text-transform:uppercase">${op.method}</span>
+        <span>${op.summary || op.opId}</span>
+      </label>`;
+    }
+  }
+  container.innerHTML = html;
+}
+
+function schemaPreset(type) {
+  const cbs = document.querySelectorAll('#schema-builder-list input[type=checkbox]');
+  cbs.forEach(cb => {
+    const path = cb.dataset.path;
+    if (type === 'all') cb.checked = true;
+    else if (type === 'none') cb.checked = false;
+    else if (type === 'spartan') cb.checked = SPARTAN_PATHS.some(p => path.startsWith(p.replace('/{id}','')) || path === p);
+    else if (type === 'brain') cb.checked = !SPARTAN_PATHS.includes(path) || ['/intake','/search','/dashboard'].includes(path);
+  });
+  updateSchemaCount();
+}
+
+function updateSchemaCount() {
+  const count = document.querySelectorAll('#schema-builder-list input:checked').length;
+  const el = document.getElementById('schema-count');
+  if (el) {
+    el.textContent = count;
+    el.style.color = count > 30 ? 'var(--red)' : 'var(--accent)';
+  }
+}
+
+async function copyBuiltSchema() {
+  const btn = document.getElementById('btn-copy-built');
   const resultEl = document.getElementById('sm-schema-result');
+  if (!_fullSchema) { await loadSchemaBuilder(); }
+  const checked = document.querySelectorAll('#schema-builder-list input:checked');
+  if (checked.length === 0) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Select at least one endpoint.';
+    return;
+  }
+  if (checked.length > 30) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = `Too many endpoints (${checked.length}/30). Deselect some.`;
+    return;
+  }
+  // Build filtered schema
+  const selected = new Map();
+  checked.forEach(cb => {
+    const key = cb.dataset.path;
+    if (!selected.has(key)) selected.set(key, []);
+    selected.get(key).push(cb.dataset.method);
+  });
+  const built = JSON.parse(JSON.stringify(_fullSchema));
+  built.paths = {};
+  for (const [path, methods] of selected.entries()) {
+    built.paths[path] = {};
+    for (const m of methods) {
+      if (_fullSchema.paths[path] && _fullSchema.paths[path][m]) {
+        built.paths[path][m] = _fullSchema.paths[path][m];
+      }
+    }
+  }
+  // Keep only referenced schemas
+  const text = JSON.stringify(built.paths);
+  if (built.components && built.components.schemas) {
+    for (const name of Object.keys(built.components.schemas)) {
+      if (!text.includes('#/components/schemas/' + name)) {
+        delete built.components.schemas[name];
+      }
+    }
+  }
   try {
-    btn.textContent = 'Loading...';
-    const resp = await fetch('/openapi-chatgpt.json');
-    if (!resp.ok) throw new Error('Failed to fetch schema');
-    const data = await resp.json();
-    const text = JSON.stringify(data, null, 2);
-    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copying...';
+    const out = JSON.stringify(built, null, 2);
+    await navigator.clipboard.writeText(out);
     btn.textContent = 'Copied!';
     resultEl.style.display = 'block';
     resultEl.style.color = 'var(--accent)';
-    resultEl.textContent = 'Schema copied to clipboard. Paste it into your GPT Actions configuration.';
+    resultEl.textContent = `Copied ${checked.length} operations to clipboard.`;
     setTimeout(() => { btn.textContent = 'Copy Schema'; }, 3000);
   } catch (err) {
     btn.textContent = 'Copy Schema';

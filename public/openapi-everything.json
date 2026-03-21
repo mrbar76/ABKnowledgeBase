@@ -1,0 +1,4360 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AB Brain - Complete API",
+    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://ab-brain.up.railway.app/api"
+    }
+  ],
+  "paths": {
+    "/knowledge": {
+      "get": {
+        "operationId": "searchKnowledge",
+        "summary": "Search or list knowledge entries",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search query"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by category"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by tag"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Knowledge entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/KnowledgeEntry"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createKnowledge",
+        "summary": "Save a new knowledge entry",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "content"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Short descriptive title"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Full knowledge content"
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "general",
+                      "code",
+                      "meeting",
+                      "research",
+                      "decision",
+                      "reference",
+                      "personal"
+                    ],
+                    "default": "general"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "ai_source": {
+                    "type": "string",
+                    "default": "chatgpt"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/knowledge/{id}": {
+      "get": {
+        "operationId": "getKnowledge",
+        "summary": "Get a single knowledge entry by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Knowledge entry"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateKnowledge",
+        "summary": "Update a knowledge entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated entry"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteKnowledge",
+        "summary": "Delete a knowledge entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List tasks with optional filters",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "todo",
+                "in_progress",
+                "review",
+                "done"
+              ]
+            }
+          },
+          {
+            "name": "ai_agent",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tasks list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "tasks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Task"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTask",
+        "summary": "Create a new task",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "todo",
+                      "in_progress",
+                      "review",
+                      "done"
+                    ],
+                    "default": "todo"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "urgent"
+                    ],
+                    "default": "medium"
+                  },
+                  "ai_agent": {
+                    "type": "string",
+                    "default": "chatgpt"
+                  },
+                  "next_steps": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "get": {
+        "operationId": "getTask",
+        "summary": "Get a single task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTask",
+        "summary": "Update a task (status, next_steps, etc.)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "todo",
+                      "in_progress",
+                      "review",
+                      "done"
+                    ]
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "urgent"
+                    ]
+                  },
+                  "next_steps": {
+                    "type": "string"
+                  },
+                  "output_log": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTask",
+        "summary": "Delete a task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "summary": "List projects",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "completed",
+                "archived"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "summary": "Create a new project",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "default": "active"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project created"
+          }
+        }
+      }
+    },
+    "/transcripts": {
+      "get": {
+        "operationId": "searchTranscripts",
+        "summary": "Search or list transcripts",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transcripts list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "transcripts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Transcript"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "uploadTranscript",
+        "summary": "Upload a new transcript",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "raw_text"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "raw_text": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "default": "bee"
+                  },
+                  "speaker_labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "duration_seconds": {
+                    "type": "integer"
+                  },
+                  "recorded_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transcript uploaded"
+          }
+        }
+      }
+    },
+    "/facts": {
+      "get": {
+        "operationId": "searchFacts",
+        "summary": "Search or list fact entries",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facts list"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFact",
+        "summary": "Create a new fact",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "content"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created fact"
+          }
+        }
+      }
+    },
+    "/facts/{id}": {
+      "get": {
+        "operationId": "getFact",
+        "summary": "Get a single fact by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fact"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateFact",
+        "summary": "Update a fact",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated fact"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFact",
+        "summary": "Delete a fact",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/conversations": {
+      "get": {
+        "operationId": "listConversations",
+        "summary": "List or search AI conversation threads",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "ai_source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by source (chatgpt, claude, gemini)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversations list"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createConversation",
+        "summary": "Store a full AI conversation thread with summary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "ai_source"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "ai_source": {
+                    "type": "string"
+                  },
+                  "full_thread": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Array of {role, content, timestamp}"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "message_count": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created conversation"
+          }
+        }
+      }
+    },
+    "/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "summary": "Get a conversation with full thread",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversation with full_thread"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateConversation",
+        "summary": "Update a conversation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteConversation",
+        "summary": "Delete a conversation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/transcripts/{id}": {
+      "get": {
+        "operationId": "getTranscript",
+        "summary": "Get a single transcript with speaker data",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transcript with speakers"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTranscript",
+        "summary": "Delete a transcript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/workouts/{id}": {
+      "get": {
+        "operationId": "getWorkout",
+        "summary": "Get a single workout by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workout detail"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateWorkout",
+        "summary": "Update a workout",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated workout"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteWorkout",
+        "summary": "Delete a workout",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/workouts/stats/summary": {
+      "get": {
+        "operationId": "getWorkoutStats",
+        "summary": "Get workout statistics \u2014 total count, by type, average effort, recent workouts",
+        "responses": {
+          "200": {
+            "description": "Workout stats summary"
+          }
+        }
+      }
+    },
+    "/intake": {
+      "post": {
+        "operationId": "smartIntake",
+        "summary": "AI-powered smart intake \u2014 auto-classifies text into knowledge, fact, task, or transcript",
+        "description": "Send raw text and OpenAI will classify it and store it in the appropriate table automatically.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Raw text to classify and store"
+                  },
+                  "ai_source": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Classified and stored result"
+          }
+        }
+      }
+    },
+    "/activity": {
+      "get": {
+        "operationId": "getActivityLog",
+        "summary": "Get recent activity log entries",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 30
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity log entries"
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "operationId": "unifiedSearch",
+        "summary": "Search across ALL data types (knowledge, transcripts, tasks, projects) in one query",
+        "description": "Unified search that queries knowledge entries, transcripts, tasks, and projects simultaneously. Returns results grouped by type with relevance ranking. Use this as the primary search method.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search query"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grouped search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "knowledge": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "transcripts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "tasks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "projects": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/ai": {
+      "post": {
+        "operationId": "aiSearch",
+        "summary": "AI-powered search across the entire knowledge base",
+        "description": "Submit a natural language query to search across all data types. Returns results sorted by relevance with a summary. Designed for AI agents to search and retrieve the user's personal data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Natural language search query"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "default": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results with summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workouts": {
+      "get": {
+        "operationId": "listWorkouts",
+        "summary": "List or search workout logs",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search query"
+          },
+          {
+            "name": "workout_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hill",
+                "strength",
+                "run",
+                "hybrid",
+                "recovery",
+                "ruck"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by tag (e.g. spartan, carry)"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Workouts on or after this date"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Workouts before this date"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workout log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "workouts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Workout"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "logWorkout",
+        "summary": "Log a new Spartan workout with structured fields for type, workout details, metrics, performance, body feedback, and adjustments",
+        "description": "Post a structured workout log. ChatGPT should use this after a workout recap conversation. Include workout_type, focus, warmup, main_sets, carries, metrics (time, distance, elevation), effort rating 1-10, performance notes (slowdown, failure point), body feedback (grip, legs, cardio, shoulder), a...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "workout_type"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Auto-generated if empty: 'Spartan Workout \u2013 DATE \u2013 TYPE'"
+                  },
+                  "workout_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "YYYY-MM-DD, defaults to today"
+                  },
+                  "workout_type": {
+                    "type": "string",
+                    "enum": [
+                      "hill",
+                      "strength",
+                      "run",
+                      "hybrid",
+                      "recovery",
+                      "ruck"
+                    ]
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "e.g. Runyon Canyon, Home Gym"
+                  },
+                  "elevation": {
+                    "type": "string",
+                    "description": "Base elevation if relevant, e.g. 1,320 ft"
+                  },
+                  "focus": {
+                    "type": "string",
+                    "description": "Goal of the workout, e.g. hill durability, grip endurance"
+                  },
+                  "warmup": {
+                    "type": "string",
+                    "description": "Warm-up activities"
+                  },
+                  "main_sets": {
+                    "type": "string",
+                    "description": "Main workout sets and exercises"
+                  },
+                  "carries": {
+                    "type": "string",
+                    "description": "Carries, lifts, or loaded movements"
+                  },
+                  "time_duration": {
+                    "type": "string",
+                    "description": "Total time, e.g. 45 min, 1:15:00"
+                  },
+                  "distance": {
+                    "type": "string",
+                    "description": "Distance covered, e.g. 3.2 mi"
+                  },
+                  "elevation_gain": {
+                    "type": "string",
+                    "description": "Elevation gained, e.g. 850 ft"
+                  },
+                  "effort": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "description": "Effort rating 1-10"
+                  },
+                  "slowdown_notes": {
+                    "type": "string",
+                    "description": "Where did I slow down or break form"
+                  },
+                  "failure_first": {
+                    "type": "string",
+                    "description": "What failed first: legs / grip / cardio / shoulders"
+                  },
+                  "grip_feedback": {
+                    "type": "string",
+                    "description": "Grip status: solid / pumped / gave out"
+                  },
+                  "legs_feedback": {
+                    "type": "string",
+                    "description": "Legs status: strong / heavy / cramped"
+                  },
+                  "cardio_feedback": {
+                    "type": "string",
+                    "description": "Cardio status: steady / gasping / recovered fast"
+                  },
+                  "shoulder_feedback": {
+                    "type": "string",
+                    "description": "Shoulder status: fine / tight / clicking"
+                  },
+                  "body_notes": {
+                    "type": "string",
+                    "description": "Additional body feedback or recovery notes"
+                  },
+                  "adjustment": {
+                    "type": "string",
+                    "description": "What to change next time: weight, pace, structure"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Tags without # prefix, e.g. [\"spartan\", \"hill\", \"carry\"]"
+                  },
+                  "ai_source": {
+                    "type": "string",
+                    "default": "chatgpt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workout logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workouts/bulk": {
+      "post": {
+        "operationId": "bulkImportWorkouts",
+        "summary": "Bulk import up to 200 workouts at once",
+        "description": "Import historical workouts from Apple Health, Fitbod, or any batch data. Each item uses the same fields as logWorkout. Only workout_type is required per entry.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "workouts"
+                ],
+                "properties": {
+                  "workouts": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "workout_type"
+                      ],
+                      "properties": {
+                        "workout_type": {
+                          "type": "string"
+                        },
+                        "workout_date": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "location": {
+                          "type": "string"
+                        },
+                        "focus": {
+                          "type": "string"
+                        },
+                        "warmup": {
+                          "type": "string"
+                        },
+                        "main_sets": {
+                          "type": "string"
+                        },
+                        "carries": {
+                          "type": "string"
+                        },
+                        "exercises": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "class_name": {
+                          "type": "string"
+                        },
+                        "program": {
+                          "type": "string"
+                        },
+                        "equipment": {
+                          "type": "string"
+                        },
+                        "instructor": {
+                          "type": "string"
+                        },
+                        "time_duration": {
+                          "type": "string"
+                        },
+                        "distance": {
+                          "type": "string"
+                        },
+                        "elevation_gain": {
+                          "type": "string"
+                        },
+                        "heart_rate_avg": {
+                          "type": "string"
+                        },
+                        "heart_rate_max": {
+                          "type": "string"
+                        },
+                        "pace_avg": {
+                          "type": "string"
+                        },
+                        "splits": {
+                          "type": "string"
+                        },
+                        "cadence_avg": {
+                          "type": "string"
+                        },
+                        "active_calories": {
+                          "type": "string"
+                        },
+                        "total_calories": {
+                          "type": "string"
+                        },
+                        "effort": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        },
+                        "slowdown_notes": {
+                          "type": "string"
+                        },
+                        "failure_first": {
+                          "type": "string"
+                        },
+                        "grip_feedback": {
+                          "type": "string"
+                        },
+                        "legs_feedback": {
+                          "type": "string"
+                        },
+                        "cardio_feedback": {
+                          "type": "string"
+                        },
+                        "shoulder_feedback": {
+                          "type": "string"
+                        },
+                        "body_notes": {
+                          "type": "string"
+                        },
+                        "adjustment": {
+                          "type": "string"
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "ai_source": {
+                          "type": "string",
+                          "default": "chatgpt"
+                        },
+                        "metadata": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bulk import results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "imported": {
+                      "type": "integer"
+                    },
+                    "errors": {
+                      "type": "integer"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/body-metrics": {
+      "get": {
+        "operationId": "listBodyMetrics",
+        "summary": "List or search body composition measurements",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by source (e.g. RENPHO)"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date (inclusive)"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date (exclusive)"
+          },
+          {
+            "name": "latest",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            },
+            "description": "Return only the most recent entry"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "oldest"
+              ]
+            },
+            "description": "Sort order (default: newest first)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Body metrics list or single latest entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createBodyMetric",
+        "summary": "Create a body composition measurement entry",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BodyMetricInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created body metric",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodyMetric"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/body-metrics/bulk": {
+      "post": {
+        "operationId": "bulkImportBodyMetrics",
+        "summary": "Bulk import body composition measurements (max 200 per request)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body_metrics"
+                ],
+                "properties": {
+                  "body_metrics": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/BodyMetricInput"
+                    },
+                    "maxItems": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bulk import results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/body-metrics/{id}": {
+      "get": {
+        "operationId": "getBodyMetric",
+        "summary": "Get a single body metric entry by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Body metric entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodyMetric"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateBodyMetric",
+        "summary": "Update a body metric entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BodyMetricInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated body metric",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodyMetric"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteBodyMetric",
+        "summary": "Delete a body metric entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/meals": {
+      "get": {
+        "operationId": "listMeals",
+        "summary": "List or search meal entries",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "meal_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by meal type"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Filter by exact date"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date (inclusive)"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date (exclusive)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Meals list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMeal",
+        "summary": "Log a meal entry",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MealInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created meal"
+          }
+        }
+      }
+    },
+    "/meals/bulk": {
+      "post": {
+        "operationId": "bulkImportMeals",
+        "summary": "Bulk import meals (max 200 per request)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "meals"
+                ],
+                "properties": {
+                  "meals": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MealInput"
+                    },
+                    "maxItems": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bulk import results"
+          }
+        }
+      }
+    },
+    "/meals/{id}": {
+      "get": {
+        "operationId": "getMeal",
+        "summary": "Get a single meal by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Meal entry"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateMeal",
+        "summary": "Update a meal entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MealInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated meal"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMeal",
+        "summary": "Delete a meal entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/nutrition/daily-context": {
+      "get": {
+        "operationId": "getDailyContext",
+        "summary": "Get daily nutrition context (energy, sleep, hydration, cravings, etc.)",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Get context for a specific date"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily context"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createDailyContext",
+        "summary": "Create daily nutrition context for a date",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyContextInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created context"
+          },
+          "409": {
+            "description": "Context already exists for this date"
+          }
+        }
+      }
+    },
+    "/nutrition/daily-context/{id}": {
+      "patch": {
+        "operationId": "updateDailyContext",
+        "summary": "Update daily nutrition context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyContextInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated context"
+          }
+        }
+      }
+    },
+    "/nutrition/daily-summary": {
+      "get": {
+        "operationId": "getDailySummary",
+        "summary": "Get computed daily nutrition summary (aggregated from meals + context)",
+        "description": "Returns macro totals computed from meals, merged with daily context if available. Meals listed chronologically.",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily summary with meals and context"
+          }
+        }
+      }
+    },
+    "/nutrition/daily-summary/range": {
+      "get": {
+        "operationId": "getDailySummaryRange",
+        "summary": "Get daily summaries for a date range with range totals and averages",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Range summary with daily breakdowns"
+          }
+        }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "operationId": "getDashboard",
+        "summary": "Get dashboard stats (knowledge count, tasks by status, recent activity)",
+        "responses": {
+          "200": {
+            "description": "Dashboard overview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "knowledge": {
+                      "type": "object"
+                    },
+                    "projects": {
+                      "type": "object"
+                    },
+                    "tasks": {
+                      "type": "object"
+                    },
+                    "transcripts": {
+                      "type": "object"
+                    },
+                    "recent_activity": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/plans": {
+      "get": {
+        "operationId": "listTrainingPlans",
+        "summary": "List or search training plans (periodized blocks, mesocycles, rehab plans)",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "completed",
+                "paused",
+                "archived"
+              ]
+            }
+          },
+          {
+            "name": "plan_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "block",
+                "mesocycle",
+                "microcycle",
+                "deload",
+                "race_prep",
+                "rehab",
+                "custom"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Training plans list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "plans": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TrainingPlan"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTrainingPlan",
+        "summary": "Create a new training plan with goals, phases, weekly structure, and rationale",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingPlanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingPlan"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/plans/{id}": {
+      "get": {
+        "operationId": "getTrainingPlan",
+        "summary": "Get a training plan with linked coaching sessions and injuries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Training plan with related data"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTrainingPlan",
+        "summary": "Update a training plan",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingPlanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated plan"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTrainingPlan",
+        "summary": "Delete a training plan",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/training/coaching": {
+      "get": {
+        "operationId": "listCoachingSessions",
+        "summary": "List AI coaching session summaries (injury notes, adjustments, rationale)",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "training_plan_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coaching sessions list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "sessions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CoachingSession"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCoachingSession",
+        "summary": "Save a coaching session summary after reviewing training data with AI",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachingSessionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachingSession"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/coaching/{id}": {
+      "get": {
+        "operationId": "getCoachingSession",
+        "summary": "Get a coaching session by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coaching session"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateCoachingSession",
+        "summary": "Update a coaching session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachingSessionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated session"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCoachingSession",
+        "summary": "Delete a coaching session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/training/injuries": {
+      "get": {
+        "operationId": "listInjuries",
+        "summary": "List injuries/contentions with body area, severity, and status filters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "monitoring",
+                "recovering",
+                "resolved",
+                "chronic"
+              ]
+            }
+          },
+          {
+            "name": "body_area",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by body area (e.g. shoulder, knee, lower_back)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Injuries list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "injuries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Injury"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createInjury",
+        "summary": "Log an injury or contention with symptoms, treatment, and movement modifications",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InjuryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created injury",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Injury"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/injuries/{id}": {
+      "get": {
+        "operationId": "getInjury",
+        "summary": "Get an injury by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Injury details"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateInjury",
+        "summary": "Update an injury (e.g. change status to resolved, add treatment notes)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InjuryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated injury"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteInjury",
+        "summary": "Delete an injury",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/training/injuries/active/summary": {
+      "get": {
+        "operationId": "getActiveInjuriesSummary",
+        "summary": "Get all active/monitoring injuries \u2014 use this before recommending exercises to check for contraindications",
+        "responses": {
+          "200": {
+            "description": "Active injuries with body areas, severity, and modifications"
+          }
+        }
+      }
+    },
+    "/training/day/{date}": {
+      "get": {
+        "operationId": "getTrainingDayView",
+        "summary": "Cross-reference ALL fitness data for a specific date: workouts, meals, nutrition context, body metrics, coaching sessions, active injuries, and current training plan",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date in YYYY-MM-DD format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete training day view with all cross-referenced data"
+          }
+        }
+      }
+    },
+    "/gamification": {
+      "get": {
+        "operationId": "getGamification",
+        "summary": "Get activity rings, streaks, badges, weekly progress, and smart suggestions",
+        "description": "Returns today's ring progress (Train/Execute/Recover), current streaks, all badges (unlocked and locked), weekly summary, nudges, and smart goal adjustment suggestions based on trailing 7-day averages. Shows current momentum and consistency.",
+        "responses": {
+          "200": {
+            "description": "Gamification data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rings": {
+                      "type": "object",
+                      "description": "Today's ring progress. Train = workouts logged, Execute = tasks completed, Recover = meals + daily context logged",
+                      "properties": {
+                        "train": {
+                          "type": "object",
+                          "properties": {
+                            "current": {
+                              "type": "integer"
+                            },
+                            "goal": {
+                              "type": "integer"
+                            },
+                            "percent": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "execute": {
+                          "type": "object",
+                          "properties": {
+                            "current": {
+                              "type": "integer"
+                            },
+                            "goal": {
+                              "type": "integer"
+                            },
+                            "percent": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "recover": {
+                          "type": "object",
+                          "properties": {
+                            "current": {
+                              "type": "integer"
+                            },
+                            "goal": {
+                              "type": "integer"
+                            },
+                            "percent": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "streaks": {
+                      "type": "object",
+                      "description": "Consecutive days for each category. Perfect = all 3 rings closed.",
+                      "properties": {
+                        "train": {
+                          "type": "integer"
+                        },
+                        "execute": {
+                          "type": "integer"
+                        },
+                        "recover": {
+                          "type": "integer"
+                        },
+                        "perfect_day": {
+                          "type": "integer"
+                        },
+                        "weigh_in": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "badges": {
+                      "type": "object",
+                      "properties": {
+                        "unlocked": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "locked": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "newly_unlocked": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "total_unlocked": {
+                          "type": "integer"
+                        },
+                        "total_available": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "nudges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "suggestions": {
+                      "type": "array",
+                      "description": "Smart goal adjustment suggestions based on trailing 7-day averages. direction=up means user is crushing it and should raise goal, direction=down means goal may be too ambitious.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ring": {
+                            "type": "string"
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "down"
+                            ]
+                          },
+                          "current_goal": {
+                            "type": "integer"
+                          },
+                          "suggested_goal": {
+                            "type": "integer"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "weekly": {
+                      "type": "object",
+                      "description": "This week's progress (Mon-Sun)",
+                      "properties": {
+                        "train": {
+                          "type": "object"
+                        },
+                        "execute": {
+                          "type": "object"
+                        },
+                        "recover": {
+                          "type": "object"
+                        },
+                        "perfect_days": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "settings": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gamification/settings": {
+      "put": {
+        "operationId": "updateGamificationSettings",
+        "summary": "Update ring goals and notification preferences",
+        "description": "Adjust daily ring goals (how many workouts/tasks/recovery entries to close each ring), toggle notifications, or modify the notification schedule. Goals should be adjusted based on the user's current capacity and consistency.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ring_train_goal": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Workouts per day to close Train ring"
+                  },
+                  "ring_execute_goal": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 15,
+                    "description": "Tasks completed per day to close Execute ring"
+                  },
+                  "ring_recover_goal": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "description": "Meals + daily context entries per day to close Recover ring"
+                  },
+                  "notification_enabled": {
+                    "type": "boolean"
+                  },
+                  "notification_schedule": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings updated"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "KnowledgeEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "ai_source": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "ai_agent": {
+            "type": "string"
+          },
+          "next_steps": {
+            "type": "string"
+          },
+          "output_log": {
+            "type": "string"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_counts": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Workout": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "workout_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "workout_type": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "elevation": {
+            "type": "string"
+          },
+          "focus": {
+            "type": "string"
+          },
+          "warmup": {
+            "type": "string"
+          },
+          "main_sets": {
+            "type": "string"
+          },
+          "carries": {
+            "type": "string"
+          },
+          "time_duration": {
+            "type": "string"
+          },
+          "distance": {
+            "type": "string"
+          },
+          "elevation_gain": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "integer"
+          },
+          "slowdown_notes": {
+            "type": "string"
+          },
+          "failure_first": {
+            "type": "string"
+          },
+          "grip_feedback": {
+            "type": "string"
+          },
+          "legs_feedback": {
+            "type": "string"
+          },
+          "cardio_feedback": {
+            "type": "string"
+          },
+          "shoulder_feedback": {
+            "type": "string"
+          },
+          "body_notes": {
+            "type": "string"
+          },
+          "adjustment": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MealInput": {
+        "type": "object",
+        "required": [
+          "title",
+          "meal_date"
+        ],
+        "properties": {
+          "meal_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "meal_time": {
+            "type": "string",
+            "nullable": true
+          },
+          "meal_type": {
+            "type": "string",
+            "default": "meal",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner",
+              "snack",
+              "pre-workout",
+              "post-workout",
+              "drink",
+              "supplement",
+              "meal"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "calories": {
+            "type": "number",
+            "nullable": true
+          },
+          "protein_g": {
+            "type": "number",
+            "nullable": true
+          },
+          "carbs_g": {
+            "type": "number",
+            "nullable": true
+          },
+          "fat_g": {
+            "type": "number",
+            "nullable": true
+          },
+          "fiber_g": {
+            "type": "number",
+            "nullable": true
+          },
+          "sugar_g": {
+            "type": "number",
+            "nullable": true
+          },
+          "sodium_mg": {
+            "type": "number",
+            "nullable": true
+          },
+          "serving_size": {
+            "type": "string",
+            "nullable": true
+          },
+          "hunger_before": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "fullness_after": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "energy_after": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        }
+      },
+      "DailyContextInput": {
+        "type": "object",
+        "required": [
+          "date"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "day_type": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "rest",
+              "strength",
+              "run",
+              "hill",
+              "hybrid",
+              "race",
+              "travel"
+            ]
+          },
+          "hydration_liters": {
+            "type": "number",
+            "nullable": true
+          },
+          "energy_rating": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "hunger_rating": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "cravings": {
+            "type": "string",
+            "nullable": true
+          },
+          "digestion": {
+            "type": "string",
+            "nullable": true
+          },
+          "sleep_hours": {
+            "type": "number",
+            "nullable": true
+          },
+          "sleep_quality": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "recovery_rating": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 10
+          },
+          "body_weight_lb": {
+            "type": "number",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        }
+      },
+      "BodyMetricInput": {
+        "type": "object",
+        "required": [
+          "measurement_date",
+          "weight_lb"
+        ],
+        "properties": {
+          "measurement_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "measurement_time": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "default": "RENPHO"
+          },
+          "source_type": {
+            "type": "string",
+            "default": "smart_scale"
+          },
+          "weight_lb": {
+            "type": "number",
+            "minimum": 0
+          },
+          "bmi": {
+            "type": "number",
+            "nullable": true
+          },
+          "body_fat_pct": {
+            "type": "number",
+            "nullable": true
+          },
+          "skeletal_muscle_pct": {
+            "type": "number",
+            "nullable": true
+          },
+          "fat_free_mass_lb": {
+            "type": "number",
+            "nullable": true
+          },
+          "subcutaneous_fat_pct": {
+            "type": "number",
+            "nullable": true
+          },
+          "visceral_fat": {
+            "type": "integer",
+            "nullable": true
+          },
+          "body_water_pct": {
+            "type": "number",
+            "nullable": true
+          },
+          "muscle_mass_lb": {
+            "type": "number",
+            "nullable": true
+          },
+          "bone_mass_lb": {
+            "type": "number",
+            "nullable": true
+          },
+          "protein_pct": {
+            "type": "number",
+            "nullable": true
+          },
+          "bmr_kcal": {
+            "type": "integer",
+            "nullable": true
+          },
+          "metabolic_age": {
+            "type": "integer",
+            "nullable": true
+          },
+          "measurement_context": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendor_user_mode": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "is_manual_entry": {
+            "type": "boolean",
+            "default": false
+          },
+          "raw_payload": {
+            "type": "object",
+            "nullable": true
+          }
+        }
+      },
+      "BodyMetric": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "measurement_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "measurement_time": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "weight_lb": {
+            "type": "number"
+          },
+          "bmi": {
+            "type": "number"
+          },
+          "body_fat_pct": {
+            "type": "number"
+          },
+          "skeletal_muscle_pct": {
+            "type": "number"
+          },
+          "fat_free_mass_lb": {
+            "type": "number"
+          },
+          "subcutaneous_fat_pct": {
+            "type": "number"
+          },
+          "visceral_fat": {
+            "type": "integer"
+          },
+          "body_water_pct": {
+            "type": "number"
+          },
+          "muscle_mass_lb": {
+            "type": "number"
+          },
+          "bone_mass_lb": {
+            "type": "number"
+          },
+          "protein_pct": {
+            "type": "number"
+          },
+          "bmr_kcal": {
+            "type": "integer"
+          },
+          "metabolic_age": {
+            "type": "integer"
+          },
+          "measurement_context": {
+            "type": "string"
+          },
+          "vendor_user_mode": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "is_manual_entry": {
+            "type": "boolean"
+          },
+          "raw_payload": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Transcript": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "duration_seconds": {
+            "type": "integer"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TrainingPlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "plan_type": {
+            "type": "string",
+            "enum": [
+              "block",
+              "mesocycle",
+              "microcycle",
+              "deload",
+              "race_prep",
+              "rehab",
+              "custom"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "completed",
+              "paused",
+              "archived"
+            ]
+          },
+          "goal": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "weeks": {
+            "type": "integer"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "weekly_structure": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Array of day-by-day plan: [{day: 'Monday', type: 'strength', focus: 'upper body', notes: '...'}]"
+          },
+          "intensity_scheme": {
+            "type": "string"
+          },
+          "progression_notes": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "WHY this plan was chosen \u2014 training philosophy, injury avoidance, periodization reasoning"
+          },
+          "constraints": {
+            "type": "string",
+            "description": "Limitations: injuries, schedule, equipment, recovery needs"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ai_source": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TrainingPlanInput": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "plan_type": {
+            "type": "string",
+            "enum": [
+              "block",
+              "mesocycle",
+              "microcycle",
+              "deload",
+              "race_prep",
+              "rehab",
+              "custom"
+            ],
+            "default": "block"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "completed",
+              "paused",
+              "archived"
+            ],
+            "default": "active"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "weeks": {
+            "type": "integer"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "weekly_structure": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "intensity_scheme": {
+            "type": "string"
+          },
+          "progression_notes": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ai_source": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "CoachingSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "key_decisions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Key decisions made during the session"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Training adjustments: [{area: 'volume', change: 'reduce upper body sets by 20%', reason: 'shoulder impingement'}]"
+          },
+          "injury_notes": {
+            "type": "string"
+          },
+          "nutrition_notes": {
+            "type": "string"
+          },
+          "recovery_notes": {
+            "type": "string"
+          },
+          "mental_notes": {
+            "type": "string"
+          },
+          "next_steps": {
+            "type": "string"
+          },
+          "data_reviewed": {
+            "type": "object",
+            "description": "What data was reviewed: {workouts_from: '2026-03-01', workouts_to: '2026-03-18', body_metrics: true}"
+          },
+          "training_plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ai_source": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CoachingSessionInput": {
+        "type": "object",
+        "required": [
+          "title",
+          "summary"
+        ],
+        "properties": {
+          "session_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "key_decisions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "injury_notes": {
+            "type": "string"
+          },
+          "nutrition_notes": {
+            "type": "string"
+          },
+          "recovery_notes": {
+            "type": "string"
+          },
+          "mental_notes": {
+            "type": "string"
+          },
+          "next_steps": {
+            "type": "string"
+          },
+          "data_reviewed": {
+            "type": "object"
+          },
+          "training_plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ai_source": {
+            "type": "string",
+            "default": "chatgpt"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "Injury": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body_area": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "bilateral",
+              "central",
+              "n/a"
+            ]
+          },
+          "injury_type": {
+            "type": "string",
+            "enum": [
+              "strain",
+              "sprain",
+              "tendinitis",
+              "soreness",
+              "tightness",
+              "pain",
+              "fracture",
+              "contusion",
+              "overuse",
+              "other"
+            ]
+          },
+          "severity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "monitoring",
+              "recovering",
+              "resolved",
+              "chronic"
+            ]
+          },
+          "onset_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "resolved_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "mechanism": {
+            "type": "string",
+            "description": "How it happened"
+          },
+          "symptoms": {
+            "type": "string"
+          },
+          "aggravating_movements": {
+            "type": "string",
+            "description": "Movements that make it worse"
+          },
+          "relieving_factors": {
+            "type": "string",
+            "description": "What helps"
+          },
+          "treatment": {
+            "type": "string"
+          },
+          "modifications": {
+            "type": "string",
+            "description": "Workout modifications to avoid aggravating"
+          },
+          "prevention_notes": {
+            "type": "string",
+            "description": "Long-term prevention strategy"
+          },
+          "related_workout_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "training_plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ai_source": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "InjuryInput": {
+        "type": "object",
+        "required": [
+          "title",
+          "body_area"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body_area": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "bilateral",
+              "central",
+              "n/a"
+            ]
+          },
+          "injury_type": {
+            "type": "string",
+            "enum": [
+              "strain",
+              "sprain",
+              "tendinitis",
+              "soreness",
+              "tightness",
+              "pain",
+              "fracture",
+              "contusion",
+              "overuse",
+              "other"
+            ],
+            "default": "strain"
+          },
+          "severity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "monitoring",
+              "recovering",
+              "resolved",
+              "chronic"
+            ],
+            "default": "active"
+          },
+          "onset_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "resolved_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "mechanism": {
+            "type": "string"
+          },
+          "symptoms": {
+            "type": "string"
+          },
+          "aggravating_movements": {
+            "type": "string"
+          },
+          "relieving_factors": {
+            "type": "string"
+          },
+          "treatment": {
+            "type": "string"
+          },
+          "modifications": {
+            "type": "string"
+          },
+          "prevention_notes": {
+            "type": "string"
+          },
+          "related_workout_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "training_plan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ai_source": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ]
+}
