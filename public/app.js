@@ -4751,20 +4751,151 @@ const PROGRESS_POSES = [
 ];
 
 function poseSvg(key) {
-  // Map pose keys to image files — reuse front images for back (visually similar silhouettes)
-  const poseImages = {
-    front_relaxed:      { src: '/assets/poses/front_relaxed.png', flip: false },
-    front_flexed:       { src: '/assets/poses/front_flexed.png', flip: false },
-    side_relaxed_left:  { src: '/assets/poses/side_left.png', flip: false },
-    side_relaxed_right: { src: '/assets/poses/side_right.png', flip: false },
-    back_relaxed:       { src: '/assets/poses/front_relaxed.png', flip: true },
-    back_flexed:        { src: '/assets/poses/front_flexed.png', flip: true },
-    quarter_turn_left:  { src: '/assets/poses/quarter_turn.png', flip: false },
-    quarter_turn_right: { src: '/assets/poses/quarter_turn.png', flip: true },
+  // Clean solid silhouette SVGs — simple filled shapes, no internal detail
+  const svgs = {
+    front_relaxed: `<svg viewBox="0 0 200 480" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M100 8 C120 8,134 22,134 42 C134 62,120 76,100 76 C80 76,66 62,66 42 C66 22,80 8,100 8 Z
+        M88 78 L112 78 L116 90 L116 90
+        C140 94,160 100,168 110 L176 120 L182 134
+        C184 140,178 144,172 140 L160 130 L152 122 L148 118
+        L148 170 L150 180 L156 210 L160 240 L162 260
+        C164 270,162 278,158 282 L154 286 C150 288,146 286,148 280
+        L150 270 L148 250 L144 220 L140 190 L136 170
+        L134 160 L132 170 L128 200 L126 240
+        L124 280 L124 320 L126 360 L128 390 L130 420
+        L130 440 C130 450,128 460,122 464 L116 468 C112 470,108 468,110 462
+        L116 450 L114 430 L112 400 L110 370 L108 340 L106 310
+        L104 280 L102 260 L100 250
+        L98 260 L96 280 L94 310 L92 340 L90 370 L88 400 L86 430
+        L84 450 L90 462 C92 468,88 470,84 468 L78 464 C72 460,70 450,70 440
+        L72 420 L74 390 L76 360 L76 320 L76 280
+        L74 240 L72 200 L68 170 L66 160
+        L64 170 L60 190 L56 220 L52 250 L50 270
+        L52 280 C54 286,50 288,46 286 L42 282 C38 278,36 270,38 260
+        L40 240 L44 210 L50 180 L52 170
+        L52 118 L48 122 L40 130 L28 140
+        C22 144,16 140,18 134 L24 120 L32 110
+        C40 100,60 94,84 90 L88 78 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    front_flexed: `<svg viewBox="0 0 200 480" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M100 8 C120 8,134 22,134 42 C134 62,120 76,100 76 C80 76,66 62,66 42 C66 22,80 8,100 8 Z
+        M88 78 L112 78 L116 90
+        C140 94,158 100,166 108 L172 112 L178 108 L184 96 L188 80 L190 64
+        C190 56,194 52,198 56 C202 60,200 68,198 76 L194 92 L188 108 L182 118
+        L176 124 L170 126 L164 122 L158 116
+        L150 110 L148 116
+        L148 170 L150 180 L156 210 L160 240 L162 260
+        C164 270,162 278,158 282 L154 286 C150 288,146 286,148 280
+        L150 270 L148 250 L144 220 L140 190 L136 170
+        L134 160 L132 170 L128 200 L126 240
+        L124 280 L124 320 L126 360 L128 390 L130 420
+        L130 440 C130 450,128 460,122 464 L116 468 C112 470,108 468,110 462
+        L116 450 L114 430 L112 400 L110 370 L108 340 L106 310
+        L104 280 L102 260 L100 250
+        L98 260 L96 280 L94 310 L92 340 L90 370 L88 400 L86 430
+        L84 450 L90 462 C92 468,88 470,84 468 L78 464 C72 460,70 450,70 440
+        L72 420 L74 390 L76 360 L76 320 L76 280
+        L74 240 L72 200 L68 170 L66 160
+        L64 170 L60 190 L56 220 L52 250 L50 270
+        L52 280 C54 286,50 288,46 286 L42 282 C38 278,36 270,38 260
+        L40 240 L44 210 L50 180 L52 170
+        L52 116 L50 110 L42 116 L36 122 L30 126 L24 124
+        L18 118 L12 108 L6 92 L2 76 C0 68,-2 60,2 56
+        C6 52,10 56,10 64 L12 80 L16 96 L22 108 L28 112
+        L34 108 C42 100,60 94,84 90 L88 78 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    side_relaxed_left: `<svg viewBox="0 0 160 480" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M82 8 C102 8,116 22,116 42 C116 62,102 76,82 76 C62 76,48 62,48 42 C48 22,62 8,82 8 Z
+        M72 78 L96 78 L100 90
+        C108 94,114 100,118 108 L120 116 L118 128 L116 140
+        L114 150 L112 160
+        L112 180 L114 200 L118 230
+        L120 260 L118 280 L114 300
+        L108 310 L104 306
+        L106 290 L108 270 L106 250
+        L102 220 L98 190 L96 170
+        L94 160 L92 170 L90 200
+        L88 240 L86 280 L86 320
+        L88 360 L90 400 L90 430
+        L88 450 L94 462 C96 468,92 470,88 468
+        L82 464 C76 460,74 450,74 440
+        L76 420 L78 390 L78 360
+        L78 320 L78 280 L76 240
+        L72 200 L70 170 L68 160
+        L66 170 L64 190 L62 210
+        L60 230 L60 250 L62 270
+        L64 290 L60 306 L56 310
+        L50 300 L46 280 L44 260
+        L46 230 L50 200 L52 180
+        L52 160 L50 140 L48 128
+        L46 116 L48 108
+        C52 100,58 94,66 90 L72 78 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
+    side_relaxed_right: `<svg viewBox="0 0 160 480" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(160,0) scale(-1,1)">
+        <path d="M82 8 C102 8,116 22,116 42 C116 62,102 76,82 76 C62 76,48 62,48 42 C48 22,62 8,82 8 Z
+          M72 78 L96 78 L100 90
+          C108 94,114 100,118 108 L120 116 L118 128 L116 140
+          L114 150 L112 160
+          L112 180 L114 200 L118 230
+          L120 260 L118 280 L114 300
+          L108 310 L104 306
+          L106 290 L108 270 L106 250
+          L102 220 L98 190 L96 170
+          L94 160 L92 170 L90 200
+          L88 240 L86 280 L86 320
+          L88 360 L90 400 L90 430
+          L88 450 L94 462 C96 468,92 470,88 468
+          L82 464 C76 460,74 450,74 440
+          L76 420 L78 390 L78 360
+          L78 320 L78 280 L76 240
+          L72 200 L70 170 L68 160
+          L66 170 L64 190 L62 210
+          L60 230 L60 250 L62 270
+          L64 290 L60 306 L56 310
+          L50 300 L46 280 L44 260
+          L46 230 L50 200 L52 180
+          L52 160 L50 140 L48 128
+          L46 116 L48 108
+          C52 100,58 94,66 90 L72 78 Z" fill="currentColor" opacity="0.85"/>
+      </g>
+    </svg>`,
+    quarter_turn_left: `<svg viewBox="0 0 200 480" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M90 8 C110 8,126 22,126 42 C126 62,112 76,92 76 C72 76,58 62,58 42 C58 22,72 8,90 8 Z
+        M80 78 L106 78 L110 90
+        C130 94,148 100,156 108 L162 114 L160 126 L156 138
+        L152 148 L148 154
+        L148 170 L150 190 L154 220
+        L156 250 L154 270 L150 286
+        C148 290,144 288,146 282
+        L148 270 L146 250 L142 220 L138 190 L134 170
+        L132 160 L130 170 L126 200 L124 240
+        L122 280 L122 320 L124 360 L126 400 L126 430
+        L126 450 C126 456,122 462,118 464
+        L112 468 C108 470,106 468,108 462
+        L114 450 L112 430 L110 400 L108 370 L106 340 L104 310
+        L102 280 L100 260 L98 250
+        L96 260 L94 280 L92 310 L90 340 L88 370 L86 400 L84 430
+        L82 450 L88 462 C90 468,86 470,82 468
+        L76 464 C70 458,68 450,70 440
+        L72 420 L74 390 L76 360 L76 320 L76 280
+        L74 240 L72 200 L68 170 L66 160
+        L64 170 L60 190 L56 220 L52 250 L50 270
+        L52 282 C54 288,50 290,46 286
+        L42 270 L40 250 L44 220 L48 190 L50 170
+        L50 154 L46 148 L42 138 L38 126
+        L36 114 L42 108
+        C50 100,68 94,86 90 L80 78 Z" fill="currentColor" opacity="0.85"/>
+    </svg>`,
   };
-  const pose = poseImages[key] || poseImages.front_relaxed;
-  const flipStyle = pose.flip ? 'transform:scaleX(-1);' : '';
-  return `<img src="${pose.src}" alt="${key}" style="width:60px;height:120px;object-fit:contain;${flipStyle}" />`;
+  // Reuse silhouettes: back = front flipped, quarter_right = quarter_left flipped
+  svgs.back_relaxed = svgs.front_relaxed;
+  svgs.back_flexed = svgs.front_flexed;
+  svgs.quarter_turn_right = `<svg viewBox="0 0 200 480" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(200,0) scale(-1,1)">` +
+    svgs.quarter_turn_left.replace(/<\/?svg[^>]*>/g, '') +
+    `</g></svg>`;
+  return svgs[key] || svgs.front_relaxed;
 }
 
 let progressViewMode = 'timeline'; // 'timeline' | 'compare'
