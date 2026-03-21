@@ -4751,43 +4751,219 @@ const PROGRESS_POSES = [
 ];
 
 function poseSvg(key) {
-  // Realistic body silhouettes for each pose
+  // Anatomically proportioned body silhouettes with muscle definition
   const svgs = {
-    front_relaxed: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M33 28 C28 30,22 34,20 40 L18 56 C18 58,20 59,22 58 L28 48 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 48 L58 58 C60 59,62 58,62 56 L60 40 C58 34,52 30,47 28 Z" fill="currentColor" opacity="0.85"/>
-      <line x1="24" y1="112" x2="22" y2="148" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0"/>
+    front_relaxed: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <!-- Head & neck -->
+      <ellipse cx="50" cy="18" rx="11" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M44 30 L44 38 L56 38 L56 30" fill="currentColor" opacity="0.8"/>
+      <!-- Traps & shoulders -->
+      <path d="M44 36 C38 37,28 40,22 46 L18 48 C16 49,15 52,17 53 L22 50 C24 49,25 48,26 48
+        L26 48 L74 48 C75 48,76 49,78 50 L83 53 C85 52,84 49,82 48 L78 46 C72 40,62 37,56 36 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Torso: pecs, ribcage, waist taper -->
+      <path d="M26 48 C25 54,24 58,25 62 L27 72 C28 76,30 80,32 84
+        L32 88 C33 92,34 94,36 96
+        L36 98 L64 98
+        L64 96 C66 94,67 92,68 88
+        L68 84 C70 80,72 76,73 72 L75 62 C76 58,75 54,74 48 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Pec line -->
+      <path d="M38 52 Q50 58 62 52" fill="none" stroke="var(--bg)" stroke-width="0.7" opacity="0.2"/>
+      <!-- Center line (abs) -->
+      <line x1="50" y1="58" x2="50" y2="94" stroke="var(--bg)" stroke-width="0.6" opacity="0.15"/>
+      <!-- Arms -->
+      <path d="M26 48 C22 52,19 60,18 68 C17 74,17 78,19 82 L21 86 C22 88,24 88,24 86 L22 78 C21 74,22 68,24 62 L26 56" fill="currentColor" opacity="0.8"/>
+      <path d="M74 48 C78 52,81 60,82 68 C83 74,83 78,81 82 L79 86 C78 88,76 88,76 86 L78 78 C79 74,78 68,76 62 L74 56" fill="currentColor" opacity="0.8"/>
+      <!-- Hips & legs -->
+      <path d="M36 98 C34 100,33 104,34 108 L36 128 C37 134,38 140,38 146
+        L37 158 C36 164,36 168,38 172 L40 176 C42 178,46 178,46 176 L44 172
+        C42 168,42 164,43 158 L44 146 C44 140,46 132,47 126 L48 118 L50 118
+        L52 118 L53 126 C54 132,56 140,56 146 L57 158 C58 164,58 168,56 172
+        L54 176 C54 178,58 178,60 176 L62 172 C64 168,64 164,63 158 L62 146
+        C62 140,63 134,64 128 L66 108 C67 104,66 100,64 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    front_flexed: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M33 28 C28 30,24 33,22 38 L22 42 L14 34 L10 22 C9 19,12 18,14 20 L18 28 L22 34 L28 42 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 42 L58 34 L62 28 L66 20 C68 18,71 19,70 22 L66 34 L58 42 L58 38 C56 33,52 30,47 28 Z" fill="currentColor" opacity="0.85"/>
+    front_flexed: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="50" cy="18" rx="11" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M44 30 L44 38 L56 38 L56 30" fill="currentColor" opacity="0.8"/>
+      <!-- Traps wide into flexed arms -->
+      <path d="M44 36 C38 37,28 40,22 46 L18 44 L14 38 L10 28 C9 24,8 20,10 18
+        C12 17,14 18,14 22 L16 30 L20 38 L22 42
+        L22 46 L78 46
+        L78 42 L80 38 L84 30 L86 22 C86 18,88 17,90 18
+        C92 20,91 24,90 28 L86 38 L82 44 L78 46
+        C72 40,62 37,56 36 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Torso -->
+      <path d="M22 46 C22 54,24 58,25 62 L27 72 C28 76,30 80,32 84
+        L32 88 C33 92,34 94,36 96 L36 98 L64 98
+        L64 96 C66 94,67 92,68 88 L68 84 C70 80,72 76,73 72
+        L75 62 C76 58,78 54,78 46 Z" fill="currentColor" opacity="0.8"/>
+      <path d="M36 52 Q50 60 64 52" fill="none" stroke="var(--bg)" stroke-width="0.8" opacity="0.2"/>
+      <line x1="50" y1="58" x2="50" y2="94" stroke="var(--bg)" stroke-width="0.6" opacity="0.15"/>
+      <!-- Bicep bulge hints -->
+      <ellipse cx="16" cy="34" rx="5" ry="8" fill="currentColor" opacity="0.15" transform="rotate(-20 16 34)"/>
+      <ellipse cx="84" cy="34" rx="5" ry="8" fill="currentColor" opacity="0.15" transform="rotate(20 84 34)"/>
+      <!-- Legs -->
+      <path d="M36 98 C34 100,33 104,34 108 L36 128 C37 134,38 140,38 146
+        L37 158 C36 164,36 168,38 172 L40 176 C42 178,46 178,46 176 L44 172
+        C42 168,42 164,43 158 L44 146 C44 140,46 132,47 126 L48 118 L50 118
+        L52 118 L53 126 C54 132,56 140,56 146 L57 158 C58 164,58 168,56 172
+        L54 176 C54 178,58 178,60 176 L62 172 C64 168,64 164,63 158 L62 146
+        C62 140,63 134,64 128 L66 108 C67 104,66 100,64 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    side_relaxed_left: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="38" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M34 28 C30 30,28 35,28 40 L28 68 L24 72 L22 108 C22 112,26 114,27 110 L30 80 L32 72 L34 74 L36 72 L38 80 L40 110 C41 114,45 112,44 108 L42 72 L38 68 L38 40 C38 36,40 32,42 30 L44 34 L42 52 C42 54,44 54,44 52 L46 36 L44 30 Z" fill="currentColor" opacity="0.85"/>
+    side_relaxed_left: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="46" cy="18" rx="11" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M42 30 L42 38 L52 38 L52 30" fill="currentColor" opacity="0.8"/>
+      <!-- Side torso: chest forward, back curve -->
+      <path d="M42 36 C38 38,34 42,33 48
+        L30 54 C28 60,28 66,30 72
+        L32 80 C33 86,34 90,35 96 L35 98
+        L55 98 L55 96 C56 90,56 86,55 80
+        L54 72 C53 66,54 60,56 54
+        L58 48 C58 42,56 38,52 36 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Chest bump -->
+      <path d="M33 48 C30 50,28 54,30 54" fill="currentColor" opacity="0.6"/>
+      <!-- Arm hanging -->
+      <path d="M36 42 C32 46,28 54,26 64 C24 72,24 78,26 84 L28 88
+        C29 90,31 90,31 88 L29 80 C28 74,28 68,30 60 L34 50" fill="currentColor" opacity="0.8"/>
+      <!-- Legs side view -->
+      <path d="M35 98 C34 102,34 108,36 116 L38 132 C39 140,39 148,38 156
+        L36 168 C35 172,36 176,38 178 L42 180 C44 180,44 178,42 176
+        L40 172 C40 168,40 162,42 156 L43 148 C44 142,44 136,44 130
+        L44 120 L46 120 L47 130 C48 136,49 142,50 148
+        L52 156 C53 162,53 168,52 172 L50 176 C50 178,52 180,54 180
+        L56 178 C58 176,57 172,56 168 L54 156 C53 148,53 140,54 132
+        L56 116 C57 108,56 102,55 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    side_relaxed_right: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="42" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M46 28 C50 30,52 35,52 40 L52 68 L56 72 L58 108 C58 112,54 114,53 110 L50 80 L48 72 L46 74 L44 72 L42 80 L40 110 C39 114,35 112,36 108 L38 72 L42 68 L42 40 C42 36,40 32,38 30 L36 34 L38 52 C38 54,36 54,36 52 L34 36 L36 30 Z" fill="currentColor" opacity="0.85"/>
+    side_relaxed_right: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="54" cy="18" rx="11" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M48 30 L48 38 L58 38 L58 30" fill="currentColor" opacity="0.8"/>
+      <!-- Mirrored side torso -->
+      <path d="M58 36 C62 38,66 42,67 48
+        L70 54 C72 60,72 66,70 72
+        L68 80 C67 86,66 90,65 96 L65 98
+        L45 98 L45 96 C44 90,44 86,45 80
+        L46 72 C47 66,46 60,44 54
+        L42 48 C42 42,44 38,48 36 Z" fill="currentColor" opacity="0.8"/>
+      <path d="M67 48 C70 50,72 54,70 54" fill="currentColor" opacity="0.6"/>
+      <!-- Arm -->
+      <path d="M64 42 C68 46,72 54,74 64 C76 72,76 78,74 84 L72 88
+        C71 90,69 90,69 88 L71 80 C72 74,72 68,70 60 L66 50" fill="currentColor" opacity="0.8"/>
+      <!-- Legs mirrored -->
+      <path d="M65 98 C66 102,66 108,64 116 L62 132 C61 140,61 148,62 156
+        L64 168 C65 172,64 176,62 178 L58 180 C56 180,56 178,58 176
+        L60 172 C60 168,60 162,58 156 L57 148 C56 142,56 136,56 130
+        L56 120 L54 120 L53 130 C52 136,51 142,50 148
+        L48 156 C47 162,47 168,48 172 L50 176 C50 178,48 180,46 180
+        L44 178 C42 176,43 172,44 168 L46 156 C47 148,47 140,46 132
+        L44 116 C43 108,44 102,45 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    back_relaxed: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M33 28 C28 30,22 34,20 40 L18 56 C18 58,20 59,22 58 L28 48 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 48 L58 58 C60 59,62 58,62 56 L60 40 C58 34,52 30,47 28 Z" fill="currentColor" opacity="0.85"/>
-      <line x1="40" y1="30" x2="40" y2="60" stroke="var(--bg)" stroke-width="0.8" opacity="0.3"/>
+    back_relaxed: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="50" cy="18" rx="11" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M44 30 L44 38 L56 38 L56 30" fill="currentColor" opacity="0.8"/>
+      <!-- Traps & shoulders -->
+      <path d="M44 36 C38 37,28 40,22 46 L18 48 C16 49,15 52,17 53 L22 50 C24 49,25 48,26 48
+        L74 48 C75 48,76 49,78 50 L83 53 C85 52,84 49,82 48 L78 46 C72 40,62 37,56 36 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Back: lats, taper to waist -->
+      <path d="M26 48 C24 54,22 60,24 66 L26 74 C28 78,30 82,32 86
+        L34 92 C35 95,36 97,36 98
+        L64 98 C64 97,65 95,66 92
+        L68 86 C70 82,72 78,74 74 L76 66 C78 60,76 54,74 48 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Spine -->
+      <line x1="50" y1="38" x2="50" y2="94" stroke="var(--bg)" stroke-width="0.8" opacity="0.2"/>
+      <!-- Shoulder blade hints -->
+      <path d="M34 54 C38 58,38 66,34 70" fill="none" stroke="var(--bg)" stroke-width="0.7" opacity="0.15"/>
+      <path d="M66 54 C62 58,62 66,66 70" fill="none" stroke="var(--bg)" stroke-width="0.7" opacity="0.15"/>
+      <!-- Arms -->
+      <path d="M26 48 C22 52,19 60,18 68 C17 74,17 78,19 82 L21 86 C22 88,24 88,24 86 L22 78 C21 74,22 68,24 62 L26 56" fill="currentColor" opacity="0.8"/>
+      <path d="M74 48 C78 52,81 60,82 68 C83 74,83 78,81 82 L79 86 C78 88,76 88,76 86 L78 78 C79 74,78 68,76 62 L74 56" fill="currentColor" opacity="0.8"/>
+      <!-- Legs -->
+      <path d="M36 98 C34 100,33 104,34 108 L36 128 C37 134,38 140,38 146
+        L37 158 C36 164,36 168,38 172 L40 176 C42 178,46 178,46 176 L44 172
+        C42 168,42 164,43 158 L44 146 C44 140,46 132,47 126 L48 118 L50 118
+        L52 118 L53 126 C54 132,56 140,56 146 L57 158 C58 164,58 168,56 172
+        L54 176 C54 178,58 178,60 176 L62 172 C64 168,64 164,63 158 L62 146
+        C62 140,63 134,64 128 L66 108 C67 104,66 100,64 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    back_flexed: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="40" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M33 28 C26 30,20 34,18 40 L16 42 L10 34 L8 22 C7 19,10 18,12 20 L16 30 L20 38 L28 44 L30 68 L26 72 L24 108 C24 112,28 114,30 110 L34 80 L36 72 L40 74 L44 72 L46 80 L50 110 C52 114,56 112,56 108 L54 72 L50 68 L52 44 L60 38 L64 30 L68 20 C70 18,73 19,72 22 L70 34 L64 42 L62 40 C60 34,54 30,47 28 Z" fill="currentColor" opacity="0.85"/>
-      <line x1="40" y1="30" x2="40" y2="60" stroke="var(--bg)" stroke-width="0.8" opacity="0.3"/>
-      <path d="M32 34 Q40 38 48 34" fill="none" stroke="var(--bg)" stroke-width="0.6" opacity="0.25"/>
+    back_flexed: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="50" cy="18" rx="11" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M44 30 L44 38 L56 38 L56 30" fill="currentColor" opacity="0.8"/>
+      <!-- Wide traps into flexed arms (lat spread) -->
+      <path d="M44 36 C38 37,26 40,20 46 L16 44 L12 36 L8 26
+        C7 22,6 18,8 16 C10 15,13 16,13 20 L14 28 L18 36 L20 40 L20 46
+        L80 46 L80 40 L82 36 L86 28 L87 20
+        C87 16,90 15,92 16 C94 18,93 22,92 26 L88 36 L84 44 L80 46
+        C74 40,62 37,56 36 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Wide back with lat flare -->
+      <path d="M20 46 C18 52,16 60,18 68 L20 76 C22 80,26 84,30 88
+        L34 94 C35 96,36 98,36 98
+        L64 98 C64 98,65 96,66 94
+        L70 88 C74 84,78 80,80 76 L82 68 C84 60,82 52,80 46 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Spine -->
+      <line x1="50" y1="38" x2="50" y2="94" stroke="var(--bg)" stroke-width="0.8" opacity="0.2"/>
+      <!-- Lat/shoulder blade definition -->
+      <path d="M30 52 C36 58,36 70,30 78" fill="none" stroke="var(--bg)" stroke-width="0.8" opacity="0.18"/>
+      <path d="M70 52 C64 58,64 70,70 78" fill="none" stroke="var(--bg)" stroke-width="0.8" opacity="0.18"/>
+      <!-- Lower back christmas tree hint -->
+      <path d="M42 80 Q50 86 58 80" fill="none" stroke="var(--bg)" stroke-width="0.6" opacity="0.12"/>
+      <path d="M44 86 Q50 90 56 86" fill="none" stroke="var(--bg)" stroke-width="0.5" opacity="0.1"/>
+      <!-- Bicep bulge -->
+      <ellipse cx="13" cy="32" rx="5" ry="9" fill="currentColor" opacity="0.15" transform="rotate(-15 13 32)"/>
+      <ellipse cx="87" cy="32" rx="5" ry="9" fill="currentColor" opacity="0.15" transform="rotate(15 87 32)"/>
+      <!-- Legs -->
+      <path d="M36 98 C34 100,33 104,34 108 L36 128 C37 134,38 140,38 146
+        L37 158 C36 164,36 168,38 172 L40 176 C42 178,46 178,46 176 L44 172
+        C42 168,42 164,43 158 L44 146 C44 140,46 132,47 126 L48 118 L50 118
+        L52 118 L53 126 C54 132,56 140,56 146 L57 158 C58 164,58 168,56 172
+        L54 176 C54 178,58 178,60 176 L62 172 C64 168,64 164,63 158 L62 146
+        C62 140,63 134,64 128 L66 108 C67 104,66 100,64 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    quarter_turn_left: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="36" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M30 28 C26 30,22 35,22 40 L20 54 C20 56,22 57,23 55 L26 46 L28 68 L24 72 L22 108 C22 112,26 114,27 110 L30 80 L32 72 L36 74 L40 72 L42 80 L46 110 C47 114,51 112,50 108 L48 72 L44 68 L46 46 L50 55 C51 57,53 56,53 54 L52 40 C50 35,46 30,42 28 Z" fill="currentColor" opacity="0.85"/>
+    quarter_turn_left: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="44" cy="18" rx="12" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M40 30 L40 38 L52 38 L52 30" fill="currentColor" opacity="0.8"/>
+      <!-- 3/4 torso: chest visible, back partially -->
+      <path d="M40 36 C34 38,26 42,22 48 L20 50 C18 51,17 54,19 55 L24 52
+        L24 48 C24 54,22 60,24 68 L26 76 C28 80,30 84,32 88 L34 94 L34 98
+        L60 98 L60 94 C62 88,64 82,66 76 L68 68 C70 60,68 54,66 48
+        L74 52 L79 55 C81 54,80 51,78 50 L74 48 C68 42,58 38,52 36 Z" fill="currentColor" opacity="0.8"/>
+      <!-- Chest contour -->
+      <path d="M28 52 C32 56,36 58,42 56" fill="none" stroke="var(--bg)" stroke-width="0.6" opacity="0.15"/>
+      <!-- Near arm (left, forward) -->
+      <path d="M24 48 C20 52,16 60,15 68 C14 74,14 78,16 82 L18 86
+        C19 88,21 88,21 86 L19 78 C18 74,19 68,22 60 L24 54" fill="currentColor" opacity="0.8"/>
+      <!-- Far arm (right, behind) -->
+      <path d="M66 48 C70 52,74 58,75 66 C76 72,76 76,74 80 L72 84
+        C71 86,69 85,70 83 L72 76 C73 72,72 66,70 60 L68 54" fill="currentColor" opacity="0.75"/>
+      <!-- Legs -->
+      <path d="M34 98 C32 102,32 108,34 116 L36 132 C37 140,37 148,36 156
+        L34 168 C34 172,35 176,37 178 L40 180 C42 180,42 178,40 176
+        L38 172 C38 168,38 162,40 156 L42 148 C42 142,43 136,43 130
+        L44 120 L46 120 L48 130 C49 136,50 142,51 148
+        L53 156 C54 162,54 168,53 172 L51 176 C51 178,53 180,55 180
+        L57 178 C59 176,58 172,57 168 L55 156 C54 148,54 140,55 132
+        L57 116 C58 108,58 102,60 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
-    quarter_turn_right: `<svg viewBox="0 0 80 160" width="56" height="112">
-      <circle cx="44" cy="16" r="10" fill="currentColor" opacity="0.85"/>
-      <path d="M50 28 C54 30,58 35,58 40 L60 54 C60 56,58 57,57 55 L54 46 L52 68 L56 72 L58 108 C58 112,54 114,53 110 L50 80 L48 72 L44 74 L40 72 L38 80 L34 110 C33 114,29 112,30 108 L32 72 L36 68 L34 46 L30 55 C29 57,27 56,27 54 L28 40 C30 35,34 30,38 28 Z" fill="currentColor" opacity="0.85"/>
+    quarter_turn_right: `<svg viewBox="0 0 100 200" width="60" height="120">
+      <ellipse cx="56" cy="18" rx="12" ry="13" fill="currentColor" opacity="0.8"/>
+      <path d="M48 30 L48 38 L60 38 L60 30" fill="currentColor" opacity="0.8"/>
+      <!-- 3/4 torso mirrored -->
+      <path d="M60 36 C66 38,74 42,78 48 L80 50 C82 51,83 54,81 55 L76 52
+        L76 48 C76 54,78 60,76 68 L74 76 C72 80,70 84,68 88 L66 94 L66 98
+        L40 98 L40 94 C38 88,36 82,34 76 L32 68 C30 60,32 54,34 48
+        L26 52 L21 55 C19 54,20 51,22 50 L26 48 C32 42,42 38,48 36 Z" fill="currentColor" opacity="0.8"/>
+      <path d="M72 52 C68 56,64 58,58 56" fill="none" stroke="var(--bg)" stroke-width="0.6" opacity="0.15"/>
+      <!-- Near arm (right, forward) -->
+      <path d="M76 48 C80 52,84 60,85 68 C86 74,86 78,84 82 L82 86
+        C81 88,79 88,79 86 L81 78 C82 74,81 68,78 60 L76 54" fill="currentColor" opacity="0.8"/>
+      <!-- Far arm -->
+      <path d="M34 48 C30 52,26 58,25 66 C24 72,24 76,26 80 L28 84
+        C29 86,31 85,30 83 L28 76 C27 72,28 66,30 60 L32 54" fill="currentColor" opacity="0.75"/>
+      <!-- Legs -->
+      <path d="M66 98 C68 102,68 108,66 116 L64 132 C63 140,63 148,64 156
+        L66 168 C66 172,65 176,63 178 L60 180 C58 180,58 178,60 176
+        L62 172 C62 168,62 162,60 156 L58 148 C58 142,57 136,57 130
+        L56 120 L54 120 L52 130 C51 136,50 142,49 148
+        L47 156 C46 162,46 168,47 172 L49 176 C49 178,47 180,45 180
+        L43 178 C41 176,42 172,43 168 L45 156 C46 148,46 140,45 132
+        L43 116 C42 108,42 102,40 98 Z" fill="currentColor" opacity="0.8"/>
     </svg>`,
   };
   return svgs[key] || svgs.front_relaxed;
