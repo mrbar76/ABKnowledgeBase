@@ -5627,6 +5627,20 @@ async function loadReadiness() {
             explain: d => `${d.kb_entries_7d || 0} KB entries · ${d.conversations_7d || 0} conversations`,
             tip: (d, s) => s >= 80 ? 'Good learning pace' : 'Document learnings and research to build your knowledge base',
           },
+          mental_prep: {
+            label: 'Mental Prep',
+            desc: 'Stress management, self-reporting, research, and planning discipline',
+            explain: d => {
+              const parts = [`${d.context_entries_7d || 0} self-check-ins`];
+              if (d.avg_stress != null) parts.push(`Stress: ${d.avg_stress}/10`);
+              if (d.avg_energy != null) parts.push(`Energy: ${d.avg_energy}/10`);
+              if (d.avg_recovery != null) parts.push(`Recovery: ${d.avg_recovery}/10`);
+              parts.push(`${d.kb_entries_7d || 0} research · ${d.conversations_7d || 0} coaching`);
+              if (d.planning_pct != null) parts.push(`${d.planning_pct}% planned`);
+              return parts.join(' · ');
+            },
+            tip: (d, s) => s >= 80 ? 'Strong mental preparation — keep the routine' : s >= 50 ? (d.planning_pct != null && d.planning_pct < 50 ? 'Set due dates on tasks to improve planning discipline' : 'Log daily stress, energy, and recovery ratings') : 'Start daily self-check-ins: log stress, energy, recovery in daily nutrition context. Plan tasks with due dates.',
+          },
         };
 
         html += '<div class="readiness-systems">';
@@ -5670,6 +5684,7 @@ async function loadReadiness() {
             <button class="btn-action" onclick="computeReadiness('${p.id}')">Compute Now</button>
             <button class="btn-action btn-action-secondary" onclick="viewReadinessHistory('${p.id}')">History</button>
             <button class="btn-action btn-action-secondary" onclick="getReadinessCoaching('${p.id}')">Coaching</button>
+            <button class="btn-action btn-action-secondary" onclick="generateAIMatrix('${p.id}')">AI Matrix</button>
             <button class="btn-action btn-action-secondary" onclick="editReadinessProfile('${p.id}')">Edit</button>
           </div>
         </div>`;
@@ -5700,11 +5715,46 @@ async function computeReadiness(profileId) {
 }
 
 async function seedSpartanProfile() {
+  const html = `
+    <form onsubmit="doSeedSpartan(event)">
+      <p style="margin-bottom:12px;color:var(--text-dim)">Every goal needs a target date. When is your Spartan race?</p>
+      <div class="form-group"><label>Goal Date *</label><input type="date" id="spartan-goal-date" required></div>
+      <button type="submit" class="btn-submit" style="width:100%;margin-top:12px">Create Spartan Sprint Profile</button>
+    </form>`;
+  openModal('Seed Spartan Sprint', html);
+}
+
+async function doSeedSpartan(e) {
+  e.preventDefault();
+  const goalDate = document.getElementById('spartan-goal-date').value;
+  if (!goalDate) { showToast('Goal date is required'); return; }
   try {
     showToast('Seeding Spartan Sprint profile...');
-    await api('/readiness/profiles/seed/spartan-sprint', { method: 'POST', body: JSON.stringify({}) });
+    await api('/readiness/profiles/seed/spartan-sprint', { method: 'POST', body: JSON.stringify({ goal_date: goalDate }) });
+    closeModal();
     showToast('Spartan Sprint profile created!');
     loadReadiness();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function generateAIMatrix(profileId) {
+  try {
+    showToast('Generating AI demand matrix prompt...');
+    const res = await api(`/readiness/ai-matrix/${profileId}`);
+
+    let html = `<div class="readiness-ai-matrix">`;
+    html += `<div style="margin-bottom:12px">
+      <span class="readiness-phase">Goal: ${esc(res.goal_date)}</span>
+      <span class="readiness-countdown">${res.days_to_goal}d remaining</span>
+    </div>`;
+    html += `<p style="margin-bottom:8px;color:var(--text-dim)">${esc(res.tip)}</p>`;
+    html += `<textarea class="ai-matrix-prompt" readonly style="width:100%;min-height:400px;font-family:monospace;font-size:12px;background:var(--bg-elevated);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px;resize:vertical">${esc(res.prompt)}</textarea>`;
+    html += `<button class="btn-submit" style="width:100%;margin-top:12px" onclick="navigator.clipboard.writeText(document.querySelector('.ai-matrix-prompt').value);showToast('Prompt copied to clipboard!')">Copy Prompt to Clipboard</button>`;
+    html += `</div>`;
+
+    openModal('AI Demand Matrix Prompt', html);
   } catch (err) {
     showToast('Error: ' + err.message);
   }
@@ -5819,10 +5869,10 @@ function openCreateProfileModal() {
     <form onsubmit="createReadinessProfile(event)">
       <div class="form-group"><label>Title</label><input type="text" id="rp-title" required placeholder="e.g. Marathon Prep"></div>
       <div class="form-group"><label>Profile Type</label><input type="text" id="rp-type" required placeholder="e.g. marathon, spartan_sprint, general"></div>
-      <div class="form-group"><label>Goal Date</label><input type="date" id="rp-goal-date"></div>
+      <div class="form-group"><label>Goal Date *</label><input type="date" id="rp-goal-date" required></div>
       <div class="form-group">
         <label>Systems (comma-separated)</label>
-        <input type="text" id="rp-systems" value="strength,nutrition,recovery,execution,consistency,body_composition" placeholder="strength,nutrition,recovery,...">
+        <input type="text" id="rp-systems" value="strength,nutrition,recovery,execution,consistency,body_composition,knowledge,mental_prep" placeholder="strength,nutrition,recovery,...">
       </div>
       <button type="submit" class="btn-submit" style="width:100%;margin-top:12px">Create Profile</button>
     </form>`;
