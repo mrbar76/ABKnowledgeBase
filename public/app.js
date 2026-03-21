@@ -793,9 +793,10 @@ async function copyGptActionsSchema() {
   const resultEl = document.getElementById('sm-schema-result');
   try {
     btn.textContent = 'Loading...';
-    const resp = await fetch('/openapi-gpt-actions.yaml');
+    const resp = await fetch('/openapi-chatgpt.json');
     if (!resp.ok) throw new Error('Failed to fetch schema');
-    const text = await resp.text();
+    const data = await resp.json();
+    const text = JSON.stringify(data, null, 2);
     await navigator.clipboard.writeText(text);
     btn.textContent = 'Copied!';
     resultEl.style.display = 'block';
