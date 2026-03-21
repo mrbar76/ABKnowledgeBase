@@ -4,12 +4,19 @@
 
 const { Pool } = require('pg');
 
+const APP_TIMEZONE = process.env.TZ || process.env.APP_TIMEZONE || 'America/New_York';
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
     ? { rejectUnauthorized: false }
     : false,
   max: 20,
+});
+
+// Set timezone on every new connection so CURRENT_DATE, NOW(), etc. use the user's local time
+pool.on('connect', (client) => {
+  client.query(`SET timezone = '${APP_TIMEZONE}'`).catch(() => {});
 });
 
 async function query(text, params) {
