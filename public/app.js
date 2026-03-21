@@ -5520,7 +5520,7 @@ async function loadReadiness() {
   container.innerHTML = '<div class="loading-spinner"></div>';
 
   try {
-    const res = await api('/api/readiness/dashboard');
+    const res = await api('/readiness/dashboard');
     const dashboard = res?.dashboard || [];
 
     if (!dashboard.length) {
@@ -5614,7 +5614,7 @@ async function loadReadiness() {
 async function computeReadiness(profileId) {
   try {
     showToast('Computing readiness...');
-    const res = await api(`/api/readiness/compute/${profileId}`, { method: 'POST', body: JSON.stringify({}) });
+    const res = await api(`/readiness/compute/${profileId}`, { method: 'POST', body: JSON.stringify({}) });
     showToast(`Readiness score: ${res.snapshot.composite_score}`);
     loadReadiness();
   } catch (err) {
@@ -5625,7 +5625,7 @@ async function computeReadiness(profileId) {
 async function seedSpartanProfile() {
   try {
     showToast('Seeding Spartan Sprint profile...');
-    await api('/api/readiness/profiles/seed/spartan-sprint', { method: 'POST', body: JSON.stringify({}) });
+    await api('/readiness/profiles/seed/spartan-sprint', { method: 'POST', body: JSON.stringify({}) });
     showToast('Spartan Sprint profile created!');
     loadReadiness();
   } catch (err) {
@@ -5636,8 +5636,8 @@ async function seedSpartanProfile() {
 async function viewReadinessHistory(profileId) {
   try {
     const [histRes, profileRes] = await Promise.all([
-      api(`/api/readiness/snapshots/${profileId}/history?days=30`),
-      api(`/api/readiness/profiles/${profileId}`),
+      api(`/readiness/snapshots/${profileId}/history?days=30`),
+      api(`/readiness/profiles/${profileId}`),
     ]);
     const history = histRes.history || [];
     const profile = profileRes;
@@ -5705,7 +5705,7 @@ async function viewReadinessHistory(profileId) {
 async function getReadinessCoaching(profileId) {
   try {
     showToast('Generating coaching insights...');
-    const res = await api(`/api/readiness/coaching/${profileId}`, { method: 'POST', body: JSON.stringify({}) });
+    const res = await api(`/readiness/coaching/${profileId}`, { method: 'POST', body: JSON.stringify({}) });
     const c = res.coaching;
 
     let html = `<div class="readiness-coaching">`;
@@ -5762,7 +5762,7 @@ async function createReadinessProfile(e) {
       goal_date: document.getElementById('rp-goal-date').value || null,
       systems,
     };
-    await api('/api/readiness/profiles', { method: 'POST', body: JSON.stringify(body) });
+    await api('/readiness/profiles', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
     showToast('Profile created!');
     loadReadiness();
@@ -5773,7 +5773,7 @@ async function createReadinessProfile(e) {
 
 async function editReadinessProfile(profileId) {
   try {
-    const profile = await api(`/api/readiness/profiles/${profileId}`);
+    const profile = await api(`/readiness/profiles/${profileId}`);
     const html = `
       <form onsubmit="updateReadinessProfile(event, '${profileId}')">
         <div class="form-group"><label>Title</label><input type="text" id="rp-edit-title" value="${esc(profile.title)}" required></div>
@@ -5808,7 +5808,7 @@ async function updateReadinessProfile(e, profileId) {
       goal_date: document.getElementById('rp-edit-goal-date').value || null,
       systems,
     };
-    await api(`/api/readiness/profiles/${profileId}`, { method: 'PUT', body: JSON.stringify(body) });
+    await api(`/readiness/profiles/${profileId}`, { method: 'PUT', body: JSON.stringify(body) });
     closeModal();
     showToast('Profile updated!');
     loadReadiness();
@@ -5820,7 +5820,7 @@ async function updateReadinessProfile(e, profileId) {
 async function deleteReadinessProfile(profileId) {
   if (!confirm('Delete this profile and all its snapshots?')) return;
   try {
-    await api(`/api/readiness/profiles/${profileId}`, { method: 'DELETE' });
+    await api(`/readiness/profiles/${profileId}`, { method: 'DELETE' });
     closeModal();
     showToast('Profile deleted');
     loadReadiness();
