@@ -886,10 +886,6 @@ function _buildSchema(checkedList) {
   built.paths = {};
   for (const [path, methods] of selected.entries()) {
     built.paths[path] = {};
-    // Copy path-level parameters if present
-    if (_fullSchema.paths[path] && _fullSchema.paths[path].parameters) {
-      built.paths[path].parameters = _fullSchema.paths[path].parameters;
-    }
     for (const m of methods) {
       if (_fullSchema.paths[path] && _fullSchema.paths[path][m]) {
         built.paths[path][m] = _fullSchema.paths[path][m];

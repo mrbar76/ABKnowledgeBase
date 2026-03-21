@@ -165,7 +165,18 @@
           "200": {
             "description": "Knowledge entry"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateKnowledge",
@@ -200,7 +211,18 @@
           "200": {
             "description": "Updated entry"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteKnowledge",
@@ -209,19 +231,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/tasks": {
       "get": {
@@ -390,7 +412,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateTask",
@@ -440,7 +473,18 @@
           "200": {
             "description": "Updated"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteTask",
@@ -449,19 +493,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/projects": {
       "get": {
@@ -756,7 +800,18 @@
           "200": {
             "description": "Fact"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateFact",
@@ -794,7 +849,18 @@
           "200": {
             "description": "Updated fact"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteFact",
@@ -803,19 +869,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/conversations": {
       "get": {
@@ -920,7 +986,18 @@
           "200": {
             "description": "Conversation with full_thread"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateConversation",
@@ -952,7 +1029,18 @@
           "200": {
             "description": "Updated"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteConversation",
@@ -961,19 +1049,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/transcripts/{id}": {
       "get": {
@@ -983,7 +1071,18 @@
           "200": {
             "description": "Transcript with speakers"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteTranscript",
@@ -992,19 +1091,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/workouts/{id}": {
       "get": {
@@ -1014,7 +1113,18 @@
           "200": {
             "description": "Workout detail"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateWorkout",
@@ -1039,7 +1149,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteWorkout",
@@ -1048,19 +1169,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/workouts/stats/summary": {
       "get": {
@@ -1881,7 +2002,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "patch": {
         "operationId": "updateBodyMetric",
@@ -1907,7 +2039,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteBodyMetric",
@@ -1916,19 +2059,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/meals": {
       "get": {
@@ -2083,7 +2226,18 @@
           "200": {
             "description": "Meal entry"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "patch": {
         "operationId": "updateMeal",
@@ -2102,7 +2256,18 @@
           "200": {
             "description": "Updated meal"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteMeal",
@@ -2111,19 +2276,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/nutrition/daily-context": {
       "get": {
@@ -2203,19 +2368,19 @@
           "200": {
             "description": "Updated context"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/nutrition/daily-summary": {
       "get": {
@@ -2425,7 +2590,18 @@
           "200": {
             "description": "Training plan with related data"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateTrainingPlan",
@@ -2443,7 +2619,18 @@
           "200": {
             "description": "Updated plan"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteTrainingPlan",
@@ -2452,19 +2639,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/training/coaching": {
       "get": {
@@ -2571,7 +2758,18 @@
           "200": {
             "description": "Coaching session"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateCoachingSession",
@@ -2589,7 +2787,18 @@
           "200": {
             "description": "Updated session"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteCoachingSession",
@@ -2598,19 +2807,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/training/injuries": {
       "get": {
@@ -2715,7 +2924,18 @@
           "200": {
             "description": "Injury details"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "put": {
         "operationId": "updateInjury",
@@ -2733,7 +2953,18 @@
           "200": {
             "description": "Updated injury"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteInjury",
@@ -2742,19 +2973,19 @@
           "200": {
             "description": "Deleted"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "/training/injuries/active/summary": {
       "get": {
@@ -2775,20 +3006,20 @@
           "200": {
             "description": "Complete training day view with all cross-referenced data"
           }
-        }
-      },
-      "parameters": [
-        {
-          "name": "date",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "date"
-          },
-          "description": "Date in YYYY-MM-DD format"
-        }
-      ]
+        },
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date in YYYY-MM-DD format"
+          }
+        ]
+      }
     },
     "/gamification": {
       "get": {
