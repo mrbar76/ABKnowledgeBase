@@ -791,6 +791,16 @@ async function handleChatGPTImport(input) {
 
 /* ── Schema Builder ── */
 let _fullSchema = null;
+
+// Skip these operationIds from presets (low-priority: deletes, bulk imports)
+const SKIP_OPS = new Set([
+  'deleteKnowledge','deleteTask','deleteFact','deleteConversation','deleteTranscript',
+  'deleteWorkout','deleteBodyMetric','deleteMeal','deleteTrainingPlan',
+  'deleteCoachingSession','deleteInjury',
+  'bulkImportWorkouts','bulkImportBodyMetrics','bulkImportMeals'
+]);
+
+// Fitness-focused paths for Spartan preset
 const SPARTAN_PATHS = ['/workouts','/workouts/{id}','/workouts/stats/summary','/body-metrics','/body-metrics/{id}',
   '/meals','/meals/{id}','/nutrition/daily-context','/nutrition/daily-summary',
   '/training/plans','/training/plans/{id}','/training/coaching','/training/coaching/{id}',
@@ -826,7 +836,7 @@ function renderSchemaBuilder() {
     for (const op of ops) {
       const id = `schema-cb-${op.opId}`;
       html += `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer">
-        <input type="checkbox" id="${id}" data-path="${op.path}" data-method="${op.method}" onchange="updateSchemaCount()">
+        <input type="checkbox" id="${id}" data-path="${op.path}" data-method="${op.method}" data-opid="${op.opId}" onchange="updateSchemaCount()">
         <span style="color:var(--text-dim);min-width:42px;font-size:0.65rem;text-transform:uppercase">${op.method}</span>
         <span>${op.summary || op.opId}</span>
       </label>`;
@@ -836,48 +846,68 @@ function renderSchemaBuilder() {
 }
 
 function schemaPreset(type) {
-  const cbs = document.querySelectorAll('#schema-builder-list input[type=checkbox]');
-  cbs.forEach(cb => {
-    const path = cb.dataset.path;
-    if (type === 'all') cb.checked = true;
-    else if (type === 'none') cb.checked = false;
-    else if (type === 'spartan') cb.checked = SPARTAN_PATHS.some(p => path.startsWith(p.replace('/{id}','')) || path === p);
-    else if (type === 'brain') cb.checked = !SPARTAN_PATHS.includes(path) || ['/intake','/search','/dashboard'].includes(path);
-  });
+  const cbs = Array.from(document.querySelectorAll('#schema-builder-list input[type=checkbox]'));
+  if (type === 'none') {
+    cbs.forEach(cb => cb.checked = false);
+  } else if (type === 'all') {
+    // Select best 30: skip deletes and bulk, prioritize by order
+    let count = 0;
+    cbs.forEach(cb => {
+      const dominated = SKIP_OPS.has(cb.dataset.opid);
+      cb.checked = !dominated && count < 30;
+      if (cb.checked) count++;
+    });
+  } else if (type === 'spartan') {
+    let count = 0;
+    cbs.forEach(cb => {
+      const path = cb.dataset.path;
+      const inSpartan = SPARTAN_PATHS.some(p => path.startsWith(p.replace('/{id}','').replace('/{date}','')) || path === p);
+      const skip = SKIP_OPS.has(cb.dataset.opid);
+      cb.checked = inSpartan && !skip && count < 30;
+      if (cb.checked) count++;
+    });
+  } else if (type === 'brain') {
+    let count = 0;
+    cbs.forEach(cb => {
+      const path = cb.dataset.path;
+      const isBrain = !SPARTAN_PATHS.includes(path) || ['/intake','/search','/dashboard'].includes(path);
+      const skip = SKIP_OPS.has(cb.dataset.opid);
+      cb.checked = isBrain && !skip && count < 30;
+      if (cb.checked) count++;
+    });
+  }
   updateSchemaCount();
 }
 
 function updateSchemaCount() {
-  const checked = document.querySelectorAll('#schema-builder-list input:checked');
-  const count = checked.length;
+  const count = document.querySelectorAll('#schema-builder-list input:checked').length;
   const el = document.getElementById('schema-count');
-  if (el) el.textContent = count;
-
-  // Build copy buttons — one per group of 30
-  const btnContainer = document.getElementById('schema-copy-buttons');
-  if (!btnContainer) return;
-  const groups = Math.ceil(count / 30) || 1;
-  if (count === 0) {
-    btnContainer.innerHTML = '<div class="sm-btn-row"><button class="btn-action" onclick="copyBuiltSchema(0)" id="btn-copy-0">Copy Schema</button></div>';
-    return;
+  if (el) {
+    el.textContent = count;
+    el.style.color = count > 30 ? '#e74c3c' : 'var(--accent)';
   }
-  let html = '<div class="sm-btn-row" style="flex-wrap:wrap;gap:6px">';
-  if (groups === 1) {
-    html += `<button class="btn-action" onclick="copyBuiltSchema(0)" id="btn-copy-0">Copy Schema (${count})</button>`;
-  } else {
-    for (let g = 0; g < groups; g++) {
-      const start = g * 30 + 1;
-      const end = Math.min((g + 1) * 30, count);
-      html += `<button class="btn-action" onclick="copyBuiltSchema(${g})" id="btn-copy-${g}">Copy Action ${g + 1} (${start}–${end})</button>`;
-    }
-  }
-  html += '</div>';
-  btnContainer.innerHTML = html;
 }
 
-function _buildSchema(checkedList) {
+async function copyBuiltSchema() {
+  const btn = document.getElementById('btn-copy-built');
+  const resultEl = document.getElementById('sm-schema-result');
+  if (!_fullSchema) { await loadSchemaBuilder(); }
+  const checked = document.querySelectorAll('#schema-builder-list input:checked');
+  if (checked.length === 0) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Select at least one endpoint.';
+    return;
+  }
+  if (checked.length > 30) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = `Too many endpoints (${checked.length}/30). ChatGPT allows only one action per domain with max 30 operations.`;
+    return;
+  }
+  // Build filtered schema
   const selected = new Map();
-  checkedList.forEach(cb => {
+  checked.forEach(cb => {
     const key = cb.dataset.path;
     if (!selected.has(key)) selected.set(key, []);
     selected.get(key).push(cb.dataset.method);
@@ -901,38 +931,17 @@ function _buildSchema(checkedList) {
       }
     }
   }
-  return built;
-}
-
-async function copyBuiltSchema(groupIndex) {
-  const resultEl = document.getElementById('sm-schema-result');
-  if (!_fullSchema) { await loadSchemaBuilder(); }
-  const allChecked = Array.from(document.querySelectorAll('#schema-builder-list input:checked'));
-  if (allChecked.length === 0) {
-    resultEl.style.display = 'block';
-    resultEl.style.color = '#e74c3c';
-    resultEl.textContent = 'Select at least one endpoint.';
-    return;
-  }
-  // Slice to the requested group of 30
-  const start = groupIndex * 30;
-  const end = Math.min(start + 30, allChecked.length);
-  const groupChecked = allChecked.slice(start, end);
-  const built = _buildSchema(groupChecked);
-  const btn = document.getElementById(`btn-copy-${groupIndex}`);
   try {
-    if (btn) btn.textContent = 'Copying...';
+    btn.textContent = 'Copying...';
     const out = JSON.stringify(built, null, 2);
     await navigator.clipboard.writeText(out);
-    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => updateSchemaCount(), 3000); }
+    btn.textContent = 'Copied!';
     resultEl.style.display = 'block';
     resultEl.style.color = 'var(--accent)';
-    const totalGroups = Math.ceil(allChecked.length / 30);
-    resultEl.textContent = totalGroups > 1
-      ? `Copied Action ${groupIndex + 1} (${groupChecked.length} ops) to clipboard.`
-      : `Copied ${groupChecked.length} operations to clipboard.`;
+    resultEl.textContent = `Copied ${checked.length} operations to clipboard.`;
+    setTimeout(() => { btn.textContent = 'Copy Schema'; }, 3000);
   } catch (err) {
-    if (btn) btn.textContent = 'Copy Schema';
+    btn.textContent = 'Copy Schema';
     resultEl.style.display = 'block';
     resultEl.style.color = '#e74c3c';
     resultEl.textContent = 'Error: ' + err.message;

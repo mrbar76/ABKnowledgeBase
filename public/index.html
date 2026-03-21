@@ -165,8 +165,10 @@
                 <button class="btn-action btn-action-secondary" onclick="schemaPreset('none')" style="font-size:0.7rem">None</button>
               </div>
               <div id="schema-builder-list" style="max-height:300px;overflow-y:auto;font-size:0.75rem;margin-bottom:8px"></div>
-              <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px"><span id="schema-count">0</span> selected</div>
-              <div id="schema-copy-buttons"></div>
+              <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px"><span id="schema-count">0</span>/30 selected</div>
+              <div class="sm-btn-row">
+                <button class="btn-action" onclick="copyBuiltSchema()" id="btn-copy-built">Copy Schema</button>
+              </div>
               <div id="sm-schema-result" class="sm-result"></div>
             </div>
           </div>
