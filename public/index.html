@@ -262,6 +262,39 @@
     </button>
   </nav>
 
+  <!-- Quick Action FAB -->
+  <div class="fab-container" id="fab-container" style="display:none">
+    <div class="fab-menu" id="fab-menu">
+      <div class="fab-menu-item" onclick="fabAction('task')">
+        <div class="fab-menu-icon" style="background:color-mix(in srgb, var(--color-tactical) 12%, transparent);color:var(--color-tactical)">
+          <i data-lucide="check-square" style="width:15px;height:15px"></i>
+        </div>
+        <span>New Task</span>
+      </div>
+      <div class="fab-menu-item" onclick="fabAction('workout')">
+        <div class="fab-menu-icon" style="background:color-mix(in srgb, var(--color-physical) 12%, transparent);color:var(--color-physical)">
+          <i data-lucide="dumbbell" style="width:15px;height:15px"></i>
+        </div>
+        <span>Log Workout</span>
+      </div>
+      <div class="fab-menu-item" onclick="fabAction('meal')">
+        <div class="fab-menu-icon" style="background:color-mix(in srgb, var(--color-mental) 12%, transparent);color:var(--color-mental)">
+          <i data-lucide="utensils" style="width:15px;height:15px"></i>
+        </div>
+        <span>Log Meal</span>
+      </div>
+      <div class="fab-menu-item" onclick="fabAction('weight')">
+        <div class="fab-menu-icon" style="background:color-mix(in srgb, var(--color-body) 12%, transparent);color:var(--color-body)">
+          <i data-lucide="scale" style="width:15px;height:15px"></i>
+        </div>
+        <span>Log Weight</span>
+      </div>
+    </div>
+    <button class="fab-btn" id="fab-btn" onclick="toggleFab()">
+      <i data-lucide="plus" style="width:24px;height:24px"></i>
+    </button>
+  </div>
+
   <!-- Modal overlay -->
   <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
     <div class="modal" onclick="event.stopPropagation()">

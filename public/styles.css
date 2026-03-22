@@ -321,7 +321,7 @@ body {
 
 /* --- Form elements --- */
 .form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 4px; }
+.form-group label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.03em; }
 .form-group input, .form-group select, .form-group textarea {
   width: 100%;
   padding: 10px;
@@ -560,17 +560,19 @@ body {
 }
 
 /* --- Modal --- */
+/* --- Modal / Focus Mode (Dark Room) --- */
 .modal-overlay {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 200;
   align-items: center;
   justify-content: center;
-  animation: overlayFadeIn 0.15s ease;
+  padding: 16px;
+  animation: focusFadeIn 0.25s ease-out;
 }
 .modal-overlay.open { display: flex; }
 .modal {
@@ -581,25 +583,22 @@ body {
   max-width: 500px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
-  animation: modalSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-@keyframes modalSlideIn {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to { opacity: 1; transform: none; }
+  box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+  animation: focusCardIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 18px;
+  padding: 20px 20px 16px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   background: var(--bg-card-solid);
   z-index: 1;
+  border-radius: 16px 16px 0 0;
 }
-.modal-header h3 { font-size: 1rem; }
+.modal-header h3 { font-size: 1.1rem; font-weight: 700; }
 .modal-close {
   background: none;
   border: none;
@@ -615,7 +614,12 @@ body {
   transition: all var(--transition);
 }
 .modal-close:hover { background: var(--bg-input); color: var(--text); }
-.modal-body { padding: 18px; }
+.modal-body { padding: 20px; }
+/* Monospace for numeric inputs inside modals */
+.modal-body input[type="number"],
+.modal-body .font-data {
+  font-family: var(--font-data);
+}
 
 /* --- Layout Utilities --- */
 .flex-row { display: flex; align-items: center; gap: 8px; }
@@ -671,9 +675,9 @@ body {
 
 /* --- Detail Table --- */
 .detail-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.detail-table td { padding: 4px 8px; }
+.detail-table td { padding: 6px 8px; }
 .detail-table td:first-child { color: var(--text-dim); white-space: nowrap; }
-.detail-table td:last-child { font-weight: 600; }
+.detail-table td:last-child { font-weight: 600; font-family: var(--font-data); }
 
 /* --- Detail Info Block --- */
 .detail-info {
@@ -1036,6 +1040,104 @@ body {
 }
 .focus-save-btn.saved {
   animation: savePulse 0.6s ease-out;
+}
+
+/* --- Quick Action FAB (Glassmorphic +) --- */
+.fab-container {
+  position: fixed;
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  right: 16px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.fab-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 15px rgba(129, 140, 248, 0.15);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fab-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.4), 0 0 20px rgba(129, 140, 248, 0.25);
+}
+.fab-btn:active { transform: scale(0.95); }
+.fab-btn.open { transform: rotate(45deg); }
+.fab-menu {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+.fab-menu.open { display: flex; }
+.fab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 12px;
+  border-radius: 12px;
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  transition: all var(--transition);
+  animation: fabItemIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.fab-menu-item:nth-child(1) { animation-delay: 0s; }
+.fab-menu-item:nth-child(2) { animation-delay: 0.04s; }
+.fab-menu-item:nth-child(3) { animation-delay: 0.08s; }
+.fab-menu-item:nth-child(4) { animation-delay: 0.12s; }
+.fab-menu-item:hover { border-color: var(--accent); }
+.fab-menu-item:active { transform: scale(0.97); }
+.fab-menu-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@keyframes fabItemIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Light mode FAB */
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) .fab-btn { background: rgba(255,255,255,0.9); border-color: #e2e8f0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+}
+html[data-theme="light"] .fab-btn { background: rgba(255,255,255,0.9); border-color: #e2e8f0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+
+/* --- Mobile Optimizations --- */
+@media (max-width: 480px) {
+  .stream-card { padding: 12px 14px; }
+  .stream-card-icon { width: 24px; height: 24px; border-radius: 6px; }
+  .stream-card-title { font-size: 0.78rem; }
+  .fab-container { right: 12px; }
+  .rings-container { width: 160px; height: 160px; }
+  .focus-card { padding: 20px 16px; max-height: 90vh; }
+  .modal { width: 95%; max-height: 90vh; }
+}
+@media (max-width: 374px) {
+  .stream-card-metric { font-size: 0.65rem; }
+  .rings-container { width: 140px; height: 140px; }
+  .fab-btn { width: 46px; height: 46px; }
 }
 
 /* --- Ring-style stat cards (Apple Fitness inspired) --- */
@@ -2182,10 +2284,10 @@ html[data-theme="light"] .settings-panel {
 
 @media (prefers-color-scheme: light) { html:not([data-theme="dark"]) .modal-overlay,
 html:not([data-theme="dark"]) .search-overlay,
-html:not([data-theme="dark"]) .settings-menu { background: rgba(0, 0, 0, 0.2); } }
+html:not([data-theme="dark"]) .settings-menu { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); } }
 html[data-theme="light"] .modal-overlay,
 html[data-theme="light"] .search-overlay,
-html[data-theme="light"] .settings-menu { background: rgba(0, 0, 0, 0.2); }
+html[data-theme="light"] .settings-menu { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 
 @media (prefers-color-scheme: light) { html:not([data-theme="dark"]) .skeleton {
   background: linear-gradient(90deg, #dddde2 25%, #ccccd4 50%, #dddde2 75%);

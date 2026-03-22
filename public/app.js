@@ -73,6 +73,7 @@ function hideLogin() {
   document.querySelector('.app-header').style.display = '';
   document.getElementById('main-content').style.display = '';
   document.getElementById('bottom-nav').style.display = '';
+  showFab();
 }
 async function doLogin(e) {
   if (e) e.preventDefault();
@@ -4861,6 +4862,55 @@ function timeAgo(dateStr) {
   if(diff<86400)return`${Math.floor(diff/3600)}h ago`; if(diff<604800)return`${Math.floor(diff/86400)}d ago`;
   return new Date(dateStr).toLocaleDateString();
 }
+
+// ─── Quick Action FAB ─────────────────────────────────────────
+let _fabOpen = false;
+function toggleFab() {
+  _fabOpen = !_fabOpen;
+  const btn = document.getElementById('fab-btn');
+  const menu = document.getElementById('fab-menu');
+  if (btn) btn.classList.toggle('open', _fabOpen);
+  if (menu) menu.classList.toggle('open', _fabOpen);
+}
+
+function showFab() {
+  const fab = document.getElementById('fab-container');
+  if (fab) { fab.style.display = ''; renderIcons(); }
+}
+function hideFab() {
+  const fab = document.getElementById('fab-container');
+  if (fab) fab.style.display = 'none';
+  _fabOpen = false;
+}
+
+function fabAction(type) {
+  toggleFab(); // close menu
+  switch (type) {
+    case 'task':
+      switchTab('tasks');
+      setTimeout(() => { if (typeof showTaskForm === 'function') showTaskForm(); }, 300);
+      break;
+    case 'workout':
+      switchTab('fitness');
+      setTimeout(() => { if (typeof showWorkoutForm === 'function') showWorkoutForm(); }, 300);
+      break;
+    case 'meal':
+      fitnessSubTab = 'nutrition';
+      switchTab('fitness');
+      setTimeout(() => { if (typeof showMealForm === 'function') showMealForm(); }, 300);
+      break;
+    case 'weight':
+      fitnessSubTab = 'body';
+      switchTab('fitness');
+      setTimeout(() => { if (typeof showBodyMetricForm === 'function') showBodyMetricForm(); }, 300);
+      break;
+  }
+}
+
+// Close FAB when clicking outside
+document.addEventListener('click', e => {
+  if (_fabOpen && !e.target.closest('.fab-container')) toggleFab();
+});
 
 // ─── Init ─────────────────────────────────────────────────────
 (async function init() {
