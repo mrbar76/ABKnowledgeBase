@@ -39,6 +39,25 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
   if (getThemeMode() === 'auto') applyCurrentTheme();
 });
 
+// ─── Lucide Icon Helpers ──────────────────────────────────────
+function icon(name, size = 16, cls = '') {
+  return `<i data-lucide="${name}" class="lucide-icon ${cls}" style="width:${size}px;height:${size}px"></i>`;
+}
+function renderIcons() { if (window.lucide) lucide.createIcons(); }
+
+const BADGE_ICON_MAP = {
+  '🏆': 'trophy', '🎯': 'target', '⭐': 'star', '🔥': 'flame',
+  '💪': 'dumbbell', '🏅': 'medal', '📊': 'bar-chart-2', '🔒': 'lock',
+  '🎖️': 'award', '⚡': 'zap', '🌿': 'leaf', '💎': 'gem',
+  '🧠': 'brain', '📋': 'clipboard-list', '🎙': 'mic', '💬': 'message-square',
+  '🏋': 'dumbbell', '🍎': 'utensils', '📏': 'ruler', '🩹': 'heart-pulse',
+  '🔔': 'bell', '✅': 'check-circle', '📅': 'calendar-clock', '📆': 'calendar-range',
+  '🔍': 'search', '🧑‍🏫': 'graduation-cap',
+};
+function badgeIcon(emoji, size = 22) {
+  return icon(BADGE_ICON_MAP[emoji] || 'award', size);
+}
+
 // ─── Auth ─────────────────────────────────────────────────────
 function getStoredKey() { return sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key') || ''; }
 
@@ -168,6 +187,7 @@ async function loadBadges() {
       <h2 style="font-size:1rem;font-weight:700;margin-bottom:12px">Badges <span style="font-weight:400;color:var(--text-dim)">${badges.total_unlocked}/${badges.total_available} unlocked</span></h2>
       ${buildBadgeGrid(badges)}
     `;
+    renderIcons();
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
@@ -193,27 +213,25 @@ async function loadDashboard() {
     <div id="dash-content">
       <div class="dash-section">
         <div class="dash-section-header">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-          Tasks
+          ${icon('check-square', 14, 'text-tactical')} Tasks
         </div>
         <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
       <div class="dash-section">
         <div class="dash-section-header">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-          Knowledge Base
+          ${icon('brain', 14, 'text-mental')} Knowledge Base
         </div>
         <div class="stats-grid">${skeletonStats(4)}</div>
       </div>
       <div class="dash-section">
         <div class="dash-section-header">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
-          Fitness
+          ${icon('dumbbell', 14, 'text-physical')} Fitness
         </div>
         <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
     </div>
   `;
+  renderIcons();
 
   loadDashboardStats();
   loadGamification();
@@ -230,15 +248,15 @@ async function loadDashboardStats() {
     const activeInjuries = data.training?.injuries?.active || 0;
 
     const fitnessCards = [
-      { label: 'Workouts', value: data.workouts?.total || 0, color: '#22c55e', icon: '\u{1F3CB}', sub: 'workouts' },
-      { label: 'Meals', value: data.meals?.total || 0, color: '#f97316', icon: '\u{1F34E}', sub: 'nutrition' },
-      { label: 'Body Metrics', value: data.body_metrics?.total || 0, color: '#3b82f6', icon: '\u{1F4CF}', sub: 'body' },
+      { label: 'Workouts', value: data.workouts?.total || 0, color: 'var(--color-physical)', iconName: 'dumbbell', sub: 'workouts' },
+      { label: 'Meals', value: data.meals?.total || 0, color: 'var(--orange)', iconName: 'utensils', sub: 'nutrition' },
+      { label: 'Body Metrics', value: data.body_metrics?.total || 0, color: 'var(--color-body)', iconName: 'ruler', sub: 'body' },
     ];
     if (data.training) {
       fitnessCards.push(
-        { label: 'Active Plans', value: data.training.plans?.active || 0, color: '#a855f7', icon: '\u{1F4CB}', sub: 'training' },
-        { label: 'Coaching', value: data.training.coaching_sessions?.total || 0, color: '#06b6d4', icon: '\u{1F9D1}\u{200D}\u{1F3EB}', sub: 'training' },
-        { label: 'Injuries', value: activeInjuries, color: activeInjuries > 0 ? '#ef4444' : '#6b7280', icon: '\u{1FA79}', sub: 'training' },
+        { label: 'Active Plans', value: data.training.plans?.active || 0, color: 'var(--purple)', iconName: 'notebook-pen', sub: 'training' },
+        { label: 'Coaching', value: data.training.coaching_sessions?.total || 0, color: 'var(--cyan)', iconName: 'graduation-cap', sub: 'training' },
+        { label: 'Injuries', value: activeInjuries, color: activeInjuries > 0 ? 'var(--red)' : '#6b7280', iconName: 'heart-pulse', sub: 'training' },
       );
     }
 
@@ -249,24 +267,24 @@ async function loadDashboardStats() {
     const done = data.tasks.by_status.done || 0;
 
     const taskCards = [
-      { label: 'To Do', value: todo, color: '#6b7280', icon: '\u{1F4CB}', tab: 'tasks' },
-      { label: 'In Progress', value: inProgress, color: '#3b82f6', icon: '\u{1F525}', tab: 'tasks' },
-      { label: 'In Review', value: review, color: '#f59e0b', icon: '\u{1F50D}', tab: 'tasks' },
-      { label: 'Done', value: done, color: '#22c55e', icon: '\u2705', tab: 'tasks' },
-      { label: 'Due Today', value: dueToday, color: dueToday > 0 ? '#ef4444' : '#6b7280', icon: '\u{1F4C5}', tab: 'tasks' },
-      { label: 'This Week', value: dueWeek, color: dueWeek > 0 ? '#f97316' : '#6b7280', icon: '\u{1F4C6}', tab: 'tasks' },
+      { label: 'To Do', value: todo, color: '#6b7280', iconName: 'clipboard-list', tab: 'tasks' },
+      { label: 'In Progress', value: inProgress, color: 'var(--color-body)', iconName: 'loader', tab: 'tasks' },
+      { label: 'In Review', value: review, color: 'var(--color-tactical)', iconName: 'search', tab: 'tasks' },
+      { label: 'Done', value: done, color: 'var(--color-physical)', iconName: 'check-circle', tab: 'tasks' },
+      { label: 'Due Today', value: dueToday, color: dueToday > 0 ? 'var(--red)' : '#6b7280', iconName: 'calendar-clock', tab: 'tasks' },
+      { label: 'This Week', value: dueWeek, color: dueWeek > 0 ? 'var(--orange)' : '#6b7280', iconName: 'calendar-range', tab: 'tasks' },
     ];
 
     const kbCards = [
-      { label: 'Conversations', value: data.conversations.total, color: '#a855f7', icon: '\u{1F4AC}', tab: 'brain', sub: 'conversations' },
-      { label: 'Transcripts', value: data.transcripts.total, color: '#f59e0b', icon: '\u{1F399}', tab: 'brain', sub: 'transcripts' },
-      { label: 'Knowledge', value: data.knowledge.total, color: '#818cf8', icon: '\u{1F9E0}', tab: 'brain', sub: 'knowledge' },
+      { label: 'Conversations', value: data.conversations.total, color: 'var(--purple)', iconName: 'message-square', tab: 'brain', sub: 'conversations' },
+      { label: 'Transcripts', value: data.transcripts.total, color: 'var(--color-tactical)', iconName: 'mic', tab: 'brain', sub: 'transcripts' },
+      { label: 'Knowledge', value: data.knowledge.total, color: 'var(--color-mental)', iconName: 'brain', tab: 'brain', sub: 'knowledge' },
     ];
 
     function renderRingCard(c, onclick) {
-      return `<div class="ring-card clickable" onclick="${onclick}">
-        <div class="ring-icon" style="background:${c.color}18;color:${c.color}">${c.icon}</div>
-        <div class="ring-value" style="color:${c.color}" data-target="${c.value}">0</div>
+      return `<div class="ring-card clickable" onclick="${onclick}" style="--card-color:${c.color}">
+        <div class="ring-icon" style="background:color-mix(in srgb, ${c.color} 10%, transparent);color:${c.color}">${icon(c.iconName, 18)}</div>
+        <div class="ring-value font-data" style="color:${c.color}" data-target="${c.value}">0</div>
         <div class="ring-label">${c.label}</div>
       </div>`;
     }
@@ -274,8 +292,8 @@ async function loadDashboardStats() {
     container.innerHTML = `
       <div class="dash-section fade-in stagger-1" onclick="switchTab('tasks')" style="cursor:pointer">
         <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:#3b82f618;color:#3b82f6">
-            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-tactical) 10%, transparent);color:var(--color-tactical)">
+            ${icon('check-square', 12)}
             Tasks
           </div>
         </div>
@@ -284,8 +302,8 @@ async function loadDashboardStats() {
 
       <div class="dash-section fade-in stagger-2" onclick="switchTab('brain')" style="cursor:pointer">
         <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:#818cf818;color:#818cf8">
-            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-mental) 10%, transparent);color:var(--color-mental)">
+            ${icon('brain', 12)}
             Knowledge Base
           </div>
         </div>
@@ -294,8 +312,8 @@ async function loadDashboardStats() {
 
       <div class="dash-section fade-in stagger-3" onclick="switchTab('fitness')" style="cursor:pointer">
         <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:#22c55e18;color:#22c55e">
-            <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-physical) 10%, transparent);color:var(--color-physical)">
+            ${icon('dumbbell', 12)}
             Fitness
           </div>
         </div>
@@ -310,6 +328,7 @@ async function loadDashboardStats() {
         <div id="recent-activity" class="activity-body collapsed"></div>
       </div>
     `;
+    renderIcons();
     // Animate all stat values
     document.querySelectorAll('#dash-content [data-target]').forEach(el => {
       animateValue(el, parseInt(el.dataset.target) || 0);
@@ -327,7 +346,7 @@ async function loadDashboardStats() {
 
 // ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
 
-const RING_COLORS = { train: '#ef4444', execute: '#818cf8', recover: '#22c55e' };
+const RING_COLORS = { train: '#10b981', execute: '#f59e0b', recover: '#6366f1' };
 const RING_LABELS = { train: 'Train', execute: 'Execute', recover: 'Recover' };
 const RING_DESCRIPTIONS = {
   train: { what: 'Log workouts', how: 'Go to Fitness > Workouts and log a workout session', unit: 'workouts', min: 1, max: 5 },
@@ -351,8 +370,9 @@ function buildRingSVG(rings) {
     const pct = rings[d.key]?.percent || 0;
     const offset = circ - (pct / 100) * circ;
     const color = RING_COLORS[d.key];
+    const complete = pct >= 100 ? ' ring-complete' : '';
     paths += `<circle cx="90" cy="90" r="${d.r}" stroke="${color}" stroke-width="${d.sw}" class="ring-bg"/>`;
-    paths += `<circle cx="90" cy="90" r="${d.r}" stroke="${color}" stroke-width="${d.sw}" class="ring-progress" stroke-dasharray="${circ}" stroke-dashoffset="${circ}" data-target-offset="${offset}" data-circ="${circ}"/>`;
+    paths += `<circle cx="90" cy="90" r="${d.r}" stroke="${color}" stroke-width="${d.sw}" class="ring-progress${complete}" stroke-dasharray="${circ}" stroke-dashoffset="${circ}" data-target-offset="${offset}" data-circ="${circ}"/>`;
   }
   return `<svg viewBox="0 0 180 180" class="rings-svg">${paths}</svg>`;
 }
@@ -423,11 +443,11 @@ function buildSuggestionCards(suggestions) {
   if (!suggestions?.length) return '';
   return suggestions.map(s => {
     const color = RING_COLORS[s.ring] || 'var(--accent)';
-    const icon = s.direction === 'up' ? '&#9650;' : '&#9660;';
+    const sugIcon = s.direction === 'up' ? icon('trending-up', 14) : icon('trending-down', 14);
     const actionLabel = s.direction === 'up' ? 'Level Up' : 'Adjust';
     return `<div class="suggestion-card" style="--sug-color:${color}">
       <div class="suggestion-body">
-        <span class="suggestion-icon" style="color:${color}">${icon}</span>
+        <span class="suggestion-icon" style="color:${color}">${sugIcon}</span>
         <span class="suggestion-text">${esc(s.reason)}</span>
       </div>
       <button class="suggestion-apply" onclick="event.stopPropagation();applySuggestion('${s.ring}', ${s.suggested_goal})" style="background:${color}">
@@ -475,17 +495,17 @@ async function applySuggestion(ring, newGoal) {
 
 function buildStreakChips(streaks) {
   const defs = [
-    { key: 'train', icon: '🔥', label: 'Train', desc: 'Consecutive days with at least 1 workout logged' },
-    { key: 'execute', icon: '⚡', label: 'Execute', desc: 'Consecutive days with at least 1 task completed' },
-    { key: 'recover', icon: '🌿', label: 'Recover', desc: 'Consecutive days with meals + daily context logged' },
-    { key: 'perfect_day', icon: '💎', label: 'Perfect', desc: 'Consecutive days with all 3 rings closed' },
-    { key: 'weigh_in', icon: '📊', label: 'Weigh-in', desc: 'Consecutive days with a body metric logged' },
+    { key: 'train', ic: 'flame', label: 'Train', desc: 'Consecutive days with at least 1 workout logged', color: 'var(--color-physical)' },
+    { key: 'execute', ic: 'zap', label: 'Execute', desc: 'Consecutive days with at least 1 task completed', color: 'var(--color-tactical)' },
+    { key: 'recover', ic: 'leaf', label: 'Recover', desc: 'Consecutive days with meals + daily context logged', color: 'var(--color-mental)' },
+    { key: 'perfect_day', ic: 'gem', label: 'Perfect', desc: 'Consecutive days with all 3 rings closed', color: 'var(--accent)' },
+    { key: 'weigh_in', ic: 'scale', label: 'Weigh-in', desc: 'Consecutive days with a body metric logged', color: 'var(--color-body)' },
   ];
   return defs.map(d => {
     const val = streaks[d.key] || 0;
     const active = val > 0 ? ' active' : '';
-    return `<div class="streak-chip${active}" title="${d.desc}">
-      <span class="streak-icon">${d.icon}</span>
+    return `<div class="streak-chip${active}" title="${d.desc}" style="--streak-color:${d.color}">
+      <span class="streak-icon" style="color:${d.color}">${icon(d.ic, 14)}</span>
       <span class="streak-count">${val}d</span>
       <span>${d.label}</span>
     </div>`;
@@ -496,8 +516,8 @@ function buildNudges(nudges) {
   if (!nudges?.length) return '';
   return nudges.map(n => {
     const type = n.type === 'success' ? 'success' : n.type === 'warning' ? 'warning' : 'info';
-    const icon = type === 'success' ? '&#10003;' : type === 'warning' ? '!' : 'i';
-    return `<div class="nudge-banner nudge-${type}"><span class="nudge-icon-circle nudge-icon-${type}">${icon}</span><span>${esc(n.message)}</span></div>`;
+    const ic = type === 'success' ? icon('check', 12) : type === 'warning' ? icon('alert-triangle', 12) : icon('info', 12);
+    return `<div class="nudge-banner nudge-${type}"><span class="nudge-icon-circle nudge-icon-${type}">${ic}</span><span>${esc(n.message)}</span></div>`;
   }).join('');
 }
 
@@ -525,12 +545,12 @@ function buildBadgeGrid(badges) {
       const cls = b.isUnlocked ? 'unlocked' : 'locked';
       const dateStr = b.isUnlocked && b.unlocked_at ? new Date(b.unlocked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
       html += `<div class="badge-row badge-${cls}" onclick="showBadgeDetail(this)" data-name="${esc(b.name)}" data-desc="${esc(b.description)}" data-icon="${b.icon}" data-unlocked="${b.isUnlocked ? '1' : '0'}" data-date="${dateStr}">
-        <span class="badge-row-icon">${b.icon}</span>
+        <span class="badge-row-icon">${badgeIcon(b.icon)}</span>
         <div class="badge-row-info">
           <div class="badge-row-name">${esc(b.name)}</div>
           <div class="badge-row-desc">${esc(b.description)}</div>
         </div>
-        ${b.isUnlocked ? `<span class="badge-row-date">${dateStr}</span>` : '<span class="badge-row-lock">&#128274;</span>'}
+        ${b.isUnlocked ? `<span class="badge-row-date">${dateStr}</span>` : `<span class="badge-row-lock">${icon('lock', 14)}</span>`}
       </div>`;
     }
     html += `</div>`;
@@ -541,7 +561,7 @@ function buildBadgeGrid(badges) {
 function showBadgeDetail(el) {
   const name = el.dataset.name;
   const desc = el.dataset.desc;
-  const icon = el.dataset.icon;
+  const bdgIcon = el.dataset.icon;
   const unlocked = el.dataset.unlocked === '1';
   const date = el.dataset.date;
 
@@ -551,13 +571,14 @@ function showBadgeDetail(el) {
   const detail = document.createElement('div');
   detail.className = 'badge-detail-expanded';
   detail.innerHTML = `
-    <div class="badge-detail-icon">${icon}</div>
+    <div class="badge-detail-icon">${badgeIcon(bdgIcon, 28)}</div>
     <div class="badge-detail-body">
       <div class="badge-detail-name">${name}</div>
       <div class="badge-detail-desc">${desc}</div>
       ${unlocked ? `<div class="badge-detail-status unlocked">Unlocked ${date}</div>` : `<div class="badge-detail-status locked">Not yet unlocked &mdash; keep going!</div>`}
     </div>
   `;
+  renderIcons();
   el.after(detail);
   // Toggle off on second click
   el.addEventListener('click', function handler() {
@@ -584,7 +605,7 @@ async function loadGamification() {
       const perm = Notification.permission;
       if (perm === 'default' && !localStorage.getItem('ab_push_dismissed')) {
         pushBanner = `<div class="push-banner" id="push-permission-banner">
-          <span>🔔</span>
+          ${icon('bell', 16)}
           <span style="flex:1">Enable notifications to stay on track</span>
           <button class="push-allow" onclick="requestPushPermission()">Allow</button>
           <button class="push-later" onclick="dismissPushBanner()">Later</button>
@@ -634,6 +655,8 @@ async function loadGamification() {
       </div>
     `;
 
+    renderIcons();
+
     // Animate ring progress after render
     requestAnimationFrame(() => {
       setTimeout(() => {
@@ -646,7 +669,7 @@ async function loadGamification() {
     // Show badge unlock toasts
     if (badges.newly_unlocked?.length) {
       for (const b of badges.newly_unlocked) {
-        showToast(`${b.icon} Badge unlocked: ${b.name} — ${b.description}`, 'success', 5000);
+        showToast(`Badge unlocked: ${b.name} — ${b.description}`, 'success', 5000);
       }
     }
   } catch (err) {
