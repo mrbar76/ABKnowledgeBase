@@ -380,7 +380,6 @@ router.get('/', async (req, res) => {
       const missing = [];
       if (!sleepHoursHit) missing.push(`sleep was ${sleepHours || '?'}h (target ${targetSleep}h)`);
       if (!sleepQualHit) missing.push(`sleep quality ${sleepQuality || '?'}/10 (need ${sleepQualThreshold}+)`);
-      if (!recoveryHit) missing.push(`recovery ${Math.max(recoveryRating, energyRating) || '?'}/10 (need ${recoveryThreshold}+)`);
       nudges.push({ type: 'warning', ring: 'recover', message: `Recover: ${missing.join(', ')}` });
     }
     if (trainPercent >= 100 && fuelPercent >= 100 && recoverPercent >= 100) {
