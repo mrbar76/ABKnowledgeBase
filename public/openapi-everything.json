@@ -864,27 +864,46 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "total": { "type": "integer" },
+                    "total": {
+                      "type": "integer"
+                    },
                     "by_type": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "workout_type": { "type": "string" },
-                          "count": { "type": "integer" }
+                          "workout_type": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
                         }
                       }
                     },
-                    "avg_effort": { "type": "number", "nullable": true },
+                    "avg_effort": {
+                      "type": "number",
+                      "nullable": true
+                    },
                     "recent": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "workout_date": { "type": "string", "format": "date" },
-                          "title": { "type": "string" },
-                          "workout_type": { "type": "string" },
-                          "effort": { "type": "integer", "nullable": true }
+                          "workout_date": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "workout_type": {
+                            "type": "string"
+                          },
+                          "effort": {
+                            "type": "integer",
+                            "nullable": true
+                          }
                         }
                       }
                     }
@@ -931,17 +950,37 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "message": { "type": "string" },
-                    "id": { "type": "integer" },
+                    "message": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
                     "classification": {
                       "type": "object",
                       "properties": {
-                        "database": { "type": "string" },
-                        "title": { "type": "string" },
-                        "category": { "type": "string" },
-                        "tags": { "type": "array", "items": { "type": "string" } },
-                        "summary": { "type": "string" },
-                        "ai_source": { "type": "string", "nullable": true }
+                        "database": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "ai_source": {
+                          "type": "string",
+                          "nullable": true
+                        }
                       }
                     }
                   }
@@ -1977,26 +2016,84 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": { "type": "integer" },
-                    "meal_date": { "type": "string", "format": "date" },
-                    "meal_time": { "type": "string", "nullable": true },
-                    "meal_type": { "type": "string" },
-                    "title": { "type": "string" },
-                    "calories": { "type": "number", "nullable": true },
-                    "protein_g": { "type": "number", "nullable": true },
-                    "carbs_g": { "type": "number", "nullable": true },
-                    "fat_g": { "type": "number", "nullable": true },
-                    "fiber_g": { "type": "number", "nullable": true },
-                    "sugar_g": { "type": "number", "nullable": true },
-                    "sodium_mg": { "type": "number", "nullable": true },
-                    "serving_size": { "type": "string", "nullable": true },
-                    "notes": { "type": "string", "nullable": true },
-                    "tags": { "type": "array", "items": { "type": "string" } },
-                    "source": { "type": "string" },
-                    "ai_source": { "type": "string", "nullable": true },
-                    "metadata": { "type": "object" },
-                    "created_at": { "type": "string", "format": "date-time" },
-                    "updated_at": { "type": "string", "format": "date-time" }
+                    "id": {
+                      "type": "integer"
+                    },
+                    "meal_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "meal_time": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "meal_type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "calories": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "protein_g": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "carbs_g": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "fat_g": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "fiber_g": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "sugar_g": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "sodium_mg": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "serving_size": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "notes": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "ai_source": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
@@ -2159,21 +2256,125 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "date": { "type": "string", "format": "date" },
-                    "total_meals": { "type": "integer" },
-                    "total_calories": { "type": "number" },
-                    "total_protein_g": { "type": "number" },
-                    "total_carbs_g": { "type": "number" },
-                    "total_fat_g": { "type": "number" },
-                    "total_fiber_g": { "type": "number" },
-                    "total_sugar_g": { "type": "number" },
-                    "total_sodium_mg": { "type": "number" },
-                    "intensity_tier": { "type": "string" },
-                    "intensity_source": { "type": "string" },
-                    "planned_type": { "type": "string", "nullable": true },
-                    "workouts_today": { "type": "array", "items": { "type": "object", "properties": { "workout_type": { "type": "string" }, "effort": { "type": "integer", "nullable": true } } } },
-                    "context": { "type": "object", "nullable": true },
-                    "meals": { "type": "array", "items": { "type": "object" } }
+                    "date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "total_meals": {
+                      "type": "integer"
+                    },
+                    "total_calories": {
+                      "type": "number"
+                    },
+                    "total_protein_g": {
+                      "type": "number"
+                    },
+                    "total_carbs_g": {
+                      "type": "number"
+                    },
+                    "total_fat_g": {
+                      "type": "number"
+                    },
+                    "total_fiber_g": {
+                      "type": "number"
+                    },
+                    "total_sugar_g": {
+                      "type": "number"
+                    },
+                    "total_sodium_mg": {
+                      "type": "number"
+                    },
+                    "intensity_tier": {
+                      "type": "string"
+                    },
+                    "intensity_source": {
+                      "type": "string"
+                    },
+                    "planned_type": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "workouts_today": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "workout_type": {
+                            "type": "string"
+                          },
+                          "effort": {
+                            "type": "integer",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    },
+                    "context": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "sleep_hours": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "sleep_quality": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "hydration_liters": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "notes": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    },
+                    "meals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "meal_date": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "meal_time": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "meal_type": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "calories": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "protein_g": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "carbs_g": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "fat_g": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2265,162 +2466,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/training/plans": {
-      "get": {
-        "operationId": "listTrainingPlans",
-        "summary": "List or search training plans (periodized blocks, mesocycles, rehab plans)",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Full-text search"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "draft",
-                "active",
-                "completed",
-                "paused",
-                "archived"
-              ]
-            }
-          },
-          {
-            "name": "plan_type",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "block",
-                "mesocycle",
-                "microcycle",
-                "deload",
-                "race_prep",
-                "rehab",
-                "custom"
-              ]
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 50
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Training plans list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "total": {
-                      "type": "integer"
-                    },
-                    "plans": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/TrainingPlan"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "createTrainingPlan",
-        "summary": "Create a new training plan with goals, phases, weekly structure, and rationale",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TrainingPlanInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created plan",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrainingPlan"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/training/plans/{id}": {
-      "get": {
-        "operationId": "getTrainingPlan",
-        "summary": "Get a training plan with linked coaching sessions and injuries",
-        "responses": {
-          "200": {
-            "description": "Single training plan",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrainingPlan"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "operationId": "updateTrainingPlan",
-        "summary": "Update a training plan",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TrainingPlanInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated plan"
-          }
-        }
-      },
-      "delete": {
-        "operationId": "deleteTrainingPlan",
-        "summary": "Delete a training plan",
-        "responses": {
-          "200": {
-            "description": "Deleted"
           }
         }
       }
@@ -3646,177 +3691,6 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
-          }
-        }
-      },
-      "TrainingPlan": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "title": {
-            "type": "string"
-          },
-          "plan_type": {
-            "type": "string",
-            "enum": [
-              "block",
-              "mesocycle",
-              "microcycle",
-              "deload",
-              "race_prep",
-              "rehab",
-              "custom"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "draft",
-              "active",
-              "completed",
-              "paused",
-              "archived"
-            ]
-          },
-          "goal": {
-            "type": "string"
-          },
-          "start_date": {
-            "type": "string",
-            "format": "date"
-          },
-          "end_date": {
-            "type": "string",
-            "format": "date"
-          },
-          "weeks": {
-            "type": "integer"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "weekly_structure": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            },
-            "description": "Array of day-by-day plan: [{day: 'Monday', type: 'strength', focus: 'upper body', notes: '...'}]"
-          },
-          "intensity_scheme": {
-            "type": "string"
-          },
-          "progression_notes": {
-            "type": "string"
-          },
-          "rationale": {
-            "type": "string",
-            "description": "WHY this plan was chosen \u2014 training philosophy, injury avoidance, periodization reasoning"
-          },
-          "constraints": {
-            "type": "string",
-            "description": "Limitations: injuries, schedule, equipment, recovery needs"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "ai_source": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "TrainingPlanInput": {
-        "type": "object",
-        "required": [
-          "title"
-        ],
-        "properties": {
-          "title": {
-            "type": "string"
-          },
-          "plan_type": {
-            "type": "string",
-            "enum": [
-              "block",
-              "mesocycle",
-              "microcycle",
-              "deload",
-              "race_prep",
-              "rehab",
-              "custom"
-            ],
-            "default": "block"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "draft",
-              "active",
-              "completed",
-              "paused",
-              "archived"
-            ],
-            "default": "active"
-          },
-          "goal": {
-            "type": "string"
-          },
-          "start_date": {
-            "type": "string",
-            "format": "date"
-          },
-          "end_date": {
-            "type": "string",
-            "format": "date"
-          },
-          "weeks": {
-            "type": "integer"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "weekly_structure": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          },
-          "intensity_scheme": {
-            "type": "string"
-          },
-          "progression_notes": {
-            "type": "string"
-          },
-          "rationale": {
-            "type": "string"
-          },
-          "constraints": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "ai_source": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object"
           }
         }
       },

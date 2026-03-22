@@ -3,7 +3,9 @@ info:
   title: AB Brain Unified AI Platform
   version: 1.1.0
   description: |
-    AB Brain action for workout logging, training plans, coaching sessions, injury tracking, meal tracking, nutrition context, task creation, and gamification (activity rings, streaks, badges, dynamic goals).
+    AB Brain action for workout logging, daily plans, coaching sessions, injury tracking, meal tracking, nutrition context, task creation, and gamification (activity rings, streaks, badges, dynamic goals).
+
+    IMPORTANT: All planning uses /daily-plans endpoints. The /training/plans endpoint is REMOVED. Use POST /daily-plans for single-day plans, POST /daily-plans/week for weekly batch creation.
 
     Gamification: Call GET /gamification to see ring progress (Train/Execute/Recover), streaks, badges, and smart goal suggestions. Use PUT /gamification/settings to adjust ring goals based on the user's capacity. The system auto-suggests raising goals when the user closes a ring 6+/7 days, or lowering when they struggle.
 servers:
@@ -351,6 +353,22 @@ paths:
       responses:
         '201':
           description: Created body metric
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  measurement_date:
+                    type: string
+                    format: date
+                  weight_lb:
+                    type: number
+                  body_fat_pct:
+                    type: number
+                  source:
+                    type: string
         '400':
           description: Validation error
   /body-metrics/bulk:
@@ -383,6 +401,21 @@ paths:
       responses:
         '201':
           description: Bulk import results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  imported:
+                    type: integer
+                  errors:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
   /body-metrics/{id}:
     patch:
       operationId: patchBodyMetric
@@ -416,6 +449,22 @@ paths:
       responses:
         '200':
           description: Updated body metric
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  measurement_date:
+                    type: string
+                    format: date
+                  weight_lb:
+                    type: number
+                  body_fat_pct:
+                    type: number
+                  muscle_mass_lb:
+                    type: number
         '404':
           description: Body metric not found
   /meals:
@@ -452,6 +501,31 @@ paths:
       responses:
         '200':
           description: Meals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  count:
+                    type: integer
+                  meals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        meal_date:
+                          type: string
+                          format: date
+                        meal_type:
+                          type: string
+                        calories:
+                          type: number
     post:
       operationId: createMeal
       summary: Log a meal or snack
@@ -533,11 +607,100 @@ paths:
                   description: Which AI agent logged this meal
                 metadata:
                   type: object
+                  additionalProperties: true
                   description: Any additional data that doesn't fit other fields
       responses:
         '201':
           description: Created meal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  meal_date:
+                    type: string
+                    format: date
+                  meal_type:
+                    type: string
+                  calories:
+                    type: number
   /meals/{id}:
+    get:
+      operationId: getMeal
+      summary: Get a single meal by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Single meal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  meal_date:
+                    type: string
+                    format: date
+                  meal_time:
+                    type: string
+                    nullable: true
+                  meal_type:
+                    type: string
+                  title:
+                    type: string
+                  calories:
+                    type: number
+                    nullable: true
+                  protein_g:
+                    type: number
+                    nullable: true
+                  carbs_g:
+                    type: number
+                    nullable: true
+                  fat_g:
+                    type: number
+                    nullable: true
+                  fiber_g:
+                    type: number
+                    nullable: true
+                  sugar_g:
+                    type: number
+                    nullable: true
+                  sodium_mg:
+                    type: number
+                    nullable: true
+                  serving_size:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  source:
+                    type: string
+                  ai_source:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
     patch:
       operationId: patchMeal
       summary: Partially update a meal entry
@@ -576,6 +739,19 @@ paths:
       responses:
         '200':
           description: Updated meal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  meal_type:
+                    type: string
+                  calories:
+                    type: number
         '404':
           description: Meal not found
   /meals/bulk:
@@ -610,6 +786,141 @@ paths:
       responses:
         '201':
           description: Bulk import results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  imported:
+                    type: integer
+                  errors:
+                    type: integer
+  /daily-plans:
+    get:
+      operationId: listDailyPlans
+      summary: List daily plans for a date range
+      description: "Get daily training plans. Use from/to for date range. NEVER use /training/plans — that endpoint is removed."
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start date (YYYY-MM-DD)
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End date (YYYY-MM-DD)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Daily plans list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DailyPlan'
+    post:
+      operationId: createDailyPlan
+      summary: Create a daily plan for a specific date
+      description: |
+        Create a single-day training plan. plan_date is required and must be unique.
+        Use POST /daily-plans/week for batch creation.
+        NEVER use /training/plans — that endpoint is removed. All planning goes through /daily-plans.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyPlanCreate'
+      responses:
+        '201':
+          description: Created daily plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyPlan'
+        '409':
+          description: Plan already exists for this date
+  /daily-plans/week:
+    post:
+      operationId: createWeeklyPlans
+      summary: Create 7 daily plans at once starting from a date
+      description: Create a full week of plans. Send start_date and an array of 7 day objects.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - start_date
+                - days
+              properties:
+                start_date:
+                  type: string
+                  format: date
+                days:
+                  type: array
+                  maxItems: 7
+                  items:
+                    $ref: '#/components/schemas/DailyPlanCreate'
+      responses:
+        '201':
+          description: Created weekly plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                  skipped:
+                    type: integer
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DailyPlan'
+  /daily-plans/{id}:
+    put:
+      operationId: updateDailyPlan
+      summary: Update a daily plan by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyPlanCreate'
+      responses:
+        '200':
+          description: Updated daily plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyPlan'
+        '404':
+          description: Plan not found
   /nutrition/daily-context:
     get:
       operationId: getDailyContext
@@ -624,6 +935,24 @@ paths:
       responses:
         '200':
           description: Daily context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  date:
+                    type: string
+                    format: date
+                  sleep_hours:
+                    type: number
+                  sleep_quality:
+                    type: integer
+                  hydration_liters:
+                    type: number
+                  notes:
+                    type: string
     post:
       operationId: createDailyContext
       summary: Create daily nutrition context
@@ -657,6 +986,20 @@ paths:
       responses:
         '201':
           description: Created context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  date:
+                    type: string
+                    format: date
+                  sleep_hours:
+                    type: number
+                  hydration_liters:
+                    type: number
         '409':
           description: Context already exists for this date
   /nutrition/daily-context/{id}:
@@ -688,6 +1031,22 @@ paths:
       responses:
         '200':
           description: Updated daily context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  date:
+                    type: string
+                    format: date
+                  sleep_hours:
+                    type: number
+                  hydration_liters:
+                    type: number
+                  notes:
+                    type: string
         '404':
           description: Daily context not found
   /nutrition/daily-summary:
@@ -705,6 +1064,117 @@ paths:
       responses:
         '200':
           description: Daily summary with meals and context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  total_meals:
+                    type: integer
+                  total_calories:
+                    type: number
+                  total_protein_g:
+                    type: number
+                  total_carbs_g:
+                    type: number
+                  total_fat_g:
+                    type: number
+                  total_fiber_g:
+                    type: number
+                  total_sugar_g:
+                    type: number
+                  total_sodium_mg:
+                    type: number
+                  intensity_tier:
+                    type: string
+                  intensity_source:
+                    type: string
+                  planned_type:
+                    type: string
+                    nullable: true
+                  workouts_today:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        workout_type:
+                          type: string
+                        effort:
+                          type: integer
+                          nullable: true
+                  context:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: integer
+                      sleep_hours:
+                        type: number
+                        nullable: true
+                      sleep_quality:
+                        type: integer
+                        nullable: true
+                      hydration_liters:
+                        type: number
+                        nullable: true
+                      notes:
+                        type: string
+                        nullable: true
+                  meals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        meal_date:
+                          type: string
+                          format: date
+                        meal_time:
+                          type: string
+                          nullable: true
+                        meal_type:
+                          type: string
+                        title:
+                          type: string
+                        calories:
+                          type: number
+                          nullable: true
+                        protein_g:
+                          type: number
+                          nullable: true
+                        carbs_g:
+                          type: number
+                          nullable: true
+                        fat_g:
+                          type: number
+                          nullable: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  totals:
+                    type: object
+                    properties:
+                      calories:
+                        type: number
+                      protein_g:
+                        type: number
+                      carbs_g:
+                        type: number
+                      fat_g:
+                        type: number
+                  meal_count:
+                    type: integer
+                  context:
+                    type: object
   /nutrition/daily-summary/range:
     get:
       operationId: getDailySummaryRange
@@ -725,6 +1195,20 @@ paths:
       responses:
         '200':
           description: Range summary with daily breakdowns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    date:
+                      type: string
+                      format: date
+                    totals:
+                      type: object
+                    meal_count:
+                      type: integer
   /recovery/score:
     get:
       operationId: getRecoveryScore
@@ -799,82 +1283,6 @@ paths:
                   average:
                     type: number
                     description: Average recovery score over the period
-  /training/plans:
-    get:
-      operationId: listTrainingPlans
-      summary: List or search training plans
-      description: Get periodized training blocks, mesocycles, race prep, rehab plans. Filter by status or type.
-      parameters:
-        - name: q
-          in: query
-          schema:
-            type: string
-          description: Full-text search
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [draft, active, completed, paused, archived]
-        - name: plan_type
-          in: query
-          schema:
-            type: string
-            enum: [block, mesocycle, microcycle, deload, race_prep, rehab, custom]
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-      responses:
-        '200':
-          description: Training plans list
-    post:
-      operationId: createTrainingPlan
-      summary: Create a training plan with goals, phases, weekly structure, and rationale
-      description: |
-        Store the WHY behind training decisions. Include goal, rationale, constraints (injuries, schedule),
-        weekly_structure (day-by-day plan), and progression_notes.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrainingPlanCreate'
-      responses:
-        '201':
-          description: Created plan
-  /training/plans/{id}:
-    get:
-      operationId: getTrainingPlan
-      summary: Get a training plan with linked coaching sessions and injuries
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Plan with related coaching sessions and injuries
-    put:
-      operationId: updateTrainingPlan
-      summary: Update a training plan
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrainingPlanCreate'
-      responses:
-        '200':
-          description: Updated plan
   /training/coaching:
     get:
       operationId: listCoachingSessions
@@ -908,6 +1316,27 @@ paths:
       responses:
         '200':
           description: Coaching sessions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  count:
+                    type: integer
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        session_date:
+                          type: string
+                          format: date
+                        summary:
+                          type: string
     post:
       operationId: createCoachingSession
       summary: Save a coaching session summary after reviewing training data
@@ -924,6 +1353,18 @@ paths:
       responses:
         '201':
           description: Created session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  session_date:
+                    type: string
+                    format: date
+                  summary:
+                    type: string
   /training/coaching/{id}:
     get:
       operationId: getCoachingSession
@@ -938,6 +1379,26 @@ paths:
       responses:
         '200':
           description: Coaching session details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  session_date:
+                    type: string
+                    format: date
+                  summary:
+                    type: string
+                  key_decisions:
+                    type: array
+                    items:
+                      type: string
+                  next_steps:
+                    type: array
+                    items:
+                      type: string
     put:
       operationId: updateCoachingSession
       summary: Update a coaching session
@@ -956,6 +1417,18 @@ paths:
       responses:
         '200':
           description: Updated session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  session_date:
+                    type: string
+                    format: date
+                  summary:
+                    type: string
   /training/injuries:
     get:
       operationId: listInjuries
@@ -984,6 +1457,28 @@ paths:
       responses:
         '200':
           description: Injuries list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  count:
+                    type: integer
+                  injuries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        body_area:
+                          type: string
+                        severity:
+                          type: integer
+                        status:
+                          type: string
     post:
       operationId: createInjury
       summary: Log an injury or contention
@@ -999,6 +1494,19 @@ paths:
       responses:
         '201':
           description: Created injury
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  body_area:
+                    type: string
+                  severity:
+                    type: integer
+                  status:
+                    type: string
   /training/injuries/{id}:
     get:
       operationId: getInjury
@@ -1013,6 +1521,21 @@ paths:
       responses:
         '200':
           description: Injury details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  body_area:
+                    type: string
+                  severity:
+                    type: integer
+                  status:
+                    type: string
+                  title:
+                    type: string
     put:
       operationId: updateInjury
       summary: Update an injury (change status, add treatment notes)
@@ -1031,6 +1554,21 @@ paths:
       responses:
         '200':
           description: Updated injury
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  body_area:
+                    type: string
+                  severity:
+                    type: integer
+                  status:
+                    type: string
+                  title:
+                    type: string
   /training/injuries/active/summary:
     get:
       operationId: getActiveInjuriesSummary
@@ -1041,6 +1579,26 @@ paths:
       responses:
         '200':
           description: Active injuries with body areas, severity, and modifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_injuries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        body_area:
+                          type: string
+                        severity:
+                          type: integer
+                        status:
+                          type: string
+                        modifications:
+                          type: string
   /training/day/{date}:
     get:
       operationId: getTrainingDayView
@@ -1060,6 +1618,34 @@ paths:
       responses:
         '200':
           description: Complete training day view
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  workouts:
+                    type: array
+                    items:
+                      type: object
+                  meals:
+                    type: array
+                    items:
+                      type: object
+                  body_metrics:
+                    type: array
+                    items:
+                      type: object
+                  coaching_sessions:
+                    type: array
+                    items:
+                      type: object
+                  active_injuries:
+                    type: array
+                    items:
+                      type: object
   /tasks:
     post:
       operationId: createTask
@@ -1102,6 +1688,29 @@ paths:
       responses:
         '200':
           description: Gamification data including rings, streaks, badges, weekly, suggestions, nudges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rings:
+                    type: object
+                  streaks:
+                    type: object
+                  badges:
+                    type: array
+                    items:
+                      type: object
+                  weekly:
+                    type: object
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                  nudges:
+                    type: array
+                    items:
+                      type: string
   /gamification/settings:
     put:
       operationId: updateGamificationSettings
@@ -1152,6 +1761,19 @@ paths:
       responses:
         '200':
           description: Settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ring_train_goal:
+                    type: integer
+                  ring_execute_goal:
+                    type: integer
+                  ring_recover_goal:
+                    type: integer
+                  notification_enabled:
+                    type: boolean
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1400,53 +2022,105 @@ components:
         updated_at:
           type: string
           format: date-time
-    TrainingPlanCreate:
+    DailyPlan:
       type: object
-      required:
-        - title
       properties:
-        title:
+        id:
           type: string
-          description: Plan name (e.g. "Spartan Race Prep - March Block")
-        plan_type:
+          format: uuid
+        plan_date:
           type: string
-          enum: [block, mesocycle, microcycle, deload, race_prep, rehab, custom]
-          default: block
+          format: date
         status:
           type: string
-          enum: [draft, active, completed, paused, archived]
-          default: active
+          enum: [planned, completed, partial, missed, rest, amended]
+        title:
+          type: string
         goal:
           type: string
-          description: What this plan aims to achieve
-        start_date:
+        workout_type:
           type: string
-          format: date
-        end_date:
+        workout_focus:
           type: string
-          format: date
-        weeks:
+        target_effort:
           type: integer
-        phase:
+        target_duration_min:
+          type: integer
+        workout_notes:
           type: string
-          description: Current training phase (e.g. base, build, peak, taper, recovery)
-        weekly_structure:
-          type: array
-          items:
-            type: object
-          description: "Day-by-day plan: [{day: 'Monday', type: 'strength', focus: 'upper body'}]"
-        intensity_scheme:
+        target_calories:
+          type: number
+        target_protein_g:
+          type: number
+        target_carbs_g:
+          type: number
+        target_fat_g:
+          type: number
+        target_hydration_liters:
+          type: number
+        target_sleep_hours:
+          type: number
+        recovery_notes:
           type: string
-          description: Intensity/volume approach (e.g. "5/3/1 progression", "RPE 7-8")
-        progression_notes:
+        coaching_notes:
           type: string
-          description: How to progress week over week
         rationale:
           type: string
-          description: WHY this plan was chosen — training philosophy, injury avoidance reasoning
-        constraints:
+        ai_source:
           type: string
-          description: Limitations (injuries, schedule, equipment, recovery needs)
+        created_at:
+          type: string
+          format: date-time
+    DailyPlanCreate:
+      type: object
+      required:
+        - plan_date
+      properties:
+        plan_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [planned, completed, partial, missed, rest, amended]
+          default: planned
+        title:
+          type: string
+          description: "Plan title (e.g. 'Friday — Quality Run (Pacing)')"
+        goal:
+          type: string
+          description: What this day's plan aims to achieve
+        workout_type:
+          type: string
+          description: "Type: strength, hill, run, hybrid, recovery, ruck, hiit, etc."
+        workout_focus:
+          type: string
+          description: "Specific focus (e.g. 'Upper Push', 'Pacing Discipline')"
+        target_effort:
+          type: integer
+          minimum: 1
+          maximum: 10
+        target_duration_min:
+          type: integer
+        workout_notes:
+          type: string
+        target_calories:
+          type: number
+        target_protein_g:
+          type: number
+        target_carbs_g:
+          type: number
+        target_fat_g:
+          type: number
+        target_hydration_liters:
+          type: number
+        target_sleep_hours:
+          type: number
+        recovery_notes:
+          type: string
+        coaching_notes:
+          type: string
+        rationale:
+          type: string
         tags:
           type: array
           items:
