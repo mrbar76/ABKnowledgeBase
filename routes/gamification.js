@@ -124,21 +124,18 @@ async function computeRecoverStreak(settings) {
       SELECT d::date AS d,
         COALESCE((SELECT sleep_hours FROM daily_context WHERE date = d), 0) AS sleep_hours,
         COALESCE((SELECT sleep_quality FROM daily_context WHERE date = d), 0) AS sleep_quality,
-        COALESCE((SELECT recovery_rating FROM daily_context WHERE date = d), 0) AS recovery_rating,
-        COALESCE((SELECT energy_rating FROM daily_context WHERE date = d), 0) AS energy_rating
+        0 AS recovery_rating
       FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
       ORDER BY d DESC
     )
-    SELECT d, sleep_hours, sleep_quality, recovery_rating, energy_rating FROM day_data
+    SELECT d, sleep_hours, sleep_quality, recovery_rating FROM day_data
   `);
 
   let streak = 0;
   for (const row of rows) {
     const sProg = sleepTarget > 0 ? Math.min(1, parseFloat(row.sleep_hours) / sleepTarget) : 0;
     const qProg = sleepQualThreshold > 0 ? Math.min(1, parseInt(row.sleep_quality) / sleepQualThreshold) : 0;
-    const best = Math.max(parseInt(row.recovery_rating) || 0, parseInt(row.energy_rating) || 0);
-    const rProg = recoveryThreshold > 0 ? Math.min(1, best / recoveryThreshold) : 0;
-    const recPct = ((sProg + qProg + rProg) / 3) * 100;
+    const recPct = ((sProg + qProg) / 2) * 100;
     if (recPct >= 80) streak++;
     else break;
   }
@@ -168,8 +165,7 @@ async function computePerfectStreak(settings) {
         COALESCE((SELECT hydration_liters FROM daily_context WHERE date = d), 0) AS hydration,
         COALESCE((SELECT sleep_hours FROM daily_context WHERE date = d), 0) AS sleep_hours,
         COALESCE((SELECT sleep_quality FROM daily_context WHERE date = d), 0) AS sleep_quality,
-        COALESCE((SELECT recovery_rating FROM daily_context WHERE date = d), 0) AS recovery_rating,
-        COALESCE((SELECT energy_rating FROM daily_context WHERE date = d), 0) AS energy_rating
+        0 AS recovery_rating
       FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
       ORDER BY d DESC
     )
@@ -193,9 +189,7 @@ async function computePerfectStreak(settings) {
     // Recover: proportional >= 80%
     const sProg = sleepTarget > 0 ? Math.min(1, parseFloat(row.sleep_hours) / sleepTarget) : 0;
     const qProg = sleepQualThreshold > 0 ? Math.min(1, parseInt(row.sleep_quality) / sleepQualThreshold) : 0;
-    const bestRec = Math.max(parseInt(row.recovery_rating) || 0, parseInt(row.energy_rating) || 0);
-    const rProg = recoveryThreshold > 0 ? Math.min(1, bestRec / recoveryThreshold) : 0;
-    const recoverOk = ((sProg + qProg + rProg) / 3) * 100 >= 80;
+    const recoverOk = ((sProg + qProg) / 2) * 100 >= 80;
 
     if (trainOk && fuelOk && recoverOk) streak++;
     else break;
@@ -217,7 +211,7 @@ router.get('/', async (req, res) => {
     const [workoutsR, mealTotalsR, ctxR, dailyPlanR] = await Promise.all([
       query(`SELECT effort FROM workouts WHERE workout_date = CURRENT_DATE`),
       query(`SELECT COALESCE(SUM(calories), 0)::numeric AS cal, COALESCE(SUM(protein_g), 0)::numeric AS protein FROM meals WHERE meal_date = CURRENT_DATE`),
-      query(`SELECT sleep_hours, sleep_quality, hydration_liters, recovery_rating, energy_rating FROM daily_context WHERE date = CURRENT_DATE`),
+      query(`SELECT sleep_hours, sleep_quality, hydration_liters FROM daily_context WHERE date = CURRENT_DATE`),
       query(`SELECT status, target_effort, target_calories, target_protein_g, target_hydration_liters, target_sleep_hours FROM daily_plans WHERE plan_date = CURRENT_DATE`),
     ]);
 
@@ -240,8 +234,7 @@ router.get('/', async (req, res) => {
     const hydration = parseFloat(ctxRow.hydration_liters) || 0;
     const sleepHours = parseFloat(ctxRow.sleep_hours) || 0;
     const sleepQuality = parseInt(ctxRow.sleep_quality) || 0;
-    const recoveryRating = parseInt(ctxRow.recovery_rating) || 0;
-    const energyRating = parseInt(ctxRow.energy_rating) || 0;
+    // recovery_rating and energy_rating removed from daily_context
 
     // ── TRAIN ring: weighted effort score ──
     let trainPercent;
@@ -265,15 +258,12 @@ router.get('/', async (req, res) => {
     const hydrationProgress = targetHydration > 0 ? Math.min(1, hydration / targetHydration) : 0;
     const fuelPercent = Math.min(100, Math.round(((proteinProgress + caloriesProgress + hydrationProgress) / 3) * 100));
 
-    // ── RECOVER ring: proportional progress across sleep + quality + recovery ──
+    // ── RECOVER ring: proportional progress across sleep hours + quality ──
     const sleepHoursHit = sleepHours >= targetSleep;
     const sleepQualHit = sleepQuality >= sleepQualThreshold;
-    const recoveryHit = recoveryRating >= recoveryThreshold || energyRating >= recoveryThreshold;
     const sleepProgress = targetSleep > 0 ? Math.min(1, sleepHours / targetSleep) : 0;
     const sleepQualProgress = sleepQualThreshold > 0 ? Math.min(1, sleepQuality / sleepQualThreshold) : 0;
-    const bestRecovery = Math.max(recoveryRating, energyRating);
-    const recoveryProgress = recoveryThreshold > 0 ? Math.min(1, bestRecovery / recoveryThreshold) : 0;
-    const recoverPercent = Math.min(100, Math.round(((sleepProgress + sleepQualProgress + recoveryProgress) / 3) * 100));
+    const recoverPercent = Math.min(100, Math.round(((sleepProgress + sleepQualProgress) / 2) * 100));
 
     const rings = {
       train: {
@@ -290,10 +280,9 @@ router.get('/', async (req, res) => {
       },
       recover: {
         percent: recoverPercent,
-        sleep_hit: sleepHoursHit, quality_hit: sleepQualHit, recovery_hit: recoveryHit,
+        sleep_hit: sleepHoursHit, quality_hit: sleepQualHit,
         sleep_actual: sleepHours, sleep_target: targetSleep, sleep_progress: Math.round(sleepProgress * 100),
         sleep_quality_actual: sleepQuality, sleep_quality_threshold: sleepQualThreshold, quality_progress: Math.round(sleepQualProgress * 100),
-        recovery_actual: bestRecovery, recovery_threshold: recoveryThreshold, recovery_progress: Math.round(recoveryProgress * 100),
       },
     };
 
@@ -411,8 +400,6 @@ router.get('/', async (req, res) => {
             COALESCE((SELECT hydration_liters FROM daily_context WHERE date = d), 0) AS hydration,
             COALESCE((SELECT sleep_hours FROM daily_context WHERE date = d), 0) AS sleep_hours,
             COALESCE((SELECT sleep_quality FROM daily_context WHERE date = d), 0) AS sleep_quality,
-            COALESCE((SELECT recovery_rating FROM daily_context WHERE date = d), 0) AS recovery_rating,
-            COALESCE((SELECT energy_rating FROM daily_context WHERE date = d), 0) AS energy_rating,
             (SELECT status FROM daily_plans WHERE plan_date = d) AS plan_status,
             (SELECT target_effort FROM daily_plans WHERE plan_date = d) AS plan_effort
           FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d
@@ -442,9 +429,7 @@ router.get('/', async (req, res) => {
         const wRThresh = s.default_recovery_threshold || 6;
         const wSProg = wSleepTarget > 0 ? Math.min(1, parseFloat(row.sleep_hours) / wSleepTarget) : 0;
         const wQProg = wSQThresh > 0 ? Math.min(1, parseInt(row.sleep_quality) / wSQThresh) : 0;
-        const wBest = Math.max(parseInt(row.recovery_rating) || 0, parseInt(row.energy_rating) || 0);
-        const wRProg = wRThresh > 0 ? Math.min(1, wBest / wRThresh) : 0;
-        const recOk = ((wSProg + wQProg + wRProg) / 3) * 100 >= 80;
+        const recOk = ((wSProg + wQProg) / 2) * 100 >= 80;
 
         if (tOk) trainDays++;
         if (fOk) fuelDays++;
