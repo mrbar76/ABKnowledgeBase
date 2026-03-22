@@ -1379,7 +1379,7 @@ USE THESE ENDPOINT PATTERNS
 - Daily context: \`GET/POST /nutrition/daily-context\`
 - Daily summary: \`GET /nutrition/daily-summary?date=...\`
 - Range nutrition review: \`GET /nutrition/daily-summary/range?since=...&before=...\`
-- Training plans: list active, create/update plans
+- Daily plans: \`GET /daily-plans?from=&to=\`, create with \`POST /daily-plans\`, \`POST /daily-plans/week\` for 7 days at once
 - Coaching sessions: list by date range, create after substantive reviews
 - Full day view when needed: \`GET /training/day/YYYY-MM-DD\`
 WORKOUT LOGGING
@@ -1400,9 +1400,13 @@ Use \`POST /meals\`. Required: \`title\`, \`meal_date\`.
 BODY METRICS
 RENPHO trends matter more than single readings.
 Key fields: weight_lb, body_fat_pct, skeletal_muscle_pct, visceral_fat, bmr_kcal, metabolic_age.
-TRAINING PLANS
-Use plans for block/mesocycle structure and daily decisions for execution.
-Include: title, plan_type, status, goal, rationale, constraints, progression_notes.
+DAILY PLANS
+Use \`POST /daily-plans\` for single day, \`POST /daily-plans/week\` for 7 days at once.
+NEVER use training plans (/training/plans). All planning goes through daily plans.
+Fields: title, goal, workout_type, workout_focus, target_effort (1-10), target_duration_min,
+target_calories, target_protein_g, target_carbs_g, target_fat_g, target_hydration_liters,
+target_sleep_hours, workout_notes, coaching_notes, rationale, status (planned/rest).
+Always include title and goal — they describe what the session is about and why.
 INJURIES
 Always check active injury summary first.
 Track severity, symptoms, aggravating movements, relieving factors, modifications, prevention notes.
@@ -4700,6 +4704,14 @@ async function loadUnifiedPlans() {
           <span class="plans-status-pill" style="background:${sc}22;color:${sc}">${dp.status}</span>
         </div>`;
 
+      // Title and goal
+      if (dp.title) {
+        html += `<div style="padding:0 14px 4px;font-weight:700;font-size:1rem">${esc(dp.title)}</div>`;
+      }
+      if (dp.goal) {
+        html += `<div style="padding:0 14px 8px;font-size:0.8rem;color:var(--text-dim)">${esc(dp.goal)}</div>`;
+      }
+
       // Workout section
       if (dp.workout_type || dp.workout_focus || dp.target_effort) {
         html += `<div class="plans-section">
@@ -5538,19 +5550,23 @@ function showDailyPlanDetail(id) {
 
 function showCreateDailyPlanForm(prefillDate) {
   const date = prefillDate || new Date().toISOString().slice(0, 10);
-  openModal('Create Daily Plan', `
+  openModal('Create Plan', `
     <form onsubmit="return saveDailyPlan(event)">
       <label>Date *</label>
       <input type="date" name="plan_date" value="${date}" required style="width:100%">
+      <label>Title</label>
+      <input type="text" name="title" placeholder="e.g. Hill Sprint Day, Recovery / Mobility" style="width:100%">
+      <label>Goal</label>
+      <input type="text" name="goal" placeholder="e.g. Build carry endurance under fatigue" style="width:100%">
       <label>Status</label>
       <select name="status" style="width:100%">
         <option value="planned">Planned</option>
         <option value="rest">Rest Day</option>
       </select>
       <label>Workout Type</label>
-      <input type="text" name="workout_type" placeholder="e.g. strength, run, hybrid" style="width:100%">
+      <input type="text" name="workout_type" placeholder="e.g. strength, run, hill, hybrid" style="width:100%">
       <label>Workout Focus</label>
-      <input type="text" name="workout_focus" placeholder="e.g. upper push, legs, zone 2" style="width:100%">
+      <input type="text" name="workout_focus" placeholder="e.g. upper push, grip, zone 2" style="width:100%">
       <label>Target Effort (1-10)</label>
       <input type="number" name="target_effort" min="1" max="10" placeholder="7" style="width:100%">
       <label>Target Duration (min)</label>
@@ -5566,7 +5582,7 @@ function showCreateDailyPlanForm(prefillDate) {
       <label>Workout Notes</label>
       <textarea name="workout_notes" rows="2" style="width:100%" placeholder="Any workout-specific notes"></textarea>
       <label>Coaching Notes</label>
-      <textarea name="coaching_notes" rows="2" style="width:100%" placeholder="Context from coaching session"></textarea>
+      <textarea name="coaching_notes" rows="2" style="width:100%" placeholder="Context or rationale"></textarea>
       <button type="submit" class="btn-action" style="width:100%;margin-top:12px">Create Plan</button>
     </form>
   `);
@@ -5597,10 +5613,14 @@ async function editDailyPlan(id) {
   try {
     const plan = await api(`/daily-plans/${id}`);
     closeModal();
-    openModal('Edit Daily Plan', `
+    openModal('Edit Plan', `
       <form onsubmit="return updateDailyPlan(event, '${id}')">
         <label>Date</label>
         <input type="date" name="plan_date" value="${plan.plan_date?.slice(0, 10)}" style="width:100%" disabled>
+        <label>Title</label>
+        <input type="text" name="title" value="${esc(plan.title || '')}" style="width:100%">
+        <label>Goal</label>
+        <input type="text" name="goal" value="${esc(plan.goal || '')}" style="width:100%">
         <label>Status</label>
         <select name="status" style="width:100%">
           ${['planned', 'completed', 'partial', 'missed', 'rest', 'amended'].map(s => `<option value="${s}" ${plan.status === s ? 'selected' : ''}>${s}</option>`).join('')}

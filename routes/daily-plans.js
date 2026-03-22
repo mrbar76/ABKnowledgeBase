@@ -4,7 +4,7 @@ const router = express.Router();
 
 // Writable fields for daily_plans
 const WRITABLE_FIELDS = [
-  'plan_date', 'training_plan_id', 'status',
+  'plan_date', 'training_plan_id', 'status', 'title', 'goal',
   'workout_type', 'workout_focus', 'target_effort', 'target_duration_min', 'workout_notes',
   'target_calories', 'target_protein_g', 'target_carbs_g', 'target_fat_g', 'target_hydration_liters',
   'target_sleep_hours', 'recovery_notes',
@@ -377,6 +377,97 @@ router.delete('/:id', async (req, res) => {
       `Deleted plan for ${rows[0].plan_date}`);
 
     res.json({ ok: true, deleted: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  MIGRATE: Convert single-day training plans (microcycles) to daily plans
+// ══════════════════════════════════════════════════════════════════
+
+router.post('/migrate-from-training-plans', async (req, res) => {
+  try {
+    // Find single-day training plans (start_date = end_date, or microcycle type)
+    const { rows: plans } = await query(`
+      SELECT * FROM training_plans
+      WHERE (plan_type = 'microcycle' OR (start_date IS NOT NULL AND start_date = end_date))
+        AND status IN ('active', 'draft', 'planned')
+      ORDER BY start_date ASC
+    `);
+
+    let migrated = 0, skipped = 0, archived = 0;
+    const results = [];
+
+    for (const tp of plans) {
+      const planDate = (tp.start_date || '').slice(0, 10);
+      if (!planDate) { skipped++; continue; }
+
+      // Check if daily plan already exists for this date
+      const { rows: existing } = await query('SELECT id FROM daily_plans WHERE plan_date = $1', [planDate]);
+      if (existing.length) {
+        skipped++;
+        results.push({ date: planDate, title: tp.title, action: 'skipped — daily plan exists' });
+        continue;
+      }
+
+      // Parse workout type from title (e.g. "Wednesday Plan – Outdoor Spartan Simulation")
+      const titleParts = (tp.title || '').split('–').map(s => s.trim());
+      const workoutDesc = titleParts.length > 1 ? titleParts[1] : titleParts[0];
+
+      // Try to extract workout_type from weekly_structure or title
+      let workoutType = null;
+      let workoutFocus = null;
+      if (tp.weekly_structure && Array.isArray(tp.weekly_structure) && tp.weekly_structure.length > 0) {
+        workoutType = tp.weekly_structure[0].type || null;
+        workoutFocus = tp.weekly_structure[0].focus || null;
+      }
+      if (!workoutType) {
+        // Guess from title/goal keywords
+        const text = (tp.title + ' ' + (tp.goal || '')).toLowerCase();
+        if (text.includes('recovery') || text.includes('mobility') || text.includes('rest')) workoutType = 'recovery';
+        else if (text.includes('run') || text.includes('pacing')) workoutType = 'run';
+        else if (text.includes('strength') || text.includes('upper') || text.includes('push') || text.includes('pull')) workoutType = 'strength';
+        else if (text.includes('hill') || text.includes('spartan') || text.includes('obstacle') || text.includes('outdoor')) workoutType = 'hill';
+        else if (text.includes('hybrid') || text.includes('spin')) workoutType = 'hybrid';
+        else if (text.includes('ruck')) workoutType = 'ruck';
+        else workoutType = 'custom';
+      }
+      if (!workoutFocus) workoutFocus = workoutDesc || null;
+
+      // Determine status — recovery plans as rest
+      const isRest = workoutType === 'recovery' && (tp.goal || '').toLowerCase().includes('recovery');
+      const status = isRest ? 'rest' : 'planned';
+
+      // Insert daily plan
+      const { rows: [created] } = await query(`
+        INSERT INTO daily_plans (plan_date, training_plan_id, status, title, goal, workout_type, workout_focus,
+          workout_notes, coaching_notes, rationale, tags, ai_source, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING *
+      `, [
+        planDate, tp.id, status, tp.title || null, tp.goal || null,
+        workoutType, workoutFocus,
+        tp.constraints || null,
+        tp.progression_notes || null,
+        tp.rationale || null,
+        tp.tags || '[]',
+        tp.ai_source || 'chatgpt',
+        JSON.stringify({ migrated_from: 'training_plan', phase: tp.phase, intensity_scheme: tp.intensity_scheme }),
+      ]);
+
+      // Archive the training plan
+      await query(`UPDATE training_plans SET status = 'archived' WHERE id = $1`, [tp.id]);
+
+      migrated++;
+      archived++;
+      results.push({ date: planDate, title: tp.title, action: 'migrated', daily_plan_id: created.id, workout_type: workoutType });
+    }
+
+    await logActivity('daily_plans_migrated', 'daily_plan', null, null,
+      `Migrated ${migrated} training plans to daily plans, archived ${archived}, skipped ${skipped}`);
+
+    res.json({ migrated, skipped, archived, total_found: plans.length, results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

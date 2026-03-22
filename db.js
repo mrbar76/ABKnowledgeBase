@@ -380,6 +380,8 @@ async function initDB() {
       plan_date DATE NOT NULL UNIQUE,
       training_plan_id UUID REFERENCES training_plans(id) ON DELETE SET NULL,
       status TEXT DEFAULT 'planned' CHECK(status IN ('planned','completed','partial','missed','rest','amended')),
+      title TEXT,
+      goal TEXT,
       workout_type TEXT,
       workout_focus TEXT,
       target_effort INTEGER CHECK(target_effort >= 1 AND target_effort <= 10),
@@ -628,6 +630,10 @@ async function initDB() {
   // -- coaching_sessions migration (link to daily plans) --
   await safeQuery('coaching +daily_plan_id', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS daily_plan_id UUID REFERENCES daily_plans(id) ON DELETE SET NULL`);
   await safeQuery('coaching daily_plan idx', `CREATE INDEX IF NOT EXISTS idx_coaching_sessions_daily_plan ON coaching_sessions(daily_plan_id)`);
+
+  // -- daily_plans: add title + goal columns (unified plan concept) --
+  await safeQuery('daily_plans +title', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS title TEXT`);
+  await safeQuery('daily_plans +goal', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS goal TEXT`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
