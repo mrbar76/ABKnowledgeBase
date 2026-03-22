@@ -10,12 +10,10 @@ router.get('/', async (req, res) => {
     const term = q.trim();
     const perType = Math.min(Number(limit), 50);
 
-    const [knowledge, facts, transcripts, tasks, projects, conversations, workouts, bodyMetrics, meals, trainingPlans, coachingSessions, injuries] = await Promise.all([
+    const [knowledge, transcripts, tasks, conversations, workouts, bodyMetrics, meals, trainingPlans, coachingSessions, injuries] = await Promise.all([
       searchFTS('knowledge', 'content', term, perType, 'id,title,LEFT(content,200) as content,category,ai_source,tags,created_at'),
-      searchFTS('facts', 'content', term, perType, 'id,title,LEFT(content,200) as content,category,source,confirmed,created_at'),
       searchFTS('transcripts', 'summary', term, perType, 'id,title,LEFT(summary,200) as summary,source,recorded_at,duration_seconds,created_at'),
       searchILIKE('tasks', 'title', 'description', term, perType, 'id,title,LEFT(description,200) as description,status,priority,ai_agent,created_at'),
-      searchILIKE('projects', 'name', 'description', term, perType, 'id,name as title,LEFT(description,200) as description,status,created_at'),
       searchFTS('conversations', 'summary', term, perType, 'id,title,ai_source,LEFT(summary,200) as summary,message_count,created_at'),
       searchFTS('workouts', 'focus', term, perType, 'id,title,workout_type,workout_date,LEFT(focus,200) as focus,effort,tags,created_at'),
       searchFTS('body_metrics', 'notes', term, perType, 'id,measurement_date,weight_lb,body_fat_pct,source,LEFT(notes,200) as notes,created_at'),
@@ -27,8 +25,8 @@ router.get('/', async (req, res) => {
 
     res.json({
       query: term,
-      results: { knowledge, facts, transcripts, tasks, projects, conversations, workouts, body_metrics: bodyMetrics, meals, training_plans: trainingPlans, coaching_sessions: coachingSessions, injuries },
-      total: knowledge.length + facts.length + transcripts.length + tasks.length + projects.length + conversations.length + workouts.length + bodyMetrics.length + meals.length + trainingPlans.length + coachingSessions.length + injuries.length,
+      results: { knowledge, transcripts, tasks, conversations, workouts, body_metrics: bodyMetrics, meals, training_plans: trainingPlans, coaching_sessions: coachingSessions, injuries },
+      total: knowledge.length + transcripts.length + tasks.length + conversations.length + workouts.length + bodyMetrics.length + meals.length + trainingPlans.length + coachingSessions.length + injuries.length,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -43,12 +41,10 @@ router.post('/ai', async (req, res) => {
     const term = searchQuery.trim();
     const perType = Math.min(Number(limit), 30);
 
-    const [knowledge, facts, transcripts, tasks, projects, workouts, bodyMetrics, meals, trainingPlans, coachingSessions, injuries] = await Promise.all([
+    const [knowledge, transcripts, tasks, workouts, bodyMetrics, meals, trainingPlans, coachingSessions, injuries] = await Promise.all([
       searchFTS('knowledge', 'content', term, perType, 'id,title,LEFT(content,300) as content,category,ai_source,tags,created_at'),
-      searchFTS('facts', 'content', term, perType, 'id,title,content,category,source,created_at'),
       searchFTS('transcripts', 'summary', term, perType, 'id,title,LEFT(summary,300) as summary,source,recorded_at,created_at'),
       searchILIKE('tasks', 'title', 'description', term, perType, 'id,title,LEFT(description,200) as description,status,priority,ai_agent,created_at'),
-      searchILIKE('projects', 'name', 'description', term, perType, 'id,name as title,LEFT(description,200) as description,status,created_at'),
       searchFTS('workouts', 'focus', term, perType, 'id,title,workout_type,workout_date,LEFT(focus,200) as focus,effort,tags,created_at'),
       searchFTS('body_metrics', 'notes', term, perType, 'id,measurement_date,weight_lb,body_fat_pct,source,LEFT(notes,200) as notes,created_at'),
       searchFTS('meals', 'notes', term, perType, 'id,title,meal_type,meal_date,calories,protein_g,LEFT(notes,200) as notes,created_at'),
@@ -59,10 +55,8 @@ router.post('/ai', async (req, res) => {
 
     const allResults = [
       ...knowledge.map(r => ({ ...r, type: 'knowledge' })),
-      ...facts.map(r => ({ ...r, type: 'fact' })),
       ...transcripts.map(r => ({ ...r, type: 'transcript' })),
       ...tasks.map(r => ({ ...r, type: 'task' })),
-      ...projects.map(r => ({ ...r, type: 'project' })),
       ...workouts.map(r => ({ ...r, type: 'workout' })),
       ...bodyMetrics.map(r => ({ ...r, type: 'body_metric' })),
       ...meals.map(r => ({ ...r, type: 'meal' })),

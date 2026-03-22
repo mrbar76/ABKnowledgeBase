@@ -11,7 +11,7 @@ async function sq(text, fallbackRows) {
 router.get('/', async (req, res) => {
   try {
     const [
-      knowledgeRows, factRows, projectRows,
+      knowledgeRows,
       taskStatusRows, taskPriorityRows, taskAgentRows,
       taskDueTodayRows, taskDueWeekRows,
       transcriptRows, conversationRows, activityRows,
@@ -19,8 +19,6 @@ router.get('/', async (req, res) => {
       trainingPlanRows, coachingRows, injuryRows, activeInjuryRows
     ] = await Promise.all([
       sq('SELECT COUNT(*)::int as total FROM knowledge', [{ total: 0 }]),
-      sq('SELECT COUNT(*)::int as total FROM facts', [{ total: 0 }]),
-      sq("SELECT COUNT(*)::int as active FROM projects WHERE status = 'active'", [{ active: 0 }]),
       sq('SELECT status, COUNT(*)::int as count FROM tasks GROUP BY status'),
       sq('SELECT priority, COUNT(*)::int as count FROM tasks GROUP BY priority'),
       sq('SELECT ai_agent, COUNT(*)::int as count FROM tasks WHERE ai_agent IS NOT NULL GROUP BY ai_agent'),
@@ -45,8 +43,6 @@ router.get('/', async (req, res) => {
 
     res.json({
       knowledge: { total: knowledgeRows[0]?.total || 0 },
-      facts: { total: factRows[0]?.total || 0 },
-      projects: { active: projectRows[0]?.active || 0 },
       tasks: {
         by_status: statusMap,
         by_priority: priorityMap,

@@ -6,8 +6,6 @@ const { initDB, query } = require('./db');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
-const factsRoutes = require('./routes/facts');
-const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const transcriptRoutes = require('./routes/transcripts');
 const conversationRoutes = require('./routes/conversations');
@@ -23,8 +21,6 @@ const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
 const outlookRoutes = require('./routes/outlook');
 const gamificationRoutes = require('./routes/gamification');
-const progressRoutes = require('./routes/progress');
-const readinessRoutes = require('./routes/readiness');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -71,7 +67,7 @@ const purgeState = { running: false, progress: null, result: null };
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'facts', 'tasks', 'projects', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_nutrition_context', 'training_plans', 'coaching_sessions', 'injuries', 'progress_photos', 'progress_checkins'];
+    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_nutrition_context', 'training_plans', 'coaching_sessions', 'injuries'];
     const requested = req.body.databases || allowed;
     const targets = requested.filter(d => allowed.includes(d));
     if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
@@ -108,8 +104,6 @@ app.get('/api/purge/status', (req, res) => {
 
 // API Routes
 app.use('/api/knowledge', knowledgeRoutes);
-app.use('/api/facts', factsRoutes);
-app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/transcripts', transcriptRoutes);
 app.use('/api/conversations', conversationRoutes);
@@ -125,8 +119,6 @@ app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
-app.use('/api/progress', progressRoutes);
-app.use('/api/readiness', readinessRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));

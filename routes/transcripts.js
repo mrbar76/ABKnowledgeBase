@@ -96,7 +96,7 @@ router.get('/', async (req, res) => {
 
     const result = await query(
       `SELECT id, title, LEFT(summary, 300) as preview, summary, source, ai_source,
-              duration_seconds, recorded_at, location, tags, bee_id, project_id, metadata, created_at, updated_at
+              duration_seconds, recorded_at, location, tags, bee_id, metadata, created_at, updated_at
        FROM transcripts ${whereClause}
        ORDER BY ${orderBy} LIMIT $${i++} OFFSET $${i++}`, params
     );

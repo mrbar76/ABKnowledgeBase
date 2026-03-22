@@ -1,12 +1,7 @@
 // --- AB Brain — Full SPA with bottom tabs ---
 
 const API = '/api';
-function photoUrl(filename) {
-  const key = sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key') || '';
-  return `${API}/progress/photos/file/${encodeURIComponent(filename)}?api_key=${encodeURIComponent(key)}`;
-}
 let currentTab = 'home';
-let cachedProjects = []; // cached for dropdowns
 
 // ─── Theme Management ─────────────────────────────────────────
 function getThemeMode() { return localStorage.getItem('ab_theme') || 'auto'; }
@@ -142,7 +137,7 @@ function switchTab(tab) {
   main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the unified fitness tab
-  if (['workouts', 'nutrition', 'body', 'training', 'progress'].includes(tab)) {
+  if (['workouts', 'nutrition', 'body', 'training'].includes(tab)) {
     fitnessSubTab = tab;
     tab = 'fitness';
     currentTab = 'fitness';
@@ -158,8 +153,22 @@ function switchTab(tab) {
   else if (tab === 'tasks') loadTasks();
   else if (tab === 'brain') loadBrain();
   else if (tab === 'transcripts') { brainSubTab = 'transcripts'; loadBrain(); }
-  else if (tab === 'projects') loadProjects();
+  else if (tab === 'badges') loadBadges();
   else if (tab === 'fitness') loadFitness();
+}
+
+// ─── Badges (Gamification) ─────────────────────────────────────
+async function loadBadges() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="loading">Loading badges...</div>';
+  try {
+    const data = await api('/gamification');
+    const { badges } = data;
+    main.innerHTML = `
+      <h2 style="font-size:1rem;font-weight:700;margin-bottom:12px">Badges <span style="font-weight:400;color:var(--text-dim)">${badges.total_unlocked}/${badges.total_available} unlocked</span></h2>
+      ${buildBadgeGrid(badges)}
+    `;
+  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
 // ─── Dashboard (Home) ─────────────────────────────────────────
@@ -251,7 +260,6 @@ async function loadDashboardStats() {
     const kbCards = [
       { label: 'Conversations', value: data.conversations.total, color: '#a855f7', icon: '\u{1F4AC}', tab: 'brain', sub: 'conversations' },
       { label: 'Transcripts', value: data.transcripts.total, color: '#f59e0b', icon: '\u{1F399}', tab: 'brain', sub: 'transcripts' },
-      { label: 'Facts', value: data.facts.total, color: '#06b6d4', icon: '\u{1F4CC}', tab: 'brain', sub: 'facts' },
       { label: 'Knowledge', value: data.knowledge.total, color: '#818cf8', icon: '\u{1F9E0}', tab: 'brain', sub: 'knowledge' },
     ];
 
@@ -794,7 +802,7 @@ let _fullSchema = null;
 
 // Skip these operationIds from presets (low-priority: deletes, bulk imports)
 const SKIP_OPS = new Set([
-  'deleteKnowledge','deleteTask','deleteFact','deleteConversation','deleteTranscript',
+  'deleteKnowledge','deleteTask','deleteConversation','deleteTranscript',
   'deleteWorkout','deleteBodyMetric','deleteMeal','deleteTrainingPlan',
   'deleteCoachingSession','deleteInjury',
   'bulkImportWorkouts','bulkImportBodyMetrics','bulkImportMeals'
@@ -951,7 +959,7 @@ async function copyBuiltSchema() {
 /* ── GPT System Instructions (copy-paste for Custom GPTs) ── */
 
 function getKbGptInstructions() {
-  return `You are Avi's personal AI assistant with full read/write access to his AB Brain knowledge base. AB Brain is Avi's unified personal system for capturing knowledge, managing tasks and projects, reviewing Bee wearable transcripts, and storing AI conversations.
+  return `You are Avi's personal AI assistant with full read/write access to his AB Brain knowledge base. AB Brain is Avi's unified personal system for capturing knowledge, managing tasks, reviewing Bee wearable transcripts, and storing AI conversations.
 
 ## IDENTITY & TONE
 - Be direct, efficient, and concise. Lead with answers, not preamble.
@@ -965,7 +973,7 @@ The search system has two distinct paths. Using the wrong one will return zero r
 
 ### Text/Topic Search
 Use \`GET /search?q=term\` or \`POST /search/ai\` to find content by keywords or topics.
-These search across: knowledge, facts, transcripts, tasks, projects, conversations, workouts, meals, body metrics, training plans, coaching sessions, injuries.
+These search across: knowledge, transcripts, tasks, conversations, workouts, meals, body metrics, training plans, coaching sessions, injuries.
 
 ### Date Filtering
 **NEVER pass a date string (like "2026-03-18") as a search query.** Dates live in structured timestamp fields, NOT in searchable text. The search index will not find them.
@@ -998,16 +1006,9 @@ Tasks are a core part of this system. Treat task creation as seriously as any ot
 - \`high\` — important, should be done soon
 - \`urgent\` — time-sensitive, needs attention today
 
-### Projects
-- Tasks belong to projects. Before creating a task, check \`GET /projects?status=active\` for existing projects.
-- If the task fits an existing project, use its \`project_id\`.
-- Only create a new project (\`POST /projects\`) if there's genuinely a new initiative.
-- Projects have statuses: active, paused, completed, archived.
-
 ### Viewing Tasks
 - \`GET /tasks/kanban\` — board view organized by status (todo, in_progress, review, done)
 - \`GET /tasks?status=todo\` — filter by status
-- \`GET /tasks?project_id=UUID\` — all tasks for a project
 - \`GET /tasks?ai_agent=chatgpt\` — tasks you created
 
 ### Updating Tasks
@@ -1033,15 +1034,6 @@ For saving insights, notes, research, how-tos, decisions, and reference material
 - Search before creating to avoid duplicates: \`GET /knowledge?q=topic\` or \`GET /search?q=topic\`
 - Update with \`PUT /knowledge/:id\` — can change title, content, category, tags
 - Get full content with \`GET /knowledge/:id\`
-
-## FACTS
-
-For verified claims, data points, and reference facts.
-
-- \`POST /facts\` — required: \`title\`, \`content\`
-- Set \`confirmed: true\` when the fact has a reliable source
-- Include \`source\` to track where the fact came from
-- Use categories to organize (same as knowledge)
 
 ## TRANSCRIPTS (Bee Wearable)
 
@@ -1098,9 +1090,6 @@ For storing important AI conversation threads.
 
 **"Mark task X as done"**
 → Find the task, then \`PUT /tasks/:id\` with \`{status: "done", output_log: "what was completed"}\`.
-
-**"Create a project for X with tasks"**
-→ \`POST /projects\` first, then \`POST /tasks\` for each task with the new \`project_id\`.
 
 ## RESPONSE STYLE
 - After creating/updating data, give a one-line confirmation with the key info.
@@ -1199,8 +1188,6 @@ For periodized programming. Store the WHY behind decisions.
 - Include: goal, rationale (WHY this approach), constraints (injuries, schedule, equipment)
 - weekly_structure: array of day objects [{day: "Monday", type: "strength", focus: "upper body"}]
 - intensity_scheme, progression_notes for how to progress week over week
-- Link to project_id if part of a larger initiative
-
 ### Before Creating a Plan
 1. Review recent workouts: \`GET /workouts?limit=20\`
 2. Review body trends: \`GET /body-metrics?limit=10\`
@@ -1221,7 +1208,6 @@ For periodized programming. Store the WHY behind decisions.
 
 When training discussions produce action items:
 - \`POST /tasks\` with ai_agent: "chatgpt"
-- Check \`GET /projects?status=active\` for existing projects first
 - Use appropriate priority (low/medium/high/urgent)
 - Include next_steps for the immediate action
 
@@ -1728,7 +1714,6 @@ async function loadTasksList() {
               <div class="list-item-title" style="${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</div>
               <div class="list-item-meta">
                 <span class="priority-badge priority-${t.priority}">${t.priority}</span>
-                ${t.project_name ? `<span>${esc(t.project_name)}</span>` : ''}
                 ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
                 ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
                 <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
@@ -1773,7 +1758,6 @@ async function loadTasksKanban() {
                 ontouchstart="kanbanTouchStart(event,'${t.id}')" ontouchmove="kanbanTouchMove(event)" ontouchend="kanbanTouchEnd(event)"
                 onclick="if(!_touchMoved)showTaskDetail('${t.id}')">
                 <div class="kanban-card-title">${esc(t.title)}</div>
-                ${t.project_name ? `<div class="kanban-card-meta">${esc(t.project_name)}</div>` : ''}
                 <div class="kanban-card-meta">
                   <span class="priority-badge priority-${t.priority}">${t.priority}</span>
                   ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
@@ -1918,32 +1902,26 @@ async function loadTasksCalendar() {
 
 function setTaskDueByCalendar(dateStr) {
   // Quick-create a task on this date
-  ensureProjectsCache().then(() => {
-    openModal('New Task', `
-      <form onsubmit="createTask(event)">
-        <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
-        <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="2"></textarea></div>
-        <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due" value="${dateStr}"></div>
-        <div class="form-group"><label>Priority</label>
-          <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-        </div>
-        <div class="form-group"><label>Project</label>
-          <select id="new-task-project">${projectDropdownHtml()}</select>
-        </div>
-        <div class="form-group"><label>Context</label>
-          <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
-        </div>
-        <button type="submit" class="btn-submit">Create Task</button>
-      </form>
-    `);
-  });
+  openModal('New Task', `
+    <form onsubmit="createTask(event)">
+      <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
+      <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="2"></textarea></div>
+      <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due" value="${dateStr}"></div>
+      <div class="form-group"><label>Priority</label>
+        <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+      </div>
+      <div class="form-group"><label>Context</label>
+        <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
+      </div>
+      <button type="submit" class="btn-submit">Create Task</button>
+    </form>
+  `);
 }
 
 // ── Shared Task Detail / Edit ──
 async function showTaskDetail(id) {
   try {
     const task = await api(`/tasks/${id}`);
-    await ensureProjectsCache();
     openModal(task.title, `
       <div class="form-group"><label>Status</label>
         <select onchange="updateTask('${id}', 'status', this.value)">
@@ -1957,11 +1935,6 @@ async function showTaskDetail(id) {
       </div>
       <div class="form-group"><label>Due Date</label>
         <input type="date" value="${task.due_date ? task.due_date.slice(0,10) : ''}" onchange="updateTask('${id}', 'due_date', this.value||null)">
-      </div>
-      <div class="form-group"><label>Project</label>
-        <select onchange="updateTask('${id}', 'project_id', this.value||null)">
-          ${projectDropdownHtml(task.project_id)}
-        </select>
       </div>
       <div class="form-group"><label>Context</label>
         <select onchange="updateTask('${id}', 'context', this.value||null)">
@@ -2088,38 +2061,21 @@ async function deleteTask(id) {
   try { await api(`/tasks/${id}`, { method: 'DELETE' }); closeModal(); loadTasks(); } catch {}
 }
 
-async function ensureProjectsCache() {
-  if (!cachedProjects.length) {
-    try { const d = await api('/projects'); cachedProjects = d.projects || []; } catch {}
-  }
-  return cachedProjects;
-}
-
-function projectDropdownHtml(selectedId) {
-  return `<option value="">No project</option>` +
-    cachedProjects.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
-}
-
-function showNewTaskModal(defaultProjectId) {
-  ensureProjectsCache().then(() => {
-    openModal('New Task', `
-      <form onsubmit="createTask(event)">
-        <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
-        <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="3"></textarea></div>
-        <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due"></div>
-        <div class="form-group"><label>Priority</label>
-          <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-        </div>
-        <div class="form-group"><label>Project</label>
-          <select id="new-task-project">${projectDropdownHtml(defaultProjectId)}</select>
-        </div>
-        <div class="form-group"><label>Context</label>
-          <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
-        </div>
-        <button type="submit" class="btn-submit">Create Task</button>
-      </form>
-    `);
-  });
+function showNewTaskModal() {
+  openModal('New Task', `
+    <form onsubmit="createTask(event)">
+      <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
+      <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="3"></textarea></div>
+      <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due"></div>
+      <div class="form-group"><label>Priority</label>
+        <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+      </div>
+      <div class="form-group"><label>Context</label>
+        <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
+      </div>
+      <button type="submit" class="btn-submit">Create Task</button>
+    </form>
+  `);
 }
 
 async function createTask(e) {
@@ -2130,23 +2086,20 @@ async function createTask(e) {
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
       priority: document.getElementById('new-task-priority').value,
-      project_id: document.getElementById('new-task-project').value || null,
       due_date: dueEl ? dueEl.value || null : null,
       context: document.getElementById('new-task-context').value || null,
     }) });
     closeModal();
     if (currentTab === 'tasks') loadTasks();
-    else if (currentTab === 'projects') loadProjects();
   } catch (err) { showToast(err.message); }
 }
 
-// ─── Brain (Knowledge + Facts) ────────────────────────────────
+// ─── Brain (Knowledge) ────────────────────────────────────────
 let brainSubTab = 'all';
 function brainTabsHtml() {
   return `<div class="brain-tabs">
     <button class="brain-tab${brainSubTab==='all'?' active':''}" onclick="brainSubTab='all';loadBrain()">All</button>
     <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
-    <button class="brain-tab${brainSubTab==='facts'?' active':''}" onclick="brainSubTab='facts';loadBrain()">Facts</button>
     <button class="brain-tab${brainSubTab==='conversations'?' active':''}" onclick="brainSubTab='conversations';loadBrain()">Conversations</button>
     <button class="brain-tab${brainSubTab==='transcripts'?' active':''}" onclick="brainSubTab='transcripts';loadBrain()">Transcripts</button>
     <button class="brain-tab${brainSubTab==='guide'?' active':''}" onclick="brainSubTab='guide';loadBrain()">Guide</button>
@@ -2157,7 +2110,6 @@ async function loadBrain(searchQuery) {
   const main = document.getElementById('main-content');
   main.innerHTML = brainTabsHtml() + '<div class="loading">Loading...</div>';
   if (brainSubTab === 'all') return loadBrainAll(searchQuery);
-  if (brainSubTab === 'facts') return loadFacts(searchQuery);
   if (brainSubTab === 'conversations') return loadConversations(searchQuery);
   if (brainSubTab === 'transcripts') return loadTranscripts(searchQuery);
   if (brainSubTab === 'guide') return loadBrainGuide();
@@ -2196,9 +2148,8 @@ async function loadBrainAll(searchQuery) {
   const main = document.getElementById('main-content');
   try {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=20` : '?limit=20';
-    const [kData, fData, cData, tData] = await Promise.all([
+    const [kData, cData, tData] = await Promise.all([
       api('/knowledge' + qs),
-      api('/facts' + qs),
       api('/conversations' + qs),
       api('/transcripts' + qs)
     ]);
@@ -2219,20 +2170,6 @@ async function loadBrainAll(searchQuery) {
             <div class="list-item-preview">${esc((k.content || '').substring(0, 100))}</div>
           </div>`).join('')}
         ${kData.entries.length > 5 ? `<div class="brain-all-more" onclick="brainSubTab='knowledge';loadBrain()">View all knowledge &rarr;</div>` : ''}
-      </div>`);
-    }
-
-    if (fData.facts.length) {
-      sections.push(`<div class="brain-all-section">
-        <div class="brain-all-section-header" onclick="brainSubTab='facts';loadBrain(${searchQuery ? "'" + esc(searchQuery).replace(/'/g,"\\'") + "'" : ''})">
-          <span>Facts</span><span class="brain-all-count">${fData.facts.length}${fData.facts.length >= 20 ? '+' : ''}</span>
-        </div>
-        ${fData.facts.slice(0, 5).map(f => `
-          <div class="list-item list-item-compact" onclick="showFactDetail('${f.id}')">
-            <div class="list-item-title">${esc(f.title)}</div>
-            <div class="list-item-preview">${esc((f.content || '').substring(0, 100))}</div>
-          </div>`).join('')}
-        ${fData.facts.length > 5 ? `<div class="brain-all-more" onclick="brainSubTab='facts';loadBrain()">View all facts &rarr;</div>` : ''}
       </div>`);
     }
 
@@ -2271,7 +2208,7 @@ async function loadBrainAll(searchQuery) {
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <input type="text" class="brain-search" placeholder="Search everything..." value="${esc(searchQuery || '')}" oninput="debounceBrainAllSearch(this.value)">
       </div>
-      ${sections.length ? sections.join('') : `<div class="empty-state">${searchQuery ? 'No results found' : 'Your brain is empty. Start adding knowledge, facts, or import conversations.'}</div>`}
+      ${sections.length ? sections.join('') : `<div class="empty-state">${searchQuery ? 'No results found' : 'Your brain is empty. Start adding knowledge or import conversations.'}</div>`}
     `;
   } catch (e) { main.innerHTML = brainTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
 }
@@ -2331,7 +2268,7 @@ function loadBrainGuide() {
         <div class="guide-row">
           <span><strong>Custom GPT</strong></span>
           <span style="color:var(--green)">Live &mdash; posts directly</span>
-          <span>Just use it. Tasks, knowledge, facts push automatically.</span>
+          <span>Just use it. Tasks and knowledge push automatically.</span>
         </div>
         <div class="guide-row">
           <span><strong>ChatGPT / Claude</strong></span>
@@ -2346,10 +2283,10 @@ function loadBrainGuide() {
         <div class="guide-row">
           <span><strong>Bee Wearable</strong></span>
           <span style="color:var(--green)">Automatic</span>
-          <span>Wear it. Conversations, tasks, and facts sync on their own.</span>
+          <span>Wear it. Conversations and tasks sync on their own.</span>
         </div>
       </div>
-      <div class="guide-callout">Best habit: when a conversation is useful, ask your AI to outline it, then paste into Custom GPT. Takes 30 seconds. The intake system classifies it into knowledge, tasks, or facts automatically.</div>
+      <div class="guide-callout">Best habit: when a conversation is useful, ask your AI to outline it, then paste into Custom GPT. Takes 30 seconds. The intake system classifies it into knowledge or tasks automatically.</div>
     </div>
 
     <div class="guide-section">
@@ -2368,13 +2305,7 @@ function loadBrainGuide() {
           <span>Something you learned</span><span>Knowledge</span><span>AI intake or Custom GPT</span>
         </div>
         <div class="guide-row">
-          <span>A fact about you or someone</span><span>Fact</span><span>Extracted from transcripts</span>
-        </div>
-        <div class="guide-row">
           <span>Something you need to do</span><span>Task</span><span>Create manually or AI extracts</span>
-        </div>
-        <div class="guide-row">
-          <span>A bigger initiative</span><span>Project</span><span>Group tasks under it</span>
         </div>
       </div>
     </div>
@@ -2399,68 +2330,6 @@ function loadBrainGuide() {
     </div>
 
   </div>`;
-}
-
-async function loadFacts(searchQuery) {
-  const main = document.getElementById('main-content');
-  try {
-    const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
-    const data = await api('/facts' + qs);
-
-    main.innerHTML = brainTabsHtml() + `
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <input type="text" class="brain-search" placeholder="Search facts..." value="${esc(searchQuery || '')}" oninput="debounceFactSearch(this.value)">
-      </div>
-      <div id="facts-list">
-        ${data.facts.length ? data.facts.map(f => `
-          <div class="list-item" onclick="showFactDetail('${f.id}')">
-            <div class="list-item-title">${esc(f.title)}</div>
-            <div class="list-item-preview">${esc((f.content || '').substring(0, 200))}</div>
-            <div class="list-item-meta">
-              <span>${f.category || 'general'}</span>
-              <span>${f.source || ''}</span>
-              ${f.confirmed ? '<span style="color:var(--green)">confirmed</span>' : '<span style="color:var(--text-dim)">unconfirmed</span>'}
-              <span>${timeAgo(f.created_at)}</span>
-            </div>
-          </div>`).join('') : '<div class="empty-state">No facts yet. Facts are captured from Bee sync and AI intake.</div>'}
-      </div>
-    `;
-  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
-}
-
-let factSearchTimer = null;
-function debounceFactSearch(q) { clearTimeout(factSearchTimer); factSearchTimer = setTimeout(() => loadFacts(q), 300); }
-
-async function showFactDetail(id) {
-  try {
-    const f = await api(`/facts/${id}`);
-    openModal(f.title, `
-      <div class="list-item-meta" style="margin-bottom:12px">
-        <span>${f.category || 'general'}</span>
-        <span>${f.source || ''}</span>
-        ${f.confirmed ? '<span style="color:var(--green)">confirmed</span>' : '<span style="color:var(--text-dim)">unconfirmed</span>'}
-        <span>${timeAgo(f.created_at)}</span>
-      </div>
-      ${f.tags?.length ? `<div style="margin-bottom:12px">${(Array.isArray(f.tags) ? f.tags : []).map(t => `<span class="tag-pill">${esc(t)}</span>`).join(' ')}</div>` : ''}
-      <div style="font-size:0.88rem;white-space:pre-wrap;line-height:1.6">${esc(f.content)}</div>
-      <div style="margin-top:12px;display:flex;gap:8px">
-        ${!f.confirmed ? `<button class="btn-action" onclick="confirmFact('${id}')" style="flex:1;padding:8px">Confirm</button>` : ''}
-        <button class="btn-action btn-action-danger" onclick="deleteFact('${id}')" style="flex:1;padding:8px">Delete</button>
-      </div>
-    `);
-  } catch (e) { openModal('Error', esc(e.message)); }
-}
-
-async function confirmFact(id) {
-  try {
-    await api(`/facts/${id}`, { method: 'PUT', body: JSON.stringify({ confirmed: true }) });
-    closeModal(); loadBrain();
-  } catch (e) { showToast(e.message); }
-}
-
-async function deleteFact(id) {
-  if (!confirm('Delete this fact?')) return;
-  try { await api(`/facts/${id}`, { method: 'DELETE' }); closeModal(); loadBrain(); } catch {}
 }
 
 // ─── Conversations sub-tab ─────────────────────────────────────
@@ -2841,113 +2710,6 @@ async function renameSpeaker(id, oldName) {
   }
 }
 
-// ─── Projects ─────────────────────────────────────────────────
-async function loadProjects() {
-  const main = document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading...</div>';
-  try {
-    const data = await api('/projects');
-
-    main.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h2 style="font-size:1rem;font-weight:700">Projects</h2>
-        <button class="btn-action" onclick="showNewProjectModal()" style="padding:6px 14px;font-size:0.8rem">+ Project</button>
-      </div>
-      <div id="projects-list">
-        ${data.projects.length ? data.projects.map(p => {
-          const tc = p.task_counts || {};
-          const total = (tc.todo||0) + (tc.in_progress||0) + (tc.review||0) + (tc.done||0);
-          const done = tc.done || 0;
-          const pct = total > 0 ? Math.round(done / total * 100) : 0;
-          return `
-          <div class="list-item" onclick="showProjectDetail('${p.id}')">
-            <div class="list-item-title">${esc(p.name)}</div>
-            ${p.description ? `<div class="list-item-preview">${esc(p.description.substring(0, 100))}</div>` : ''}
-            <div class="list-item-meta">
-              <span class="status-badge status-${p.status}">${p.status}</span>
-              <span>${total} tasks</span>
-              ${total > 0 ? `<span>${pct}% done</span>` : ''}
-            </div>
-            ${total > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : ''}
-          </div>`;
-        }).join('') : '<div class="empty-state">No projects yet</div>'}
-      </div>
-    `;
-  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
-}
-
-async function showProjectDetail(id) {
-  try {
-    const p = await api(`/projects/${id}`);
-    const tasks = p.tasks || [];
-    const statuses = ['active', 'paused', 'completed', 'archived'];
-    const doneTasks = tasks.filter(t => t.status === 'done').length;
-    const pct = tasks.length ? Math.round(doneTasks / tasks.length * 100) : 0;
-
-    openModal(p.name, `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <select onchange="updateProject('${id}', 'status', this.value)" style="background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.8rem">
-          ${statuses.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s}</option>`).join('')}
-        </select>
-        <span style="font-size:0.75rem;color:var(--text-dim)">${timeAgo(p.created_at)}</span>
-        ${tasks.length ? `<span style="font-size:0.75rem;color:var(--text-dim)">${pct}% done</span>` : ''}
-      </div>
-      ${p.description ? `<div style="font-size:0.85rem;margin-bottom:12px;color:var(--text-dim)">${esc(p.description)}</div>` : ''}
-      ${tasks.length ? `<div class="progress-bar" style="margin-bottom:12px"><div class="progress-fill" style="width:${pct}%"></div></div>` : ''}
-
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <h4 style="font-size:0.85rem;color:var(--text-dim)">Tasks (${tasks.length})</h4>
-        <button class="btn-action" onclick="closeModal();showNewTaskModal('${id}')" style="padding:4px 12px;font-size:0.75rem">+ Task</button>
-      </div>
-      ${tasks.length ? tasks.map(t => `
-        <div onclick="closeModal();showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;cursor:pointer">
-          <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();toggleTaskDone('${t.id}','${t.status}','${id}')" style="cursor:pointer">
-          <span style="flex:1;${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</span>
-          <span class="priority-badge priority-${t.priority}">${t.priority[0].toUpperCase()}</span>
-        </div>`).join('') : '<div class="empty-state" style="padding:12px">No tasks yet — add one above</div>'}
-
-      <div style="margin-top:16px;display:flex;gap:8px">
-        <button class="btn-action btn-action-danger" onclick="deleteProject('${id}')" style="flex:1">Delete Project</button>
-      </div>
-    `);
-  } catch (e) { openModal('Error', esc(e.message)); }
-}
-
-async function updateProject(id, field, value) {
-  try { await api(`/projects/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) }); cachedProjects = []; } catch {}
-}
-
-async function toggleTaskDone(taskId, currentStatus, projectId) {
-  const newStatus = currentStatus === 'done' ? 'todo' : 'done';
-  try { await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }); showProjectDetail(projectId); } catch {}
-}
-
-function showNewProjectModal() {
-  openModal('New Project', `
-    <form onsubmit="createProject(event)">
-      <div class="form-group"><label>Name</label><input type="text" id="new-proj-name" required></div>
-      <div class="form-group"><label>Description</label><textarea id="new-proj-desc" rows="3"></textarea></div>
-      <button type="submit" class="btn-submit">Create Project</button>
-    </form>
-  `);
-}
-
-async function createProject(e) {
-  e.preventDefault();
-  try {
-    await api('/projects', { method: 'POST', body: JSON.stringify({
-      name: document.getElementById('new-proj-name').value,
-      description: document.getElementById('new-proj-desc').value,
-    }) });
-    closeModal(); loadProjects();
-  } catch (err) { showToast(err.message); }
-}
-
-async function deleteProject(id) {
-  if (!confirm('Delete this project and unlink its tasks?')) return;
-  try { await api(`/projects/${id}`, { method: 'DELETE' }); closeModal(); loadProjects(); } catch {}
-}
-
 // ─── Sync helpers ─────────────────────────────────────────────
 
 function toggleActivity() {
@@ -2993,10 +2755,8 @@ async function runGlobalSearch(q) {
     if (data.total === 0) { el.innerHTML = '<div class="search-empty">No results</div>'; return; }
     let html = '';
     if (r.knowledge?.length) html += renderSearchGroup('Knowledge', r.knowledge, i => `<div class="search-result-item"><div class="search-result-title">${i.ai_source?`<span class="k-source-badge source-${i.ai_source}">${i.ai_source}</span>`:''}${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.content||'',q)}</div></div>`);
-    if (r.facts?.length) html += renderSearchGroup('Facts', r.facts, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.content||'',q)}</div></div>`);
     if (r.transcripts?.length) html += renderSearchGroup('Transcripts', r.transcripts, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-preview">${searchSnippet(i.summary||'',q)}</div></div>`);
     if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
-    if (r.projects?.length) html += renderSearchGroup('Projects', r.projects, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title||i.name,q)}</div></div>`);
     if (r.workouts?.length) html += renderSearchGroup('Workouts', r.workouts, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('workouts');setTimeout(()=>showWorkoutDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.workout_type||''}</span><span>${i.workout_date||''}</span>${i.effort?`<span>Effort: ${i.effort}/10</span>`:''}</div></div>`);
     if (r.meals?.length) html += renderSearchGroup('Meals', r.meals, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('nutrition');setTimeout(()=>showMealDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.meal_type||''}</span><span>${i.meal_date||''}</span>${i.calories?`<span>${i.calories} cal</span>`:''}</div></div>`);
     if (r.body_metrics?.length) html += renderSearchGroup('Body Metrics', r.body_metrics, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('body');setTimeout(()=>showBodyMetricDetail('${i.id}'),300)"><div class="search-result-title">${i.weight_lb}lb — ${i.measurement_date||''}</div><div class="search-result-meta"><span>${i.source||'RENPHO'}</span>${i.body_fat_pct?`<span>BF: ${i.body_fat_pct}%</span>`:''}</div></div>`);
@@ -3043,7 +2803,6 @@ function loadFitness() {
     { key: 'nutrition', label: 'Nutrition', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18.06 22.99h1.66c.84 0 1.53-.64 1.63-1.46L23 5.05h-5V1h-1.97v4.05h-4.97l.3 2.34c1.71.47 3.31 1.32 4.27 2.26 1.44 1.42 2.43 2.89 2.43 5.29v8.05zM1 21.99V21h15.03v.99c0 .55-.45 1-1.01 1H2.01c-.56 0-1.01-.45-1.01-1zm15.03-7c0-4.5-6.83-5-9.52-5C3.92 9.99 1 10.99 1 14.99h15.03zm-15.03 2h15.03v2H1v-2z"/></svg>' },
     { key: 'body', label: 'Body', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>' },
     { key: 'training', label: 'Training', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' },
-    { key: 'progress', label: 'Progress', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M9 11.75c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zm6 0c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -3055,7 +2814,6 @@ function loadFitness() {
   else if (fitnessSubTab === 'nutrition') loadNutrition();
   else if (fitnessSubTab === 'body') loadBodyMetrics();
   else if (fitnessSubTab === 'training') loadTraining();
-  else if (fitnessSubTab === 'progress') loadProgress();
 }
 
 // ─── Workouts ─────────────────────────────────────────────────
@@ -4876,650 +4634,16 @@ function shiftDate(dateStr, days) {
   return d.toISOString().slice(0, 10);
 }
 
-// ─── Body Progress Photos ─────────────────────────────────────
-const PROGRESS_POSES = [
-  { key: 'front_relaxed', label: 'Front Relaxed', instruction: 'Face camera. Feet hip-width apart, arms slightly away from sides. Neutral posture, don\'t flex.' },
-  { key: 'front_flexed', label: 'Front Flexed', instruction: 'Face camera. Double bicep pose or most muscular. Show your best front.' },
-  { key: 'side_relaxed_left', label: 'Left Side', instruction: 'Left side to camera. Arms at sides, stand tall. Don\'t suck in stomach.' },
-  { key: 'side_relaxed_right', label: 'Right Side', instruction: 'Right side to camera. Arms at sides, stand tall. Don\'t suck in stomach.' },
-  { key: 'back_relaxed', label: 'Back Relaxed', instruction: 'Back to camera. Arms slightly away from sides. Natural posture.' },
-  { key: 'back_flexed', label: 'Back Flexed', instruction: 'Back to camera. Lat spread or double bicep. Show back width.' },
-  { key: 'quarter_turn_left', label: 'Quarter Left', instruction: 'Turn 45° left from front-facing. Arms relaxed at sides.' },
-  { key: 'quarter_turn_right', label: 'Quarter Right', instruction: 'Turn 45° right from front-facing. Arms relaxed at sides.' },
-];
-
-function poseSvg(key) {
-  // Realistic solid silhouette SVGs using smooth bezier curves
-  const svgs = {
-    front_relaxed: `<svg viewBox="0 0 120 280" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="60" cy="22" rx="14" ry="17" fill="currentColor" opacity="0.85"/>
-      <path d="M52 38 C52 42,54 46,54 48 C42 50,28 56,22 64 C18 70,16 76,16 80
-        C16 90,14 100,14 110 C14 118,16 122,20 122 C24 122,24 118,24 112
-        C24 104,26 96,26 88 C26 82,28 76,30 72 C34 66,38 62,44 58
-        C44 62,44 68,44 74 C42 82,38 96,36 110 C34 118,32 126,32 134
-        C32 142,34 148,36 152 C36 160,36 168,38 176 C40 184,40 192,40 200
-        C40 210,40 220,42 230 C42 238,42 246,42 252 C42 258,44 264,50 266
-        C54 268,56 264,54 260 C52 254,50 246,50 238 C50 228,50 218,52 208
-        C54 198,54 188,56 178 C56 172,58 166,58 160
-        C60 160,60 160,62 160
-        C62 166,64 172,64 178 C66 188,66 198,68 208
-        C70 218,70 228,70 238 C70 246,68 254,66 260
-        C64 264,66 268,70 266 C76 264,78 258,78 252
-        C78 246,78 238,78 230 C80 220,80 210,80 200
-        C80 192,80 184,82 176 C84 168,84 160,84 152
-        C86 148,88 142,88 134 C88 126,86 118,84 110
-        C82 96,78 82,76 74 C76 68,76 62,76 58
-        C82 62,86 66,90 72 C92 76,94 82,94 88
-        C94 96,96 104,96 112 C96 118,96 122,100 122
-        C104 122,104 118,106 110 C106 100,104 90,104 80
-        C104 76,102 70,98 64 C92 56,78 50,66 48
-        C66 46,68 42,68 38 Z" fill="currentColor" opacity="0.85"/>
-    </svg>`,
-    front_flexed: `<svg viewBox="0 0 140 280" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="70" cy="22" rx="14" ry="17" fill="currentColor" opacity="0.85"/>
-      <path d="M62 38 C62 42,64 46,64 48 C52 50,38 56,32 64 C28 68,26 72,24 76
-        C22 80,18 82,14 78 C10 74,8 68,6 60 C4 52,4 44,6 38
-        C8 34,12 34,12 38 C12 44,14 52,16 58 C18 64,20 68,22 70
-        C24 68,26 64,28 62 C32 58,38 54,44 52
-        C44 58,44 68,44 74 C42 82,38 96,36 110 C34 118,32 126,32 134
-        C32 142,34 148,36 152 C36 160,36 168,38 176 C40 184,40 192,40 200
-        C40 210,40 220,42 230 C42 238,42 246,42 252 C42 258,44 264,50 266
-        C54 268,56 264,54 260 C52 254,50 246,50 238 C50 228,50 218,52 208
-        C54 198,54 188,56 178 C56 172,58 166,58 160
-        C60 160,60 160,62 160
-        C62 166,64 172,64 178 C66 188,66 198,68 208
-        C70 218,70 228,70 238 C70 246,68 254,66 260
-        C64 264,66 268,70 266 C76 264,78 258,78 252
-        C78 246,78 238,78 230 C80 220,80 210,80 200
-        C80 192,80 184,82 176 C84 168,84 160,84 152
-        C86 148,88 142,88 134 C88 126,86 118,84 110
-        C82 96,78 82,76 74 C76 68,76 62,76 58 C76 54,82 52,86 54
-        C92 58,96 62,98 68 C100 72,96 64,98 62
-        C100 68,102 74,104 78 C106 82,108 80,116 76
-        C118 74,120 68,122 58 C124 52,126 44,128 38
-        C128 34,132 34,134 38 C136 44,136 52,134 60
-        C132 68,130 74,126 78 C122 82,118 84,116 80
-        C114 78,112 76,108 76 C106 78,98 80,96 76
-        C94 72,92 68,90 64 C88 60,86 56,82 54
-        C78 52,76 50,76 48
-        C76 46,78 42,78 38 Z" fill="currentColor" opacity="0.85"/>
-    </svg>`,
-    side_relaxed_left: `<svg viewBox="0 0 100 280" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="52" cy="22" rx="14" ry="17" fill="currentColor" opacity="0.85"/>
-      <path d="M46 38 C44 42,42 46,42 50 C36 54,32 60,30 68
-        C28 74,26 80,26 86 C24 92,22 98,20 104
-        C18 110,18 116,22 118 C26 120,28 116,28 110
-        C28 104,30 98,32 92 C34 86,34 80,36 74 C36 70,38 66,40 62
-        C40 68,40 76,38 84 C36 94,34 104,34 114
-        C34 124,34 134,36 144 C38 154,38 164,38 174
-        C38 184,38 194,38 204 C38 214,38 224,40 234
-        C40 242,40 250,40 256 C40 262,42 268,48 268
-        C52 268,52 264,50 258 C48 252,48 244,48 236
-        C48 226,50 216,50 206 C50 196,52 186,52 176
-        C54 166,54 160,56 154
-        C58 160,58 166,58 176 C58 186,58 196,58 206
-        C58 216,60 226,60 236 C60 244,60 252,58 258
-        C56 264,56 268,60 268 C66 268,68 262,68 256
-        C68 250,68 242,68 234 C70 224,70 214,70 204
-        C70 194,70 184,70 174 C70 164,70 154,72 144
-        C74 134,74 124,74 114 C74 104,72 94,70 84
-        C68 76,68 68,68 62
-        C70 66,72 70,72 74 C74 80,74 86,76 92
-        C78 98,80 104,80 110 C80 116,82 120,86 118
-        C90 116,90 110,88 104 C86 98,84 92,82 86
-        C82 80,80 74,78 68 C76 60,72 54,66 50
-        C66 46,64 42,62 38 Z" fill="currentColor" opacity="0.85"/>
-    </svg>`,
-    quarter_turn_left: `<svg viewBox="0 0 120 280" width="60" height="120" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="56" cy="22" rx="15" ry="17" fill="currentColor" opacity="0.85"/>
-      <path d="M48 38 C46 42,44 46,44 50 C34 54,24 60,20 68
-        C16 74,14 80,14 86 C12 92,10 98,10 104
-        C10 110,10 116,14 118 C18 120,20 116,20 110
-        C20 104,22 98,24 92 C26 86,28 80,30 74 C32 68,36 64,40 60
-        C40 66,40 74,38 82 C36 92,34 102,34 112
-        C34 122,34 132,36 142 C36 152,36 162,36 172
-        C36 182,36 192,36 202 C36 212,36 222,38 232
-        C38 240,38 248,38 254 C38 260,40 266,46 268
-        C50 270,52 266,50 260 C48 254,48 244,48 236
-        C48 226,48 216,50 206 C50 196,52 186,52 176
-        C52 170,54 164,56 158
-        C58 164,58 170,60 176 C60 186,60 196,62 206
-        C62 216,64 226,64 236 C64 244,64 254,62 260
-        C60 266,62 270,66 268 C72 266,74 260,74 254
-        C74 248,74 240,74 232 C76 222,76 212,76 202
-        C76 192,76 182,76 172 C76 162,76 152,78 142
-        C78 132,80 122,80 112 C80 102,78 92,76 82
-        C74 74,74 66,74 60
-        C78 64,82 68,84 74 C86 80,88 86,90 92
-        C92 98,94 104,94 110 C94 116,96 120,100 118
-        C104 116,104 110,102 104 C100 98,98 92,96 86
-        C94 80,92 74,90 68 C86 60,80 54,70 50
-        C70 46,68 42,66 38 Z" fill="currentColor" opacity="0.85"/>
-    </svg>`,
-  };
-  // Reuse: back = front, side_right = side_left flipped, quarter_right = quarter_left flipped
-  svgs.back_relaxed = svgs.front_relaxed;
-  svgs.back_flexed = svgs.front_flexed;
-  svgs.side_relaxed_right = svgs.side_relaxed_left.replace('viewBox="0 0 100 280"', 'viewBox="0 0 100 280" style="transform:scaleX(-1)"');
-  svgs.quarter_turn_right = svgs.quarter_turn_left.replace('viewBox="0 0 120 280"', 'viewBox="0 0 120 280" style="transform:scaleX(-1)"');
-  return svgs[key] || svgs.front_relaxed;
-}
-
-let progressViewMode = 'timeline'; // 'timeline' | 'compare'
-let progressCompareFrom = null;
-let progressCompareTo = null;
-
-async function loadProgress() {
-  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
-  main.innerHTML = skeletonCards(4);
-  try {
-    const data = await api('/progress?limit=50');
-
-    main.innerHTML = `
-      <div class="list-search-row">
-        <div class="filter-row" style="flex:1;margin:0">
-          <button class="filter-btn ${progressViewMode === 'timeline' ? 'active' : ''}" onclick="progressViewMode='timeline';loadProgress()">Timeline</button>
-          <button class="filter-btn ${progressViewMode === 'compare' ? 'active' : ''}" onclick="progressViewMode='compare';loadProgress()">Compare</button>
-          <button class="filter-btn ${progressViewMode === 'poses' ? 'active' : ''}" onclick="progressViewMode='poses';loadProgress()">Pose Guide</button>
-        </div>
-        <button class="btn-submit btn-compact" onclick="showProgressCheckinForm()">+ Check-in</button>
-      </div>
-      <div id="progress-view-content"></div>
-    `;
-
-    const viewEl = document.getElementById('progress-view-content');
-
-    if (progressViewMode === 'poses') {
-      renderPoseGuide(viewEl);
-    } else if (progressViewMode === 'compare') {
-      renderCompareView(viewEl, data.checkins);
-    } else {
-      renderTimeline(viewEl, data.checkins);
-    }
-  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
-}
-
-function renderTimeline(el, checkins) {
-  if (!checkins.length) {
-    el.innerHTML = `
-      <div class="empty-state">
-        <div style="font-size:1.1rem;margin-bottom:8px">No progress check-ins yet</div>
-        <div style="font-size:0.8rem;color:var(--text-dim)">Tap "+ Check-in" to capture your first set of progress photos.</div>
-        <div style="margin-top:12px">
-          <button class="btn-submit btn-compact" onclick="progressViewMode='poses';loadProgress()">View Pose Guide</button>
-        </div>
-      </div>`;
-    return;
-  }
-
-  el.innerHTML = `
-    <div class="transcript-count">${checkins.length} check-in${checkins.length !== 1 ? 's' : ''}</div>
-    <div class="fade-in">
-      ${checkins.map(c => {
-        const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00');
-        const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-        const photoCount = c.photo_count || (c.photos ? c.photos.length : 0);
-        const consistency = photoCount >= 7 ? 'high' : photoCount >= 4 ? 'moderate' : 'low';
-        const consistencyColor = consistency === 'high' ? '#10b981' : consistency === 'moderate' ? '#f59e0b' : '#ef4444';
-        const thumbs = (c.photos || []).slice(0, 4);
-
-        return `
-        <div class="list-item workout-card" onclick="showProgressDetail('${c.id}')" style="border-left:3px solid ${consistencyColor}">
-          <div class="transcript-card-header">
-            <div class="list-item-title">${dateLabel}${c.is_baseline ? ' <span style="color:#8b5cf6;font-size:0.7rem">BASELINE</span>' : ''}</div>
-            <span class="badge-dynamic" style="background:${consistencyColor}22;color:${consistencyColor}">${photoCount}/8 poses</span>
-          </div>
-          ${thumbs.length ? `<div style="display:flex;gap:4px;margin:6px 0">${thumbs.map(p =>
-            `<div style="width:40px;height:40px;border-radius:6px;overflow:hidden;background:var(--bg-input)">
-              <img src="${photoUrl(p.filename)}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentNode.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:0.5rem;color:var(--text-dim)\\'>📷</div>'">
-            </div>`
-          ).join('')}${photoCount > 4 ? `<div style="width:40px;height:40px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--text-dim)">+${photoCount - 4}</div>` : ''}</div>` : ''}
-          <div class="list-item-meta">
-            ${c.weight_lb ? `<span>${c.weight_lb} lb</span>` : ''}
-            ${c.waist_inches ? `<span>Waist: ${c.waist_inches}"</span>` : ''}
-            ${c.calorie_phase ? `<span>${c.calorie_phase}</span>` : ''}
-            <span style="color:${consistencyColor}">${consistency} consistency</span>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-}
-
-function renderCompareView(el, checkins) {
-  if (checkins.length < 2) {
-    el.innerHTML = '<div class="empty-state">Need at least 2 check-ins to compare.</div>';
-    return;
-  }
-
-  const fromOptions = checkins.map(c => {
-    const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    return `<option value="${c.id}" ${progressCompareFrom === c.id ? 'selected' : ''}>${d}${c.is_baseline ? ' (Baseline)' : ''}</option>`;
-  }).join('');
-  const toOptions = checkins.map(c => {
-    const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    return `<option value="${c.id}" ${progressCompareTo === c.id ? 'selected' : ''}>${d}${c.is_baseline ? ' (Baseline)' : ''}</option>`;
-  }).join('');
-
-  if (!progressCompareFrom) progressCompareFrom = checkins[checkins.length - 1].id;
-  if (!progressCompareTo) progressCompareTo = checkins[0].id;
-
-  el.innerHTML = `
-    <div style="display:flex;gap:8px;margin:12px 0;align-items:center">
-      <div style="flex:1">
-        <label class="form-label" style="font-size:0.7rem">Before</label>
-        <select class="brain-search" onchange="progressCompareFrom=this.value" style="font-size:0.8rem">${fromOptions}</select>
-      </div>
-      <div style="padding-top:14px;color:var(--text-dim)">vs</div>
-      <div style="flex:1">
-        <label class="form-label" style="font-size:0.7rem">After</label>
-        <select class="brain-search" onchange="progressCompareTo=this.value" style="font-size:0.8rem">${toOptions}</select>
-      </div>
-      <button class="btn-submit btn-compact" style="margin-top:14px" onclick="runProgressCompare()">Compare</button>
-    </div>
-    <div id="compare-results"></div>`;
-}
-
-async function runProgressCompare() {
-  const el = document.getElementById('compare-results');
-  if (!el || !progressCompareFrom || !progressCompareTo) return;
-  if (progressCompareFrom === progressCompareTo) { el.innerHTML = '<div class="empty-state">Select two different check-ins.</div>'; return; }
-
-  el.innerHTML = skeletonCards(2);
-  try {
-    const data = await api(`/progress/compare/${progressCompareFrom}/${progressCompareTo}`);
-    const fromDate = new Date(data.from.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const toDate = new Date(data.to.checkin_date.slice(0,10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-    let deltasHtml = '';
-    const d = data.measurement_deltas;
-    if (d.weight_lb != null) deltasHtml += `<div class="stat-card"><div class="stat-value" style="color:${d.weight_lb < 0 ? '#10b981' : d.weight_lb > 0 ? '#ef4444' : 'var(--text)'}">${d.weight_lb > 0 ? '+' : ''}${d.weight_lb} lb</div><div class="stat-label">Weight</div></div>`;
-    if (d.waist_inches != null) deltasHtml += `<div class="stat-card"><div class="stat-value" style="color:${d.waist_inches < 0 ? '#10b981' : d.waist_inches > 0 ? '#ef4444' : 'var(--text)'}">${d.waist_inches > 0 ? '+' : ''}${d.waist_inches}"</div><div class="stat-label">Waist</div></div>`;
-    if (d.chest_inches != null) deltasHtml += `<div class="stat-card"><div class="stat-value">${d.chest_inches > 0 ? '+' : ''}${d.chest_inches}"</div><div class="stat-label">Chest</div></div>`;
-    if (d.arm_inches != null) deltasHtml += `<div class="stat-card"><div class="stat-value">${d.arm_inches > 0 ? '+' : ''}${d.arm_inches}"</div><div class="stat-label">Arm</div></div>`;
-
-    el.innerHTML = `
-      ${deltasHtml ? `<div class="stats-grid" style="margin:8px 0">${deltasHtml}</div>` : ''}
-      <div style="text-align:center;margin:8px 0;font-size:0.75rem;color:var(--text-dim)">
-        Comparison quality: <strong style="color:${data.comparison_quality === 'high' ? '#10b981' : data.comparison_quality === 'moderate' ? '#f59e0b' : '#ef4444'}">${data.comparison_quality}</strong>
-        · ${data.matched_poses.length} matched poses
-      </div>
-      ${data.matched_poses.length ? `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px">
-          <div style="font-size:0.8rem;font-weight:600">Side-by-Side</div>
-          <button class="btn-submit btn-compact btn-secondary" onclick="runAIAssessment('${progressCompareFrom}','${progressCompareTo}')" id="ai-assess-btn">AI Assessment</button>
-        </div>
-        <div id="ai-assessment-report"></div>
-        ${data.matched_poses.map(mp => `
-          <div style="margin-bottom:12px">
-            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">${PROGRESS_POSES.find(p => p.key === mp.pose)?.label || mp.pose}</div>
-            <div style="display:flex;gap:4px;position:relative">
-              <div style="flex:1;position:relative">
-                <img src="${photoUrl(mp.from.filename)}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
-                <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">${fromDate}</div>
-              </div>
-              <div style="flex:1;position:relative">
-                <img src="${photoUrl(mp.to.filename)}" style="width:100%;border-radius:8px;aspect-ratio:3/4;object-fit:cover" loading="lazy">
-                <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">${toDate}</div>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      ` : '<div class="empty-state">No matching poses between these check-ins.</div>'}
-    `;
-  } catch (e) { el.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
-}
-
-async function runAIAssessment(fromId, toId) {
-  const btn = document.getElementById('ai-assess-btn');
-  const reportEl = document.getElementById('ai-assessment-report');
-  if (!reportEl) return;
-
-  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
-  reportEl.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:0.75rem">
-    Sending photos to AI for visual analysis. This may take 10-20 seconds...
-  </div>`;
-
-  try {
-    const key = sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key');
-    const resp = await fetch(`${API}/progress/assess/${fromId}/${toId}`, {
-      method: 'POST',
-      headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
-    });
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error || 'Assessment failed');
-    }
-    const a = await resp.json();
-
-    const confColor = a.confidence === 'high' ? '#10b981' : a.confidence === 'medium' ? '#f59e0b' : '#ef4444';
-
-    reportEl.innerHTML = `
-      <div style="background:var(--bg-input);border-radius:10px;padding:12px;margin-bottom:12px;border-left:3px solid ${confColor}">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-          <span style="font-size:0.75rem;font-weight:600">AI Assessment</span>
-          <span class="badge-dynamic" style="background:${confColor}22;color:${confColor};font-size:0.6rem">${a.confidence || 'medium'} confidence</span>
-        </div>
-        <div style="font-size:0.8rem;line-height:1.5;margin-bottom:10px">${esc(a.summary || '')}</div>
-
-        ${a.likely_changes && a.likely_changes.length ? `
-          <div style="font-size:0.7rem;font-weight:600;color:#10b981;margin-bottom:4px">Likely Changes</div>
-          <ul style="font-size:0.7rem;margin:0 0 10px 16px;padding:0;line-height:1.6;color:var(--text)">
-            ${a.likely_changes.map(c => `<li>${esc(c)}</li>`).join('')}
-          </ul>
-        ` : ''}
-
-        ${a.uncertain_observations && a.uncertain_observations.length ? `
-          <div style="font-size:0.7rem;font-weight:600;color:#f59e0b;margin-bottom:4px">Uncertain Observations</div>
-          <ul style="font-size:0.7rem;margin:0 0 10px 16px;padding:0;line-height:1.6;color:var(--text-dim)">
-            ${a.uncertain_observations.map(o => `<li>${esc(o)}</li>`).join('')}
-          </ul>
-        ` : ''}
-
-        ${a.pose_specific_notes && Object.keys(a.pose_specific_notes).length ? `
-          <div style="font-size:0.7rem;font-weight:600;margin-bottom:4px">Pose Notes</div>
-          <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:10px">
-            ${Object.entries(a.pose_specific_notes).map(([k, v]) => {
-              const pose = PROGRESS_POSES.find(p => p.key === k);
-              return `<div><strong>${pose ? pose.label : k}:</strong> ${esc(v)}</div>`;
-            }).join('')}
-          </div>
-        ` : ''}
-
-        ${a.coaching_interpretation ? `
-          <div style="font-size:0.7rem;font-weight:600;color:var(--accent);margin-bottom:4px">Coaching Take</div>
-          <div style="font-size:0.75rem;line-height:1.5;font-style:italic">${esc(a.coaching_interpretation)}</div>
-        ` : ''}
-      </div>
-    `;
-    if (btn) { btn.textContent = 'Re-run Assessment'; btn.disabled = false; }
-  } catch (e) {
-    reportEl.innerHTML = `<div style="background:#ef444422;border-radius:8px;padding:10px;font-size:0.75rem;color:#ef4444">${esc(e.message)}</div>`;
-    if (btn) { btn.textContent = 'Retry Assessment'; btn.disabled = false; }
-  }
-}
-
-function renderPoseGuide(el) {
-  el.innerHTML = `
-    <div style="padding:8px 0">
-      <div style="font-size:0.85rem;font-weight:600;margin-bottom:4px">Photo Capture Guide</div>
-      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px;line-height:1.5">
-        Follow these 8 poses each check-in for consistent progress tracking.
-      </div>
-      <div style="background:var(--bg-input);border-radius:10px;padding:10px;margin-bottom:12px">
-        <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px;color:var(--accent)">Best Practices</div>
-        <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.6">
-          &bull; Morning, before food & workout<br>
-          &bull; Same lighting, distance, clothing<br>
-          &bull; Same camera height every time<br>
-          &bull; Neutral chin and posture<br>
-          &bull; Don't suck in stomach (unless flexed pose)
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${PROGRESS_POSES.map(p => `
-          <div style="background:var(--bg-input);border-radius:10px;padding:10px;text-align:center">
-            <div style="color:var(--accent);margin-bottom:4px">${poseSvg(p.key)}</div>
-            <div style="font-size:0.75rem;font-weight:600;margin-bottom:2px">${esc(p.label)}</div>
-            <div style="font-size:0.65rem;color:var(--text-dim);line-height:1.4">${esc(p.instruction)}</div>
-          </div>
-        `).join('')}
-      </div>
-    </div>`;
-}
-
-async function showProgressDetail(id) {
-  try {
-    const c = await api(`/progress/${id}`);
-    const d = new Date(c.checkin_date.slice(0,10) + 'T12:00:00');
-    const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-    const photos = c.photos || [];
-    const consistency = c.consistency_score || 'low';
-    const consistencyColor = consistency === 'high' ? '#10b981' : consistency === 'moderate' ? '#f59e0b' : '#ef4444';
-
-    let html = `
-      <div class="flex-row-wrap mb-md">
-        <span class="badge-dynamic" style="background:${consistencyColor}22;color:${consistencyColor}">${consistency} consistency</span>
-        <span class="text-meta">${dateLabel}</span>
-        ${c.is_baseline ? '<span class="badge-dynamic" style="background:#8b5cf622;color:#8b5cf6">Baseline</span>' : ''}
-        ${c.calorie_phase ? `<span class="badge-dynamic" style="background:var(--bg-input);color:var(--text-dim)">${esc(c.calorie_phase)}</span>` : ''}
-      </div>
-
-      ${c.weight_lb || c.waist_inches || c.chest_inches || c.arm_inches || c.thigh_inches ? `
-      <div class="stats-grid mb-md">
-        ${c.weight_lb ? `<div class="stat-card"><div class="stat-value">${c.weight_lb}</div><div class="stat-label">Weight (lb)</div></div>` : ''}
-        ${c.waist_inches ? `<div class="stat-card"><div class="stat-value">${c.waist_inches}"</div><div class="stat-label">Waist</div></div>` : ''}
-        ${c.chest_inches ? `<div class="stat-card"><div class="stat-value">${c.chest_inches}"</div><div class="stat-label">Chest</div></div>` : ''}
-        ${c.arm_inches ? `<div class="stat-card"><div class="stat-value">${c.arm_inches}"</div><div class="stat-label">Arm</div></div>` : ''}
-        ${c.thigh_inches ? `<div class="stat-card"><div class="stat-value">${c.thigh_inches}"</div><div class="stat-label">Thigh</div></div>` : ''}
-      </div>` : ''}
-
-      <div style="font-size:0.8rem;font-weight:600;margin-bottom:8px">Photos (${photos.length}/8)</div>
-      ${photos.length ? `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
-        ${photos.map(p => {
-          const pose = PROGRESS_POSES.find(pp => pp.key === p.pose_type);
-          return `
-          <div style="position:relative;border-radius:8px;overflow:hidden;background:var(--bg-input)">
-            <img src="${photoUrl(p.filename)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block" loading="lazy">
-            <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.8));padding:4px 6px;font-size:0.65rem;color:#fff">${pose ? pose.label : p.pose_type}</div>
-          </div>`;
-        }).join('')}
-      </div>` : '<div class="empty-state" style="margin-bottom:12px">No photos yet. Add photos to this check-in.</div>'}
-
-      <button class="btn-submit btn-secondary mb-sm" onclick="closeModal();showProgressPhotoUpload('${c.id}')" style="width:100%">Add / Replace Photos</button>
-
-      ${c.training_phase ? `<div class="detail-info mt-sm"><strong>Training:</strong> ${esc(c.training_phase)}</div>` : ''}
-      ${c.pump_state ? `<div class="detail-info mt-sm"><strong>Pump:</strong> ${esc(c.pump_state)}</div>` : ''}
-      ${c.notes ? `<div class="detail-info mt-sm"><strong>Notes:</strong> ${esc(c.notes)}</div>` : ''}
-      ${c.tags && c.tags.length ? `<div class="mt-sm">${c.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join(' ')}</div>` : ''}
-
-      <div class="action-row">
-        <button class="btn-submit flex-1" onclick="closeModal();showProgressCheckinForm('${c.id}')">Edit</button>
-        <button class="btn-action btn-action-danger flex-half" onclick="deleteProgressCheckin('${c.id}')">Delete</button>
-      </div>
-    `;
-    openModal(`Progress — ${dateLabel}`, html);
-  } catch (e) { showToast('Error: ' + e.message); }
-}
-
-async function showProgressCheckinForm(editId) {
-  let existing = null;
-  if (editId) {
-    try { existing = await api(`/progress/${editId}`); } catch {}
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  const html = `
-    <div class="form-group">
-      <label class="form-label">Date *</label>
-      <input type="date" id="pc-date" class="brain-search" value="${existing ? existing.checkin_date.slice(0,10) : today}">
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group">
-        <label class="form-label">Weight (lb)</label>
-        <input type="number" step="0.1" id="pc-weight" class="brain-search" placeholder="185" value="${existing?.weight_lb || ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Waist (in)</label>
-        <input type="number" step="0.1" id="pc-waist" class="brain-search" placeholder="33" value="${existing?.waist_inches || ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Chest (in)</label>
-        <input type="number" step="0.1" id="pc-chest" class="brain-search" placeholder="42" value="${existing?.chest_inches || ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Arm (in)</label>
-        <input type="number" step="0.1" id="pc-arm" class="brain-search" placeholder="15" value="${existing?.arm_inches || ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Thigh (in)</label>
-        <input type="number" step="0.1" id="pc-thigh" class="brain-search" placeholder="24" value="${existing?.thigh_inches || ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Phase</label>
-        <select id="pc-phase" class="brain-search">
-          <option value="">—</option>
-          <option value="cut" ${existing?.calorie_phase === 'cut' ? 'selected' : ''}>Cut</option>
-          <option value="maintenance" ${existing?.calorie_phase === 'maintenance' ? 'selected' : ''}>Maintenance</option>
-          <option value="bulk" ${existing?.calorie_phase === 'bulk' ? 'selected' : ''}>Bulk</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Training Phase</label>
-      <input type="text" id="pc-training" class="brain-search" placeholder="e.g., Hypertrophy Block 2" value="${existing?.training_phase || ''}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Pump / State</label>
-      <input type="text" id="pc-pump" class="brain-search" placeholder="e.g., fasted, post-workout pump" value="${existing?.pump_state || ''}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Notes</label>
-      <textarea id="pc-notes" class="brain-search" rows="2" placeholder="Any context...">${existing?.notes || ''}</textarea>
-    </div>
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;cursor:pointer">
-        <input type="checkbox" id="pc-baseline" ${existing?.is_baseline ? 'checked' : ''}>
-        Mark as baseline
-      </label>
-    </div>
-    <button class="btn-submit" style="width:100%" onclick="saveProgressCheckin(${editId ? `'${editId}'` : 'null'})">${editId ? 'Update' : 'Create'} Check-in</button>
-  `;
-  openModal(editId ? 'Edit Check-in' : 'New Progress Check-in', html);
-}
-
-async function saveProgressCheckin(editId) {
-  const body = {
-    checkin_date: document.getElementById('pc-date').value,
-    weight_lb: document.getElementById('pc-weight').value ? Number(document.getElementById('pc-weight').value) : null,
-    waist_inches: document.getElementById('pc-waist').value ? Number(document.getElementById('pc-waist').value) : null,
-    chest_inches: document.getElementById('pc-chest').value ? Number(document.getElementById('pc-chest').value) : null,
-    arm_inches: document.getElementById('pc-arm').value ? Number(document.getElementById('pc-arm').value) : null,
-    thigh_inches: document.getElementById('pc-thigh').value ? Number(document.getElementById('pc-thigh').value) : null,
-    calorie_phase: document.getElementById('pc-phase').value || null,
-    training_phase: document.getElementById('pc-training').value || null,
-    pump_state: document.getElementById('pc-pump').value || null,
-    notes: document.getElementById('pc-notes').value || null,
-    is_baseline: document.getElementById('pc-baseline').checked,
-  };
-
-  if (!body.checkin_date) { showToast('Date is required'); return; }
-
-  try {
-    if (editId) {
-      await api(`/progress/${editId}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
-      showToast('Check-in updated', 'success');
-    } else {
-      const result = await api('/progress', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
-      showToast('Check-in created', 'success');
-      // Open photo upload for new check-in
-      closeModal();
-      setTimeout(() => showProgressPhotoUpload(result.id), 300);
-      return;
-    }
-    closeModal();
-    loadProgress();
-  } catch (e) { showToast('Error: ' + e.message); }
-}
-
-async function deleteProgressCheckin(id) {
-  if (!confirm('Delete this check-in and all its photos?')) return;
-  try {
-    await api(`/progress/${id}`, { method: 'DELETE' });
-    showToast('Deleted', 'success');
-    closeModal();
-    loadProgress();
-  } catch (e) { showToast('Error: ' + e.message); }
-}
-
-function showProgressPhotoUpload(checkinId) {
-  const html = `
-    <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px">
-      Upload photos for each pose. Tap a pose card to add/replace its photo.
-    </div>
-    <div id="photo-upload-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      ${PROGRESS_POSES.map(p => `
-        <div class="progress-pose-upload" id="pose-card-${p.key}"
-             style="background:var(--bg-input);border-radius:10px;padding:8px;text-align:center;cursor:pointer;border:2px solid transparent;transition:border-color 0.2s"
-             onclick="triggerPoseUpload('${checkinId}','${p.key}')">
-          <div style="color:var(--accent);margin-bottom:2px;opacity:0.7">${poseSvg(p.key)}</div>
-          <div style="font-size:0.7rem;font-weight:600">${esc(p.label)}</div>
-          <div id="pose-status-${p.key}" style="font-size:0.6rem;color:var(--text-dim);margin-top:2px">Tap to add</div>
-        </div>
-      `).join('')}
-    </div>
-    <input type="file" id="progress-photo-input" accept="image/*" style="display:none" onchange="handlePosePhotoSelect(this)">
-    <div style="margin-top:12px;text-align:center">
-      <button class="btn-submit" onclick="closeModal();loadProgress()">Done</button>
-    </div>
-  `;
-  openModal('Add Progress Photos', html);
-
-  // Load existing photos for this check-in
-  api(`/progress/${checkinId}`).then(c => {
-    if (c.photos) {
-      for (const photo of c.photos) {
-        const statusEl = document.getElementById(`pose-status-${photo.pose_type}`);
-        const cardEl = document.getElementById(`pose-card-${photo.pose_type}`);
-        if (statusEl) statusEl.innerHTML = '<span style="color:#10b981">Uploaded</span>';
-        if (cardEl) cardEl.style.borderColor = '#10b981';
-      }
-    }
-  }).catch(() => {});
-}
-
-let _pendingPoseUpload = { checkinId: null, poseKey: null };
-
-function triggerPoseUpload(checkinId, poseKey) {
-  _pendingPoseUpload = { checkinId, poseKey };
-  const input = document.getElementById('progress-photo-input');
-  if (input) { input.value = ''; input.click(); }
-}
-
-async function handlePosePhotoSelect(input) {
-  if (!input.files || !input.files[0]) return;
-  const { checkinId, poseKey } = _pendingPoseUpload;
-  if (!checkinId || !poseKey) return;
-
-  const statusEl = document.getElementById(`pose-status-${poseKey}`);
-  const cardEl = document.getElementById(`pose-card-${poseKey}`);
-  if (statusEl) statusEl.innerHTML = '<span style="color:#f59e0b">Uploading...</span>';
-
-  const formData = new FormData();
-  formData.append('photo', input.files[0]);
-  formData.append('pose_type', poseKey);
-
-  try {
-    const key = sessionStorage.getItem('ab_api_key') || localStorage.getItem('ab_api_key');
-    const resp = await fetch(`${API}/progress/${checkinId}/photos`, {
-      method: 'POST',
-      headers: { 'X-Api-Key': key },
-      body: formData,
-    });
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error || 'Upload failed');
-    }
-    if (statusEl) statusEl.innerHTML = '<span style="color:#10b981">Uploaded</span>';
-    if (cardEl) cardEl.style.borderColor = '#10b981';
-    showToast('Photo uploaded', 'success');
-  } catch (e) {
-    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">${esc(e.message)}</span>`;
-    showToast('Upload error: ' + e.message);
-  }
-}
+// (Progress photos section removed)
 
 // ─── Utilities ────────────────────────────────────────────────
 function esc(str) { if(!str)return''; const d=document.createElement('div'); d.textContent=String(str); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 function formatBeeSummary(text) {
   if (!text) return '';
-  // Convert Bee markdown-style summaries into formatted HTML sections
   return esc(text)
     .replace(/^# (.+)$/gm, '<div style="font-weight:700;font-size:0.9rem;margin-top:12px;margin-bottom:4px;color:var(--accent)">$1</div>')
     .replace(/^- (.+)$/gm, '<div style="padding-left:12px;margin:2px 0">• $1</div>')
-    .replace(/\n\n/g, '<div style="height:8px"></div>')
     .replace(/\n/g, '<br>');
 }
 function timeAgo(dateStr) {

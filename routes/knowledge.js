@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
 
     params.push(Number(limit), Number(offset));
     const result = await query(
-      `SELECT id, title, LEFT(content, 300) as content, category, tags, source, ai_source, project_id, metadata, created_at, updated_at
+      `SELECT id, title, LEFT(content, 300) as content, category, tags, source, ai_source, confirmed, metadata, created_at, updated_at
        FROM knowledge ${whereClause} ${orderBy} LIMIT $${i++} OFFSET $${i++}`, params
     );
 
@@ -60,14 +60,14 @@ router.get('/:id', async (req, res) => {
 // Store knowledge
 router.post('/', async (req, res) => {
   try {
-    const { title, content, category, tags, source, ai_source, project_id, metadata, created_at } = req.body;
+    const { title, content, category, tags, source, ai_source, confirmed, metadata, created_at } = req.body;
     if (!title || !content) return res.status(400).json({ error: 'title and content are required' });
 
     const result = await query(
-      `INSERT INTO knowledge (title, content, category, tags, source, ai_source, project_id, metadata, created_at)
+      `INSERT INTO knowledge (title, content, category, tags, source, ai_source, confirmed, metadata, created_at)
        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9) RETURNING id`,
       [title, content, category || 'general', JSON.stringify(tags || []),
-       source || 'api', ai_source || null, project_id || null,
+       source || 'api', ai_source || null, confirmed || false,
        JSON.stringify(metadata || {}), created_at || new Date().toISOString()]
     );
 
@@ -81,7 +81,7 @@ router.post('/', async (req, res) => {
 // Update knowledge
 router.put('/:id', async (req, res) => {
   try {
-    const { title, content, category, tags, ai_source, project_id, metadata } = req.body;
+    const { title, content, category, tags, source, ai_source, confirmed, metadata } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
     let i = 1;
@@ -90,8 +90,9 @@ router.put('/:id', async (req, res) => {
     if (content !== undefined) { sets.push(`content = $${i++}`); params.push(content); }
     if (category !== undefined) { sets.push(`category = $${i++}`); params.push(category); }
     if (tags !== undefined) { sets.push(`tags = $${i++}::jsonb`); params.push(JSON.stringify(tags)); }
+    if (source !== undefined) { sets.push(`source = $${i++}`); params.push(source); }
     if (ai_source !== undefined) { sets.push(`ai_source = $${i++}`); params.push(ai_source); }
-    if (project_id !== undefined) { sets.push(`project_id = $${i++}`); params.push(project_id); }
+    if (confirmed !== undefined) { sets.push(`confirmed = $${i++}`); params.push(confirmed); }
     if (metadata !== undefined) { sets.push(`metadata = $${i++}::jsonb`); params.push(JSON.stringify(metadata)); }
 
     params.push(req.params.id);

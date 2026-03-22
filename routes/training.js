@@ -44,13 +44,13 @@ router.get('/plans/:id', async (req, res) => {
     const result = await query('SELECT * FROM training_plans WHERE id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
 
-    // Include related coaching sessions and injuries
-    const [sessions, injuries] = await Promise.all([
-      query('SELECT id, session_date, title, LEFT(summary, 200) as summary, ai_source FROM coaching_sessions WHERE training_plan_id = $1 ORDER BY session_date DESC', [req.params.id]),
-      query('SELECT id, title, body_area, side, severity, status, onset_date FROM injuries WHERE training_plan_id = $1 ORDER BY onset_date DESC NULLS LAST', [req.params.id]),
-    ]);
+    // Include related coaching sessions
+    const sessions = await query(
+      'SELECT id, session_date, title, LEFT(summary, 200) as summary, ai_source FROM coaching_sessions WHERE training_plan_id = $1 ORDER BY session_date DESC',
+      [req.params.id]
+    );
 
-    res.json({ ...result.rows[0], coaching_sessions: sessions.rows, injuries: injuries.rows });
+    res.json({ ...result.rows[0], coaching_sessions: sessions.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -66,8 +66,8 @@ router.post('/plans', async (req, res) => {
       `INSERT INTO training_plans (
         title, plan_type, status, goal, start_date, end_date, weeks, phase,
         weekly_structure, intensity_scheme, progression_notes, rationale, constraints,
-        project_id, tags, ai_source, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+        tags, ai_source, metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
         b.title,
         b.plan_type || 'block',
@@ -82,7 +82,6 @@ router.post('/plans', async (req, res) => {
         b.progression_notes || null,
         b.rationale || null,
         b.constraints || null,
-        b.project_id || null,
         JSON.stringify(b.tags || []),
         b.ai_source || null,
         JSON.stringify(b.metadata || {}),
@@ -107,7 +106,7 @@ router.put('/plans/:id', async (req, res) => {
     const allowed = [
       'title', 'plan_type', 'status', 'goal', 'start_date', 'end_date', 'weeks', 'phase',
       'weekly_structure', 'intensity_scheme', 'progression_notes', 'rationale', 'constraints',
-      'project_id', 'tags', 'ai_source', 'metadata',
+      'tags', 'ai_source', 'metadata',
     ];
 
     for (const key of allowed) {
@@ -348,10 +347,9 @@ router.post('/injuries', async (req, res) => {
     const result = await query(
       `INSERT INTO injuries (
         title, body_area, side, injury_type, severity, status,
-        onset_date, resolved_date, mechanism, symptoms,
-        aggravating_movements, relieving_factors, treatment, modifications, prevention_notes,
-        related_workout_id, training_plan_id, tags, ai_source, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+        onset_date, resolved_date, symptoms, treatment, notes,
+        tags, ai_source, metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [
         b.title,
         b.body_area,
@@ -361,15 +359,9 @@ router.post('/injuries', async (req, res) => {
         b.status || 'active',
         b.onset_date || null,
         b.resolved_date || null,
-        b.mechanism || null,
         b.symptoms || null,
-        b.aggravating_movements || null,
-        b.relieving_factors || null,
         b.treatment || null,
-        b.modifications || null,
-        b.prevention_notes || null,
-        b.related_workout_id || null,
-        b.training_plan_id || null,
+        b.notes || null,
         JSON.stringify(b.tags || []),
         b.ai_source || null,
         JSON.stringify(b.metadata || {}),
@@ -393,9 +385,8 @@ router.put('/injuries/:id', async (req, res) => {
 
     const allowed = [
       'title', 'body_area', 'side', 'injury_type', 'severity', 'status',
-      'onset_date', 'resolved_date', 'mechanism', 'symptoms',
-      'aggravating_movements', 'relieving_factors', 'treatment', 'modifications', 'prevention_notes',
-      'related_workout_id', 'training_plan_id', 'tags', 'ai_source', 'metadata',
+      'onset_date', 'resolved_date', 'symptoms', 'treatment', 'notes',
+      'tags', 'ai_source', 'metadata',
     ];
 
     for (const key of allowed) {
@@ -480,7 +471,7 @@ router.get('/day/:date', async (req, res) => {
 router.get('/injuries/active/summary', async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, title, body_area, side, injury_type, severity, status, onset_date, symptoms, modifications, prevention_notes
+      `SELECT id, title, body_area, side, injury_type, severity, status, onset_date, symptoms, notes
        FROM injuries WHERE status IN ('active','monitoring')
        ORDER BY severity DESC NULLS LAST, onset_date DESC NULLS LAST`
     );

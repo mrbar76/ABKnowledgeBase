@@ -36,7 +36,7 @@ async function initDB() {
   // Extension (needed for trigram indexes)
   await safeQuery('pg_trgm', `CREATE EXTENSION IF NOT EXISTS pg_trgm`);
 
-  // ===== KNOWLEDGE BASE =====
+  // ===== KNOWLEDGE BASE (includes merged facts) =====
   await safeQuery('knowledge table', `
     CREATE TABLE IF NOT EXISTS knowledge (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,7 +46,7 @@ async function initDB() {
       tags JSONB DEFAULT '[]'::jsonb,
       source TEXT DEFAULT 'manual',
       ai_source TEXT,
-      project_id UUID,
+      confirmed BOOLEAN DEFAULT false,
       metadata JSONB DEFAULT '{}'::jsonb,
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -61,44 +61,13 @@ async function initDB() {
       (coalesce(title,'') || ' ' || coalesce(content,'')) gin_trgm_ops
     )`);
 
-  // ===== FACTS =====
-  await safeQuery('facts table', `
-    CREATE TABLE IF NOT EXISTS facts (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      category TEXT DEFAULT 'general',
-      tags JSONB DEFAULT '[]'::jsonb,
-      source TEXT DEFAULT 'manual',
-      confirmed BOOLEAN DEFAULT false,
-      search_vector TSVECTOR,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-  await safeQuery('facts indexes', `
-    CREATE INDEX IF NOT EXISTS idx_facts_category ON facts(category);
-    CREATE INDEX IF NOT EXISTS idx_facts_source ON facts(source);
-    CREATE INDEX IF NOT EXISTS idx_facts_search ON facts USING gin(search_vector);
-    CREATE INDEX IF NOT EXISTS idx_facts_trgm ON facts USING gin(
-      (coalesce(title,'') || ' ' || coalesce(content,'')) gin_trgm_ops
-    )`);
-
-  // ===== PROJECTS =====
-  await safeQuery('projects table', `
-    CREATE TABLE IF NOT EXISTS projects (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT NOT NULL,
-      description TEXT,
-      status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','completed','archived')),
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
+  // (facts table removed — merged into knowledge)
+  // (projects table removed)
 
   // ===== TASKS =====
   await safeQuery('tasks table', `
     CREATE TABLE IF NOT EXISTS tasks (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
       description TEXT,
       status TEXT DEFAULT 'todo' CHECK(status IN ('todo','in_progress','review','done')),
@@ -111,7 +80,6 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
   await safeQuery('tasks indexes', `
-    CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_ai_agent ON tasks(ai_agent);
     CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)`);
@@ -132,7 +100,6 @@ async function initDB() {
       location TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
       bee_id TEXT,
-      project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
       metadata JSONB DEFAULT '{}'::jsonb,
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -175,7 +142,6 @@ async function initDB() {
       full_thread JSONB NOT NULL DEFAULT '[]'::jsonb,
       summary TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
-      project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
       message_count INTEGER DEFAULT 0,
       metadata JSONB DEFAULT '{}'::jsonb,
       search_vector TSVECTOR,
@@ -210,16 +176,10 @@ async function initDB() {
       workout_date DATE NOT NULL DEFAULT CURRENT_DATE,
       workout_type TEXT DEFAULT 'hybrid',
       location TEXT,
-      elevation TEXT,
       focus TEXT,
       warmup TEXT,
       main_sets TEXT,
-      carries TEXT,
       exercises JSONB DEFAULT '[]'::jsonb,
-      class_name TEXT,
-      program TEXT,
-      equipment TEXT,
-      instructor TEXT,
       time_duration TEXT,
       distance TEXT,
       elevation_gain TEXT,
@@ -231,12 +191,6 @@ async function initDB() {
       active_calories TEXT,
       total_calories TEXT,
       effort INTEGER CHECK(effort >= 1 AND effort <= 10),
-      slowdown_notes TEXT,
-      failure_first TEXT,
-      grip_feedback TEXT,
-      legs_feedback TEXT,
-      cardio_feedback TEXT,
-      shoulder_feedback TEXT,
       body_notes TEXT,
       adjustment TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
@@ -341,10 +295,6 @@ async function initDB() {
       hunger_rating INTEGER CHECK(hunger_rating >= 1 AND hunger_rating <= 10),
       cravings TEXT,
       digestion TEXT,
-      sleep_hours NUMERIC(4,2),
-      sleep_quality INTEGER CHECK(sleep_quality >= 1 AND sleep_quality <= 10),
-      recovery_rating INTEGER CHECK(recovery_rating >= 1 AND recovery_rating <= 10),
-      body_weight_lb NUMERIC(6,2),
       notes TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
       search_vector TSVECTOR,
@@ -373,7 +323,6 @@ async function initDB() {
       progression_notes TEXT,
       rationale TEXT,
       constraints TEXT,
-      project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
       tags JSONB DEFAULT '[]'::jsonb,
       ai_source TEXT,
       metadata JSONB DEFAULT '{}'::jsonb,
@@ -436,15 +385,9 @@ async function initDB() {
       status TEXT DEFAULT 'active' CHECK(status IN ('active','monitoring','recovering','resolved','chronic')),
       onset_date DATE,
       resolved_date DATE,
-      mechanism TEXT,
       symptoms TEXT,
-      aggravating_movements TEXT,
-      relieving_factors TEXT,
       treatment TEXT,
-      modifications TEXT,
-      prevention_notes TEXT,
-      related_workout_id UUID REFERENCES workouts(id) ON DELETE SET NULL,
-      training_plan_id UUID REFERENCES training_plans(id) ON DELETE SET NULL,
+      notes TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
       ai_source TEXT,
       metadata JSONB DEFAULT '{}'::jsonb,
@@ -459,53 +402,12 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_injuries_tags ON injuries USING gin(tags);
     CREATE INDEX IF NOT EXISTS idx_injuries_search ON injuries USING gin(search_vector);
     CREATE INDEX IF NOT EXISTS idx_injuries_trgm ON injuries USING gin(
-      (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(prevention_notes,'')) gin_trgm_ops
+      (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) gin_trgm_ops
     )`);
 
-  // ===== GOAL PROFILES (Readiness System) =====
-  await safeQuery('goal_profiles', `CREATE TABLE IF NOT EXISTS goal_profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
-    profile_type TEXT NOT NULL,
-    status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','completed','archived')),
-    goal_date DATE,
-    start_date DATE,
-    systems JSONB NOT NULL DEFAULT '[]'::jsonb,
-    weights JSONB NOT NULL DEFAULT '{}'::jsonb,
-    targets JSONB NOT NULL DEFAULT '{}'::jsonb,
-    phases JSONB NOT NULL DEFAULT '[]'::jsonb,
-    thresholds JSONB NOT NULL DEFAULT '{}'::jsonb,
-    scoring_rules JSONB NOT NULL DEFAULT '{}'::jsonb,
-    coaching_config JSONB NOT NULL DEFAULT '{}'::jsonb,
-    metadata JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-  )`);
-  await safeQuery('goal_profiles indexes', `
-    CREATE INDEX IF NOT EXISTS idx_goal_profiles_status ON goal_profiles(status);
-    CREATE INDEX IF NOT EXISTS idx_goal_profiles_type ON goal_profiles(profile_type)`);
+  // (goal_profiles table removed — readiness system removed)
 
-  // ===== READINESS SNAPSHOTS =====
-  await safeQuery('readiness_snapshots', `CREATE TABLE IF NOT EXISTS readiness_snapshots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    profile_id UUID NOT NULL REFERENCES goal_profiles(id) ON DELETE CASCADE,
-    snapshot_date DATE NOT NULL,
-    composite_score NUMERIC(5,2) NOT NULL,
-    system_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
-    system_details JSONB NOT NULL DEFAULT '{}'::jsonb,
-    target_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
-    gaps JSONB NOT NULL DEFAULT '{}'::jsonb,
-    phase TEXT,
-    data_confidence NUMERIC(3,2),
-    coaching_text JSONB DEFAULT '{}'::jsonb,
-    metadata JSONB DEFAULT '{}'::jsonb,
-    computed_at TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  )`);
-  await safeQuery('readiness_snapshots indexes', `
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_readiness_snapshots_unique ON readiness_snapshots(profile_id, snapshot_date);
-    CREATE INDEX IF NOT EXISTS idx_readiness_snapshots_date ON readiness_snapshots(snapshot_date DESC);
-    CREATE INDEX IF NOT EXISTS idx_readiness_snapshots_profile ON readiness_snapshots(profile_id)`);
+  // (readiness_snapshots table removed)
 
   // ===== SCHEMA MIGRATIONS =====
   // ALTER TABLE ... ADD COLUMN IF NOT EXISTS ensures columns exist even if
@@ -514,24 +416,13 @@ async function initDB() {
 
   // -- knowledge migrations --
   await safeQuery('knowledge +ai_source', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS ai_source TEXT`);
-  await safeQuery('knowledge +project_id', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS project_id UUID`);
   await safeQuery('knowledge +metadata', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('knowledge +search_vector', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('knowledge +source', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual'`);
   await safeQuery('knowledge +tags', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('knowledge +updated_at', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
-
-  // -- facts migrations --
-  await safeQuery('facts +search_vector', `ALTER TABLE facts ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
-  await safeQuery('facts +tags', `ALTER TABLE facts ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
-  await safeQuery('facts +confirmed', `ALTER TABLE facts ADD COLUMN IF NOT EXISTS confirmed BOOLEAN DEFAULT false`);
-  await safeQuery('facts +updated_at', `ALTER TABLE facts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
-
-  // -- projects migrations --
-  await safeQuery('projects +updated_at', `ALTER TABLE projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
-
+  await safeQuery('knowledge +confirmed', `ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS confirmed BOOLEAN DEFAULT false`);
   // -- tasks migrations --
-  await safeQuery('tasks +project_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id UUID`);
   await safeQuery('tasks +description', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT`);
   await safeQuery('tasks +priority', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'medium'`);
   await safeQuery('tasks +ai_agent', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ai_agent TEXT`);
@@ -551,7 +442,6 @@ async function initDB() {
   await safeQuery('transcripts +location', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS location TEXT`);
   await safeQuery('transcripts +tags', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('transcripts +bee_id', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS bee_id TEXT`);
-  await safeQuery('transcripts +project_id', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS project_id UUID`);
   await safeQuery('transcripts +metadata', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('transcripts +search_vector', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('transcripts +updated_at', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
@@ -566,7 +456,6 @@ async function initDB() {
   await safeQuery('conversations +full_thread', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS full_thread JSONB NOT NULL DEFAULT '[]'::jsonb`);
   await safeQuery('conversations +summary', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS summary TEXT`);
   await safeQuery('conversations +tags', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
-  await safeQuery('conversations +project_id', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id UUID`);
   await safeQuery('conversations +message_count', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS message_count INTEGER DEFAULT 0`);
   await safeQuery('conversations +metadata', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('conversations +search_vector', `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
@@ -583,21 +472,13 @@ async function initDB() {
   await safeQuery('workouts +workout_date', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS workout_date DATE NOT NULL DEFAULT CURRENT_DATE`);
   await safeQuery('workouts +workout_type', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS workout_type TEXT DEFAULT 'hybrid'`);
   await safeQuery('workouts +location', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS location TEXT`);
-  await safeQuery('workouts +elevation', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS elevation TEXT`);
   await safeQuery('workouts +focus', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS focus TEXT`);
   await safeQuery('workouts +warmup', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS warmup TEXT`);
   await safeQuery('workouts +main_sets', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS main_sets TEXT`);
-  await safeQuery('workouts +carries', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS carries TEXT`);
   await safeQuery('workouts +time_duration', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS time_duration TEXT`);
   await safeQuery('workouts +distance', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS distance TEXT`);
   await safeQuery('workouts +elevation_gain', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS elevation_gain TEXT`);
   await safeQuery('workouts +effort', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS effort INTEGER`);
-  await safeQuery('workouts +slowdown_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS slowdown_notes TEXT`);
-  await safeQuery('workouts +failure_first', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS failure_first TEXT`);
-  await safeQuery('workouts +grip_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS grip_feedback TEXT`);
-  await safeQuery('workouts +legs_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS legs_feedback TEXT`);
-  await safeQuery('workouts +cardio_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cardio_feedback TEXT`);
-  await safeQuery('workouts +shoulder_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS shoulder_feedback TEXT`);
   await safeQuery('workouts +body_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS body_notes TEXT`);
   await safeQuery('workouts +adjustment', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS adjustment TEXT`);
   await safeQuery('workouts +tags', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
@@ -611,10 +492,6 @@ async function initDB() {
   await safeQuery('workouts +active_calories', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS active_calories TEXT`);
   await safeQuery('workouts +total_calories', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_calories TEXT`);
   await safeQuery('workouts +exercises', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS exercises JSONB DEFAULT '[]'::jsonb`);
-  await safeQuery('workouts +class_name', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS class_name TEXT`);
-  await safeQuery('workouts +program', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS program TEXT`);
-  await safeQuery('workouts +equipment', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS equipment TEXT`);
-  await safeQuery('workouts +instructor', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS instructor TEXT`);
   await safeQuery('workouts +metadata', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('workouts +search_vector', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('workouts +updated_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
@@ -652,10 +529,6 @@ async function initDB() {
   await safeQuery('dnc +hunger_rating', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS hunger_rating INTEGER`);
   await safeQuery('dnc +cravings', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS cravings TEXT`);
   await safeQuery('dnc +digestion', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS digestion TEXT`);
-  await safeQuery('dnc +sleep_hours', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS sleep_hours NUMERIC(4,2)`);
-  await safeQuery('dnc +sleep_quality', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS sleep_quality INTEGER`);
-  await safeQuery('dnc +recovery_rating', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS recovery_rating INTEGER`);
-  await safeQuery('dnc +body_weight_lb', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS body_weight_lb NUMERIC(6,2)`);
   await safeQuery('dnc +notes', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS notes TEXT`);
   await safeQuery('dnc +tags', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('dnc +search_vector', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
@@ -666,60 +539,7 @@ async function initDB() {
   await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
   await safeQuery('body_metrics +search_vector', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
 
-  // ===== PROGRESS PHOTOS =====
-  await safeQuery('progress_checkins table', `
-    CREATE TABLE IF NOT EXISTS progress_checkins (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      checkin_date DATE NOT NULL,
-      weight_lb NUMERIC(6,2),
-      waist_inches NUMERIC(5,2),
-      chest_inches NUMERIC(5,2),
-      arm_inches NUMERIC(5,2),
-      thigh_inches NUMERIC(5,2),
-      training_phase TEXT,
-      calorie_phase TEXT CHECK(calorie_phase IS NULL OR calorie_phase IN ('cut','maintenance','bulk')),
-      pump_state TEXT,
-      is_baseline BOOLEAN DEFAULT false,
-      notes TEXT,
-      tags JSONB DEFAULT '[]'::jsonb,
-      search_vector TSVECTOR,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-  await safeQuery('progress_checkins indexes', `
-    CREATE INDEX IF NOT EXISTS idx_progress_checkins_date ON progress_checkins(checkin_date DESC);
-    CREATE INDEX IF NOT EXISTS idx_progress_checkins_baseline ON progress_checkins(is_baseline) WHERE is_baseline = true;
-    CREATE INDEX IF NOT EXISTS idx_progress_checkins_search ON progress_checkins USING gin(search_vector)`);
-
-  await safeQuery('progress_photos table', `
-    CREATE TABLE IF NOT EXISTS progress_photos (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      checkin_id UUID NOT NULL REFERENCES progress_checkins(id) ON DELETE CASCADE,
-      pose_type TEXT NOT NULL,
-      pose_order INTEGER DEFAULT 0,
-      filename TEXT NOT NULL,
-      original_name TEXT,
-      file_size INTEGER,
-      mime_type TEXT,
-      image_data TEXT,
-      notes TEXT,
-      excluded_from_analysis BOOLEAN DEFAULT false,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-  await safeQuery('progress_photos indexes', `
-    CREATE INDEX IF NOT EXISTS idx_progress_photos_checkin ON progress_photos(checkin_id);
-    CREATE INDEX IF NOT EXISTS idx_progress_photos_pose ON progress_photos(pose_type);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_progress_photos_unique_pose ON progress_photos(checkin_id, pose_type);
-    CREATE INDEX IF NOT EXISTS idx_progress_photos_filename ON progress_photos(filename)`);
-
-  await safeQuery('progress_settings table', `
-    CREATE TABLE IF NOT EXISTS progress_settings (
-      id INTEGER PRIMARY KEY DEFAULT 1,
-      frequency TEXT DEFAULT 'biweekly' CHECK(frequency IN ('weekly','biweekly','monthly')),
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-  await safeQuery('progress_settings seed', `INSERT INTO progress_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+  // (progress_checkins, progress_photos, progress_settings tables removed)
 
   // ===== GAMIFICATION =====
   await safeQuery('gamification_settings table', `
@@ -763,14 +583,6 @@ async function initDB() {
     END;
     $$ LANGUAGE plpgsql;
 
-    CREATE OR REPLACE FUNCTION update_facts_search() RETURNS TRIGGER AS $$
-    BEGIN
-      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.content,''));
-      NEW.updated_at := NOW();
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-
     CREATE OR REPLACE FUNCTION update_transcripts_search() RETURNS TRIGGER AS $$
     BEGIN
       NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.summary,'') || ' ' || coalesce(NEW.raw_text,''));
@@ -790,10 +602,6 @@ async function initDB() {
     DROP TRIGGER IF EXISTS trg_knowledge_search ON knowledge;
     CREATE TRIGGER trg_knowledge_search BEFORE INSERT OR UPDATE OF title, content ON knowledge
       FOR EACH ROW EXECUTE FUNCTION update_knowledge_search();
-
-    DROP TRIGGER IF EXISTS trg_facts_search ON facts;
-    CREATE TRIGGER trg_facts_search BEFORE INSERT OR UPDATE OF title, content ON facts
-      FOR EACH ROW EXECUTE FUNCTION update_facts_search();
 
     DROP TRIGGER IF EXISTS trg_transcripts_search ON transcripts;
     CREATE TRIGGER trg_transcripts_search BEFORE INSERT OR UPDATE OF title, summary, raw_text ON transcripts
@@ -877,27 +685,16 @@ async function initDB() {
 
     CREATE OR REPLACE FUNCTION update_injuries_search() RETURNS TRIGGER AS $$
     BEGIN
-      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.body_area,'') || ' ' || coalesce(NEW.symptoms,'') || ' ' || coalesce(NEW.treatment,'') || ' ' || coalesce(NEW.prevention_notes,'') || ' ' || coalesce(NEW.modifications,''));
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.body_area,'') || ' ' || coalesce(NEW.symptoms,'') || ' ' || coalesce(NEW.treatment,'') || ' ' || coalesce(NEW.notes,''));
       NEW.updated_at := NOW();
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
     DROP TRIGGER IF EXISTS trg_injuries_search ON injuries;
-    CREATE TRIGGER trg_injuries_search BEFORE INSERT OR UPDATE OF title, body_area, symptoms, treatment, prevention_notes, modifications ON injuries
+    CREATE TRIGGER trg_injuries_search BEFORE INSERT OR UPDATE OF title, body_area, symptoms, treatment, notes ON injuries
       FOR EACH ROW EXECUTE FUNCTION update_injuries_search();
 
-    CREATE OR REPLACE FUNCTION update_progress_checkins_search() RETURNS TRIGGER AS $$
-    BEGIN
-      NEW.search_vector := to_tsvector('english', coalesce(NEW.training_phase,'') || ' ' || coalesce(NEW.calorie_phase,'') || ' ' || coalesce(NEW.pump_state,'') || ' ' || coalesce(NEW.notes,''));
-      NEW.updated_at := NOW();
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS trg_progress_checkins_search ON progress_checkins;
-    CREATE TRIGGER trg_progress_checkins_search BEFORE INSERT OR UPDATE OF training_phase, calorie_phase, pump_state, notes ON progress_checkins
-      FOR EACH ROW EXECUTE FUNCTION update_progress_checkins_search();
   `);
 
   // -- training_plans migrations --
@@ -914,7 +711,6 @@ async function initDB() {
   await safeQuery('training_plans +progression_notes', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS progression_notes TEXT`);
   await safeQuery('training_plans +rationale', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS rationale TEXT`);
   await safeQuery('training_plans +constraints', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS constraints TEXT`);
-  await safeQuery('training_plans +project_id', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS project_id UUID`);
   await safeQuery('training_plans +tags', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('training_plans +ai_source', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS ai_source TEXT`);
   await safeQuery('training_plans +metadata', `ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
@@ -950,48 +746,19 @@ async function initDB() {
   await safeQuery('injuries +status', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
   await safeQuery('injuries +onset_date', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS onset_date DATE`);
   await safeQuery('injuries +resolved_date', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS resolved_date DATE`);
-  await safeQuery('injuries +mechanism', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS mechanism TEXT`);
   await safeQuery('injuries +symptoms', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS symptoms TEXT`);
-  await safeQuery('injuries +aggravating_movements', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS aggravating_movements TEXT`);
-  await safeQuery('injuries +relieving_factors', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS relieving_factors TEXT`);
   await safeQuery('injuries +treatment', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS treatment TEXT`);
-  await safeQuery('injuries +modifications', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS modifications TEXT`);
-  await safeQuery('injuries +prevention_notes', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS prevention_notes TEXT`);
-  await safeQuery('injuries +related_workout_id', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS related_workout_id UUID`);
-  await safeQuery('injuries +training_plan_id', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS training_plan_id UUID`);
+  await safeQuery('injuries +notes', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS notes TEXT`);
   await safeQuery('injuries +tags', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('injuries +ai_source', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS ai_source TEXT`);
   await safeQuery('injuries +metadata', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('injuries +search_vector', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('injuries +updated_at', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
-  // -- progress_checkins migrations --
-  await safeQuery('progress_checkins +weight_lb', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS weight_lb NUMERIC(6,2)`);
-  await safeQuery('progress_checkins +waist_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS waist_inches NUMERIC(5,2)`);
-  await safeQuery('progress_checkins +chest_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS chest_inches NUMERIC(5,2)`);
-  await safeQuery('progress_checkins +arm_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS arm_inches NUMERIC(5,2)`);
-  await safeQuery('progress_checkins +thigh_inches', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS thigh_inches NUMERIC(5,2)`);
-  await safeQuery('progress_checkins +training_phase', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS training_phase TEXT`);
-  await safeQuery('progress_checkins +calorie_phase', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS calorie_phase TEXT`);
-  await safeQuery('progress_checkins +pump_state', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS pump_state TEXT`);
-  await safeQuery('progress_checkins +is_baseline', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS is_baseline BOOLEAN DEFAULT false`);
-  await safeQuery('progress_checkins +notes', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS notes TEXT`);
-  await safeQuery('progress_checkins +tags', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
-  await safeQuery('progress_checkins +search_vector', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
-  await safeQuery('progress_checkins +updated_at', `ALTER TABLE progress_checkins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
-
-  // -- progress_photos migrations --
-  await safeQuery('progress_photos +pose_order', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS pose_order INTEGER DEFAULT 0`);
-  await safeQuery('progress_photos +original_name', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS original_name TEXT`);
-  await safeQuery('progress_photos +file_size', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS file_size INTEGER`);
-  await safeQuery('progress_photos +mime_type', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS mime_type TEXT`);
-  await safeQuery('progress_photos +notes', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS notes TEXT`);
-  await safeQuery('progress_photos +excluded_from_analysis', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS excluded_from_analysis BOOLEAN DEFAULT false`);
-  await safeQuery('progress_photos +image_data', `ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS image_data TEXT`);
+  // (progress_checkins and progress_photos migrations removed)
 
   // Backfill search vectors for any existing rows
   await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
-  await safeQuery('backfill facts search', `UPDATE facts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill conversations search', `UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'') || ' ' || coalesce(adjustment,'')) WHERE search_vector IS NULL`);
@@ -1000,8 +767,16 @@ async function initDB() {
   await safeQuery('backfill dnc search', `UPDATE daily_nutrition_context SET search_vector = to_tsvector('english', coalesce(day_type,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(cravings,'') || ' ' || coalesce(digestion,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill training_plans search', `UPDATE training_plans SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(goal,'') || ' ' || coalesce(rationale,'') || ' ' || coalesce(progression_notes,'') || ' ' || coalesce(phase,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
-  await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(prevention_notes,'') || ' ' || coalesce(modifications,'')) WHERE search_vector IS NULL`);
-  await safeQuery('backfill progress_checkins search', `UPDATE progress_checkins SET search_vector = to_tsvector('english', coalesce(training_phase,'') || ' ' || coalesce(calorie_phase,'') || ' ' || coalesce(pump_state,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
+
+  // ===== DATA MIGRATIONS =====
+  // Migrate facts into knowledge (one-time, safe with ON CONFLICT)
+  await safeQuery('migrate facts→knowledge', `
+    INSERT INTO knowledge (id, title, content, category, tags, source, confirmed, search_vector, created_at, updated_at)
+    SELECT id, title, content, category, tags, source, confirmed, search_vector, created_at, updated_at
+    FROM facts
+    ON CONFLICT (id) DO NOTHING
+  `);
 
   console.log('PostgreSQL database initialized successfully');
 }

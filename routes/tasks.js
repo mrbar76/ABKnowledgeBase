@@ -6,23 +6,22 @@ const PRIORITY_ORDER = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WH
 
 router.get('/', async (req, res) => {
   try {
-    const { project_id, status, priority, ai_agent, context, limit = 100 } = req.query;
+    const { status, priority, ai_agent, context, limit = 100 } = req.query;
     const params = [];
     const where = [];
     let i = 1;
 
-    if (project_id) { where.push(`t.project_id = $${i++}`); params.push(project_id); }
-    if (status) { where.push(`t.status = $${i++}`); params.push(status); }
-    if (priority) { where.push(`t.priority = $${i++}`); params.push(priority); }
-    if (ai_agent) { where.push(`t.ai_agent = $${i++}`); params.push(ai_agent); }
-    if (context) { where.push(`t.context = $${i++}`); params.push(context); }
+    if (status) { where.push(`status = $${i++}`); params.push(status); }
+    if (priority) { where.push(`priority = $${i++}`); params.push(priority); }
+    if (ai_agent) { where.push(`ai_agent = $${i++}`); params.push(ai_agent); }
+    if (context) { where.push(`context = $${i++}`); params.push(context); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(Number(limit));
 
     const result = await query(
-      `SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id
-       ${whereClause} ORDER BY ${PRIORITY_ORDER}, t.created_at ASC LIMIT $${i}`, params
+      `SELECT * FROM tasks
+       ${whereClause} ORDER BY ${PRIORITY_ORDER}, created_at ASC LIMIT $${i}`, params
     );
     res.json({ count: result.rows.length, tasks: result.rows });
   } catch (err) {
@@ -32,17 +31,16 @@ router.get('/', async (req, res) => {
 
 router.get('/kanban', async (req, res) => {
   try {
-    const { project_id, context } = req.query;
+    const { context } = req.query;
     const params = [];
     const conditions = [];
     let pi = 1;
-    if (project_id) { conditions.push(`t.project_id = $${pi++}`); params.push(project_id); }
-    if (context) { conditions.push(`t.context = $${pi++}`); params.push(context); }
+    if (context) { conditions.push(`context = $${pi++}`); params.push(context); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const result = await query(
-      `SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id
-       ${where} ORDER BY ${PRIORITY_ORDER}, t.created_at ASC`, params
+      `SELECT * FROM tasks
+       ${where} ORDER BY ${PRIORITY_ORDER}, created_at ASC`, params
     );
 
     const kanban = { todo: [], in_progress: [], review: [], done: [] };
@@ -58,7 +56,7 @@ router.get('/kanban', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const result = await query(
-      `SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = $1`,
+      `SELECT * FROM tasks WHERE id = $1`,
       [req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
@@ -70,13 +68,13 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { project_id, title, description, status, priority, ai_agent, next_steps, due_date, context, source_id } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
 
     const result = await query(
-      `INSERT INTO tasks (project_id, title, description, status, priority, ai_agent, next_steps, due_date, context, source_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [project_id || null, title, description || null, status || 'todo',
+      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [title, description || null, status || 'todo',
        priority || 'medium', ai_agent || null, next_steps || null, due_date || null,
        context || null, source_id || null]
     );
@@ -90,7 +88,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { project_id, title, description, status, priority, ai_agent, next_steps, output_log, due_date, context } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, output_log, due_date, context } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
     let i = 1;
@@ -102,7 +100,6 @@ router.put('/:id', async (req, res) => {
     if (ai_agent !== undefined) { sets.push(`ai_agent = $${i++}`); params.push(ai_agent); }
     if (next_steps !== undefined) { sets.push(`next_steps = $${i++}`); params.push(next_steps); }
     if (output_log !== undefined) { sets.push(`output_log = $${i++}`); params.push(output_log); }
-    if (project_id !== undefined) { sets.push(`project_id = $${i++}`); params.push(project_id || null); }
     if (due_date !== undefined) { sets.push(`due_date = $${i++}`); params.push(due_date || null); }
     if (context !== undefined) { sets.push(`context = $${i++}`); params.push(context || null); }
 

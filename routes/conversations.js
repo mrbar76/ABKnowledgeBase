@@ -127,7 +127,7 @@ router.get('/', async (req, res) => {
     params.push(Number(limit), Number(offset));
 
     const result = await query(
-      `SELECT id, title, ai_source, summary, tags, project_id, message_count, metadata, created_at, updated_at
+      `SELECT id, title, ai_source, summary, tags, message_count, metadata, created_at, updated_at
        FROM conversations ${whereClause} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`, params
     );
     res.json({ count: result.rows.length, conversations: result.rows });
@@ -148,15 +148,15 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { title, ai_source, full_thread, summary, tags, project_id, metadata } = req.body;
+    const { title, ai_source, full_thread, summary, tags, metadata } = req.body;
     if (!title || !ai_source) return res.status(400).json({ error: 'title and ai_source are required' });
 
     const thread = Array.isArray(full_thread) ? full_thread : [];
     const result = await query(
-      `INSERT INTO conversations (title, ai_source, full_thread, summary, tags, project_id, message_count, metadata)
-       VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8::jsonb) RETURNING id`,
+      `INSERT INTO conversations (title, ai_source, full_thread, summary, tags, message_count, metadata)
+       VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6, $7::jsonb) RETURNING id`,
       [title, ai_source, JSON.stringify(thread), summary || null,
-       JSON.stringify(tags || []), project_id || null, thread.length,
+       JSON.stringify(tags || []), thread.length,
        JSON.stringify(metadata || {})]
     );
 
@@ -169,7 +169,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { title, summary, tags, full_thread, project_id, metadata } = req.body;
+    const { title, summary, tags, full_thread, metadata } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
     let i = 1;
@@ -183,7 +183,6 @@ router.put('/:id', async (req, res) => {
       sets.push(`message_count = $${i++}`);
       params.push(Array.isArray(full_thread) ? full_thread.length : 0);
     }
-    if (project_id !== undefined) { sets.push(`project_id = $${i++}`); params.push(project_id || null); }
     if (metadata !== undefined) { sets.push(`metadata = $${i++}::jsonb`); params.push(JSON.stringify(metadata)); }
 
     params.push(req.params.id);

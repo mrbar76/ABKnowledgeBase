@@ -338,7 +338,7 @@ async function mapConcurrent(items, concurrency, fn) {
 // ─── PostgreSQL dedup helpers ─────────────────────────────────────
 
 async function findExistingFact(contentPrefix) {
-  const r = await query("SELECT id FROM facts WHERE source='bee' AND content ILIKE '%' || $1 || '%' LIMIT 1", [contentPrefix.substring(0, 100)]);
+  const r = await query("SELECT id FROM knowledge WHERE source='bee' AND content ILIKE '%' || $1 || '%' LIMIT 1", [contentPrefix.substring(0, 100)]);
   return r.rows[0] || null;
 }
 async function findExistingTask(title) {
@@ -360,8 +360,8 @@ async function storeFact(factText, fact, client) {
   const q = client || query;
   const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : new Date().toISOString();
   const r = await q(
-    `INSERT INTO facts (title, content, category, tags, source, confirmed, created_at)
-     VALUES ($1, $2, 'personal', $3::jsonb, 'bee', $4, $5) RETURNING id`,
+    `INSERT INTO knowledge (title, content, category, tags, source, ai_source, confirmed, created_at)
+     VALUES ($1, $2, 'personal', $3::jsonb, 'bee', 'bee', $4, $5) RETURNING id`,
     [factText.substring(0, 80), factText, JSON.stringify(['bee', fact.confirmed ? 'confirmed' : 'unconfirmed']),
      !!fact.confirmed, factDate]
   );
@@ -831,7 +831,7 @@ router.post('/sync-conversations', async (req, res) => {
 
 router.post('/purge', async (req, res) => {
   try {
-    const r1 = await query("DELETE FROM facts WHERE source = 'bee'");
+    const r1 = await query("DELETE FROM knowledge WHERE source = 'bee'");
     const r2 = await query("DELETE FROM knowledge WHERE ai_source = 'bee'");
     const r3 = await query("DELETE FROM tasks WHERE ai_agent = 'bee'");
     // Delete speaker utterances first (FK dependency), then transcripts
@@ -876,7 +876,7 @@ router.post('/sync-incremental', async (req, res) => {
         const fact = await beeApiGet(`/v1/facts/${factId}`, beeToken);
         const f = fact.fact || fact; const fText = extractFactText(f); if (!fText) continue;
         const existing = await findExistingFact(fText);
-        if (existing) { await query('UPDATE facts SET content=$1, updated_at=NOW() WHERE id=$2', [fText, existing.id]); }
+        if (existing) { await query('UPDATE knowledge SET content=$1, updated_at=NOW() WHERE id=$2', [fText, existing.id]); }
         else { await storeFact(fText, f); }
         results.facts++;
       } catch (e) { results.errors.push(`fact ${factId}: ${e.message}`); }
@@ -931,7 +931,7 @@ router.get('/status', async (req, res) => {
   };
   try {
     const [factsR, knowledgeR, tasksR, transcriptsR] = await Promise.all([
-      query("SELECT COUNT(*)::int as c FROM facts WHERE source='bee'"),
+      query("SELECT COUNT(*)::int as c FROM knowledge WHERE source='bee'"),
       query("SELECT category, COUNT(*)::int as c FROM knowledge WHERE ai_source='bee' GROUP BY category"),
       query("SELECT COUNT(*)::int as c FROM tasks WHERE ai_agent='bee'"),
       query("SELECT COUNT(*)::int as c FROM transcripts WHERE source='bee'"),

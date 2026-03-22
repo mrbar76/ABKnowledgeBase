@@ -223,7 +223,7 @@ router.post('/distill', async (req, res) => {
     for (const fact of (extracted.facts || [])) {
       if (!fact.text) continue;
       await query(
-        'INSERT INTO facts (title, content, category, tags, source, confirmed, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, false, $6)',
+        'INSERT INTO knowledge (title, content, category, tags, source, confirmed, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, false, $6)',
         [fact.text.substring(0, 80), fact.text, fact.category || 'general',
          JSON.stringify(extracted.tags || []), source || 'manual', originalDate]
       );
