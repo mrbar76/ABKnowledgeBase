@@ -157,11 +157,10 @@ function switchTab(tab) {
   main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the new structure
-  const legacyFitnessMap = { workouts: 'history', nutrition: 'history', body: 'history', training: 'plans', recovery: 'today' };
+  const legacyFitnessMap = { workouts: 'history', nutrition: 'nutrition', body: 'history', training: 'plans', recovery: 'today' };
   if (legacyFitnessMap[tab]) {
     fitnessSubTab = legacyFitnessMap[tab];
     if (tab === 'workouts') historyFilter = 'workouts';
-    else if (tab === 'nutrition') historyFilter = 'meals';
     else if (tab === 'body') historyFilter = 'body';
     tab = 'fitness';
     currentTab = 'fitness';
@@ -2995,6 +2994,7 @@ function loadFitness() {
   const tabs = [
     { key: 'today', label: 'Today', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/></svg>' },
     { key: 'log', label: 'Log', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>' },
+    { key: 'nutrition', label: 'Macros', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg>' },
     { key: 'history', label: 'History', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>' },
     { key: 'plans', label: 'Plans', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>' },
     { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
@@ -3007,6 +3007,7 @@ function loadFitness() {
   `;
   if (fitnessSubTab === 'today') loadFitnessToday();
   else if (fitnessSubTab === 'log') loadFitnessLog();
+  else if (fitnessSubTab === 'nutrition') loadNutrition();
   else if (fitnessSubTab === 'plans') loadUnifiedPlans();
   else if (fitnessSubTab === 'history') loadFitnessHistory();
   else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
@@ -3182,16 +3183,35 @@ async function loadFitnessToday() {
       </div>`;
     }
 
-    // Meals section
+    // Meals section with compact macro bars
     let mealsHtml = '';
     if (meals.length) {
       const totalCal = meals.reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
       const totalProtein = meals.reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
-      mealsHtml = `<div class="card mb-md"><div class="card-title">Meals (${meals.length}) — ${Math.round(totalCal)} cal · ${Math.round(totalProtein)}g protein</div>
-        ${meals.map(m => `<div class="list-item" onclick="showMealDetail('${m.id}')" style="cursor:pointer;padding:6px 8px;margin-bottom:4px">
-          <div style="font-weight:600;font-size:0.8rem">${esc(m.title)}</div>
-          <div class="list-item-meta">${m.meal_type || ''}${m.calories ? ' · ' + m.calories + 'cal' : ''}${m.protein_g ? ' · ' + m.protein_g + 'g protein' : ''}</div>
-        </div>`).join('')}
+      const totalCarbs = meals.reduce((s, m) => s + (parseFloat(m.carbs_g) || 0), 0);
+      const totalFat = meals.reduce((s, m) => s + (parseFloat(m.fat_g) || 0), 0);
+
+      // Compact macro summary bar
+      const macroTargets = { cal: 2500, p: 145, c: 225, f: 78 }; // moderate defaults
+      function miniBar(actual, target, label, color) {
+        const pct = Math.min(100, Math.round((actual / target) * 100));
+        const barColor = actual > target * 1.15 ? '#ef4444' : color;
+        return `<div style="flex:1;text-align:center">
+          <div style="font-size:0.6rem;color:var(--text-dim)">${label}</div>
+          <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;margin:2px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px"></div></div>
+          <div style="font-size:0.6rem;font-weight:600;color:${barColor}">${Math.round(actual)}<span style="color:var(--text-dim);font-weight:400">/${target}</span></div>
+        </div>`;
+      }
+
+      mealsHtml = `<div class="card mb-md" onclick="fitnessSubTab='nutrition';loadFitness()" style="cursor:pointer">
+        <div class="card-title">Macros — ${meals.length} meal${meals.length !== 1 ? 's' : ''}</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          ${miniBar(totalCal, macroTargets.cal, 'Cal', '#f59e0b')}
+          ${miniBar(totalProtein, macroTargets.p, 'Protein', '#3b82f6')}
+          ${miniBar(totalCarbs, macroTargets.c, 'Carbs', '#f59e0b')}
+          ${miniBar(totalFat, macroTargets.f, 'Fat', '#ef4444')}
+        </div>
+        <div style="font-size:0.6rem;color:var(--accent);text-align:center">Tap for full macro dashboard →</div>
       </div>`;
     }
 
