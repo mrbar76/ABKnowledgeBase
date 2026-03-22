@@ -303,7 +303,6 @@ async function initDB() {
     )`);
   await safeQuery('daily_context indexes', `
     CREATE INDEX IF NOT EXISTS idx_dc_date ON daily_context(date DESC);
-    CREATE INDEX IF NOT EXISTS idx_dc_day_type ON daily_context(day_type);
     CREATE INDEX IF NOT EXISTS idx_dc_search ON daily_context USING gin(search_vector)`);
 
   // ===== TRAINING PLANS =====
@@ -752,14 +751,15 @@ async function initDB() {
 
     CREATE OR REPLACE FUNCTION update_dc_search() RETURNS TRIGGER AS $$
     BEGIN
-      NEW.search_vector := to_tsvector('english', coalesce(NEW.day_type,'') || ' ' || coalesce(NEW.notes,'') || ' ' || coalesce(NEW.cravings,'') || ' ' || coalesce(NEW.digestion,''));
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.notes,''));
       NEW.updated_at := NOW();
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
     DROP TRIGGER IF EXISTS trg_dnc_search ON daily_context;
-    CREATE TRIGGER trg_dc_search BEFORE INSERT OR UPDATE OF day_type, notes, cravings, digestion ON daily_context
+    DROP TRIGGER IF EXISTS trg_dc_search ON daily_context;
+    CREATE TRIGGER trg_dc_search BEFORE INSERT OR UPDATE OF notes ON daily_context
       FOR EACH ROW EXECUTE FUNCTION update_dc_search();
 
     CREATE OR REPLACE FUNCTION update_coaching_sessions_search() RETURNS TRIGGER AS $$
@@ -836,8 +836,16 @@ async function initDB() {
   // -- daily_context recovery/sleep migrations --
   await safeQuery('dc +sleep_hours', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS sleep_hours NUMERIC(3,1)`);
   await safeQuery('dc +sleep_quality', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS sleep_quality INTEGER CHECK(sleep_quality >= 1 AND sleep_quality <= 10)`);
-  await safeQuery('dc +recovery_rating', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS recovery_rating INTEGER CHECK(recovery_rating >= 1 AND recovery_rating <= 10)`);
-  await safeQuery('dc +body_weight_lb', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS body_weight_lb NUMERIC(5,1)`);
+
+  // -- simplify daily_context: drop unused fields (sleep + hydration + notes kept) --
+  await safeQuery('dc drop day_type', `ALTER TABLE daily_context DROP COLUMN IF EXISTS day_type`);
+  await safeQuery('dc drop energy_rating', `ALTER TABLE daily_context DROP COLUMN IF EXISTS energy_rating`);
+  await safeQuery('dc drop hunger_rating', `ALTER TABLE daily_context DROP COLUMN IF EXISTS hunger_rating`);
+  await safeQuery('dc drop recovery_rating', `ALTER TABLE daily_context DROP COLUMN IF EXISTS recovery_rating`);
+  await safeQuery('dc drop body_weight_lb', `ALTER TABLE daily_context DROP COLUMN IF EXISTS body_weight_lb`);
+  await safeQuery('dc drop cravings', `ALTER TABLE daily_context DROP COLUMN IF EXISTS cravings`);
+  await safeQuery('dc drop digestion', `ALTER TABLE daily_context DROP COLUMN IF EXISTS digestion`);
+  await safeQuery('dc drop tags', `ALTER TABLE daily_context DROP COLUMN IF EXISTS tags`);
 
   // (progress_checkins and progress_photos migrations removed)
 
@@ -848,7 +856,7 @@ async function initDB() {
   await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'') || ' ' || coalesce(adjustment,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill body_metrics search', `UPDATE body_metrics SET search_vector = to_tsvector('english', coalesce(source,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(measurement_context,'') || ' ' || coalesce(vendor_user_mode,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill meals search', `UPDATE meals SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(meal_type,'')) WHERE search_vector IS NULL`);
-  await safeQuery('backfill dc search', `UPDATE daily_context SET search_vector = to_tsvector('english', coalesce(day_type,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(cravings,'') || ' ' || coalesce(digestion,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill dc search', `UPDATE daily_context SET search_vector = to_tsvector('english', coalesce(notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
 

@@ -853,7 +853,7 @@
     "/nutrition/daily-context": {
       "get": {
         "operationId": "getDailyContext",
-        "summary": "Get daily nutrition context (energy, sleep, hydration, cravings, etc.)",
+        "summary": "Get daily nutrition context (sleep, hydration, notes)",
         "parameters": [
           {
             "name": "date",
@@ -2024,43 +2024,6 @@
             "type": "string",
             "format": "date"
           },
-          "day_type": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "rest",
-              "strength",
-              "run",
-              "hill",
-              "hybrid",
-              "race",
-              "travel"
-            ]
-          },
-          "hydration_liters": {
-            "type": "number",
-            "nullable": true
-          },
-          "energy_rating": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 1,
-            "maximum": 10
-          },
-          "hunger_rating": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 1,
-            "maximum": 10
-          },
-          "cravings": {
-            "type": "string",
-            "nullable": true
-          },
-          "digestion": {
-            "type": "string",
-            "nullable": true
-          },
           "sleep_hours": {
             "type": "number",
             "nullable": true
@@ -2071,25 +2034,12 @@
             "minimum": 1,
             "maximum": 10
           },
-          "recovery_rating": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 1,
-            "maximum": 10
-          },
-          "body_weight_lb": {
+          "hydration_liters": {
             "type": "number",
             "nullable": true
           },
           "notes": {
             "type": "string",
-            "nullable": true
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
             "nullable": true
           }
         }

@@ -150,14 +150,12 @@ function computeNutritionScore(yesterdaySummary) {
 }
 
 function computeSubjectiveScore(ctx) {
+  // Simplified: use sleep quality as subjective indicator (energy/recovery ratings removed)
   if (!ctx) return { score: 50, detail: 'No context logged' };
-  const energy = ctx.energy_rating ? Number(ctx.energy_rating) : null;
-  const recovery = ctx.recovery_rating ? Number(ctx.recovery_rating) : null;
-  const values = [energy, recovery].filter(v => v != null);
-  if (!values.length) return { score: 50, detail: 'No ratings' };
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  const score = Math.round(avg * 10);
-  return { score, detail: `Energy ${energy || '—'}, Recovery ${recovery || '—'}` };
+  const sleepQ = ctx.sleep_quality ? Number(ctx.sleep_quality) : null;
+  if (sleepQ == null) return { score: 50, detail: 'No sleep quality logged' };
+  const score = Math.round(sleepQ * 10);
+  return { score, detail: `Sleep quality ${sleepQ}/10` };
 }
 
 function generateRecommendation(muscleStatus, injuries) {

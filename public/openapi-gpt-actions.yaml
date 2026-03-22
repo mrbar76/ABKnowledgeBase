@@ -613,7 +613,7 @@ paths:
   /nutrition/daily-context:
     get:
       operationId: getDailyContext
-      summary: Get daily nutrition context (energy, sleep, hydration, cravings)
+      summary: Get daily nutrition context (sleep, hydration, notes)
       parameters:
         - name: date
           in: query
@@ -627,7 +627,7 @@ paths:
     post:
       operationId: createDailyContext
       summary: Create daily nutrition context
-      description: Store non-meal daily data like energy, sleep, hydration, cravings, day type. One per date.
+      description: Store non-meal daily data like sleep, hydration, and notes. One per date.
       requestBody:
         required: true
         content:
@@ -640,29 +640,6 @@ paths:
                 date:
                   type: string
                   format: date
-                day_type:
-                  type: string
-                  enum: [rest, strength, run, hill, hybrid, race, travel]
-                  nullable: true
-                hydration_liters:
-                  type: number
-                  nullable: true
-                energy_rating:
-                  type: integer
-                  nullable: true
-                  minimum: 1
-                  maximum: 10
-                hunger_rating:
-                  type: integer
-                  nullable: true
-                  minimum: 1
-                  maximum: 10
-                cravings:
-                  type: string
-                  nullable: true
-                digestion:
-                  type: string
-                  nullable: true
                 sleep_hours:
                   type: number
                   nullable: true
@@ -671,21 +648,12 @@ paths:
                   nullable: true
                   minimum: 1
                   maximum: 10
-                recovery_rating:
-                  type: integer
-                  nullable: true
-                  minimum: 1
-                  maximum: 10
-                body_weight_lb:
+                hydration_liters:
                   type: number
                   nullable: true
                 notes:
                   type: string
                   nullable: true
-                tags:
-                  type: array
-                  items:
-                    type: string
       responses:
         '201':
           description: Created context
@@ -709,24 +677,14 @@ paths:
             schema:
               type: object
               properties:
-                day_type:
-                  type: string
-                hydration_liters:
-                  type: number
-                energy_rating:
-                  type: integer
                 sleep_hours:
                   type: number
                 sleep_quality:
                   type: integer
-                recovery_rating:
-                  type: integer
+                hydration_liters:
+                  type: number
                 notes:
                   type: string
-                tags:
-                  type: array
-                  items:
-                    type: string
       responses:
         '200':
           description: Updated daily context

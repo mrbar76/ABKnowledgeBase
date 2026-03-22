@@ -1082,7 +1082,7 @@
     "/nutrition/daily-context": {
       "get": {
         "operationId": "getDailyContext",
-        "summary": "Get daily nutrition context (energy, sleep, hydration, cravings, etc.)",
+        "summary": "Get daily context (sleep, hydration, notes)",
         "parameters": [
           {
             "name": "date",
@@ -2181,73 +2181,27 @@
             "type": "string",
             "format": "date"
           },
-          "day_type": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "rest",
-              "strength",
-              "run",
-              "hill",
-              "hybrid",
-              "race",
-              "travel"
-            ]
-          },
-          "hydration_liters": {
-            "type": "number",
-            "nullable": true
-          },
-          "energy_rating": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 1,
-            "maximum": 10
-          },
-          "hunger_rating": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 1,
-            "maximum": 10
-          },
-          "cravings": {
-            "type": "string",
-            "nullable": true
-          },
-          "digestion": {
-            "type": "string",
-            "nullable": true
-          },
           "sleep_hours": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "description": "Hours of sleep (0-24)"
           },
           "sleep_quality": {
             "type": "integer",
             "nullable": true,
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "Sleep quality rating 1-10"
           },
-          "recovery_rating": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 1,
-            "maximum": 10
-          },
-          "body_weight_lb": {
+          "hydration_liters": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "description": "Water intake in liters"
           },
           "notes": {
             "type": "string",
-            "nullable": true
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "nullable": true
+            "nullable": true,
+            "description": "Free-text context notes for the day"
           }
         }
       },

@@ -3113,29 +3113,26 @@ async function loadFitnessToday() {
       </div>`;
     }
 
-    // Check-in section
-    const hasCheckIn = ctx.id;
+    // Sleep & Context section
     let checkInHtml = '';
-    if (hasCheckIn) {
-      checkInHtml = `<div class="card mb-md">
+    if (ctx.id && (ctx.sleep_hours != null || ctx.sleep_quality != null)) {
+      const sleepColor = ctx.sleep_hours >= 7 ? '#10b981' : ctx.sleep_hours >= 5.5 ? '#f59e0b' : '#ef4444';
+      checkInHtml = `<div class="card mb-md" style="border-left:3px solid ${sleepColor}">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-          Check-in
+          Sleep
           <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="showDailyContextForm('${fitnessTodayDate}','${ctx.id}')">Edit</button>
         </div>
-        <div class="detail-grid" style="grid-template-columns:repeat(auto-fill,minmax(100px,1fr))">
-          ${ctx.sleep_hours != null ? `<div class="detail-item"><div class="detail-label">Sleep</div><div class="detail-value">${ctx.sleep_hours}h</div></div>` : ''}
-          ${ctx.sleep_quality != null ? `<div class="detail-item"><div class="detail-label">Quality</div><div class="detail-value">${ctx.sleep_quality}/10</div></div>` : ''}
-          ${ctx.energy_rating != null ? `<div class="detail-item"><div class="detail-label">Energy</div><div class="detail-value">${ctx.energy_rating}/10</div></div>` : ''}
-          ${ctx.recovery_rating != null ? `<div class="detail-item"><div class="detail-label">Recovery</div><div class="detail-value">${ctx.recovery_rating}/10</div></div>` : ''}
-          ${ctx.hydration_liters != null ? `<div class="detail-item"><div class="detail-label">Water</div><div class="detail-value">${ctx.hydration_liters}L</div></div>` : ''}
-          ${ctx.body_weight_lb != null ? `<div class="detail-item"><div class="detail-label">Weight</div><div class="detail-value">${ctx.body_weight_lb}lb</div></div>` : ''}
+        <div style="display:flex;gap:16px;align-items:center">
+          ${ctx.sleep_hours != null ? `<div><span style="font-size:1.4rem;font-weight:700;color:${sleepColor}">${ctx.sleep_hours}</span><span style="font-size:0.8rem;color:var(--text-dim)">h</span></div>` : ''}
+          ${ctx.sleep_quality != null ? `<div><span style="font-size:0.8rem;color:var(--text-dim)">Quality:</span> <span style="font-weight:600">${ctx.sleep_quality}/10</span></div>` : ''}
+          ${ctx.hydration_liters != null ? `<div><span style="font-size:0.8rem;color:var(--text-dim)">Water:</span> <span style="font-weight:600">${ctx.hydration_liters}L</span></div>` : ''}
         </div>
-        ${ctx.notes ? `<div class="transcript-summary mt-sm">${esc(ctx.notes)}</div>` : ''}
+        ${ctx.notes ? `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:6px">${esc(ctx.notes)}</div>` : ''}
       </div>`;
     } else {
       checkInHtml = `<div class="card mb-md" style="border-left:3px solid #d1d5db">
-        <div class="card-title">No check-in</div>
-        <button class="btn-submit btn-compact-sm" onclick="showDailyContextForm('${fitnessTodayDate}')">+ Add Check-in</button>
+        <div class="card-title">No sleep logged</div>
+        <button class="btn-submit btn-compact-sm" onclick="showDailyContextForm('${fitnessTodayDate}')">+ Log Sleep & Context</button>
       </div>`;
     }
 
@@ -3320,7 +3317,7 @@ function loadFitnessLog() {
   const items = [
     { label: 'Workout', icon: '💪', action: "showWorkoutForm()" },
     { label: 'Meal', icon: '🍽️', action: "showMealForm()" },
-    { label: 'Check-in', icon: '📋', action: "showDailyContextForm('" + new Date().toISOString().slice(0, 10) + "')" },
+    { label: 'Sleep', icon: '😴', action: "showDailyContextForm('" + new Date().toISOString().slice(0, 10) + "')" },
     { label: 'Weight', icon: '⚖️', action: "showBodyMetricForm()" },
     { label: 'Injury', icon: '🩹', action: "showInjuryForm()" },
     { label: 'Plan', icon: '📅', action: "showCreateDailyPlanForm('" + new Date().toISOString().slice(0, 10) + "')" },
@@ -3953,28 +3950,18 @@ async function loadNutrition(date) {
 
       ${buildMacroDashboard(summary)}
 
-      ${ctx ? `
+      ${ctx && ctx.hydration_liters ? `
       <div class="card mb-md" style="padding:10px;font-size:0.8rem">
         <div class="flex-between mb-xs">
-          <strong>Daily Context</strong>
-          ${ctx.day_type ? `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b">${ctx.day_type}</span>` : ''}
+          <strong>Hydration</strong>
           <button class="btn-action btn-compact-sm" onclick="showDailyContextForm('${nutritionDate}','${ctx.id}')" style="padding:2px 8px;font-size:0.7rem">Edit</button>
         </div>
-        <div class="flex-row-wrap text-dim">
-          ${ctx.energy_rating ? `<span>Energy: ${ctx.energy_rating}/10</span>` : ''}
-          ${ctx.hunger_rating ? `<span>Hunger: ${ctx.hunger_rating}/10</span>` : ''}
-          ${ctx.hydration_liters ? `<span>Water: ${ctx.hydration_liters}L</span>` : ''}
-          ${ctx.sleep_hours ? `<span>Sleep: ${ctx.sleep_hours}h</span>` : ''}
-          ${ctx.sleep_quality ? `<span>Sleep Q: ${ctx.sleep_quality}/10</span>` : ''}
-          ${ctx.recovery_rating ? `<span>Recovery: ${ctx.recovery_rating}/10</span>` : ''}
-          ${ctx.body_weight_lb ? `<span>Weight: ${ctx.body_weight_lb}lb</span>` : ''}
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:1.2rem;font-weight:700;color:#06b6d4">${ctx.hydration_liters}L</span>
+          <div style="flex:1;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(100, Math.round((ctx.hydration_liters / 3) * 100))}%;background:#06b6d4;border-radius:3px"></div></div>
+          <span class="text-micro text-dim">/ 3L</span>
         </div>
-        ${ctx.cravings ? `<div class="mt-sm text-dim">Cravings: ${esc(ctx.cravings)}</div>` : ''}
-        ${ctx.notes ? `<div class="mt-sm text-dim">${esc(ctx.notes)}</div>` : ''}
-      </div>` : `
-      <div class="mb-md text-center">
-        <button class="btn-action btn-compact-sm" onclick="showDailyContextForm('${nutritionDate}')">+ Add Daily Context</button>
-      </div>`}
+      </div>` : ''}
 
       <div class="list-header">
         <div class="transcript-count">${summary.total_meals} meal${summary.total_meals !== 1 ? 's' : ''}</div>
@@ -4149,55 +4136,31 @@ async function showDailyContextForm(date, editId) {
   if (editId) {
     try { ctx = await api(`/nutrition/daily-context/${editId}`); } catch {}
   }
-  const dayTypes = ['rest','strength','run','hill','hybrid','race','travel'];
   const numField = (id, label, val, step) =>
     `<div class="form-group flex-1" style="min-width:90px"><label>${label}</label><input type="number" step="${step || '1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
 
   const html = `
     <div class="form-scroll">
-      <div class="flex-row">
-        <div class="form-group flex-1"><label>Day Type</label><select id="dc-type">
-          <option value="">—</option>
-          ${dayTypes.map(t => `<option value="${t}" ${ctx.day_type === t ? 'selected' : ''}>${t}</option>`).join('')}
-        </select></div>
-        ${numField('dc-weight', 'Weight (lb)', ctx.body_weight_lb, '0.1')}
-        ${numField('dc-water', 'Water (L)', ctx.hydration_liters, '0.1')}
-      </div>
-      <div class="flex-row-wrap">
-        ${numField('dc-energy', 'Energy (1-10)', ctx.energy_rating, '1')}
-        ${numField('dc-hunger', 'Hunger (1-10)', ctx.hunger_rating, '1')}
-        ${numField('dc-recovery', 'Recovery (1-10)', ctx.recovery_rating, '1')}
-      </div>
       <div class="flex-row-wrap">
         ${numField('dc-sleep-hrs', 'Sleep (hrs)', ctx.sleep_hours, '0.5')}
         ${numField('dc-sleep-q', 'Sleep Quality (1-10)', ctx.sleep_quality, '1')}
+        ${numField('dc-water', 'Water (L)', ctx.hydration_liters, '0.1')}
       </div>
-      <div class="form-group"><label>Cravings</label><input type="text" id="dc-cravings" value="${esc(ctx.cravings || '')}" placeholder="Sugar, salty, none"></div>
-      <div class="form-group"><label>Digestion</label><input type="text" id="dc-digestion" value="${esc(ctx.digestion || '')}" placeholder="Good, bloated, etc."></div>
-      <div class="form-group"><label>Notes</label><textarea id="dc-notes" rows="2">${esc(ctx.notes || '')}</textarea></div>
-      <div class="form-group"><label>Tags</label><input type="text" id="dc-tags" value="${(ctx.tags || []).join(', ')}" placeholder="fasted, cheat-day"></div>
-      <button class="btn-submit" onclick="saveDailyContext('${date}','${editId || ''}')" style="width:100%;margin-top:8px">${editId ? 'Update' : 'Save'} Daily Context</button>
+      <div class="form-group"><label>Notes</label><textarea id="dc-notes" rows="3" placeholder="How are you feeling? Any context for the day...">${esc(ctx.notes || '')}</textarea></div>
+      <button class="btn-submit" onclick="saveDailyContext('${date}','${editId || ''}')" style="width:100%;margin-top:8px">${editId ? 'Update' : 'Save'}</button>
     </div>
   `;
-  openModal(`Daily Context — ${date}`, html);
+  openModal(`Sleep & Context — ${date}`, html);
 }
 
 async function saveDailyContext(date, editId) {
   const nv = (id) => { const v = document.getElementById(id)?.value; return v ? Number(v) : null; };
   const body = {
     date,
-    day_type: document.getElementById('dc-type').value || null,
-    body_weight_lb: nv('dc-weight'),
-    hydration_liters: nv('dc-water'),
-    energy_rating: nv('dc-energy'),
-    hunger_rating: nv('dc-hunger'),
-    recovery_rating: nv('dc-recovery'),
     sleep_hours: nv('dc-sleep-hrs'),
     sleep_quality: nv('dc-sleep-q'),
-    cravings: document.getElementById('dc-cravings').value || null,
-    digestion: document.getElementById('dc-digestion').value || null,
+    hydration_liters: nv('dc-water'),
     notes: document.getElementById('dc-notes').value || null,
-    tags: document.getElementById('dc-tags').value.split(',').map(t => t.trim()).filter(Boolean),
   };
   try {
     if (editId) {
@@ -5836,21 +5799,20 @@ async function loadTrainingDay() {
       </div>`;
     }
 
-    // Nutrition Context
+    // Sleep & Context
     if (data.nutrition_context) {
       const nc = data.nutrition_context;
-      html += `<div class="card" style="border-left:3px solid #06b6d4;margin-bottom:12px;padding:10px 14px">
-        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Daily Context</div>
-        <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:0.8rem">
-          ${nc.day_type ? `<span><strong>Type:</strong> ${nc.day_type}</span>` : ''}
-          ${nc.energy_rating ? `<span><strong>Energy:</strong> ${nc.energy_rating}/10</span>` : ''}
-          ${nc.sleep_hours ? `<span><strong>Sleep:</strong> ${nc.sleep_hours}h</span>` : ''}
-          ${nc.sleep_quality ? `<span><strong>Sleep Q:</strong> ${nc.sleep_quality}/10</span>` : ''}
-          ${nc.recovery_rating ? `<span><strong>Recovery:</strong> ${nc.recovery_rating}/10</span>` : ''}
-          ${nc.hydration_liters ? `<span><strong>Water:</strong> ${nc.hydration_liters}L</span>` : ''}
-        </div>
-        ${nc.notes ? `<div style="font-size:0.8rem;color:var(--text-dim);margin-top:4px">${esc(nc.notes)}</div>` : ''}
-      </div>`;
+      if (nc.sleep_hours || nc.hydration_liters) {
+        html += `<div class="card" style="border-left:3px solid #6366f1;margin-bottom:12px;padding:10px 14px">
+          <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Sleep & Context</div>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:0.8rem">
+            ${nc.sleep_hours ? `<span><strong>Sleep:</strong> ${nc.sleep_hours}h</span>` : ''}
+            ${nc.sleep_quality ? `<span><strong>Quality:</strong> ${nc.sleep_quality}/10</span>` : ''}
+            ${nc.hydration_liters ? `<span><strong>Water:</strong> ${nc.hydration_liters}L</span>` : ''}
+          </div>
+          ${nc.notes ? `<div style="font-size:0.8rem;color:var(--text-dim);margin-top:4px">${esc(nc.notes)}</div>` : ''}
+        </div>`;
+      }
     }
 
     // Workouts
