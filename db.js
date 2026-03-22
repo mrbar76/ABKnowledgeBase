@@ -604,6 +604,73 @@ async function initDB() {
   await safeQuery('daily_plans +title', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS title TEXT`);
   await safeQuery('daily_plans +goal', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS goal TEXT`);
 
+  // -- migrate microcycle training_plans → daily_plans (before drop) --
+  await (async () => {
+    try {
+      // Check if training_plans still exists
+      const { rows: tableCheck } = await query(
+        `SELECT 1 FROM information_schema.tables WHERE table_name = 'training_plans' LIMIT 1`
+      );
+      if (!tableCheck.length) return; // already dropped
+
+      const { rows: plans } = await query(`
+        SELECT * FROM training_plans
+        WHERE (plan_type = 'microcycle' OR (start_date IS NOT NULL AND start_date = end_date))
+          AND status IN ('active', 'draft', 'planned')
+        ORDER BY start_date ASC
+      `);
+
+      let migrated = 0;
+      for (const tp of plans) {
+        const planDate = tp.start_date ? (tp.start_date instanceof Date ? tp.start_date.toISOString().slice(0, 10) : String(tp.start_date).slice(0, 10)) : null;
+        if (!planDate) continue;
+
+        // Skip if daily plan already exists for this date
+        const { rows: existing } = await query('SELECT id FROM daily_plans WHERE plan_date = $1', [planDate]);
+        if (existing.length) continue;
+
+        // Extract workout type from title/goal/weekly_structure
+        let workoutType = null;
+        let workoutFocus = null;
+        if (tp.weekly_structure && Array.isArray(tp.weekly_structure) && tp.weekly_structure.length > 0) {
+          workoutType = tp.weekly_structure[0].type || null;
+          workoutFocus = tp.weekly_structure[0].focus || null;
+        }
+        if (!workoutType) {
+          const text = ((tp.title || '') + ' ' + (tp.goal || '')).toLowerCase();
+          if (text.includes('recovery') || text.includes('mobility') || text.includes('rest')) workoutType = 'recovery';
+          else if (text.includes('run') || text.includes('pacing')) workoutType = 'run';
+          else if (text.includes('strength') || text.includes('upper') || text.includes('push') || text.includes('pull')) workoutType = 'strength';
+          else if (text.includes('hill') || text.includes('spartan') || text.includes('obstacle') || text.includes('outdoor')) workoutType = 'hill';
+          else if (text.includes('hybrid') || text.includes('spin')) workoutType = 'hybrid';
+          else if (text.includes('ruck')) workoutType = 'ruck';
+          else workoutType = 'custom';
+        }
+        const titleParts = (tp.title || '').split('–').map(s => s.trim());
+        if (!workoutFocus) workoutFocus = titleParts.length > 1 ? titleParts[1] : null;
+
+        const isRest = workoutType === 'recovery';
+        const status = isRest ? 'rest' : 'planned';
+
+        await query(`
+          INSERT INTO daily_plans (plan_date, status, title, goal, workout_type, workout_focus,
+            workout_notes, coaching_notes, rationale, tags, ai_source, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `, [
+          planDate, status, tp.title || null, tp.goal || null,
+          workoutType, workoutFocus,
+          tp.constraints || null, tp.progression_notes || null, tp.rationale || null,
+          tp.tags || '[]', tp.ai_source || 'chatgpt',
+          JSON.stringify({ migrated_from: 'training_plan', phase: tp.phase, intensity_scheme: tp.intensity_scheme }),
+        ]);
+        migrated++;
+      }
+      if (migrated > 0) console.log(`[initDB] Migrated ${migrated} training plans → daily plans`);
+    } catch (err) {
+      console.error(`[initDB] Training plan migration failed: ${err.message}`);
+    }
+  })();
+
   // -- remove training_plan_id FKs and drop training_plans table --
   await safeQuery('daily_plans drop training_plan_id', `ALTER TABLE daily_plans DROP COLUMN IF EXISTS training_plan_id`);
   await safeQuery('coaching drop training_plan_id', `ALTER TABLE coaching_sessions DROP COLUMN IF EXISTS training_plan_id`);
