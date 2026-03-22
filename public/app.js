@@ -4518,6 +4518,8 @@ function showSleepForm() {
 }
 
 let trainingSubTab = 'day';
+let plansWeekOffset = 0;
+let plansSelectedDate = new Date().toISOString().slice(0, 10);
 
 async function loadTraining() {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
@@ -4536,138 +4538,212 @@ async function loadTraining() {
   else if (trainingSubTab === 'injuries') loadInjuries();
 }
 
-// ── Unified Plans (active training plan banner + weekly daily plans) ──
+// ── Plans Tab — Today-first with check-in ──
 async function loadUnifiedPlans() {
   const container = document.getElementById('training-content');
-  const tpColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
   const dpColors = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
 
-  let html = '';
-
-  // ── Active training plan banner ──
-  try {
-    const planData = await api('/training/plans?status=active&limit=5');
-    if (planData.plans?.length) {
-      html += planData.plans.map(p => {
-        const color = tpColors[p.status] || '#6366f1';
-        const dates = p.start_date ? `${new Date(p.start_date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}${p.end_date ? ' – ' + new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : ''}` : '';
-        return `<div class="card" onclick="showTrainingPlanDetail('${p.id}')" style="border-left:4px solid ${color};cursor:pointer;margin-bottom:8px;padding:10px 14px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-            <div>
-              <div style="font-size:0.6rem;text-transform:uppercase;color:${color};font-weight:700;letter-spacing:0.5px">Active Plan</div>
-              <div style="font-weight:700;font-size:0.9rem">${esc(p.title)}</div>
-              ${p.goal ? `<div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px">${esc(p.goal)}</div>` : ''}
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              ${dates ? `<div style="font-size:0.75rem;color:var(--text-dim)">${dates}</div>` : ''}
-              ${p.weeks ? `<div style="font-size:0.7rem;color:var(--accent)">${p.weeks}wk${p.phase ? ' · ' + esc(p.phase) : ''}</div>` : ''}
-            </div>
-          </div>
-        </div>`;
-      }).join('');
-    }
-  } catch (e) { /* non-fatal */ }
-
-  // ── Weekly daily plans grid ──
-  const today = new Date();
-  const dayOfWeek = (today.getDay() + 6) % 7;
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - dayOfWeek);
+  // Compute week dates from offset
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const dayOfWeek = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + (plansWeekOffset * 7));
   const monStr = monday.toISOString().slice(0, 10);
   const sunDate = new Date(monday);
   sunDate.setDate(monday.getDate() + 6);
   const sunStr = sunDate.toISOString().slice(0, 10);
 
+  // Fetch week plans + selected day data in parallel
   try {
-    const data = await api(`/daily-plans?from=${monStr}&to=${sunStr}`);
-    const plans = data.results || [];
+    const [weekData, dayData] = await Promise.all([
+      api(`/daily-plans?from=${monStr}&to=${sunStr}`),
+      api(`/training/day/${plansSelectedDate}`),
+    ]);
+
+    const weekPlans = weekData.results || [];
     const planMap = {};
-    for (const p of plans) planMap[p.plan_date?.slice(0, 10)] = p;
+    for (const p of weekPlans) planMap[p.plan_date?.slice(0, 10)] = p;
 
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const todayStr = today.toISOString().slice(0, 10);
+    let html = '';
 
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <h3 style="color:var(--accent);margin:0;font-size:0.95rem">This Week</h3>
-      <button class="btn-action" onclick="showCreateDailyPlanForm()">+ Day Plan</button>
-    </div>`;
-
-    html += '<div class="daily-plans-week">';
+    // ── Week strip with navigation ──
+    html += `<div class="plans-week-strip">
+      <button class="plans-week-arrow" onclick="plansWeekOffset--;loadUnifiedPlans()">&lsaquo;</button>
+      <div class="plans-week-days">`;
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
       const dateStr = d.toISOString().slice(0, 10);
       const plan = planMap[dateStr];
       const isToday = dateStr === todayStr;
-      const isPast = dateStr < todayStr;
-      const statusColor = plan ? (dpColors[plan.status] || '#6366f1') : 'var(--border)';
-      html += `<div class="daily-plan-day-card${isToday ? ' today' : ''}${isPast && !plan ? ' past' : ''}" onclick="${plan ? `showDailyPlanDetail('${plan.id}')` : `showCreateDailyPlanForm('${dateStr}')`}" style="border-top:3px solid ${statusColor}">
-        <div class="daily-plan-day-label">${dayLabels[i]}</div>
-        <div class="daily-plan-day-date">${d.getDate()}</div>
-        ${plan ? `
-          <div class="daily-plan-day-type" style="color:${statusColor}">${plan.status === 'rest' ? 'Rest' : (plan.workout_type || '—')}</div>
-          ${plan.target_effort ? `<div class="daily-plan-day-effort">E${plan.target_effort}</div>` : ''}
-        ` : `<div class="daily-plan-day-type" style="color:var(--text-dim)">—</div>`}
-      </div>`;
+      const isSelected = dateStr === plansSelectedDate;
+      const statusColor = plan ? (dpColors[plan.status] || '#6366f1') : 'transparent';
+      html += `<button class="plans-day-pill${isToday ? ' is-today' : ''}${isSelected ? ' selected' : ''}" onclick="plansSelectedDate='${dateStr}';loadUnifiedPlans()" style="--pill-status:${statusColor}">
+        <span class="plans-day-pill-label">${dayLabels[i]}</span>
+        <span class="plans-day-pill-date">${d.getDate()}</span>
+        ${plan ? `<span class="plans-day-pill-dot" style="background:${statusColor}"></span>` : ''}
+      </button>`;
     }
-    html += '</div>';
+    html += `</div>
+      <button class="plans-week-arrow" onclick="plansWeekOffset++;loadUnifiedPlans()">&rsaquo;</button>
+    </div>`;
+    if (plansWeekOffset !== 0) {
+      html += `<div style="text-align:center;margin-bottom:8px"><button class="btn-action" style="font-size:0.7rem;padding:2px 10px" onclick="plansWeekOffset=0;plansSelectedDate='${todayStr}';loadUnifiedPlans()">Back to today</button></div>`;
+    }
 
-    if (plans.length) {
-      html += '<div style="margin-top:4px">';
-      for (const p of plans.sort((a, b) => a.plan_date > b.plan_date ? 1 : -1)) {
-        const dateLabel = new Date(p.plan_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const sc = dpColors[p.status] || '#6366f1';
-        html += `<div class="list-item" onclick="showDailyPlanDetail('${p.id}')" style="border-left:3px solid ${sc};cursor:pointer;margin-bottom:6px;padding:8px 12px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-weight:700;font-size:0.85rem">${dateLabel}</span>
-            <span style="font-size:0.65rem;background:${sc}22;color:${sc};padding:1px 8px;border-radius:10px;font-weight:600">${p.status}</span>
+    // ── Hero plan card ──
+    const dp = dayData.daily_plan;
+    const selectedLabel = new Date(plansSelectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const isRest = dp?.status === 'rest';
+
+    if (!dp) {
+      // No plan
+      html += `<div class="plans-hero-card">
+        <div class="plans-hero-header">
+          <span class="plans-hero-date">${selectedLabel}</span>
+        </div>
+        <div class="empty-state" style="padding:24px 0">
+          <div style="color:var(--text-dim);margin-bottom:12px">No plan for this day</div>
+          <button class="btn-submit" onclick="showCreateDailyPlanForm('${plansSelectedDate}')" style="padding:8px 20px">+ Create Plan</button>
+        </div>
+      </div>`;
+    } else if (isRest) {
+      // Rest day
+      html += `<div class="plans-hero-card" style="border-left:4px solid #6366f1">
+        <div class="plans-hero-header">
+          <span class="plans-hero-date">${selectedLabel}</span>
+          <span class="plans-status-pill" style="background:#6366f122;color:#6366f1">${dp.status}</span>
+        </div>
+        <div style="text-align:center;padding:16px 0;font-size:1.1rem;font-weight:700;color:#6366f1">Rest Day</div>
+        ${dp.recovery_notes ? `<div style="font-size:0.8rem;color:var(--text-dim);text-align:center">${esc(dp.recovery_notes)}</div>` : ''}
+        ${dp.coaching_notes ? `<div style="font-size:0.8rem;color:var(--text-dim);text-align:center;font-style:italic;margin-top:4px">${esc(dp.coaching_notes)}</div>` : ''}
+        <div class="plans-actions">
+          <button class="btn-action" onclick="editDailyPlan('${dp.id}')">Edit Plan</button>
+        </div>
+      </div>`;
+    } else {
+      // Active plan day
+      const sc = dpColors[dp.status] || '#6366f1';
+      html += `<div class="plans-hero-card" style="border-left:4px solid ${sc}">
+        <div class="plans-hero-header">
+          <span class="plans-hero-date">${selectedLabel}</span>
+          <span class="plans-status-pill" style="background:${sc}22;color:${sc}">${dp.status}</span>
+        </div>`;
+
+      // Workout section
+      if (dp.workout_type || dp.workout_focus || dp.target_effort) {
+        html += `<div class="plans-section">
+          <div class="plans-section-label">Workout</div>
+          <div style="font-weight:700;font-size:0.95rem">${esc(dp.workout_type || 'Workout')}${dp.workout_focus ? ` — ${esc(dp.workout_focus)}` : ''}</div>
+          <div class="plans-section-meta">
+            ${dp.target_effort ? `<span>Effort: <strong>${dp.target_effort}/10</strong></span>` : ''}
+            ${dp.target_duration_min ? `<span>Duration: <strong>${dp.target_duration_min} min</strong></span>` : ''}
           </div>
-          <div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px">${p.status === 'rest' ? 'Rest Day' : (p.workout_type || 'Workout') + (p.workout_focus ? ' — ' + p.workout_focus : '')}${p.target_effort ? ' · Effort ' + p.target_effort : ''}</div>
+          ${dp.workout_notes ? `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px">${esc(dp.workout_notes)}</div>` : ''}
         </div>`;
       }
-      html += '</div>';
-    }
 
-    // ── Manage training plans footer ──
-    html += `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <button class="btn-action" style="background:none;color:var(--text-dim);font-size:0.8rem;padding:4px 0" onclick="showAllTrainingPlans()">Manage Training Plans ›</button>
-      <button class="btn-action" onclick="showTrainingPlanForm()" style="font-size:0.8rem;padding:6px 12px">+ Training Plan</button>
-    </div>`;
+      // Nutrition targets
+      const hasNutrition = dp.target_calories || dp.target_protein_g || dp.target_hydration_liters;
+      if (hasNutrition) {
+        html += `<div class="plans-section">
+          <div class="plans-section-label">Nutrition</div>
+          <div class="plans-section-meta">
+            ${dp.target_calories ? `<span>Cal: <strong>${Math.round(parseFloat(dp.target_calories))}</strong></span>` : ''}
+            ${dp.target_protein_g ? `<span>Protein: <strong>${Math.round(parseFloat(dp.target_protein_g))}g</strong></span>` : ''}
+            ${dp.target_carbs_g ? `<span>Carbs: <strong>${Math.round(parseFloat(dp.target_carbs_g))}g</strong></span>` : ''}
+            ${dp.target_fat_g ? `<span>Fat: <strong>${Math.round(parseFloat(dp.target_fat_g))}g</strong></span>` : ''}
+            ${dp.target_hydration_liters ? `<span>Water: <strong>${dp.target_hydration_liters}L</strong></span>` : ''}
+          </div>
+        </div>`;
+      }
+
+      // Recovery target
+      if (dp.target_sleep_hours) {
+        html += `<div class="plans-section">
+          <div class="plans-section-label">Recovery</div>
+          <div class="plans-section-meta"><span>Sleep: <strong>${dp.target_sleep_hours}h</strong></span></div>
+        </div>`;
+      }
+
+      // Coaching notes
+      if (dp.coaching_notes) {
+        html += `<div style="font-size:0.78rem;color:var(--text-dim);font-style:italic;padding:0 12px 8px">${esc(dp.coaching_notes)}</div>`;
+      }
+
+      // ── Check-in: Plan vs Actual ──
+      const hasActual = dayData.workouts?.length || dayData.meals?.length || dayData.nutrition_context;
+      if (hasActual) {
+        const maxEffort = Math.max(0, ...(dayData.workouts || []).map(w => w.effort || 0));
+        const totalCal = (dayData.meals || []).reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
+        const totalProtein = (dayData.meals || []).reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
+        const nc = dayData.nutrition_context || {};
+
+        const rows = [];
+        if (dp.target_effort) {
+          const pct = Math.min(100, Math.round((maxEffort / dp.target_effort) * 100));
+          rows.push({ label: 'Effort', actual: maxEffort || '—', target: dp.target_effort, pct });
+        }
+        if (dp.target_calories) {
+          const pct = Math.min(100, Math.round((totalCal / parseFloat(dp.target_calories)) * 100));
+          rows.push({ label: 'Calories', actual: Math.round(totalCal) || '—', target: Math.round(parseFloat(dp.target_calories)), pct });
+        }
+        if (dp.target_protein_g) {
+          const pct = Math.min(100, Math.round((totalProtein / parseFloat(dp.target_protein_g)) * 100));
+          rows.push({ label: 'Protein', actual: Math.round(totalProtein) + 'g', target: Math.round(parseFloat(dp.target_protein_g)) + 'g', pct });
+        }
+        if (dp.target_hydration_liters && nc.hydration_liters) {
+          const pct = Math.min(100, Math.round((parseFloat(nc.hydration_liters) / parseFloat(dp.target_hydration_liters)) * 100));
+          rows.push({ label: 'Water', actual: nc.hydration_liters + 'L', target: dp.target_hydration_liters + 'L', pct });
+        }
+        if (dp.target_sleep_hours && nc.sleep_hours) {
+          const pct = Math.min(100, Math.round((parseFloat(nc.sleep_hours) / parseFloat(dp.target_sleep_hours)) * 100));
+          rows.push({ label: 'Sleep', actual: nc.sleep_hours + 'h', target: dp.target_sleep_hours + 'h', pct });
+        }
+
+        if (rows.length) {
+          html += `<div class="plans-checkin">
+            <div class="plans-section-label">Check-in</div>
+            ${rows.map(r => {
+              const barColor = r.pct >= 100 ? '#22c55e' : r.pct >= 70 ? '#f59e0b' : '#ef4444';
+              return `<div class="plans-checkin-row">
+                <div class="plans-checkin-meta">
+                  <span class="plans-checkin-label">${r.label}</span>
+                  <span><strong style="color:${barColor}">${r.actual}</strong> / ${r.target}</span>
+                </div>
+                <div class="plans-checkin-bar-track"><div class="plans-checkin-bar-fill" style="width:${r.pct}%;background:${barColor}"></div></div>
+              </div>`;
+            }).join('')}
+          </div>`;
+        }
+      }
+
+      // ── Quick status buttons + Edit ──
+      html += `<div class="plans-status-row">
+        <button class="plans-status-btn ${dp.status === 'completed' ? 'active' : ''}" style="--btn-color:#22c55e" onclick="quickUpdatePlanStatus('${dp.id}','completed')">Completed</button>
+        <button class="plans-status-btn ${dp.status === 'partial' ? 'active' : ''}" style="--btn-color:#f59e0b" onclick="quickUpdatePlanStatus('${dp.id}','partial')">Partial</button>
+        <button class="plans-status-btn ${dp.status === 'missed' ? 'active' : ''}" style="--btn-color:#ef4444" onclick="quickUpdatePlanStatus('${dp.id}','missed')">Missed</button>
+      </div>
+      <div class="plans-actions">
+        <button class="btn-action" onclick="editDailyPlan('${dp.id}')">Edit Plan</button>
+      </div>`;
+
+      html += '</div>'; // close plans-hero-card
+    }
 
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = activeBannerHtml + `<div class="empty-state">${esc(e.message)}</div>`;
+    container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
   }
 }
 
-// ── All Training Plans (modal) ──
-async function showAllTrainingPlans() {
-  const statusColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
+async function quickUpdatePlanStatus(id, status) {
   try {
-    const data = await api('/training/plans?limit=50');
-    let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="transcript-count">${data.total} plan${data.total !== 1 ? 's' : ''}</div>
-      <button class="btn-submit" onclick="closeModal();showTrainingPlanForm()" style="padding:8px 16px">+ Plan</button>
-    </div>`;
-    html += data.plans.length ? data.plans.map(p => {
-      const color = statusColors[p.status] || '#6366f1';
-      const dates = p.start_date ? `${new Date(p.start_date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}${p.end_date ? ' - ' + new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : ''}` : '';
-      return `<div class="list-item" onclick="closeModal();showTrainingPlanDetail('${p.id}')" style="border-left:3px solid ${color}">
-        <div class="transcript-card-header">
-          <div class="list-item-title">${esc(p.title)}</div>
-          <span class="content-type-badge" style="background:${color}22;color:${color}">${p.status}</span>
-          <span class="content-type-badge" style="background:var(--bg-input);color:var(--text-dim)">${p.plan_type}</span>
-        </div>
-        ${p.goal ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(p.goal)}</div>` : ''}
-        <div class="list-item-meta">
-          ${dates ? `<span>${dates}</span>` : ''}
-          ${p.weeks ? `<span>${p.weeks}wk</span>` : ''}
-          ${p.phase ? `<span>${esc(p.phase)}</span>` : ''}
-        </div>
-      </div>`;
-    }).join('') : '<div class="empty-state">No training plans yet.</div>';
-    openModal('Training Plans', html);
-  } catch (e) { openModal('Training Plans', `<div class="empty-state">${esc(e.message)}</div>`); }
+    await api(`/daily-plans/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+    loadUnifiedPlans();
+  } catch (e) { showToast(e.message); }
 }
 
 async function showTrainingPlanDetail(id) {
@@ -5328,78 +5404,6 @@ function shiftDate(dateStr, days) {
 }
 
 // ── Daily Plan Manager ──
-async function loadDailyPlanManager() {
-  const container = document.getElementById('training-content');
-
-  // Get this week's dates (Mon-Sun)
-  const today = new Date();
-  const dayOfWeek = (today.getDay() + 6) % 7; // 0=Mon
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - dayOfWeek);
-  const monStr = monday.toISOString().slice(0, 10);
-  const sunDate = new Date(monday);
-  sunDate.setDate(monday.getDate() + 6);
-  const sunStr = sunDate.toISOString().slice(0, 10);
-
-  try {
-    const data = await api(`/daily-plans?from=${monStr}&to=${sunStr}`);
-    const plans = data.results || [];
-    const planMap = {};
-    for (const p of plans) planMap[p.plan_date?.slice(0, 10)] = p;
-
-    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const todayStr = today.toISOString().slice(0, 10);
-    const statusColors = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
-
-    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h3 style="color:var(--accent);margin:0">This Week's Plans</h3>
-      <button class="btn-action" onclick="showCreateDailyPlanForm()">+ New Plan</button>
-    </div>`;
-
-    html += '<div class="daily-plans-week">';
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const dateStr = d.toISOString().slice(0, 10);
-      const plan = planMap[dateStr];
-      const isToday = dateStr === todayStr;
-      const isPast = dateStr < todayStr;
-      const statusColor = plan ? (statusColors[plan.status] || '#6366f1') : 'var(--border)';
-
-      html += `<div class="daily-plan-day-card${isToday ? ' today' : ''}${isPast && !plan ? ' past' : ''}" onclick="${plan ? `showDailyPlanDetail('${plan.id}')` : `showCreateDailyPlanForm('${dateStr}')`}" style="border-top:3px solid ${statusColor}">
-        <div class="daily-plan-day-label">${dayLabels[i]}</div>
-        <div class="daily-plan-day-date">${d.getDate()}</div>
-        ${plan ? `
-          <div class="daily-plan-day-type" style="color:${statusColor}">${plan.status === 'rest' ? 'Rest' : (plan.workout_type || '—')}</div>
-          ${plan.target_effort ? `<div class="daily-plan-day-effort">E${plan.target_effort}</div>` : ''}
-        ` : `<div class="daily-plan-day-type" style="color:var(--text-dim)">—</div>`}
-      </div>`;
-    }
-    html += '</div>';
-
-    // List all plans for the week with more detail
-    if (plans.length) {
-      html += `<div style="margin-top:16px">`;
-      for (const p of plans.sort((a, b) => a.plan_date > b.plan_date ? 1 : -1)) {
-        const dateLabel = new Date(p.plan_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const sc = statusColors[p.status] || '#6366f1';
-        html += `<div class="list-item" onclick="showDailyPlanDetail('${p.id}')" style="border-left:3px solid ${sc};cursor:pointer;margin-bottom:6px;padding:8px 12px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-weight:700;font-size:0.85rem">${dateLabel}</span>
-            <span style="font-size:0.65rem;background:${sc}22;color:${sc};padding:1px 8px;border-radius:10px;font-weight:600">${p.status}</span>
-          </div>
-          <div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px">${p.status === 'rest' ? 'Rest Day' : (p.workout_type || 'Workout') + (p.workout_focus ? ' — ' + p.workout_focus : '')}${p.target_effort ? ' · Effort ' + p.target_effort : ''}</div>
-        </div>`;
-      }
-      html += '</div>';
-    }
-
-    container.innerHTML = html;
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
-  }
-}
-
 function showDailyPlanDetail(id) {
   showModal('daily-plan-detail', 'Daily Plan', `<div class="loading">Loading...</div>`);
   api(`/daily-plans/${id}`).then(plan => {
