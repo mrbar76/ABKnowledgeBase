@@ -373,6 +373,40 @@ async function initDB() {
       (coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'')) gin_trgm_ops
     )`);
 
+  // ===== DAILY PLANS =====
+  await safeQuery('daily_plans table', `
+    CREATE TABLE IF NOT EXISTS daily_plans (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_date DATE NOT NULL UNIQUE,
+      training_plan_id UUID REFERENCES training_plans(id) ON DELETE SET NULL,
+      status TEXT DEFAULT 'planned' CHECK(status IN ('planned','completed','partial','missed','rest','amended')),
+      workout_type TEXT,
+      workout_focus TEXT,
+      target_effort INTEGER CHECK(target_effort >= 1 AND target_effort <= 10),
+      target_duration_min INTEGER,
+      workout_notes TEXT,
+      target_calories NUMERIC(7,1),
+      target_protein_g NUMERIC(6,1),
+      target_carbs_g NUMERIC(6,1),
+      target_fat_g NUMERIC(6,1),
+      target_hydration_liters NUMERIC(4,2),
+      target_sleep_hours NUMERIC(3,1),
+      recovery_notes TEXT,
+      coaching_notes TEXT,
+      rationale TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      ai_source TEXT,
+      metadata JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('daily_plans indexes', `
+    CREATE INDEX IF NOT EXISTS idx_daily_plans_date ON daily_plans(plan_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_daily_plans_training_plan ON daily_plans(training_plan_id);
+    CREATE INDEX IF NOT EXISTS idx_daily_plans_status ON daily_plans(status);
+    CREATE INDEX IF NOT EXISTS idx_daily_plans_tags ON daily_plans USING gin(tags)
+  `);
+
   // ===== INJURIES =====
   await safeQuery('injuries table', `
     CREATE TABLE IF NOT EXISTS injuries (
@@ -580,6 +614,20 @@ async function initDB() {
       metadata JSONB DEFAULT '{}'::jsonb
     )`);
   await safeQuery('badges idx', `CREATE INDEX IF NOT EXISTS idx_badges_key ON badges(badge_key)`);
+
+  // -- gamification_settings migrations (achievement-based rings) --
+  await safeQuery('gamification +default_protein_target', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_protein_target NUMERIC(6,1) DEFAULT 150`);
+  await safeQuery('gamification +default_calorie_min', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_calorie_min NUMERIC(7,1) DEFAULT 2000`);
+  await safeQuery('gamification +default_calorie_max', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_calorie_max NUMERIC(7,1) DEFAULT 2800`);
+  await safeQuery('gamification +default_hydration_target', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_hydration_target NUMERIC(4,2) DEFAULT 2.5`);
+  await safeQuery('gamification +default_sleep_target', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_sleep_target NUMERIC(3,1) DEFAULT 7.0`);
+  await safeQuery('gamification +default_sleep_quality_threshold', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_sleep_quality_threshold INTEGER DEFAULT 6`);
+  await safeQuery('gamification +default_recovery_threshold', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_recovery_threshold INTEGER DEFAULT 6`);
+  await safeQuery('gamification +default_effort_target', `ALTER TABLE gamification_settings ADD COLUMN IF NOT EXISTS default_effort_target INTEGER DEFAULT 6`);
+
+  // -- coaching_sessions migration (link to daily plans) --
+  await safeQuery('coaching +daily_plan_id', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS daily_plan_id UUID REFERENCES daily_plans(id) ON DELETE SET NULL`);
+  await safeQuery('coaching daily_plan idx', `CREATE INDEX IF NOT EXISTS idx_coaching_sessions_daily_plan ON coaching_sessions(daily_plan_id)`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `

@@ -14,7 +14,7 @@ const BADGES = [
   { key: 'workouts_100', name: 'Century Club', icon: '🏆', description: 'Log 100 workouts', category: 'milestone', check: s => s.workouts >= 100 },
   { key: 'workouts_250', name: 'Iron Will', icon: '⚔️', description: 'Log 250 workouts', category: 'milestone', check: s => s.workouts >= 250 },
 
-  // Milestone: Tasks
+  // Milestone: Tasks (keep for backward compat)
   { key: 'first_task', name: 'First Win', icon: '✅', description: 'Complete your first task', category: 'milestone', check: s => s.tasks_done >= 1 },
   { key: 'tasks_25', name: 'Executor', icon: '⚡', description: 'Complete 25 tasks', category: 'milestone', check: s => s.tasks_done >= 25 },
   { key: 'tasks_100', name: 'Machine', icon: '🤖', description: 'Complete 100 tasks', category: 'milestone', check: s => s.tasks_done >= 100 },
@@ -32,18 +32,25 @@ const BADGES = [
   { key: 'streak_train_7', name: '7-Day Warrior', icon: '🔥', description: '7-day workout streak', category: 'streak', check: s => s.streak_train >= 7 },
   { key: 'streak_train_30', name: '30-Day Beast', icon: '🐉', description: '30-day workout streak', category: 'streak', check: s => s.streak_train >= 30 },
 
-  // Streak: Execute
+  // Streak: Fuel (nutrition targets)
+  { key: 'streak_fuel_7', name: 'Fuel Master', icon: '🥩', description: '7-day nutrition target streak', category: 'streak', check: s => s.streak_fuel >= 7 },
+  { key: 'streak_fuel_30', name: 'Diet Discipline', icon: '🎯', description: '30-day nutrition target streak', category: 'streak', check: s => s.streak_fuel >= 30 },
+  // Keep old execute badges for backward compat (they still unlock if already earned)
   { key: 'streak_execute_7', name: '7-Day Streak', icon: '⚡', description: '7-day task completion streak', category: 'streak', check: s => s.streak_execute >= 7 },
   { key: 'streak_execute_30', name: 'Relentless', icon: '🎯', description: '30-day task completion streak', category: 'streak', check: s => s.streak_execute >= 30 },
 
   // Streak: Recover
-  { key: 'streak_recover_7', name: 'Recovery Pro', icon: '🌿', description: '7-day recovery tracking streak', category: 'streak', check: s => s.streak_recover >= 7 },
-  { key: 'streak_recover_30', name: 'Body Aware', icon: '🧘', description: '30-day recovery tracking streak', category: 'streak', check: s => s.streak_recover >= 30 },
+  { key: 'streak_recover_7', name: 'Recovery Pro', icon: '🌿', description: '7-day recovery quality streak', category: 'streak', check: s => s.streak_recover >= 7 },
+  { key: 'streak_recover_30', name: 'Body Aware', icon: '🧘', description: '30-day recovery quality streak', category: 'streak', check: s => s.streak_recover >= 30 },
 
   // Streak: Perfect day (all 3 rings closed)
   { key: 'streak_perfect_3', name: 'Hat Trick', icon: '🎩', description: '3 perfect ring days in a row', category: 'streak', check: s => s.streak_perfect >= 3 },
   { key: 'streak_perfect_7', name: 'Perfect Week', icon: '💎', description: '7 perfect ring days in a row', category: 'streak', check: s => s.streak_perfect >= 7 },
   { key: 'streak_perfect_30', name: 'Legendary', icon: '👑', description: '30 perfect ring days in a row', category: 'streak', check: s => s.streak_perfect >= 30 },
+
+  // Milestone: Daily Plans
+  { key: 'first_plan', name: 'Game Plan', icon: '📋', description: 'Create your first daily plan', category: 'milestone', check: s => s.daily_plans >= 1 },
+  { key: 'plans_30', name: 'Planner', icon: '🗓️', description: 'Create 30 daily plans', category: 'milestone', check: s => s.daily_plans >= 30 },
 
   // Variety
   { key: 'workout_variety_5', name: 'All-Rounder', icon: '🎯', description: 'Log 5 different workout types', category: 'variety', check: s => s.workout_types >= 5 },
@@ -66,40 +73,123 @@ const STREAK_SQL = {
     numbered AS (SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d DESC))::int AS grp FROM dates)
     SELECT COALESCE((SELECT COUNT(*)::int FROM numbered WHERE grp = (SELECT grp FROM numbered WHERE d = CURRENT_DATE LIMIT 1)), 0) AS streak`,
 
-  recover: `
-    WITH meal_dates AS (SELECT DISTINCT meal_date AS d FROM meals WHERE meal_date <= CURRENT_DATE),
-    ctx_dates AS (SELECT DISTINCT date AS d FROM daily_nutrition_context WHERE date <= CURRENT_DATE),
-    dates AS (SELECT d FROM meal_dates INTERSECT SELECT d FROM ctx_dates ORDER BY d DESC),
-    numbered AS (SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d DESC))::int AS grp FROM dates)
-    SELECT COALESCE((SELECT COUNT(*)::int FROM numbered WHERE grp = (SELECT grp FROM numbered WHERE d = CURRENT_DATE LIMIT 1)), 0) AS streak`,
-
   weigh_in: `
     WITH dates AS (SELECT DISTINCT measurement_date AS d FROM body_metrics WHERE measurement_date <= CURRENT_DATE ORDER BY d DESC),
     numbered AS (SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d DESC))::int AS grp FROM dates)
     SELECT COALESCE((SELECT COUNT(*)::int FROM numbered WHERE grp = (SELECT grp FROM numbered WHERE d = CURRENT_DATE LIMIT 1)), 0) AS streak`,
 };
 
-// Perfect day streak needs ring goals, computed in JS
-async function computePerfectStreak(goals) {
+// Fuel streak: consecutive days where 2+ of 3 nutrition targets hit
+// Recover streak: consecutive days where 2+ of 3 recovery targets hit
+// These need settings, so computed in JS
+async function computeFuelStreak(settings) {
+  const proteinTarget = parseFloat(settings.default_protein_target) || 150;
+  const calMin = parseFloat(settings.default_calorie_min) || 2000;
+  const calMax = parseFloat(settings.default_calorie_max) || 2800;
+  const hydrationTarget = parseFloat(settings.default_hydration_target) || 2.5;
+
   const { rows } = await query(`
     WITH day_data AS (
-      SELECT d,
-        (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS train,
-        (SELECT COUNT(*)::int FROM tasks WHERE status = 'done' AND updated_at::date = d) AS execute,
-        (SELECT COUNT(*)::int FROM meals WHERE meal_date = d) AS meals,
-        (SELECT COUNT(*)::int FROM daily_nutrition_context WHERE date = d) AS ctx
+      SELECT d::date AS d,
+        COALESCE((SELECT SUM(protein_g) FROM meals WHERE meal_date = d), 0) AS protein,
+        COALESCE((SELECT SUM(calories) FROM meals WHERE meal_date = d), 0) AS cal,
+        COALESCE((SELECT hydration_liters FROM daily_nutrition_context WHERE date = d), 0) AS hydration
       FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
       ORDER BY d DESC
     )
-    SELECT d, train, execute, meals, ctx FROM day_data
+    SELECT d, protein, cal, hydration FROM day_data
   `);
 
   let streak = 0;
   for (const row of rows) {
-    const trainOk = row.train >= goals.ring_train_goal;
-    const execOk = row.execute >= goals.ring_execute_goal;
-    const recoverOk = row.meals >= Math.max(1, goals.ring_recover_goal - 1) && row.ctx >= 1;
-    if (trainOk && execOk && recoverOk) streak++;
+    const proteinHit = parseFloat(row.protein) >= proteinTarget ? 1 : 0;
+    const calHit = parseFloat(row.cal) >= calMin && parseFloat(row.cal) <= calMax ? 1 : 0;
+    const hydrationHit = parseFloat(row.hydration) >= hydrationTarget ? 1 : 0;
+    if (proteinHit + calHit + hydrationHit >= 2) streak++;
+    else break;
+  }
+  return streak;
+}
+
+async function computeRecoverStreak(settings) {
+  const sleepTarget = parseFloat(settings.default_sleep_target) || 7.0;
+  const sleepQualThreshold = settings.default_sleep_quality_threshold || 6;
+  const recoveryThreshold = settings.default_recovery_threshold || 6;
+
+  const { rows } = await query(`
+    WITH day_data AS (
+      SELECT d::date AS d,
+        COALESCE((SELECT sleep_hours FROM daily_nutrition_context WHERE date = d), 0) AS sleep_hours,
+        COALESCE((SELECT sleep_quality FROM daily_nutrition_context WHERE date = d), 0) AS sleep_quality,
+        COALESCE((SELECT recovery_rating FROM daily_nutrition_context WHERE date = d), 0) AS recovery_rating,
+        COALESCE((SELECT energy_rating FROM daily_nutrition_context WHERE date = d), 0) AS energy_rating
+      FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
+      ORDER BY d DESC
+    )
+    SELECT d, sleep_hours, sleep_quality, recovery_rating, energy_rating FROM day_data
+  `);
+
+  let streak = 0;
+  for (const row of rows) {
+    const sleepHit = parseFloat(row.sleep_hours) >= sleepTarget ? 1 : 0;
+    const qualHit = parseInt(row.sleep_quality) >= sleepQualThreshold ? 1 : 0;
+    const recHit = parseInt(row.recovery_rating) >= recoveryThreshold || parseInt(row.energy_rating) >= recoveryThreshold ? 1 : 0;
+    if (sleepHit + qualHit + recHit >= 2) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// Perfect day streak: all 3 rings closed
+async function computePerfectStreak(settings) {
+  const proteinTarget = parseFloat(settings.default_protein_target) || 150;
+  const calMin = parseFloat(settings.default_calorie_min) || 2000;
+  const calMax = parseFloat(settings.default_calorie_max) || 2800;
+  const hydrationTarget = parseFloat(settings.default_hydration_target) || 2.5;
+  const sleepTarget = parseFloat(settings.default_sleep_target) || 7.0;
+  const sleepQualThreshold = settings.default_sleep_quality_threshold || 6;
+  const recoveryThreshold = settings.default_recovery_threshold || 6;
+  const defaultEffort = settings.default_effort_target || 6;
+
+  const { rows } = await query(`
+    WITH day_data AS (
+      SELECT d::date AS d,
+        COALESCE((SELECT MAX(effort) FROM workouts WHERE workout_date = d), 0) AS max_effort,
+        (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS workout_count,
+        (SELECT status FROM daily_plans WHERE plan_date = d) AS plan_status,
+        (SELECT target_effort FROM daily_plans WHERE plan_date = d) AS plan_effort,
+        COALESCE((SELECT SUM(protein_g) FROM meals WHERE meal_date = d), 0) AS protein,
+        COALESCE((SELECT SUM(calories) FROM meals WHERE meal_date = d), 0) AS cal,
+        COALESCE((SELECT hydration_liters FROM daily_nutrition_context WHERE date = d), 0) AS hydration,
+        COALESCE((SELECT sleep_hours FROM daily_nutrition_context WHERE date = d), 0) AS sleep_hours,
+        COALESCE((SELECT sleep_quality FROM daily_nutrition_context WHERE date = d), 0) AS sleep_quality,
+        COALESCE((SELECT recovery_rating FROM daily_nutrition_context WHERE date = d), 0) AS recovery_rating,
+        COALESCE((SELECT energy_rating FROM daily_nutrition_context WHERE date = d), 0) AS energy_rating
+      FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
+      ORDER BY d DESC
+    )
+    SELECT * FROM day_data
+  `);
+
+  let streak = 0;
+  for (const row of rows) {
+    // Train: weighted effort >= 100%
+    const targetEffort = row.plan_effort || defaultEffort;
+    const trainOk = row.plan_status === 'rest' || (row.workout_count > 0 && row.max_effort >= targetEffort);
+
+    // Fuel: 2+ of 3 targets
+    const proteinHit = parseFloat(row.protein) >= proteinTarget ? 1 : 0;
+    const calHit = parseFloat(row.cal) >= calMin && parseFloat(row.cal) <= calMax ? 1 : 0;
+    const hydrationHit = parseFloat(row.hydration) >= hydrationTarget ? 1 : 0;
+    const fuelOk = proteinHit + calHit + hydrationHit >= 2;
+
+    // Recover: 2+ of 3 targets
+    const sleepHit = parseFloat(row.sleep_hours) >= sleepTarget ? 1 : 0;
+    const qualHit = parseInt(row.sleep_quality) >= sleepQualThreshold ? 1 : 0;
+    const recHit = parseInt(row.recovery_rating) >= recoveryThreshold || parseInt(row.energy_rating) >= recoveryThreshold ? 1 : 0;
+    const recoverOk = sleepHit + qualHit + recHit >= 2;
+
+    if (trainOk && fuelOk && recoverOk) streak++;
     else break;
   }
   return streak;
@@ -113,48 +203,105 @@ router.get('/', async (req, res) => {
   try {
     // Load settings
     const { rows: [settings] } = await query(`SELECT * FROM gamification_settings WHERE id = 1`);
-    const goals = settings || { ring_train_goal: 1, ring_execute_goal: 3, ring_recover_goal: 3 };
+    const s = settings || {};
 
-    // Ring counts for today — parallel queries
-    const [trainR, executeR, mealsR, ctxR] = await Promise.all([
-      query(`SELECT COUNT(*)::int AS n FROM workouts WHERE workout_date = CURRENT_DATE`),
-      query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status = 'done' AND updated_at::date = CURRENT_DATE`),
-      query(`SELECT COUNT(*)::int AS n FROM meals WHERE meal_date = CURRENT_DATE`),
-      query(`SELECT sleep_hours, hydration_liters FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
+    // ── Achievement-based ring data for today ──
+    const [workoutsR, mealTotalsR, ctxR, dailyPlanR] = await Promise.all([
+      query(`SELECT effort FROM workouts WHERE workout_date = CURRENT_DATE`),
+      query(`SELECT COALESCE(SUM(calories), 0)::numeric AS cal, COALESCE(SUM(protein_g), 0)::numeric AS protein FROM meals WHERE meal_date = CURRENT_DATE`),
+      query(`SELECT sleep_hours, sleep_quality, hydration_liters, recovery_rating, energy_rating FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
+      query(`SELECT status, target_effort, target_calories, target_protein_g, target_hydration_liters, target_sleep_hours FROM daily_plans WHERE plan_date = CURRENT_DATE`),
     ]);
 
-    const trainCount = trainR.rows[0].n;
-    const executeCount = executeR.rows[0].n;
-    const mealsCount = mealsR.rows[0].n;
+    const workouts = workoutsR.rows;
+    const maxEffort = Math.max(0, ...workouts.map(w => w.effort || 0));
+    const { cal, protein } = mealTotalsR.rows[0];
     const ctxRow = ctxR.rows[0] || {};
-    // Recover: sleep logged + 2+ meals + hydration logged
-    const sleepLogged = ctxRow.sleep_hours != null ? 1 : 0;
-    const mealsOk = mealsCount >= 2 ? 1 : 0;
-    const hydrationLogged = ctxRow.hydration_liters != null ? 1 : 0;
-    const recoverCount = sleepLogged + mealsOk + hydrationLogged;
+    const plan = dailyPlanR.rows[0] || null;
+
+    // Targets: daily plan → settings defaults
+    const targetEffort = plan?.target_effort || s.default_effort_target || 6;
+    const targetProtein = parseFloat(plan?.target_protein_g) || parseFloat(s.default_protein_target) || 150;
+    const targetCalories = parseFloat(plan?.target_calories) || null;
+    const calMin = targetCalories ? targetCalories * 0.9 : (parseFloat(s.default_calorie_min) || 2000);
+    const calMax = targetCalories ? targetCalories * 1.1 : (parseFloat(s.default_calorie_max) || 2800);
+    const targetHydration = parseFloat(plan?.target_hydration_liters) || parseFloat(s.default_hydration_target) || 2.5;
+    const targetSleep = parseFloat(plan?.target_sleep_hours) || parseFloat(s.default_sleep_target) || 7.0;
+    const sleepQualThreshold = s.default_sleep_quality_threshold || 6;
+    const recoveryThreshold = s.default_recovery_threshold || 6;
+    const hydration = parseFloat(ctxRow.hydration_liters) || 0;
+    const sleepHours = parseFloat(ctxRow.sleep_hours) || 0;
+    const sleepQuality = parseInt(ctxRow.sleep_quality) || 0;
+    const recoveryRating = parseInt(ctxRow.recovery_rating) || 0;
+    const energyRating = parseInt(ctxRow.energy_rating) || 0;
+
+    // ── TRAIN ring: weighted effort score ──
+    let trainPercent;
+    if (plan && plan.status === 'rest') {
+      trainPercent = 100;
+    } else if (workouts.length > 0) {
+      trainPercent = Math.min(100, Math.round((maxEffort / targetEffort) * 100));
+    } else {
+      trainPercent = 0;
+    }
+
+    // ── FUEL ring: protein + calories + hydration (0-3 checklist) ──
+    const proteinHit = parseFloat(protein) >= targetProtein;
+    const caloriesHit = parseFloat(cal) >= calMin && parseFloat(cal) <= calMax;
+    const hydrationHit = hydration >= targetHydration;
+    const fuelCount = (proteinHit ? 1 : 0) + (caloriesHit ? 1 : 0) + (hydrationHit ? 1 : 0);
+    const fuelPercent = Math.min(100, Math.round((fuelCount / 3) * 100));
+
+    // ── RECOVER ring: sleep hours + sleep quality + recovery rating (0-3 checklist) ──
+    const sleepHoursHit = sleepHours >= targetSleep;
+    const sleepQualHit = sleepQuality >= sleepQualThreshold;
+    const recoveryHit = recoveryRating >= recoveryThreshold || energyRating >= recoveryThreshold;
+    const recoverCount = (sleepHoursHit ? 1 : 0) + (sleepQualHit ? 1 : 0) + (recoveryHit ? 1 : 0);
+    const recoverPercent = Math.min(100, Math.round((recoverCount / 3) * 100));
 
     const rings = {
-      train: { current: trainCount, goal: goals.ring_train_goal, percent: Math.min(100, Math.round((trainCount / Math.max(1, goals.ring_train_goal)) * 100)) },
-      execute: { current: executeCount, goal: goals.ring_execute_goal, percent: Math.min(100, Math.round((executeCount / Math.max(1, goals.ring_execute_goal)) * 100)) },
-      recover: { current: recoverCount, goal: goals.ring_recover_goal, percent: Math.min(100, Math.round((recoverCount / Math.max(1, goals.ring_recover_goal)) * 100)) },
+      train: {
+        current: maxEffort, goal: targetEffort, percent: trainPercent,
+        is_rest_day: plan?.status === 'rest',
+        has_plan: !!plan,
+      },
+      fuel: {
+        current: fuelCount, goal: 3, percent: fuelPercent,
+        protein_hit: proteinHit, calories_hit: caloriesHit, hydration_hit: hydrationHit,
+        protein_actual: Math.round(parseFloat(protein)), protein_target: Math.round(targetProtein),
+        calories_actual: Math.round(parseFloat(cal)), calories_min: Math.round(calMin), calories_max: Math.round(calMax),
+        hydration_actual: hydration, hydration_target: targetHydration,
+      },
+      recover: {
+        current: recoverCount, goal: 3, percent: recoverPercent,
+        sleep_hit: sleepHoursHit, quality_hit: sleepQualHit, recovery_hit: recoveryHit,
+        sleep_actual: sleepHours, sleep_target: targetSleep,
+        sleep_quality_actual: sleepQuality, sleep_quality_threshold: sleepQualThreshold,
+        recovery_actual: Math.max(recoveryRating, energyRating), recovery_threshold: recoveryThreshold,
+      },
     };
 
-    // Streaks — parallel
-    const [streakTrain, streakExecute, streakRecover, streakWeighIn] = await Promise.all(
-      ['train', 'execute', 'recover', 'weigh_in'].map(k => query(STREAK_SQL[k]).then(r => r.rows[0]?.streak || 0))
+    // ── Streaks ──
+    const [streakTrain, streakExecute, streakWeighIn] = await Promise.all(
+      ['train', 'execute', 'weigh_in'].map(k => query(STREAK_SQL[k]).then(r => r.rows[0]?.streak || 0))
     );
-    const streakPerfect = await computePerfectStreak(goals);
+    const [streakFuel, streakRecover, streakPerfect] = await Promise.all([
+      computeFuelStreak(s),
+      computeRecoverStreak(s),
+      computePerfectStreak(s),
+    ]);
 
     const streaks = {
       train: streakTrain,
+      fuel: streakFuel,
       execute: streakExecute,
       recover: streakRecover,
       perfect_day: streakPerfect,
       weigh_in: streakWeighIn,
     };
 
-    // Badge check — gather stats
-    const [totalWorkouts, totalTasksDone, totalMeals, totalBody, totalKnowledge, workoutTypes, maxEffort] = await Promise.all([
+    // ── Badge check ──
+    const [totalWorkouts, totalTasksDone, totalMeals, totalBody, totalKnowledge, workoutTypes, maxEffortAll, totalPlans] = await Promise.all([
       query(`SELECT COUNT(*)::int AS n FROM workouts`).then(r => r.rows[0].n),
       query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status = 'done'`).then(r => r.rows[0].n),
       query(`SELECT COUNT(*)::int AS n FROM meals`).then(r => r.rows[0].n),
@@ -162,14 +309,17 @@ router.get('/', async (req, res) => {
       query(`SELECT COUNT(*)::int AS n FROM knowledge`).then(r => r.rows[0].n),
       query(`SELECT COUNT(DISTINCT workout_type)::int AS n FROM workouts`).then(r => r.rows[0].n),
       query(`SELECT COALESCE(MAX(effort), 0)::int AS n FROM workouts`).then(r => r.rows[0].n),
+      query(`SELECT COUNT(*)::int AS n FROM daily_plans`).then(r => r.rows[0].n),
     ]);
 
     const badgeStats = {
       workouts: totalWorkouts, tasks_done: totalTasksDone, meals: totalMeals,
       body_metrics: totalBody, knowledge: totalKnowledge,
-      workout_types: workoutTypes, max_effort: maxEffort,
-      streak_train: streakTrain, streak_execute: streakExecute,
-      streak_recover: streakRecover, streak_perfect: streakPerfect,
+      workout_types: workoutTypes, max_effort: maxEffortAll,
+      daily_plans: totalPlans,
+      streak_train: streakTrain, streak_fuel: streakFuel,
+      streak_execute: streakExecute, streak_recover: streakRecover,
+      streak_perfect: streakPerfect,
     };
 
     // Load already-unlocked badges
@@ -201,134 +351,121 @@ router.get('/', async (req, res) => {
       total_available: BADGES.length,
     };
 
-    // Nudges — what's incomplete today
+    // ── Nudges — achievement-based guidance ──
     const nudges = [];
     if (rings.train.percent < 100) {
-      nudges.push({ type: 'warning', ring: 'train', message: streaks.train > 0 ? `Your ${streaks.train}-day train streak ends today — log a workout` : 'No workout logged today' });
+      if (plan && plan.status !== 'rest') {
+        const remaining = targetEffort - maxEffort;
+        nudges.push({ type: 'warning', ring: 'train', message: workouts.length === 0 ? `Planned: ${plan?.workout_type || 'workout'} at effort ${targetEffort}` : `Effort ${maxEffort}/${targetEffort} — push harder to close Train` });
+      } else if (!plan) {
+        nudges.push({ type: 'info', ring: 'train', message: workouts.length === 0 ? 'No plan today — log a workout at effort 6+ to close Train' : `Effort ${maxEffort}/${targetEffort} — needs more intensity` });
+      }
     }
-    if (rings.execute.percent < 100) {
-      nudges.push({ type: 'info', ring: 'execute', message: `${executeCount}/${goals.ring_execute_goal} tasks completed today` });
+    if (rings.fuel.percent < 100) {
+      const missing = [];
+      if (!proteinHit) missing.push(`${Math.round(targetProtein - parseFloat(protein))}g more protein`);
+      if (!caloriesHit) {
+        if (parseFloat(cal) < calMin) missing.push(`${Math.round(calMin - parseFloat(cal))} more calories`);
+        else missing.push(`over calorie target by ${Math.round(parseFloat(cal) - calMax)}`);
+      }
+      if (!hydrationHit) missing.push(`${(targetHydration - hydration).toFixed(1)}L more water`);
+      nudges.push({ type: 'warning', ring: 'fuel', message: `Fuel: ${missing.join(', ')}` });
     }
     if (rings.recover.percent < 100) {
       const missing = [];
-      if (mealsCount === 0) missing.push('meals');
-      else if (mealsCount < 3) missing.push(`only ${mealsCount} meal${mealsCount > 1 ? 's' : ''} logged`);
-      if (!ctxRow.sleep_hours && !ctxRow.hydration_liters) missing.push('daily context');
-      nudges.push({ type: 'warning', ring: 'recover', message: missing.length ? `Missing: ${missing.join(', ')}` : `Recovery ${recoverCount}/${goals.ring_recover_goal}` });
+      if (!sleepHoursHit) missing.push(`sleep was ${sleepHours || '?'}h (target ${targetSleep}h)`);
+      if (!sleepQualHit) missing.push(`sleep quality ${sleepQuality || '?'}/10 (need ${sleepQualThreshold}+)`);
+      if (!recoveryHit) missing.push(`recovery ${Math.max(recoveryRating, energyRating) || '?'}/10 (need ${recoveryThreshold}+)`);
+      nudges.push({ type: 'warning', ring: 'recover', message: `Recover: ${missing.join(', ')}` });
     }
-    if (rings.train.percent >= 100 && rings.execute.percent >= 100 && rings.recover.percent >= 100) {
+    if (trainPercent >= 100 && fuelPercent >= 100 && recoverPercent >= 100) {
       nudges.push({ type: 'success', message: 'All rings closed! Perfect day.' });
     }
 
-    // ── Smart goal suggestions (trailing 7-day averages) ──
-    const suggestions = [];
-    try {
-      const [avgTrain, avgExec, avgRecover, closeRate] = await Promise.all([
-        query(`SELECT COALESCE(ROUND(AVG(cnt), 1), 0) AS avg FROM (SELECT COUNT(*)::numeric AS cnt FROM workouts WHERE workout_date >= CURRENT_DATE - 7 GROUP BY workout_date) t`).then(r => parseFloat(r.rows[0]?.avg || 0)),
-        query(`SELECT COALESCE(ROUND(AVG(cnt), 1), 0) AS avg FROM (SELECT COUNT(*)::numeric AS cnt FROM tasks WHERE status = 'done' AND updated_at::date >= CURRENT_DATE - 7 GROUP BY updated_at::date) t`).then(r => parseFloat(r.rows[0]?.avg || 0)),
-        query(`SELECT COALESCE(ROUND(AVG(cnt), 1), 0) AS avg FROM (SELECT (SELECT COUNT(*) FROM meals WHERE meal_date = d)::numeric + (SELECT COUNT(*) FROM daily_nutrition_context WHERE date = d)::numeric AS cnt FROM generate_series(CURRENT_DATE - 7, CURRENT_DATE - 1, '1 day') d) t`).then(r => parseFloat(r.rows[0]?.avg || 0)),
-        query(`
-          WITH days AS (
-            SELECT d,
-              (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS train,
-              (SELECT COUNT(*)::int FROM tasks WHERE status = 'done' AND updated_at::date = d) AS exec,
-              (SELECT COUNT(*)::int FROM meals WHERE meal_date = d) + (SELECT COUNT(*)::int FROM daily_nutrition_context WHERE date = d) AS recover
-            FROM generate_series(CURRENT_DATE - 7, CURRENT_DATE - 1, '1 day') d
-          )
-          SELECT COUNT(*) FILTER (WHERE train >= $1)::int AS train_closed,
-                 COUNT(*) FILTER (WHERE exec >= $2)::int AS exec_closed,
-                 COUNT(*) FILTER (WHERE recover >= $3)::int AS recover_closed,
-                 COUNT(*)::int AS total_days
-          FROM days
-        `, [goals.ring_train_goal, goals.ring_execute_goal, goals.ring_recover_goal]).then(r => r.rows[0]),
-      ]);
-
-      // Level-up: if you closed the ring 6+ of the last 7 days, suggest raising the goal
-      if (closeRate.train_closed >= 6 && goals.ring_train_goal < 3) {
-        const suggested = Math.min(3, goals.ring_train_goal + 1);
-        suggestions.push({ ring: 'train', direction: 'up', current_goal: goals.ring_train_goal, suggested_goal: suggested, reason: `You trained ${closeRate.train_closed}/7 days — try ${suggested} workouts/day` });
-      }
-      if (closeRate.exec_closed >= 6 && avgExec > goals.ring_execute_goal * 1.3) {
-        const suggested = Math.min(10, Math.ceil(avgExec));
-        if (suggested > goals.ring_execute_goal) {
-          suggestions.push({ ring: 'execute', direction: 'up', current_goal: goals.ring_execute_goal, suggested_goal: suggested, reason: `You averaged ${avgExec} tasks/day — try ${suggested}` });
-        }
-      }
-      if (closeRate.recover_closed >= 6 && avgRecover > goals.ring_recover_goal * 1.3) {
-        const suggested = Math.min(8, Math.ceil(avgRecover));
-        if (suggested > goals.ring_recover_goal) {
-          suggestions.push({ ring: 'recover', direction: 'up', current_goal: goals.ring_recover_goal, suggested_goal: suggested, reason: `You averaged ${avgRecover} recovery entries/day — try ${suggested}` });
-        }
-      }
-
-      // Level-down: if you closed the ring 1 or fewer times in 7 days, suggest lowering
-      if (closeRate.train_closed <= 1 && goals.ring_train_goal > 1) {
-        suggestions.push({ ring: 'train', direction: 'down', current_goal: goals.ring_train_goal, suggested_goal: Math.max(1, goals.ring_train_goal - 1), reason: `Only closed ${closeRate.train_closed}/7 days — lower to build momentum` });
-      }
-      if (closeRate.exec_closed <= 1 && goals.ring_execute_goal > 1) {
-        const suggested = Math.max(1, Math.round(avgExec) || 1);
-        suggestions.push({ ring: 'execute', direction: 'down', current_goal: goals.ring_execute_goal, suggested_goal: suggested, reason: `Only closed ${closeRate.exec_closed}/7 days — try ${suggested} to build consistency` });
-      }
-      if (closeRate.recover_closed <= 1 && goals.ring_recover_goal > 1) {
-        suggestions.push({ ring: 'recover', direction: 'down', current_goal: goals.ring_recover_goal, suggested_goal: Math.max(1, goals.ring_recover_goal - 1), reason: `Only closed ${closeRate.recover_closed}/7 days — lower to build habit` });
-      }
-
-      // Add level-up nudges
-      for (const s of suggestions) {
-        if (s.direction === 'up') {
-          nudges.push({ type: 'level_up', ring: s.ring, message: s.reason, suggested_goal: s.suggested_goal });
-        }
-      }
-    } catch (e) {
-      console.warn('[gamification] Suggestion computation failed:', e.message);
-    }
-
-    // ── Weekly summary ──
+    // ── Weekly summary (fitness-focused) ──
     let weekly = {};
     try {
-      const [wTrain, wExec, wRecover, wPerfect] = await Promise.all([
-        query(`SELECT COUNT(DISTINCT workout_date)::int AS days, COUNT(*)::int AS total FROM workouts WHERE workout_date >= date_trunc('week', CURRENT_DATE)`).then(r => r.rows[0]),
-        query(`SELECT COUNT(DISTINCT updated_at::date)::int AS days, COUNT(*)::int AS total FROM tasks WHERE status = 'done' AND updated_at::date >= date_trunc('week', CURRENT_DATE)`).then(r => r.rows[0]),
-        query(`
-          WITH days AS (
-            SELECT d,
-              (SELECT COUNT(*) FROM meals WHERE meal_date = d) + (SELECT COUNT(*) FROM daily_nutrition_context WHERE date = d) AS cnt
-            FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d
-          )
-          SELECT COUNT(*) FILTER (WHERE cnt >= $1)::int AS days_closed, SUM(cnt)::int AS total FROM days
-        `, [goals.ring_recover_goal]).then(r => r.rows[0]),
-        query(`
-          WITH days AS (
-            SELECT d,
-              (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS train,
-              (SELECT COUNT(*)::int FROM tasks WHERE status = 'done' AND updated_at::date = d) AS exec,
-              (SELECT COUNT(*)::int FROM meals WHERE meal_date = d) + (SELECT COUNT(*)::int FROM daily_nutrition_context WHERE date = d) AS recover
-            FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d
-          )
-          SELECT COUNT(*) FILTER (WHERE train >= $1 AND exec >= $2 AND recover >= $3)::int AS perfect_days
-          FROM days
-        `, [goals.ring_train_goal, goals.ring_execute_goal, goals.ring_recover_goal]).then(r => r.rows[0]),
-      ]);
+      const wData = await query(`
+        WITH days AS (
+          SELECT d::date AS d,
+            (SELECT COUNT(*)::int FROM workouts WHERE workout_date = d) AS workouts,
+            COALESCE((SELECT MAX(effort) FROM workouts WHERE workout_date = d), 0) AS max_effort,
+            COALESCE((SELECT SUM(protein_g) FROM meals WHERE meal_date = d), 0) AS protein,
+            COALESCE((SELECT SUM(calories) FROM meals WHERE meal_date = d), 0) AS cal,
+            COALESCE((SELECT hydration_liters FROM daily_nutrition_context WHERE date = d), 0) AS hydration,
+            COALESCE((SELECT sleep_hours FROM daily_nutrition_context WHERE date = d), 0) AS sleep_hours,
+            COALESCE((SELECT sleep_quality FROM daily_nutrition_context WHERE date = d), 0) AS sleep_quality,
+            COALESCE((SELECT recovery_rating FROM daily_nutrition_context WHERE date = d), 0) AS recovery_rating,
+            COALESCE((SELECT energy_rating FROM daily_nutrition_context WHERE date = d), 0) AS energy_rating,
+            (SELECT status FROM daily_plans WHERE plan_date = d) AS plan_status,
+            (SELECT target_effort FROM daily_plans WHERE plan_date = d) AS plan_effort
+          FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d
+        )
+        SELECT * FROM days ORDER BY d
+      `);
 
-      const dayOfWeek = new Date().getDay() || 7; // 1-7 Mon-Sun (treat Sun as 7)
+      let trainDays = 0, fuelDays = 0, recoverDays = 0, perfectDays = 0;
+      const dayDetails = [];
+
+      for (const row of wData.rows) {
+        const te = row.plan_effort || s.default_effort_target || 6;
+        const tOk = row.plan_status === 'rest' || (row.workouts > 0 && row.max_effort >= te);
+        const pHit = parseFloat(row.protein) >= (parseFloat(s.default_protein_target) || 150);
+        const cHit = parseFloat(row.cal) >= (parseFloat(s.default_calorie_min) || 2000) && parseFloat(row.cal) <= (parseFloat(s.default_calorie_max) || 2800);
+        const hHit = parseFloat(row.hydration) >= (parseFloat(s.default_hydration_target) || 2.5);
+        const fOk = (pHit ? 1 : 0) + (cHit ? 1 : 0) + (hHit ? 1 : 0) >= 2;
+        const sHit = parseFloat(row.sleep_hours) >= (parseFloat(s.default_sleep_target) || 7);
+        const qHit = parseInt(row.sleep_quality) >= (s.default_sleep_quality_threshold || 6);
+        const rHit = parseInt(row.recovery_rating) >= (s.default_recovery_threshold || 6) || parseInt(row.energy_rating) >= (s.default_recovery_threshold || 6);
+        const recOk = (sHit ? 1 : 0) + (qHit ? 1 : 0) + (rHit ? 1 : 0) >= 2;
+
+        if (tOk) trainDays++;
+        if (fOk) fuelDays++;
+        if (recOk) recoverDays++;
+        if (tOk && fOk && recOk) perfectDays++;
+
+        dayDetails.push({ date: row.d, train_closed: tOk, fuel_closed: fOk, recover_closed: recOk });
+      }
+
+      const dayOfWeek = new Date().getDay() || 7;
       weekly = {
         day_of_week: dayOfWeek,
-        train: { days_active: wTrain.days, total_workouts: wTrain.total, target_days: 5 },
-        execute: { days_active: wExec.days, total_tasks: wExec.total, target_tasks: goals.ring_execute_goal * 5 },
-        recover: { days_closed: wRecover.days_closed, total_entries: wRecover.total || 0, target_days: 5 },
-        perfect_days: wPerfect.perfect_days,
+        train: { days_closed: trainDays, target_days: 5 },
+        fuel: { days_closed: fuelDays, target_days: 5 },
+        recover: { days_closed: recoverDays, target_days: 5 },
+        perfect_days: perfectDays,
+        days: dayDetails,
       };
     } catch (e) {
       console.warn('[gamification] Weekly computation failed:', e.message);
     }
 
+    // ── Today's plan summary ──
+    let today_plan = null;
+    if (plan) {
+      today_plan = {
+        status: plan.status,
+        workout_type: plan.workout_type || null,
+        workout_focus: plan.workout_focus || null,
+        target_effort: plan.target_effort || null,
+      };
+    }
+
     res.json({
-      rings, streaks, badges, nudges, suggestions, weekly,
+      rings, streaks, badges, nudges, weekly, today_plan,
       settings: {
-        ring_train_goal: goals.ring_train_goal,
-        ring_execute_goal: goals.ring_execute_goal,
-        ring_recover_goal: goals.ring_recover_goal,
-        notification_enabled: goals.notification_enabled,
+        ring_train_goal: 1,
+        ring_fuel_goal: 3,
+        ring_recover_goal: 3,
+        default_effort_target: s.default_effort_target || 6,
+        default_protein_target: parseFloat(s.default_protein_target) || 150,
+        default_calorie_min: parseFloat(s.default_calorie_min) || 2000,
+        default_calorie_max: parseFloat(s.default_calorie_max) || 2800,
+        default_hydration_target: parseFloat(s.default_hydration_target) || 2.5,
+        default_sleep_target: parseFloat(s.default_sleep_target) || 7.0,
+        default_sleep_quality_threshold: s.default_sleep_quality_threshold || 6,
+        default_recovery_threshold: s.default_recovery_threshold || 6,
+        notification_enabled: s.notification_enabled,
       },
     });
   } catch (err) {
@@ -338,20 +475,33 @@ router.get('/', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// PUT /api/gamification/settings — update ring goals + prefs
+// PUT /api/gamification/settings — update ring thresholds + prefs
 // ══════════════════════════════════════════════════════════════════
+
+const SETTINGS_FIELDS = [
+  'ring_train_goal', 'ring_execute_goal', 'ring_recover_goal',
+  'default_protein_target', 'default_calorie_min', 'default_calorie_max',
+  'default_hydration_target', 'default_sleep_target',
+  'default_sleep_quality_threshold', 'default_recovery_threshold', 'default_effort_target',
+  'notification_enabled',
+];
 
 router.put('/settings', async (req, res) => {
   try {
-    const { ring_train_goal, ring_execute_goal, ring_recover_goal, notification_enabled, notification_schedule } = req.body;
     const fields = [];
     const vals = [];
     let i = 1;
-    if (ring_train_goal != null) { fields.push(`ring_train_goal = $${i++}`); vals.push(ring_train_goal); }
-    if (ring_execute_goal != null) { fields.push(`ring_execute_goal = $${i++}`); vals.push(ring_execute_goal); }
-    if (ring_recover_goal != null) { fields.push(`ring_recover_goal = $${i++}`); vals.push(ring_recover_goal); }
-    if (notification_enabled != null) { fields.push(`notification_enabled = $${i++}`); vals.push(notification_enabled); }
-    if (notification_schedule != null) { fields.push(`notification_schedule = $${i++}`); vals.push(JSON.stringify(notification_schedule)); }
+
+    for (const field of SETTINGS_FIELDS) {
+      if (req.body[field] != null) {
+        fields.push(`${field} = $${i++}`);
+        vals.push(req.body[field]);
+      }
+    }
+    if (req.body.notification_schedule != null) {
+      fields.push(`notification_schedule = $${i++}`);
+      vals.push(JSON.stringify(req.body.notification_schedule));
+    }
     if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
 
     fields.push(`updated_at = NOW()`);

@@ -22,6 +22,7 @@ const trainingRoutes = require('./routes/training');
 const outlookRoutes = require('./routes/outlook');
 const gamificationRoutes = require('./routes/gamification');
 const recoveryRoutes = require('./routes/recovery');
+const dailyPlanRoutes = require('./routes/daily-plans');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -68,7 +69,7 @@ const purgeState = { running: false, progress: null, result: null };
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_nutrition_context', 'training_plans', 'coaching_sessions', 'injuries'];
+    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_nutrition_context', 'training_plans', 'coaching_sessions', 'injuries', 'daily_plans'];
     const requested = req.body.databases || allowed;
     const targets = requested.filter(d => allowed.includes(d));
     if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
@@ -121,6 +122,7 @@ app.use('/api/training', trainingRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/recovery', recoveryRoutes);
+app.use('/api/daily-plans', dailyPlanRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));

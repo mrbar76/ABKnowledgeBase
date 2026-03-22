@@ -202,7 +202,7 @@ function skeletonCards(n) {
 }
 
 let _statsOpen = true;
-let _activeFilter = null; // null = 'all', or 'train'|'execute'|'recover'
+let _activeFilter = null; // null = 'all', or 'train'|'fuel'|'recover'
 
 async function loadDashboard() {
   const main = document.getElementById('main-content');
@@ -313,7 +313,7 @@ function buildXPBar(data) {
   if (!gam) { container.innerHTML = ''; return; }
 
   const { rings } = gam;
-  const avgPercent = Math.round(((rings.train?.percent || 0) + (rings.execute?.percent || 0) + (rings.recover?.percent || 0)) / 3);
+  const avgPercent = Math.round(((rings.train?.percent || 0) + (rings.fuel?.percent || 0) + (rings.recover?.percent || 0)) / 3);
 
   container.innerHTML = `
     <div class="xp-bar-label">
@@ -335,9 +335,9 @@ function buildXPBar(data) {
 // ─── Activity Stream ─────────────────────────────────────────
 const STREAM_CATEGORY_MAP = {
   workout: { ring: 'train', color: 'var(--color-physical)', ic: 'dumbbell', label: 'Workout' },
-  meal: { ring: 'recover', color: 'var(--color-mental)', ic: 'utensils', label: 'Meal' },
+  meal: { ring: 'fuel', color: 'var(--color-tactical)', ic: 'utensils', label: 'Meal' },
   body_metric: { ring: 'recover', color: 'var(--color-body)', ic: 'ruler', label: 'Body' },
-  task: { ring: 'execute', color: 'var(--color-tactical)', ic: 'check-square', label: 'Task' },
+  task: { ring: 'fuel', color: 'var(--color-tactical)', ic: 'check-square', label: 'Task' },
   knowledge: { ring: 'recover', color: 'var(--color-mental)', ic: 'brain', label: 'Knowledge' },
   transcript: { ring: 'recover', color: 'var(--color-mental)', ic: 'mic', label: 'Transcript' },
   conversation: { ring: 'recover', color: 'var(--color-mental)', ic: 'message-square', label: 'Conversation' },
@@ -347,7 +347,7 @@ const STREAM_CATEGORY_MAP = {
 
 function buildStreamCard(item) {
   const type = item.entity_type || 'task';
-  const cat = STREAM_CATEGORY_MAP[type] || { ring: 'execute', color: 'var(--accent)', ic: 'activity', label: type };
+  const cat = STREAM_CATEGORY_MAP[type] || { ring: 'fuel', color: 'var(--accent)', ic: 'activity', label: type };
   const time = item.created_at ? timeAgo(item.created_at) : '';
   const title = item.details || item.action || 'Activity';
   const action = item.action || '';
@@ -547,14 +547,13 @@ document.addEventListener('keydown', e => {
 
 // ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
 
-const RING_COLORS = { train: '#10b981', execute: '#f59e0b', recover: '#6366f1' };
-const RING_LABELS = { train: 'Train', execute: 'Execute', recover: 'Recover' };
+const RING_COLORS = { train: '#10b981', fuel: '#f59e0b', recover: '#6366f1' };
+const RING_LABELS = { train: 'Train', fuel: 'Fuel', recover: 'Recover' };
 const RING_DESCRIPTIONS = {
-  train: { what: 'Log workouts', how: 'Go to Fitness > Workouts and log a workout session', unit: 'workouts', min: 1, max: 5 },
-  execute: { what: 'Complete tasks', how: 'Mark tasks as Done in the Tasks tab', unit: 'tasks', min: 1, max: 15 },
-  recover: { what: 'Track recovery inputs', how: 'Log sleep, 2+ meals, and hydration in Fitness > Recovery or Nutrition', unit: 'actions', min: 1, max: 5 },
+  train: { what: 'Hit effort target', how: 'Complete your planned workout at target intensity', unit: 'effort', fixed: true },
+  fuel: { what: 'Hit nutrition targets', how: 'Protein + calories in range + hydration', unit: 'targets', fixed: true },
+  recover: { what: 'Recovery quality', how: 'Sleep hours + sleep quality + recovery/energy rating', unit: 'metrics', fixed: true },
 };
-const RING_GOAL_KEYS = { train: 'ring_train_goal', execute: 'ring_execute_goal', recover: 'ring_recover_goal' };
 let _badgesOpen = false;
 let _ringsDetailOpen = false;
 let _gamificationData = null; // cached for re-renders
@@ -562,7 +561,7 @@ let _gamificationData = null; // cached for re-renders
 function buildRingSVG(rings) {
   const defs = [
     { key: 'train', r: 78, sw: 14 },
-    { key: 'execute', r: 60, sw: 14 },
+    { key: 'fuel', r: 60, sw: 14 },
     { key: 'recover', r: 42, sw: 14 },
   ];
   let paths = '';
@@ -583,25 +582,48 @@ function buildRingDetailCards(rings) {
     const ring = rings[k] || { current: 0, goal: 1, percent: 0 };
     const closed = ring.percent >= 100;
     const desc = RING_DESCRIPTIONS[k];
-    const remaining = Math.max(0, ring.goal - ring.current);
-    const statusText = closed ? 'Closed!' : `${remaining} more to close`;
-    return `<div class="ring-detail-card ${closed ? 'ring-closed' : ''}" style="--ring-color:${RING_COLORS[k]}">
+    const color = RING_COLORS[k];
+
+    // Build achievement checklist based on ring type
+    let checklist = '';
+    if (k === 'train') {
+      const effortActual = ring.current || 0;
+      const effortTarget = ring.goal || 6;
+      if (ring.is_rest_day) {
+        checklist = `<div class="ring-checklist"><div class="ring-check-item done">Rest Day — auto-closed</div></div>`;
+      } else {
+        checklist = `<div class="ring-checklist">
+          <div class="ring-check-item ${effortActual > 0 ? 'done' : ''}">Workout logged ${effortActual > 0 ? '&#10003;' : '&#10007;'}</div>
+          <div class="ring-check-item ${closed ? 'done' : ''}">Effort ${effortActual}/${effortTarget} (${ring.percent}%) ${closed ? '&#10003;' : ''}</div>
+          ${!ring.has_plan ? '<div class="ring-check-hint">No daily plan — using default effort target</div>' : ''}
+        </div>`;
+      }
+    } else if (k === 'fuel') {
+      const check = v => v ? '<span class="check-mark">&#10003;</span>' : '<span class="check-x">&#10007;</span>';
+      checklist = `<div class="ring-checklist">
+        <div class="ring-check-item ${ring.protein_hit ? 'done' : ''}">${check(ring.protein_hit)} Protein: ${ring.protein_actual || 0}g / ${ring.protein_target || '?'}g</div>
+        <div class="ring-check-item ${ring.calories_hit ? 'done' : ''}">${check(ring.calories_hit)} Calories: ${ring.calories_actual || 0} (${ring.calories_min || '?'}-${ring.calories_max || '?'})</div>
+        <div class="ring-check-item ${ring.hydration_hit ? 'done' : ''}">${check(ring.hydration_hit)} Hydration: ${ring.hydration_actual || 0}L / ${ring.hydration_target || '?'}L</div>
+      </div>`;
+    } else if (k === 'recover') {
+      const check = v => v ? '<span class="check-mark">&#10003;</span>' : '<span class="check-x">&#10007;</span>';
+      checklist = `<div class="ring-checklist">
+        <div class="ring-check-item ${ring.sleep_hit ? 'done' : ''}">${check(ring.sleep_hit)} Sleep: ${ring.sleep_actual || '?'}h / ${ring.sleep_target || '?'}h</div>
+        <div class="ring-check-item ${ring.quality_hit ? 'done' : ''}">${check(ring.quality_hit)} Sleep Quality: ${ring.sleep_quality_actual || '?'}/10 (need ${ring.sleep_quality_threshold || '?'}+)</div>
+        <div class="ring-check-item ${ring.recovery_hit ? 'done' : ''}">${check(ring.recovery_hit)} Recovery: ${ring.recovery_actual || '?'}/10 (need ${ring.recovery_threshold || '?'}+)</div>
+      </div>`;
+    }
+
+    return `<div class="ring-detail-card ${closed ? 'ring-closed' : ''}" style="--ring-color:${color}">
       <div class="ring-detail-header">
-        <span class="ring-detail-dot" style="background:${RING_COLORS[k]}"></span>
+        <span class="ring-detail-dot" style="background:${color}"></span>
         <span class="ring-detail-name">${RING_LABELS[k]}</span>
-        <span class="ring-detail-progress" style="color:${RING_COLORS[k]}">${ring.current}/${ring.goal}</span>
+        <span class="ring-detail-progress" style="color:${color}">${ring.percent}%</span>
         ${closed ? '<span class="ring-detail-check">&#10003;</span>' : ''}
       </div>
-      <div class="ring-detail-bar-track"><div class="ring-detail-bar-fill" style="width:${ring.percent}%;background:${RING_COLORS[k]}"></div></div>
-      <div class="ring-detail-desc"><strong>${desc.what}</strong> &mdash; ${statusText}</div>
-      ${!closed ? `<div class="ring-detail-how">${desc.how}</div>` : ''}
-      <div class="ring-goal-editor" onclick="event.stopPropagation()">
-        <span class="ring-goal-label">Daily goal:</span>
-        <button class="ring-goal-btn" onclick="adjustRingGoal('${k}', -1)" ${ring.goal <= desc.min ? 'disabled' : ''}>-</button>
-        <span class="ring-goal-value" id="goal-val-${k}">${ring.goal}</span>
-        <button class="ring-goal-btn" onclick="adjustRingGoal('${k}', 1)" ${ring.goal >= desc.max ? 'disabled' : ''}>+</button>
-        <span class="ring-goal-unit">${desc.unit}/day</span>
-      </div>
+      <div class="ring-detail-bar-track"><div class="ring-detail-bar-fill" style="width:${ring.percent}%;background:${color}"></div></div>
+      <div class="ring-detail-desc"><strong>${desc.what}</strong></div>
+      ${checklist}
     </div>`;
   }).join('');
 }
@@ -610,9 +632,9 @@ function buildWeeklyBar(weekly) {
   if (!weekly || !weekly.train) return '';
   const w = weekly;
   const bars = [
-    { label: 'Train', value: w.train.days_active, target: w.train.target_days, color: RING_COLORS.train, detail: `${w.train.total_workouts} workouts across ${w.train.days_active} days` },
-    { label: 'Execute', value: w.execute.days_active, target: Math.min(7, Math.ceil(w.execute.target_tasks / (_gamificationData?.settings?.ring_execute_goal || 3))), color: RING_COLORS.execute, detail: `${w.execute.total_tasks} tasks across ${w.execute.days_active} days` },
-    { label: 'Recover', value: w.recover.days_closed, target: w.recover.target_days, color: RING_COLORS.recover, detail: `${w.recover.total_entries} entries across ${w.recover.days_closed} days` },
+    { label: 'Train', value: w.train.days_closed, target: w.train.target_days, color: RING_COLORS.train, detail: `Train ring closed ${w.train.days_closed}/${w.train.target_days} days` },
+    { label: 'Fuel', value: w.fuel?.days_closed || 0, target: w.fuel?.target_days || 5, color: RING_COLORS.fuel, detail: `Fuel ring closed ${w.fuel?.days_closed || 0}/${w.fuel?.target_days || 5} days` },
+    { label: 'Recover', value: w.recover.days_closed, target: w.recover.target_days, color: RING_COLORS.recover, detail: `Recover ring closed ${w.recover.days_closed}/${w.recover.target_days} days` },
   ];
   const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   const today = (new Date().getDay() + 6) % 7; // 0=Mon
@@ -651,43 +673,20 @@ function buildSuggestionCards(suggestions) {
         <span class="suggestion-icon" style="color:${color}">${sugIcon}</span>
         <span class="suggestion-text">${esc(s.reason)}</span>
       </div>
-      <button class="suggestion-apply" onclick="event.stopPropagation();applySuggestion('${s.ring}', ${s.suggested_goal})" style="background:${color}">
+      <button class="suggestion-apply" onclick="event.stopPropagation();updateRingSetting('${s.ring}', ${s.suggested_goal})" style="background:${color}">
         ${actionLabel} to ${s.suggested_goal}
       </button>
     </div>`;
   }).join('');
 }
 
-async function adjustRingGoal(ring, delta) {
-  const desc = RING_DESCRIPTIONS[ring];
-  const valEl = document.getElementById(`goal-val-${ring}`);
-  if (!valEl) return;
-  const current = parseInt(valEl.textContent) || 1;
-  const newVal = Math.max(desc.min, Math.min(desc.max, current + delta));
-  if (newVal === current) return;
-
-  valEl.textContent = newVal;
+async function updateRingSetting(key, value) {
   try {
     await api('/gamification/settings', {
       method: 'PUT',
-      body: JSON.stringify({ [RING_GOAL_KEYS[ring]]: newVal }),
+      body: JSON.stringify({ [key]: value }),
     });
-    showToast(`${RING_LABELS[ring]} goal updated to ${newVal}`, 'success', 2000);
-    // Refresh gamification to reflect new percentages
-    setTimeout(() => loadGamification(), 300);
-  } catch (err) {
-    valEl.textContent = current; // revert
-    showToast(`Failed to update: ${err.message}`, 'error');
-  }
-}
-
-async function applySuggestion(ring, newGoal) {
-  try {
-    await api('/gamification/settings', {
-      method: 'PUT',
-      body: JSON.stringify({ [RING_GOAL_KEYS[ring]]: newGoal }),
-    });
-    showToast(`${RING_LABELS[ring]} goal updated to ${newGoal}`, 'success', 2000);
+    showToast('Setting updated', 'success', 2000);
     setTimeout(() => loadGamification(), 300);
   } catch (err) {
     showToast(`Failed: ${err.message}`, 'error');
@@ -696,9 +695,9 @@ async function applySuggestion(ring, newGoal) {
 
 function buildStreakChips(streaks) {
   const defs = [
-    { key: 'train', ic: 'flame', label: 'Train', desc: 'Consecutive days with at least 1 workout logged', color: 'var(--color-physical)' },
-    { key: 'execute', ic: 'zap', label: 'Execute', desc: 'Consecutive days with at least 1 task completed', color: 'var(--color-tactical)' },
-    { key: 'recover', ic: 'leaf', label: 'Recover', desc: 'Consecutive days with meals + daily context logged', color: 'var(--color-mental)' },
+    { key: 'train', ic: 'flame', label: 'Train', desc: 'Consecutive days with workout at target effort', color: 'var(--color-physical)' },
+    { key: 'fuel', ic: 'utensils', label: 'Fuel', desc: 'Consecutive days hitting 2+ nutrition targets', color: 'var(--color-tactical)' },
+    { key: 'recover', ic: 'leaf', label: 'Recover', desc: 'Consecutive days hitting 2+ recovery targets', color: 'var(--color-mental)' },
     { key: 'perfect_day', ic: 'gem', label: 'Perfect', desc: 'Consecutive days with all 3 rings closed', color: 'var(--accent)' },
     { key: 'weigh_in', ic: 'scale', label: 'Weigh-in', desc: 'Consecutive days with a body metric logged', color: 'var(--color-body)' },
   ];
@@ -814,7 +813,7 @@ async function loadGamification() {
       }
     }
 
-    const allClosed = rings.train?.percent >= 100 && rings.execute?.percent >= 100 && rings.recover?.percent >= 100;
+    const allClosed = rings.train?.percent >= 100 && rings.fuel?.percent >= 100 && rings.recover?.percent >= 100;
 
     // Nudges + Suggestions → promoted to #today-actions
     const actionsEl = document.getElementById('today-actions');
@@ -839,14 +838,21 @@ async function loadGamification() {
             return `<div class="rings-legend-item ring-filter-target${_activeFilter === k ? ' ring-active' : ''}${_activeFilter && _activeFilter !== k ? ' ring-dimmed' : ''}" data-ring="${k}" onclick="event.stopPropagation();setRingFilter('${k}')">
               <span class="rings-legend-dot" style="background:${RING_COLORS[k]}"></span>
               <span>${RING_LABELS[k]}</span>
-              <span class="rings-legend-value" style="color:${RING_COLORS[k]}">${r.current || 0}/${r.goal || 0}${closed ? ' &#10003;' : ''}</span>
+              <span class="rings-legend-value" style="color:${RING_COLORS[k]}">${r.percent || 0}%${closed ? ' &#10003;' : ''}</span>
             </div>`;
           }).join('')}
         </div>
-        <div class="rings-tap-hint" onclick="toggleRingsDetail()" style="cursor:pointer">Tap for details &amp; adjust goals</div>
+        <div class="rings-tap-hint" onclick="toggleRingsDetail()" style="cursor:pointer">Tap for details</div>
       </div>
+      ${data.today_plan ? `<div class="today-plan-card animate-in stagger-2" onclick="switchTab('fitness');loadTrainingDay()">
+        <div class="today-plan-header">
+          <span class="today-plan-dot" style="background:${data.today_plan.status === 'rest' ? '#6366f1' : '#10b981'}"></span>
+          <span class="today-plan-label">${data.today_plan.status === 'rest' ? 'Rest Day' : (data.today_plan.workout_type || 'Workout') + (data.today_plan.workout_focus ? ' — ' + data.today_plan.workout_focus : '')}</span>
+          ${data.today_plan.target_effort ? `<span class="today-plan-effort">Effort ${data.today_plan.target_effort}</span>` : ''}
+        </div>
+      </div>` : ''}
       <div class="rings-detail-panel${_ringsDetailOpen ? ' open' : ''}" id="rings-detail-panel">
-        <div class="rings-detail-title">How to close your rings</div>
+        <div class="rings-detail-title">Ring Progress</div>
         ${buildRingDetailCards(rings)}
         ${buildWeeklyBar(weekly)}
       </div>
@@ -4559,23 +4565,25 @@ function showSleepForm() {
   showDailyContextForm(recoveryDate);
 }
 
-let trainingSubTab = 'plans';
+let trainingSubTab = 'day';
 
 async function loadTraining() {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = `
     <div class="filter-row" style="margin-bottom:12px">
+      <button class="filter-btn ${trainingSubTab === 'day' ? 'active' : ''}" onclick="trainingSubTab='day';loadTraining()">Day View</button>
+      <button class="filter-btn ${trainingSubTab === 'daily_plans' ? 'active' : ''}" onclick="trainingSubTab='daily_plans';loadTraining()">Daily Plans</button>
       <button class="filter-btn ${trainingSubTab === 'plans' ? 'active' : ''}" onclick="trainingSubTab='plans';loadTraining()">Plans</button>
       <button class="filter-btn ${trainingSubTab === 'coaching' ? 'active' : ''}" onclick="trainingSubTab='coaching';loadTraining()">Coaching</button>
       <button class="filter-btn ${trainingSubTab === 'injuries' ? 'active' : ''}" onclick="trainingSubTab='injuries';loadTraining()">Injuries</button>
-      <button class="filter-btn ${trainingSubTab === 'day' ? 'active' : ''}" onclick="trainingSubTab='day';loadTraining()">Day View</button>
     </div>
     <div id="training-content"><div class="loading">Loading...</div></div>
   `;
-  if (trainingSubTab === 'plans') loadTrainingPlans();
+  if (trainingSubTab === 'day') loadTrainingDay();
+  else if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+  else if (trainingSubTab === 'plans') loadTrainingPlans();
   else if (trainingSubTab === 'coaching') loadCoachingSessions();
   else if (trainingSubTab === 'injuries') loadInjuries();
-  else if (trainingSubTab === 'day') loadTrainingDay();
 }
 
 // ── Training Plans ──
@@ -5084,6 +5092,81 @@ async function loadTrainingDay() {
 
     let html = `<h3 style="color:var(--accent);margin-bottom:12px">${dateLabel}</h3>`;
 
+    // Daily Plan + Plan vs Actual
+    if (data.daily_plan) {
+      const dp = data.daily_plan;
+      const isRest = dp.status === 'rest';
+      const statusColors = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
+      const statusColor = statusColors[dp.status] || '#6366f1';
+
+      html += `<div class="card" style="border-left:3px solid ${statusColor};margin-bottom:12px;padding:10px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim)">Daily Plan</div>
+          <span style="font-size:0.65rem;background:${statusColor}22;color:${statusColor};padding:1px 8px;border-radius:10px;font-weight:600">${dp.status}</span>
+        </div>
+        ${isRest ? '<div style="font-weight:700;color:#6366f1">Rest Day</div>' : `
+          <div style="font-weight:700">${dp.workout_type ? esc(dp.workout_type) : 'Workout'}${dp.workout_focus ? ' — ' + esc(dp.workout_focus) : ''}</div>
+          ${dp.target_effort ? `<div style="font-size:0.8rem;color:#10b981">Target Effort: ${dp.target_effort}/10${dp.target_duration_min ? ' · ' + dp.target_duration_min + ' min' : ''}</div>` : ''}
+        `}
+        ${dp.workout_notes ? `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px">${esc(dp.workout_notes)}</div>` : ''}
+        ${dp.target_calories || dp.target_protein_g ? `<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:0.78rem;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+          ${dp.target_calories ? `<span><strong>Calories:</strong> ${dp.target_calories}</span>` : ''}
+          ${dp.target_protein_g ? `<span><strong>Protein:</strong> ${dp.target_protein_g}g</span>` : ''}
+          ${dp.target_carbs_g ? `<span><strong>Carbs:</strong> ${dp.target_carbs_g}g</span>` : ''}
+          ${dp.target_fat_g ? `<span><strong>Fat:</strong> ${dp.target_fat_g}g</span>` : ''}
+          ${dp.target_hydration_liters ? `<span><strong>Water:</strong> ${dp.target_hydration_liters}L</span>` : ''}
+        </div>` : ''}
+        ${dp.target_sleep_hours ? `<div style="font-size:0.78rem;margin-top:4px"><strong>Sleep target:</strong> ${dp.target_sleep_hours}h</div>` : ''}
+        ${dp.coaching_notes ? `<div style="font-size:0.75rem;color:var(--text-dim);margin-top:4px;font-style:italic">${esc(dp.coaching_notes)}</div>` : ''}
+      </div>`;
+
+      // Plan vs Actual comparison (if there's any actual data)
+      const hasActual = data.workouts?.length || data.meals?.length || data.nutrition_context;
+      if (hasActual && !isRest) {
+        const maxEffort = Math.max(0, ...(data.workouts || []).map(w => w.effort || 0));
+        const totalCal = (data.meals || []).reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
+        const totalProtein = (data.meals || []).reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
+        const nc = data.nutrition_context || {};
+
+        const rows = [];
+        if (dp.target_effort) {
+          const pct = Math.min(100, Math.round((maxEffort / dp.target_effort) * 100));
+          rows.push({ label: 'Effort', actual: maxEffort || '—', target: dp.target_effort, pct, color: '#10b981' });
+        }
+        if (dp.target_calories) {
+          const pct = Math.min(100, Math.round((totalCal / parseFloat(dp.target_calories)) * 100));
+          rows.push({ label: 'Calories', actual: Math.round(totalCal) || '—', target: dp.target_calories, pct, color: '#f59e0b' });
+        }
+        if (dp.target_protein_g) {
+          const pct = Math.min(100, Math.round((totalProtein / parseFloat(dp.target_protein_g)) * 100));
+          rows.push({ label: 'Protein', actual: Math.round(totalProtein) + 'g' || '—', target: dp.target_protein_g + 'g', pct, color: '#f59e0b' });
+        }
+        if (dp.target_hydration_liters && nc.hydration_liters) {
+          const pct = Math.min(100, Math.round((parseFloat(nc.hydration_liters) / parseFloat(dp.target_hydration_liters)) * 100));
+          rows.push({ label: 'Water', actual: nc.hydration_liters + 'L', target: dp.target_hydration_liters + 'L', pct, color: '#06b6d4' });
+        }
+        if (dp.target_sleep_hours && nc.sleep_hours) {
+          const pct = Math.min(100, Math.round((parseFloat(nc.sleep_hours) / parseFloat(dp.target_sleep_hours)) * 100));
+          rows.push({ label: 'Sleep', actual: nc.sleep_hours + 'h', target: dp.target_sleep_hours + 'h', pct, color: '#6366f1' });
+        }
+
+        if (rows.length) {
+          html += `<div class="card" style="margin-bottom:12px;padding:10px 14px">
+            <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">Plan vs Actual</div>
+            ${rows.map(r => `<div style="margin-bottom:6px">
+              <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:2px">
+                <span style="color:var(--text-dim)">${r.label}</span>
+                <span><strong style="color:${r.color}">${r.actual}</strong> / ${r.target}</span>
+              </div>
+              <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
+                <div style="height:100%;width:${r.pct}%;background:${r.color};border-radius:2px;transition:width 0.3s"></div>
+              </div>
+            </div>`).join('')}
+          </div>`;
+        }
+      }
+    }
+
     // Active Plan
     if (data.active_plan) {
       html += `<div class="card" style="border-left:3px solid #22c55e;margin-bottom:12px;padding:10px 14px">
@@ -5191,6 +5274,273 @@ function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// ── Daily Plan Manager ──
+async function loadDailyPlanManager() {
+  const container = document.getElementById('training-content');
+
+  // Get this week's dates (Mon-Sun)
+  const today = new Date();
+  const dayOfWeek = (today.getDay() + 6) % 7; // 0=Mon
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek);
+  const monStr = monday.toISOString().slice(0, 10);
+  const sunDate = new Date(monday);
+  sunDate.setDate(monday.getDate() + 6);
+  const sunStr = sunDate.toISOString().slice(0, 10);
+
+  try {
+    const data = await api(`/daily-plans?from=${monStr}&to=${sunStr}`);
+    const plans = data.results || [];
+    const planMap = {};
+    for (const p of plans) planMap[p.plan_date?.slice(0, 10)] = p;
+
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const todayStr = today.toISOString().slice(0, 10);
+    const statusColors = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="color:var(--accent);margin:0">This Week's Plans</h3>
+      <button class="btn-action" onclick="showCreateDailyPlanForm()">+ New Plan</button>
+    </div>`;
+
+    html += '<div class="daily-plans-week">';
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const plan = planMap[dateStr];
+      const isToday = dateStr === todayStr;
+      const isPast = dateStr < todayStr;
+      const statusColor = plan ? (statusColors[plan.status] || '#6366f1') : 'var(--border)';
+
+      html += `<div class="daily-plan-day-card${isToday ? ' today' : ''}${isPast && !plan ? ' past' : ''}" onclick="${plan ? `showDailyPlanDetail('${plan.id}')` : `showCreateDailyPlanForm('${dateStr}')`}" style="border-top:3px solid ${statusColor}">
+        <div class="daily-plan-day-label">${dayLabels[i]}</div>
+        <div class="daily-plan-day-date">${d.getDate()}</div>
+        ${plan ? `
+          <div class="daily-plan-day-type" style="color:${statusColor}">${plan.status === 'rest' ? 'Rest' : (plan.workout_type || '—')}</div>
+          ${plan.target_effort ? `<div class="daily-plan-day-effort">E${plan.target_effort}</div>` : ''}
+        ` : `<div class="daily-plan-day-type" style="color:var(--text-dim)">—</div>`}
+      </div>`;
+    }
+    html += '</div>';
+
+    // List all plans for the week with more detail
+    if (plans.length) {
+      html += `<div style="margin-top:16px">`;
+      for (const p of plans.sort((a, b) => a.plan_date > b.plan_date ? 1 : -1)) {
+        const dateLabel = new Date(p.plan_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const sc = statusColors[p.status] || '#6366f1';
+        html += `<div class="list-item" onclick="showDailyPlanDetail('${p.id}')" style="border-left:3px solid ${sc};cursor:pointer;margin-bottom:6px;padding:8px 12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:700;font-size:0.85rem">${dateLabel}</span>
+            <span style="font-size:0.65rem;background:${sc}22;color:${sc};padding:1px 8px;border-radius:10px;font-weight:600">${p.status}</span>
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px">${p.status === 'rest' ? 'Rest Day' : (p.workout_type || 'Workout') + (p.workout_focus ? ' — ' + p.workout_focus : '')}${p.target_effort ? ' · Effort ' + p.target_effort : ''}</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
+  }
+}
+
+function showDailyPlanDetail(id) {
+  showModal('daily-plan-detail', 'Daily Plan', `<div class="loading">Loading...</div>`);
+  api(`/daily-plans/${id}`).then(plan => {
+    const sc = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
+    const color = sc[plan.status] || '#6366f1';
+    const dateLabel = new Date(plan.plan_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+    let html = `<div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <h3 style="margin:0;color:var(--accent)">${dateLabel}</h3>
+        <span style="font-size:0.7rem;background:${color}22;color:${color};padding:2px 10px;border-radius:12px;font-weight:600">${plan.status}</span>
+      </div>
+    </div>`;
+
+    if (plan.status === 'rest') {
+      html += '<div style="font-size:1rem;font-weight:700;color:#6366f1;margin-bottom:12px">Rest Day</div>';
+    } else {
+      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Workout</div>
+        <div style="font-weight:700">${plan.workout_type || '—'}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}</div>
+        ${plan.target_effort ? `<div style="color:#10b981;font-size:0.85rem">Target Effort: ${plan.target_effort}/10</div>` : ''}
+        ${plan.target_duration_min ? `<div style="color:var(--text-dim);font-size:0.8rem">Duration: ${plan.target_duration_min} min</div>` : ''}
+        ${plan.workout_notes ? `<div style="color:var(--text-dim);font-size:0.8rem;margin-top:4px">${esc(plan.workout_notes)}</div>` : ''}
+      </div>`;
+    }
+
+    if (plan.target_calories || plan.target_protein_g || plan.target_hydration_liters) {
+      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Nutrition Targets</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:0.85rem">
+          ${plan.target_calories ? `<span><strong>Calories:</strong> ${plan.target_calories}</span>` : ''}
+          ${plan.target_protein_g ? `<span><strong>Protein:</strong> ${plan.target_protein_g}g</span>` : ''}
+          ${plan.target_carbs_g ? `<span><strong>Carbs:</strong> ${plan.target_carbs_g}g</span>` : ''}
+          ${plan.target_fat_g ? `<span><strong>Fat:</strong> ${plan.target_fat_g}g</span>` : ''}
+          ${plan.target_hydration_liters ? `<span><strong>Water:</strong> ${plan.target_hydration_liters}L</span>` : ''}
+        </div>
+      </div>`;
+    }
+
+    if (plan.target_sleep_hours) {
+      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Recovery Target</div>
+        <div style="font-size:0.85rem"><strong>Sleep:</strong> ${plan.target_sleep_hours}h</div>
+      </div>`;
+    }
+
+    if (plan.coaching_notes || plan.rationale) {
+      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
+        ${plan.rationale ? `<div style="font-size:0.85rem;margin-bottom:4px"><strong>Rationale:</strong> ${esc(plan.rationale)}</div>` : ''}
+        ${plan.coaching_notes ? `<div style="font-size:0.85rem;color:var(--text-dim);font-style:italic">${esc(plan.coaching_notes)}</div>` : ''}
+      </div>`;
+    }
+
+    html += `<div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-action" style="flex:1" onclick="editDailyPlan('${plan.id}')">Edit Plan</button>
+      <button class="btn-action" style="flex:1;background:var(--red);color:white" onclick="if(confirm('Delete this plan?'))deleteDailyPlan('${plan.id}')">Delete</button>
+    </div>`;
+
+    document.querySelector('#modal-daily-plan-detail .modal-body').innerHTML = html;
+  }).catch(e => {
+    document.querySelector('#modal-daily-plan-detail .modal-body').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
+  });
+}
+
+function showCreateDailyPlanForm(prefillDate) {
+  const date = prefillDate || new Date().toISOString().slice(0, 10);
+  showModal('create-daily-plan', 'Create Daily Plan', `
+    <form onsubmit="return saveDailyPlan(event)">
+      <label>Date *</label>
+      <input type="date" name="plan_date" value="${date}" required style="width:100%">
+      <label>Status</label>
+      <select name="status" style="width:100%">
+        <option value="planned">Planned</option>
+        <option value="rest">Rest Day</option>
+      </select>
+      <label>Workout Type</label>
+      <input type="text" name="workout_type" placeholder="e.g. strength, run, hybrid" style="width:100%">
+      <label>Workout Focus</label>
+      <input type="text" name="workout_focus" placeholder="e.g. upper push, legs, zone 2" style="width:100%">
+      <label>Target Effort (1-10)</label>
+      <input type="number" name="target_effort" min="1" max="10" placeholder="7" style="width:100%">
+      <label>Target Duration (min)</label>
+      <input type="number" name="target_duration_min" placeholder="60" style="width:100%">
+      <label>Target Calories</label>
+      <input type="number" name="target_calories" placeholder="2400" style="width:100%">
+      <label>Target Protein (g)</label>
+      <input type="number" name="target_protein_g" placeholder="150" style="width:100%">
+      <label>Target Hydration (L)</label>
+      <input type="number" name="target_hydration_liters" step="0.1" placeholder="2.5" style="width:100%">
+      <label>Target Sleep (h)</label>
+      <input type="number" name="target_sleep_hours" step="0.5" placeholder="7" style="width:100%">
+      <label>Workout Notes</label>
+      <textarea name="workout_notes" rows="2" style="width:100%" placeholder="Any workout-specific notes"></textarea>
+      <label>Coaching Notes</label>
+      <textarea name="coaching_notes" rows="2" style="width:100%" placeholder="Context from coaching session"></textarea>
+      <button type="submit" class="btn-action" style="width:100%;margin-top:12px">Create Plan</button>
+    </form>
+  `);
+}
+
+async function saveDailyPlan(event) {
+  event.preventDefault();
+  const form = event.target;
+  const body = {};
+  for (const el of form.elements) {
+    if (el.name && el.value) {
+      body[el.name] = el.type === 'number' ? parseFloat(el.value) : el.value;
+    }
+  }
+  try {
+    await api('/daily-plans', { method: 'POST', body: JSON.stringify(body) });
+    closeModal();
+    showToast('Daily plan created', 'success');
+    if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+    loadGamification();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+  return false;
+}
+
+async function editDailyPlan(id) {
+  try {
+    const plan = await api(`/daily-plans/${id}`);
+    closeModal();
+    showModal('edit-daily-plan', 'Edit Daily Plan', `
+      <form onsubmit="return updateDailyPlan(event, '${id}')">
+        <label>Date</label>
+        <input type="date" name="plan_date" value="${plan.plan_date?.slice(0, 10)}" style="width:100%" disabled>
+        <label>Status</label>
+        <select name="status" style="width:100%">
+          ${['planned', 'completed', 'partial', 'missed', 'rest', 'amended'].map(s => `<option value="${s}" ${plan.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <label>Workout Type</label>
+        <input type="text" name="workout_type" value="${plan.workout_type || ''}" style="width:100%">
+        <label>Workout Focus</label>
+        <input type="text" name="workout_focus" value="${plan.workout_focus || ''}" style="width:100%">
+        <label>Target Effort (1-10)</label>
+        <input type="number" name="target_effort" min="1" max="10" value="${plan.target_effort || ''}" style="width:100%">
+        <label>Target Duration (min)</label>
+        <input type="number" name="target_duration_min" value="${plan.target_duration_min || ''}" style="width:100%">
+        <label>Target Calories</label>
+        <input type="number" name="target_calories" value="${plan.target_calories || ''}" style="width:100%">
+        <label>Target Protein (g)</label>
+        <input type="number" name="target_protein_g" value="${plan.target_protein_g || ''}" style="width:100%">
+        <label>Target Hydration (L)</label>
+        <input type="number" name="target_hydration_liters" step="0.1" value="${plan.target_hydration_liters || ''}" style="width:100%">
+        <label>Target Sleep (h)</label>
+        <input type="number" name="target_sleep_hours" step="0.5" value="${plan.target_sleep_hours || ''}" style="width:100%">
+        <label>Workout Notes</label>
+        <textarea name="workout_notes" rows="2" style="width:100%">${plan.workout_notes || ''}</textarea>
+        <label>Coaching Notes</label>
+        <textarea name="coaching_notes" rows="2" style="width:100%">${plan.coaching_notes || ''}</textarea>
+        <button type="submit" class="btn-action" style="width:100%;margin-top:12px">Save Changes</button>
+      </form>
+    `);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function updateDailyPlan(event, id) {
+  event.preventDefault();
+  const form = event.target;
+  const body = {};
+  for (const el of form.elements) {
+    if (el.name && el.value && !el.disabled) {
+      body[el.name] = el.type === 'number' ? parseFloat(el.value) : el.value;
+    }
+  }
+  try {
+    await api(`/daily-plans/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    closeModal();
+    showToast('Plan updated', 'success');
+    if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+    loadGamification();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+  return false;
+}
+
+async function deleteDailyPlan(id) {
+  try {
+    await api(`/daily-plans/${id}`, { method: 'DELETE' });
+    closeModal();
+    showToast('Plan deleted', 'success');
+    if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+    loadGamification();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 // (Progress photos section removed)

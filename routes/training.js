@@ -446,7 +446,7 @@ router.get('/day/:date', async (req, res) => {
   try {
     const date = req.params.date; // YYYY-MM-DD
 
-    const [workouts, meals, nutrition, bodyMetrics, coaching, activeInjuries, activePlan] = await Promise.all([
+    const [workouts, meals, nutrition, bodyMetrics, coaching, activeInjuries, activePlan, dailyPlan] = await Promise.all([
       query('SELECT * FROM workouts WHERE workout_date = $1 ORDER BY created_at', [date]),
       query('SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST', [date]),
       query('SELECT * FROM daily_nutrition_context WHERE date = $1', [date]),
@@ -454,10 +454,12 @@ router.get('/day/:date', async (req, res) => {
       query('SELECT * FROM coaching_sessions WHERE session_date = $1 ORDER BY created_at DESC', [date]),
       query(`SELECT * FROM injuries WHERE status IN ('active','monitoring') AND (onset_date IS NULL OR onset_date <= $1) AND (resolved_date IS NULL OR resolved_date >= $1) ORDER BY severity DESC NULLS LAST`, [date]),
       query(`SELECT * FROM training_plans WHERE status = 'active' AND (start_date IS NULL OR start_date <= $1) AND (end_date IS NULL OR end_date >= $1) ORDER BY created_at DESC LIMIT 1`, [date]),
+      query('SELECT * FROM daily_plans WHERE plan_date = $1', [date]),
     ]);
 
     res.json({
       date,
+      daily_plan: dailyPlan.rows[0] || null,
       workouts: workouts.rows,
       meals: meals.rows,
       nutrition_context: nutrition.rows[0] || null,
