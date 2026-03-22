@@ -7,6 +7,8 @@ info:
 
     IMPORTANT: All planning uses /daily-plans endpoints. The /training/plans endpoint is REMOVED. Use POST /daily-plans for single-day plans, POST /daily-plans/week for weekly batch creation.
 
+    Daily Context is simplified — only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text). No energy_rating, hunger_rating, recovery_rating, body_weight_lb, cravings, digestion, day_type — these are ALL REMOVED. Weight goes in POST /body-metrics.
+
     Gamification: Call GET /gamification to see ring progress (Train/Execute/Recover), streaks, badges, and smart goal suggestions. Use PUT /gamification/settings to adjust ring goals based on the user's capacity. The system auto-suggests raising goals when the user closes a ring 6+/7 days, or lowering when they struggle.
 servers:
   - url: https://ab-brain.up.railway.app/api
