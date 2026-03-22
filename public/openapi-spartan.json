@@ -55,7 +55,20 @@
         "summary": "Get workout statistics \u2014 total count, by type, average effort, recent workouts",
         "responses": {
           "200": {
-            "description": "Workout stats summary"
+            "description": "Workout stats summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": { "type": "integer" },
+                    "by_type": { "type": "array", "items": { "type": "object", "properties": { "workout_type": { "type": "string" }, "count": { "type": "integer" } } } },
+                    "avg_effort": { "type": "number", "nullable": true },
+                    "recent": { "type": "array", "items": { "type": "object", "properties": { "workout_date": { "type": "string", "format": "date" }, "title": { "type": "string" }, "workout_type": { "type": "string" }, "effort": { "type": "integer", "nullable": true } } } }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -89,7 +102,19 @@
         },
         "responses": {
           "201": {
-            "description": "Classified and stored result"
+            "description": "Classified and stored result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "id": { "type": "integer" },
+                    "classification": { "type": "object", "properties": { "database": { "type": "string" }, "title": { "type": "string" }, "category": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "summary": { "type": "string" }, "ai_source": { "type": "string", "nullable": true } } }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -903,7 +928,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Daily summary with meals and context"
+            "description": "Daily summary with meals and context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": { "type": "string", "format": "date" },
+                    "total_meals": { "type": "integer" },
+                    "total_calories": { "type": "number" },
+                    "total_protein_g": { "type": "number" },
+                    "total_carbs_g": { "type": "number" },
+                    "total_fat_g": { "type": "number" },
+                    "total_fiber_g": { "type": "number" },
+                    "total_sugar_g": { "type": "number" },
+                    "total_sodium_mg": { "type": "number" },
+                    "intensity_tier": { "type": "string" },
+                    "context": { "type": "object", "nullable": true },
+                    "meals": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
           }
         }
       }

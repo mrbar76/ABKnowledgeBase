@@ -862,7 +862,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "total": { "type": "integer" },
+                    "by_type": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "workout_type": { "type": "string" },
+                          "count": { "type": "integer" }
+                        }
+                      }
+                    },
+                    "avg_effort": { "type": "number", "nullable": true },
+                    "recent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "workout_date": { "type": "string", "format": "date" },
+                          "title": { "type": "string" },
+                          "workout_type": { "type": "string" },
+                          "effort": { "type": "integer", "nullable": true }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -903,7 +929,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "id": { "type": "integer" },
+                    "classification": {
+                      "type": "object",
+                      "properties": {
+                        "database": { "type": "string" },
+                        "title": { "type": "string" },
+                        "category": { "type": "string" },
+                        "tags": { "type": "array", "items": { "type": "string" } },
+                        "summary": { "type": "string" },
+                        "ai_source": { "type": "string", "nullable": true }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1934,7 +1975,29 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Meal"
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "meal_date": { "type": "string", "format": "date" },
+                    "meal_time": { "type": "string", "nullable": true },
+                    "meal_type": { "type": "string" },
+                    "title": { "type": "string" },
+                    "calories": { "type": "number", "nullable": true },
+                    "protein_g": { "type": "number", "nullable": true },
+                    "carbs_g": { "type": "number", "nullable": true },
+                    "fat_g": { "type": "number", "nullable": true },
+                    "fiber_g": { "type": "number", "nullable": true },
+                    "sugar_g": { "type": "number", "nullable": true },
+                    "sodium_mg": { "type": "number", "nullable": true },
+                    "serving_size": { "type": "string", "nullable": true },
+                    "notes": { "type": "string", "nullable": true },
+                    "tags": { "type": "array", "items": { "type": "string" } },
+                    "source": { "type": "string" },
+                    "ai_source": { "type": "string", "nullable": true },
+                    "metadata": { "type": "object" },
+                    "created_at": { "type": "string", "format": "date-time" },
+                    "updated_at": { "type": "string", "format": "date-time" }
+                  }
                 }
               }
             }
@@ -2094,7 +2157,24 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "date": { "type": "string", "format": "date" },
+                    "total_meals": { "type": "integer" },
+                    "total_calories": { "type": "number" },
+                    "total_protein_g": { "type": "number" },
+                    "total_carbs_g": { "type": "number" },
+                    "total_fat_g": { "type": "number" },
+                    "total_fiber_g": { "type": "number" },
+                    "total_sugar_g": { "type": "number" },
+                    "total_sodium_mg": { "type": "number" },
+                    "intensity_tier": { "type": "string" },
+                    "intensity_source": { "type": "string" },
+                    "planned_type": { "type": "string", "nullable": true },
+                    "workouts_today": { "type": "array", "items": { "type": "object", "properties": { "workout_type": { "type": "string" }, "effort": { "type": "integer", "nullable": true } } } },
+                    "context": { "type": "object", "nullable": true },
+                    "meals": { "type": "array", "items": { "type": "object" } }
+                  }
                 }
               }
             }

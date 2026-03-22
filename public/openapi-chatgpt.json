@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate → Plan → Execute → Review → Repeat)\n\n### 1. EVALUATE — Review past performance\n- `GET /daily-plans/by-date/{yesterday}` — see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` — full context (workouts, nutrition, body, injuries, active plan, daily plan)\n- `GET /recovery/score` — today's recovery readiness\n\n### 2. PLAN — Set daily plans\n- `POST /daily-plans` — create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` — create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n\n### 3. EXECUTE — User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`, context via `POST /nutrition/daily-context`\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep + quality + recovery rating)\n\n### 4. REVIEW — End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` — plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` — save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND — Adjust plans based on progress\n- `PUT /daily-plans/{id}` — amend today's or future plans\n- `PUT /training/plans/{id}` — update the parent training plan if needed\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score — actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Nutrition checklist — protein target + calories in range + hydration target (0-3).\n- **Recover** (indigo): Recovery checklist — sleep hours + sleep quality + recovery/energy rating (0-3).\n- Targets cascade: daily plan → gamification settings defaults.\n- `GET /gamification` — today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create block/mesocycle plan: `POST /training/plans` — include goal, rationale, weekly_structure\n5. Generate daily plans from it: `POST /daily-plans/week` with training_plan_id\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate → Plan → Execute → Review → Repeat)\n\n### 1. EVALUATE — Review past performance\n- `GET /daily-plans/by-date/{yesterday}` — see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` — full context (workouts, nutrition, body, injuries, active plan, daily plan)\n- `GET /recovery/score` — today's recovery readiness\n\n### 2. PLAN — Set daily plans\n- `POST /daily-plans` — create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` — create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n\n### 3. EXECUTE — User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`, context via `POST /nutrition/daily-context`\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep + quality + recovery rating)\n\n### 4. REVIEW — End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` — plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` — save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND — Adjust plans based on progress\n- `PUT /daily-plans/{id}` — amend today's or future plans\n- `PUT /training/plans/{id}` — update the parent training plan if needed\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score — actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).\n- **Recover** (indigo): Proportional average of sleep hours, sleep quality, recovery/energy progress (each 0-100%).\n- Targets cascade: daily plan → gamification settings defaults.\n- `GET /gamification` — today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create block/mesocycle plan: `POST /training/plans` — include goal, rationale, weekly_structure\n5. Generate daily plans from it: `POST /daily-plans/week` with training_plan_id\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -1531,7 +1531,7 @@
       "get": {
         "operationId": "getGamification",
         "summary": "Get activity rings, streaks, badges, weekly progress, and smart suggestions",
-        "description": "Returns today's achievement-based ring progress (Train/Fuel/Recover), streaks, badges, weekly summary, and nudges with specific guidance. Train ring = weighted effort score (actual/target). Fuel ring = protein + calories + hydration checklist. Recover ring = sleep hours + sleep quality + recovery rating checklist. Also includes today_plan summary if a daily plan exists.",
+        "description": "Returns today's ring progress (Train/Fuel/Recover), streaks, badges, weekly summary, and nudges. Train = effort/target ratio. Fuel = average of proportional protein, calories, hydration progress. Recover = average of proportional sleep, quality, recovery progress. Partial progress fills rings gradually. Also includes today_plan summary if a daily plan exists.",
         "responses": {
           "200": {
             "description": "Gamification data",
@@ -1542,7 +1542,7 @@
                   "properties": {
                     "rings": {
                       "type": "object",
-                      "description": "Today's ring progress. Train = weighted effort (actual/target, 0-100%). Fuel = protein hit + calories hit + hydration hit (0-3 checklist). Recover = sleep hours + sleep quality + recovery rating (0-3 checklist). Each ring includes detailed hit/miss for each sub-target.",
+                      "description": "Today's ring progress. Train = effort/target (0-100%). Fuel = average of proportional protein, calories, hydration progress (0-100%). Recover = average of proportional sleep, quality, recovery progress (0-100%). Each sub-criterion fills gradually with its own progress percentage.",
                       "properties": {
                         "train": {
                           "type": "object",
@@ -1560,47 +1560,48 @@
                         },
                         "fuel": {
                           "type": "object",
-                          "description": "Nutrition targets checklist: protein_hit, calories_hit, hydration_hit. current = count of targets hit (0-3), goal = 3.",
+                          "description": "Proportional nutrition progress. percent = average of protein_progress, calories_progress, hydration_progress.",
                           "properties": {
-                            "current": {
-                              "type": "integer"
-                            },
-                            "goal": {
-                              "type": "integer"
-                            },
-                            "percent": {
-                              "type": "integer"
-                            },
-                            "protein_hit": {
-                              "type": "boolean"
-                            },
-                            "calories_hit": {
-                              "type": "boolean"
-                            },
-                            "hydration_hit": {
-                              "type": "boolean"
-                            }
+                            "percent": { "type": "integer" },
+                            "protein_hit": { "type": "boolean" },
+                            "calories_hit": { "type": "boolean" },
+                            "hydration_hit": { "type": "boolean" },
+                            "protein_actual": { "type": "number" },
+                            "protein_target": { "type": "number" },
+                            "protein_progress": { "type": "integer", "description": "0-100 proportional progress" },
+                            "calories_actual": { "type": "number" },
+                            "calories_min": { "type": "number" },
+                            "calories_max": { "type": "number" },
+                            "calories_progress": { "type": "integer" },
+                            "hydration_actual": { "type": "number" },
+                            "hydration_target": { "type": "number" },
+                            "hydration_progress": { "type": "integer" }
                           }
                         },
                         "recover": {
                           "type": "object",
+                          "description": "Proportional recovery progress. percent = average of sleep_progress, quality_progress, recovery_progress.",
                           "properties": {
-                            "current": {
-                              "type": "integer"
-                            },
-                            "goal": {
-                              "type": "integer"
-                            },
-                            "percent": {
-                              "type": "integer"
-                            }
+                            "percent": { "type": "integer" },
+                            "sleep_hit": { "type": "boolean" },
+                            "quality_hit": { "type": "boolean" },
+                            "recovery_hit": { "type": "boolean" },
+                            "sleep_actual": { "type": "number" },
+                            "sleep_target": { "type": "number" },
+                            "sleep_progress": { "type": "integer" },
+                            "sleep_quality_actual": { "type": "integer" },
+                            "sleep_quality_threshold": { "type": "integer" },
+                            "quality_progress": { "type": "integer" },
+                            "recovery_actual": { "type": "integer" },
+                            "recovery_threshold": { "type": "integer" },
+                            "recovery_progress": { "type": "integer" }
                           }
                         }
                       }
                     },
                     "streaks": {
                       "type": "object",
-                      "description": "Consecutive days for each category. Fuel = 2+ nutrition targets hit. Recover = 2+ recovery targets hit. Perfect = all 3 rings closed.",
+                      "description": "Consecutive days for each category. Fuel = ring >= 80%. Recover = ring >= 80%. Perfect = all 3 rings closed.",
                       "properties": {
                         "train": {
                           "type": "integer"
