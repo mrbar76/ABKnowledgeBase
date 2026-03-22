@@ -94,7 +94,7 @@ async function computeFuelStreak(settings) {
       SELECT d::date AS d,
         COALESCE((SELECT SUM(protein_g) FROM meals WHERE meal_date = d), 0) AS protein,
         COALESCE((SELECT SUM(calories) FROM meals WHERE meal_date = d), 0) AS cal,
-        COALESCE((SELECT hydration_liters FROM daily_nutrition_context WHERE date = d), 0) AS hydration
+        COALESCE((SELECT hydration_liters FROM daily_context WHERE date = d), 0) AS hydration
       FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
       ORDER BY d DESC
     )
@@ -122,10 +122,10 @@ async function computeRecoverStreak(settings) {
   const { rows } = await query(`
     WITH day_data AS (
       SELECT d::date AS d,
-        COALESCE((SELECT sleep_hours FROM daily_nutrition_context WHERE date = d), 0) AS sleep_hours,
-        COALESCE((SELECT sleep_quality FROM daily_nutrition_context WHERE date = d), 0) AS sleep_quality,
-        COALESCE((SELECT recovery_rating FROM daily_nutrition_context WHERE date = d), 0) AS recovery_rating,
-        COALESCE((SELECT energy_rating FROM daily_nutrition_context WHERE date = d), 0) AS energy_rating
+        COALESCE((SELECT sleep_hours FROM daily_context WHERE date = d), 0) AS sleep_hours,
+        COALESCE((SELECT sleep_quality FROM daily_context WHERE date = d), 0) AS sleep_quality,
+        COALESCE((SELECT recovery_rating FROM daily_context WHERE date = d), 0) AS recovery_rating,
+        COALESCE((SELECT energy_rating FROM daily_context WHERE date = d), 0) AS energy_rating
       FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
       ORDER BY d DESC
     )
@@ -165,11 +165,11 @@ async function computePerfectStreak(settings) {
         (SELECT target_effort FROM daily_plans WHERE plan_date = d) AS plan_effort,
         COALESCE((SELECT SUM(protein_g) FROM meals WHERE meal_date = d), 0) AS protein,
         COALESCE((SELECT SUM(calories) FROM meals WHERE meal_date = d), 0) AS cal,
-        COALESCE((SELECT hydration_liters FROM daily_nutrition_context WHERE date = d), 0) AS hydration,
-        COALESCE((SELECT sleep_hours FROM daily_nutrition_context WHERE date = d), 0) AS sleep_hours,
-        COALESCE((SELECT sleep_quality FROM daily_nutrition_context WHERE date = d), 0) AS sleep_quality,
-        COALESCE((SELECT recovery_rating FROM daily_nutrition_context WHERE date = d), 0) AS recovery_rating,
-        COALESCE((SELECT energy_rating FROM daily_nutrition_context WHERE date = d), 0) AS energy_rating
+        COALESCE((SELECT hydration_liters FROM daily_context WHERE date = d), 0) AS hydration,
+        COALESCE((SELECT sleep_hours FROM daily_context WHERE date = d), 0) AS sleep_hours,
+        COALESCE((SELECT sleep_quality FROM daily_context WHERE date = d), 0) AS sleep_quality,
+        COALESCE((SELECT recovery_rating FROM daily_context WHERE date = d), 0) AS recovery_rating,
+        COALESCE((SELECT energy_rating FROM daily_context WHERE date = d), 0) AS energy_rating
       FROM generate_series(CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE, '1 day'::interval) AS d
       ORDER BY d DESC
     )
@@ -217,7 +217,7 @@ router.get('/', async (req, res) => {
     const [workoutsR, mealTotalsR, ctxR, dailyPlanR] = await Promise.all([
       query(`SELECT effort FROM workouts WHERE workout_date = CURRENT_DATE`),
       query(`SELECT COALESCE(SUM(calories), 0)::numeric AS cal, COALESCE(SUM(protein_g), 0)::numeric AS protein FROM meals WHERE meal_date = CURRENT_DATE`),
-      query(`SELECT sleep_hours, sleep_quality, hydration_liters, recovery_rating, energy_rating FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
+      query(`SELECT sleep_hours, sleep_quality, hydration_liters, recovery_rating, energy_rating FROM daily_context WHERE date = CURRENT_DATE`),
       query(`SELECT status, target_effort, target_calories, target_protein_g, target_hydration_liters, target_sleep_hours FROM daily_plans WHERE plan_date = CURRENT_DATE`),
     ]);
 
@@ -408,11 +408,11 @@ router.get('/', async (req, res) => {
             COALESCE((SELECT MAX(effort) FROM workouts WHERE workout_date = d), 0) AS max_effort,
             COALESCE((SELECT SUM(protein_g) FROM meals WHERE meal_date = d), 0) AS protein,
             COALESCE((SELECT SUM(calories) FROM meals WHERE meal_date = d), 0) AS cal,
-            COALESCE((SELECT hydration_liters FROM daily_nutrition_context WHERE date = d), 0) AS hydration,
-            COALESCE((SELECT sleep_hours FROM daily_nutrition_context WHERE date = d), 0) AS sleep_hours,
-            COALESCE((SELECT sleep_quality FROM daily_nutrition_context WHERE date = d), 0) AS sleep_quality,
-            COALESCE((SELECT recovery_rating FROM daily_nutrition_context WHERE date = d), 0) AS recovery_rating,
-            COALESCE((SELECT energy_rating FROM daily_nutrition_context WHERE date = d), 0) AS energy_rating,
+            COALESCE((SELECT hydration_liters FROM daily_context WHERE date = d), 0) AS hydration,
+            COALESCE((SELECT sleep_hours FROM daily_context WHERE date = d), 0) AS sleep_hours,
+            COALESCE((SELECT sleep_quality FROM daily_context WHERE date = d), 0) AS sleep_quality,
+            COALESCE((SELECT recovery_rating FROM daily_context WHERE date = d), 0) AS recovery_rating,
+            COALESCE((SELECT energy_rating FROM daily_context WHERE date = d), 0) AS energy_rating,
             (SELECT status FROM daily_plans WHERE plan_date = d) AS plan_status,
             (SELECT target_effort FROM daily_plans WHERE plan_date = d) AS plan_effort
           FROM generate_series(date_trunc('week', CURRENT_DATE)::date, CURRENT_DATE, '1 day') d

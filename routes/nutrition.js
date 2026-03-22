@@ -42,7 +42,7 @@ router.get('/daily-context', async (req, res) => {
 
     // Single date lookup
     if (date) {
-      const result = await query('SELECT * FROM daily_nutrition_context WHERE date = $1', [date]);
+      const result = await query('SELECT * FROM daily_context WHERE date = $1', [date]);
       return res.json(result.rows[0] || null);
     }
 
@@ -55,11 +55,11 @@ router.get('/daily-context', async (req, res) => {
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     params.push(Number(limit), Number(offset));
-    const countResult = await query(`SELECT COUNT(*) as total FROM daily_nutrition_context ${whereClause}`, params.slice(0, -2));
+    const countResult = await query(`SELECT COUNT(*) as total FROM daily_context ${whereClause}`, params.slice(0, -2));
     const total = parseInt(countResult.rows[0].total, 10);
 
     const result = await query(
-      `SELECT * FROM daily_nutrition_context ${whereClause} ORDER BY date DESC LIMIT $${i++} OFFSET $${i++}`, params
+      `SELECT * FROM daily_context ${whereClause} ORDER BY date DESC LIMIT $${i++} OFFSET $${i++}`, params
     );
     res.json({ total, count: result.rows.length, contexts: result.rows });
   } catch (err) {
@@ -70,7 +70,7 @@ router.get('/daily-context', async (req, res) => {
 // ─── Get single context by ID ────────────────────────────────
 router.get('/daily-context/:id', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM daily_nutrition_context WHERE id = $1', [req.params.id]);
+    const result = await query('SELECT * FROM daily_context WHERE id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);
   } catch (err) {
@@ -86,7 +86,7 @@ router.post('/daily-context', async (req, res) => {
     if (errors.length) return res.status(400).json({ error: 'Validation failed', details: errors });
 
     const result = await query(
-      `INSERT INTO daily_nutrition_context (
+      `INSERT INTO daily_context (
         date, day_type, hydration_liters, energy_rating, hunger_rating,
         sleep_hours, sleep_quality, recovery_rating, body_weight_lb,
         cravings, digestion, notes, tags
@@ -109,7 +109,7 @@ router.post('/daily-context', async (req, res) => {
       ]
     );
 
-    await logActivity('create', 'daily_nutrition_context', result.rows[0].id, 'manual', `Daily context: ${b.date}`);
+    await logActivity('create', 'daily_context', result.rows[0].id, 'manual', `Daily context: ${b.date}`);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     // Handle unique constraint on date
@@ -158,11 +158,11 @@ router.patch('/daily-context/:id', async (req, res) => {
 
     params.push(req.params.id);
     const result = await query(
-      `UPDATE daily_nutrition_context SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, params
+      `UPDATE daily_context SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, params
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
 
-    await logActivity('update', 'daily_nutrition_context', req.params.id, 'manual', 'Updated daily context');
+    await logActivity('update', 'daily_context', req.params.id, 'manual', 'Updated daily context');
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -172,9 +172,9 @@ router.patch('/daily-context/:id', async (req, res) => {
 // ─── Delete daily context ────────────────────────────────────
 router.delete('/daily-context/:id', async (req, res) => {
   try {
-    const result = await query('DELETE FROM daily_nutrition_context WHERE id = $1 RETURNING id, date', [req.params.id]);
+    const result = await query('DELETE FROM daily_context WHERE id = $1 RETURNING id, date', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    await logActivity('delete', 'daily_nutrition_context', req.params.id, 'manual', `Deleted context: ${result.rows[0].date}`);
+    await logActivity('delete', 'daily_context', req.params.id, 'manual', `Deleted context: ${result.rows[0].date}`);
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -230,24 +230,17 @@ function classifyIntensity(dayType, workouts, planStructure, targetDate) {
 }
 
 async function buildDailySummary(targetDate) {
-  const [mealsResult, contextResult, workoutsResult, planResult] = await Promise.all([
+  const [mealsResult, contextResult, workoutsResult] = await Promise.all([
     query(
       `SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST, created_at ASC`,
       [targetDate]
     ),
     query(
-      `SELECT * FROM daily_nutrition_context WHERE date = $1`,
+      `SELECT * FROM daily_context WHERE date = $1`,
       [targetDate]
     ),
     query(
       `SELECT workout_type, effort FROM workouts WHERE workout_date = $1`,
-      [targetDate]
-    ),
-    query(
-      `SELECT weekly_structure FROM training_plans WHERE status = 'active'
-       AND (start_date IS NULL OR start_date <= $1)
-       AND (end_date IS NULL OR end_date >= $1)
-       ORDER BY created_at DESC LIMIT 1`,
       [targetDate]
     ),
   ]);
@@ -255,12 +248,11 @@ async function buildDailySummary(targetDate) {
   const meals = mealsResult.rows;
   const context = contextResult.rows[0] || null;
   const workouts = workoutsResult.rows;
-  const plan = planResult.rows[0] || null;
 
   const intensity = classifyIntensity(
     context?.day_type,
     workouts,
-    plan?.weekly_structure,
+    null,
     targetDate
   );
 
@@ -338,7 +330,7 @@ router.get('/daily-summary/range', async (req, res) => {
       `SELECT DISTINCT d::date as date FROM (
         SELECT meal_date as d FROM meals WHERE meal_date >= $1 AND meal_date < $2
         UNION
-        SELECT date as d FROM daily_nutrition_context WHERE date >= $1 AND date < $2
+        SELECT date as d FROM daily_context WHERE date >= $1 AND date < $2
       ) sub ORDER BY date ASC`,
       [since, before]
     );

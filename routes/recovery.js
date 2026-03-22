@@ -190,7 +190,7 @@ router.get('/score', async (req, res) => {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
     const [ctxResult, workouts7dResult, injuriesResult, yesterdayResult] = await Promise.all([
-      query('SELECT * FROM daily_nutrition_context WHERE date = $1', [date]),
+      query('SELECT * FROM daily_context WHERE date = $1', [date]),
       query('SELECT * FROM workouts WHERE workout_date >= $1::date - INTERVAL \'7 days\' AND workout_date <= $1 ORDER BY workout_date DESC, created_at DESC', [date]),
       query(`SELECT * FROM injuries WHERE status IN ('active','monitoring') AND (onset_date IS NULL OR onset_date <= $1) AND (resolved_date IS NULL OR resolved_date >= $1) ORDER BY severity DESC NULLS LAST`, [date]),
       query(`SELECT SUM(calories) as total_calories, SUM(protein_g) as total_protein_g FROM meals WHERE meal_date = ($1::date - 1)`, [date]),
@@ -256,7 +256,7 @@ router.get('/trend', async (req, res) => {
     // Fetch all data in bulk
     const startDate = dates[0];
     const [ctxResult, workoutsResult, injuriesResult, mealsResult] = await Promise.all([
-      query('SELECT * FROM daily_nutrition_context WHERE date >= $1 AND date <= $2 ORDER BY date', [startDate, endDate]),
+      query('SELECT * FROM daily_context WHERE date >= $1 AND date <= $2 ORDER BY date', [startDate, endDate]),
       query('SELECT * FROM workouts WHERE workout_date >= $1::date - INTERVAL \'7 days\' AND workout_date <= $2 ORDER BY workout_date DESC, created_at DESC', [startDate, endDate]),
       query(`SELECT * FROM injuries WHERE status IN ('active','monitoring') ORDER BY severity DESC NULLS LAST`),
       query('SELECT meal_date, SUM(calories) as total_calories, SUM(protein_g) as total_protein_g FROM meals WHERE meal_date >= $1::date - 1 AND meal_date <= $2 GROUP BY meal_date', [startDate, endDate]),

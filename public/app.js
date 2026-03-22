@@ -156,9 +156,13 @@ function switchTab(tab) {
   main.offsetHeight; // force reflow
   main.style.animation = '';
 
-  // Map legacy fitness sub-tab names to the unified fitness tab
-  if (['workouts', 'nutrition', 'body', 'training', 'recovery'].includes(tab)) {
-    fitnessSubTab = tab;
+  // Map legacy fitness sub-tab names to the new structure
+  const legacyFitnessMap = { workouts: 'history', nutrition: 'history', body: 'history', training: 'today', recovery: 'today' };
+  if (legacyFitnessMap[tab]) {
+    fitnessSubTab = legacyFitnessMap[tab];
+    if (tab === 'workouts') historyFilter = 'workouts';
+    else if (tab === 'nutrition') historyFilter = 'meals';
+    else if (tab === 'body') historyFilter = 'body';
     tab = 'fitness';
     currentTab = 'fitness';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'fitness'));
@@ -407,15 +411,15 @@ async function loadDashboardStats() {
     const activeInjuries = data.training?.injuries?.active || 0;
 
     const fitnessCards = [
-      { label: 'Workouts', value: data.workouts?.total || 0, color: 'var(--color-physical)', iconName: 'dumbbell', sub: 'workouts' },
-      { label: 'Meals', value: data.meals?.total || 0, color: 'var(--orange)', iconName: 'utensils', sub: 'nutrition' },
-      { label: 'Body Metrics', value: data.body_metrics?.total || 0, color: 'var(--color-body)', iconName: 'ruler', sub: 'body' },
+      { label: 'Workouts', value: data.workouts?.total || 0, color: 'var(--color-physical)', iconName: 'dumbbell', sub: 'history' },
+      { label: 'Meals', value: data.meals?.total || 0, color: 'var(--orange)', iconName: 'utensils', sub: 'history' },
+      { label: 'Body Metrics', value: data.body_metrics?.total || 0, color: 'var(--color-body)', iconName: 'ruler', sub: 'history' },
     ];
     if (data.training) {
       fitnessCards.push(
-        { label: 'Active Plans', value: data.training.plans?.active || 0, color: 'var(--purple)', iconName: 'notebook-pen', sub: 'training' },
-        { label: 'Coaching', value: data.training.coaching_sessions?.total || 0, color: 'var(--cyan)', iconName: 'graduation-cap', sub: 'training' },
-        { label: 'Injuries', value: activeInjuries, color: activeInjuries > 0 ? 'var(--red)' : '#6b7280', iconName: 'heart-pulse', sub: 'training' },
+        { label: 'Plans', value: data.training.plans?.total || 0, color: 'var(--purple)', iconName: 'notebook-pen', sub: 'today' },
+        { label: 'Coaching', value: data.training.coaching_sessions?.total || 0, color: 'var(--cyan)', iconName: 'graduation-cap', sub: 'coaching' },
+        { label: 'Injuries', value: activeInjuries, color: activeInjuries > 0 ? 'var(--red)' : '#6b7280', iconName: 'heart-pulse', sub: 'coaching' },
       );
     }
 
@@ -862,7 +866,7 @@ async function loadGamification() {
         </div>
         <div class="rings-tap-hint" onclick="toggleRingsDetail()" style="cursor:pointer">Tap for details</div>
       </div>
-      ${data.today_plan ? `<div class="today-plan-card animate-in stagger-2" onclick="switchTab('fitness');loadTrainingDay()">
+      ${data.today_plan ? `<div class="today-plan-card animate-in stagger-2" onclick="fitnessSubTab='today';switchTab('fitness')">
         <div class="today-plan-header">
           <span class="today-plan-dot" style="background:${data.today_plan.status === 'rest' ? '#6366f1' : '#10b981'}"></span>
           <span class="today-plan-label">${data.today_plan.status === 'rest' ? 'Rest Day' : (data.today_plan.workout_type || 'Workout') + (data.today_plan.workout_focus ? ' — ' + data.today_plan.workout_focus : '')}</span>
@@ -2983,17 +2987,16 @@ function searchSnippet(text, query, maxLen) {
   return highlightText(snippet, query);
 }
 
-// ─── Fitness (unified tab) ────────────────────────────────────
-let fitnessSubTab = 'workouts';
+// ─── Fitness (unified tab — 4 tabs: Today/Log/History/Coaching) ────
+let fitnessSubTab = 'today';
 
 function loadFitness() {
   const main = document.getElementById('main-content');
   const tabs = [
-    { key: 'workouts', label: 'Workouts', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg>' },
-    { key: 'nutrition', label: 'Nutrition', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18.06 22.99h1.66c.84 0 1.53-.64 1.63-1.46L23 5.05h-5V1h-1.97v4.05h-4.97l.3 2.34c1.71.47 3.31 1.32 4.27 2.26 1.44 1.42 2.43 2.89 2.43 5.29v8.05zM1 21.99V21h15.03v.99c0 .55-.45 1-1.01 1H2.01c-.56 0-1.01-.45-1.01-1zm15.03-7c0-4.5-6.83-5-9.52-5C3.92 9.99 1 10.99 1 14.99h15.03zm-15.03 2h15.03v2H1v-2z"/></svg>' },
-    { key: 'body', label: 'Body', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>' },
-    { key: 'training', label: 'Training', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' },
-    { key: 'recovery', label: 'Recovery', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>' },
+    { key: 'today', label: 'Today', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/></svg>' },
+    { key: 'log', label: 'Log', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>' },
+    { key: 'history', label: 'History', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>' },
+    { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -3001,11 +3004,431 @@ function loadFitness() {
     </div>
     <div id="fitness-content"></div>
   `;
-  if (fitnessSubTab === 'workouts') loadWorkouts();
-  else if (fitnessSubTab === 'nutrition') loadNutrition();
-  else if (fitnessSubTab === 'body') loadBodyMetrics();
-  else if (fitnessSubTab === 'training') loadTraining();
-  else if (fitnessSubTab === 'recovery') loadRecovery();
+  if (fitnessSubTab === 'today') loadFitnessToday();
+  else if (fitnessSubTab === 'log') loadFitnessLog();
+  else if (fitnessSubTab === 'history') loadFitnessHistory();
+  else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
+}
+
+// ─── Fitness > Today ──────────────────────────────────────────
+let fitnessTodayDate = new Date().toISOString().slice(0, 10);
+let fitnessTodayWeekOffset = 0;
+
+function shiftFitnessToday(delta) {
+  const d = new Date(fitnessTodayDate + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  fitnessTodayDate = d.toISOString().slice(0, 10);
+  loadFitnessToday();
+}
+
+async function loadFitnessToday() {
+  const el = document.getElementById('fitness-content');
+  if (!el) return;
+  el.innerHTML = skeletonCards(3);
+
+  try {
+    const [dayData, recoveryData, trendData] = await Promise.all([
+      api(`/training/day/${fitnessTodayDate}`),
+      api(`/recovery/score?date=${fitnessTodayDate}`),
+      api(`/recovery/trend?date=${fitnessTodayDate}&days=7`),
+    ]);
+
+    const plan = dayData.daily_plan;
+    const ctx = dayData.nutrition_context || {};
+    const workouts = dayData.workouts || [];
+    const meals = dayData.meals || [];
+    const injuries = dayData.active_injuries || [];
+    const bodyMetrics = dayData.body_metrics || [];
+
+    // Week strip
+    const today = new Date().toISOString().slice(0, 10);
+    const sel = new Date(fitnessTodayDate + 'T12:00:00');
+    const dayOfWeek = sel.getDay();
+    const monday = new Date(sel);
+    monday.setDate(monday.getDate() - ((dayOfWeek + 6) % 7));
+    const weekDays = [];
+    const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + i);
+      const ds = d.toISOString().slice(0, 10);
+      weekDays.push({ date: ds, label: dayLabels[i], isToday: ds === today, isSelected: ds === fitnessTodayDate });
+    }
+
+    const prevWeekDate = new Date(monday);
+    prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+    const prevWeekStr = prevWeekDate.toISOString().slice(0, 10);
+    const nextWeekDate = new Date(monday);
+    nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+    const nextWeekStr = nextWeekDate.toISOString().slice(0, 10);
+
+    const weekDayBtns = weekDays.map(d => {
+      const dayNum = new Date(d.date + 'T12:00:00').getDate();
+      return '<button class="week-day ' + (d.isSelected ? 'selected' : '') + ' ' + (d.isToday ? 'today' : '') + '" onclick="fitnessTodayDate=\'' + d.date + '\';loadFitnessToday()">' + d.label + '<br><span style="font-size:0.65rem">' + dayNum + '</span></button>';
+    }).join('');
+
+    const weekStrip = '<div class="week-strip">'
+      + '<button class="week-nav" onclick="fitnessTodayDate=\'' + prevWeekStr + '\';loadFitnessToday()">‹</button>'
+      + weekDayBtns
+      + '<button class="week-nav" onclick="fitnessTodayDate=\'' + nextWeekStr + '\';loadFitnessToday()">›</button>'
+      + '</div>';
+
+    const dateLabel = sel.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const isToday = fitnessTodayDate === today;
+
+    // Plan section
+    let planHtml = '';
+    if (plan) {
+      const statusColors = { planned: '#3b82f6', completed: '#10b981', partial: '#f59e0b', missed: '#ef4444', rest: '#8b5cf6', amended: '#6366f1' };
+      const statusColor = statusColors[plan.status] || '#6b7280';
+      planHtml = `
+        <div class="card mb-md" style="border-left:3px solid ${statusColor}">
+          <div class="card-title" style="display:flex;align-items:center;gap:8px">
+            Plan
+            <span class="badge-dynamic" style="background:${statusColor}22;color:${statusColor};font-size:0.65rem">${plan.status}</span>
+          </div>
+          ${plan.workout_type ? `<div style="font-weight:600">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}</div>` : ''}
+          ${plan.target_effort ? `<div class="list-item-meta">Effort: ${plan.target_effort}/10${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
+          ${plan.target_calories || plan.target_protein_g || plan.target_hydration_liters || plan.target_sleep_hours ? `
+            <div class="list-item-meta" style="margin-top:4px">
+              ${plan.target_calories ? 'Cal: ' + plan.target_calories + ' ' : ''}
+              ${plan.target_protein_g ? 'P: ' + plan.target_protein_g + 'g ' : ''}
+              ${plan.target_hydration_liters ? 'Water: ' + plan.target_hydration_liters + 'L ' : ''}
+              ${plan.target_sleep_hours ? 'Sleep: ' + plan.target_sleep_hours + 'h' : ''}
+            </div>
+          ` : ''}
+          ${plan.coaching_notes ? `<div class="transcript-summary mt-sm">${esc(plan.coaching_notes)}</div>` : ''}
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            ${['completed','partial','missed'].map(s => `<button class="btn-submit btn-compact-sm ${plan.status === s ? '' : 'btn-secondary'}" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','${s}')">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
+            <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="editDailyPlan('${plan.id}')">Edit</button>
+          </div>
+        </div>`;
+    } else {
+      planHtml = `<div class="card mb-md" style="border-left:3px solid #d1d5db">
+        <div class="card-title">No plan for ${dateLabel}</div>
+        <button class="btn-submit btn-compact-sm" onclick="showCreateDailyPlanForm('${fitnessTodayDate}')">+ Create Plan</button>
+      </div>`;
+    }
+
+    // Check-in section
+    const hasCheckIn = ctx.id;
+    let checkInHtml = '';
+    if (hasCheckIn) {
+      checkInHtml = `<div class="card mb-md">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          Check-in
+          <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="showDailyContextForm('${fitnessTodayDate}','${ctx.id}')">Edit</button>
+        </div>
+        <div class="detail-grid" style="grid-template-columns:repeat(auto-fill,minmax(100px,1fr))">
+          ${ctx.sleep_hours != null ? `<div class="detail-item"><div class="detail-label">Sleep</div><div class="detail-value">${ctx.sleep_hours}h</div></div>` : ''}
+          ${ctx.sleep_quality != null ? `<div class="detail-item"><div class="detail-label">Quality</div><div class="detail-value">${ctx.sleep_quality}/10</div></div>` : ''}
+          ${ctx.energy_rating != null ? `<div class="detail-item"><div class="detail-label">Energy</div><div class="detail-value">${ctx.energy_rating}/10</div></div>` : ''}
+          ${ctx.recovery_rating != null ? `<div class="detail-item"><div class="detail-label">Recovery</div><div class="detail-value">${ctx.recovery_rating}/10</div></div>` : ''}
+          ${ctx.hydration_liters != null ? `<div class="detail-item"><div class="detail-label">Water</div><div class="detail-value">${ctx.hydration_liters}L</div></div>` : ''}
+          ${ctx.body_weight_lb != null ? `<div class="detail-item"><div class="detail-label">Weight</div><div class="detail-value">${ctx.body_weight_lb}lb</div></div>` : ''}
+        </div>
+        ${ctx.notes ? `<div class="transcript-summary mt-sm">${esc(ctx.notes)}</div>` : ''}
+      </div>`;
+    } else {
+      checkInHtml = `<div class="card mb-md" style="border-left:3px solid #d1d5db">
+        <div class="card-title">No check-in</div>
+        <button class="btn-submit btn-compact-sm" onclick="showDailyContextForm('${fitnessTodayDate}')">+ Add Check-in</button>
+      </div>`;
+    }
+
+    // Plan vs Actual comparison (if plan exists and there's data)
+    let comparisonHtml = '';
+    if (plan && (workouts.length || meals.length || hasCheckIn)) {
+      const maxEffort = Math.max(0, ...workouts.map(w => w.effort || 0));
+      const totalCal = meals.reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
+      const totalProtein = meals.reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
+      const hydration = parseFloat(ctx.hydration_liters) || 0;
+      const sleepHrs = parseFloat(ctx.sleep_hours) || 0;
+
+      function pctBar(actual, target, label, unit) {
+        if (!target) return '';
+        const pct = Math.min(100, Math.round((actual / target) * 100));
+        const color = pct >= 90 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
+        return `<div style="margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim)"><span>${label}</span><span>${Math.round(actual)}/${target}${unit} (${pct}%)</span></div>
+          <div style="height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};border-radius:3px"></div></div>
+        </div>`;
+      }
+
+      comparisonHtml = `<div class="card mb-md">
+        <div class="card-title">Plan vs Actual</div>
+        ${pctBar(maxEffort, plan.target_effort, 'Effort', '/10')}
+        ${pctBar(totalCal, plan.target_calories, 'Calories', '')}
+        ${pctBar(totalProtein, plan.target_protein_g, 'Protein', 'g')}
+        ${pctBar(hydration, plan.target_hydration_liters, 'Water', 'L')}
+        ${pctBar(sleepHrs, plan.target_sleep_hours, 'Sleep', 'h')}
+      </div>`;
+    }
+
+    // Workouts section
+    const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
+    let workoutsHtml = '';
+    if (workouts.length) {
+      workoutsHtml = `<div class="card mb-md"><div class="card-title">Workouts (${workouts.length})</div>
+        ${workouts.map(w => {
+          const color = typeColors[w.workout_type] || '#6366f1';
+          return `<div class="list-item" onclick="showWorkoutDetail('${w.id}')" style="border-left:3px solid ${color};cursor:pointer;padding:6px 8px;margin-bottom:4px">
+            <div style="font-weight:600;font-size:0.8rem">${esc(w.title)}</div>
+            <div class="list-item-meta">${w.workout_type}${w.effort ? ' · E' + w.effort : ''}${w.time_duration ? ' · ' + esc(w.time_duration) : ''}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    // Meals section
+    let mealsHtml = '';
+    if (meals.length) {
+      const totalCal = meals.reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
+      const totalProtein = meals.reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
+      mealsHtml = `<div class="card mb-md"><div class="card-title">Meals (${meals.length}) — ${Math.round(totalCal)} cal · ${Math.round(totalProtein)}g protein</div>
+        ${meals.map(m => `<div class="list-item" onclick="showMealDetail('${m.id}')" style="cursor:pointer;padding:6px 8px;margin-bottom:4px">
+          <div style="font-weight:600;font-size:0.8rem">${esc(m.title)}</div>
+          <div class="list-item-meta">${m.meal_type || ''}${m.calories ? ' · ' + m.calories + 'cal' : ''}${m.protein_g ? ' · ' + m.protein_g + 'g protein' : ''}</div>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Recovery score
+    const score = recoveryData.score;
+    const scoreColor = score >= 81 ? '#10b981' : score >= 61 ? '#f59e0b' : score >= 31 ? '#f97316' : '#ef4444';
+    let recoveryHtml = `<div class="card mb-md" style="text-align:center">
+      <div class="card-title" style="text-align:left">Recovery Score</div>
+      <div style="display:inline-block;position:relative;width:80px;height:80px">
+        <svg viewBox="0 0 36 36" style="width:80px;height:80px;transform:rotate(-90deg)">
+          <circle cx="18" cy="18" r="16" fill="none" stroke="var(--bg-tertiary)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="16" fill="none" stroke="${scoreColor}" stroke-width="3"
+            stroke-dasharray="${score} ${100 - score}" stroke-linecap="round"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:${scoreColor}">${score}</div>
+      </div>
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${recoveryData.label} — ${esc(recoveryData.recommendation || '')}</div>
+    </div>`;
+
+    // Active injuries
+    let injuriesHtml = '';
+    if (injuries.length) {
+      injuriesHtml = `<div class="card mb-md"><div class="card-title" style="color:#ef4444">Active Injuries (${injuries.length})</div>
+        ${injuries.map(inj => `<div class="list-item" onclick="showInjuryDetail('${inj.id}')" style="cursor:pointer;padding:4px 8px;margin-bottom:4px">
+          <span style="font-weight:600;font-size:0.8rem">${esc(inj.title)}</span>
+          <span class="list-item-meta">${inj.body_area || ''}${inj.severity ? ' · ' + inj.severity + '/10' : ''}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Body metrics
+    let bodyHtml = '';
+    if (bodyMetrics.length) {
+      const bm = bodyMetrics[0];
+      bodyHtml = `<div class="card mb-md"><div class="card-title">Body Metrics</div>
+        <div class="list-item-meta">${bm.weight_lb}lb${bm.body_fat_pct ? ' · ' + bm.body_fat_pct + '% BF' : ''}${bm.muscle_mass_lb ? ' · ' + bm.muscle_mass_lb + 'lb muscle' : ''}</div>
+      </div>`;
+    }
+
+    // 7-day trend
+    let trendHtml = '';
+    if (trendData && trendData.trend && trendData.trend.length > 1) {
+      const maxScore = 100;
+      trendHtml = `<div class="card mb-md"><div class="card-title">7-Day Recovery Trend</div>
+        <div style="display:flex;align-items:flex-end;gap:4px;height:60px">
+          ${trendData.trend.map(t => {
+            const h = Math.max(4, (t.score / maxScore) * 56);
+            const c = t.score >= 81 ? '#10b981' : t.score >= 61 ? '#f59e0b' : t.score >= 31 ? '#f97316' : '#ef4444';
+            const dayLabel = new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' });
+            return `<div style="flex:1;text-align:center"><div style="height:${h}px;background:${c};border-radius:3px;margin-bottom:2px"></div><div style="font-size:0.55rem;color:var(--text-dim)">${dayLabel}</div></div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+
+    el.innerHTML = `
+      ${weekStrip}
+      <div style="text-align:center;font-size:0.8rem;font-weight:600;margin:8px 0;color:var(--text-dim)">${dateLabel}${isToday ? ' (Today)' : ''}</div>
+      <div class="fade-in">
+        ${planHtml}
+        ${checkInHtml}
+        ${comparisonHtml}
+        ${workoutsHtml}
+        ${mealsHtml}
+        ${recoveryHtml}
+        ${injuriesHtml}
+        ${bodyHtml}
+        ${trendHtml}
+      </div>
+    `;
+  } catch (e) { el.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+// ─── Fitness > Log (quick-add hub) ──────────────────────────────
+function loadFitnessLog() {
+  const el = document.getElementById('fitness-content');
+  if (!el) return;
+  const items = [
+    { label: 'Workout', icon: '💪', action: "showWorkoutForm()" },
+    { label: 'Meal', icon: '🍽️', action: "showMealForm()" },
+    { label: 'Check-in', icon: '📋', action: "showDailyContextForm('" + new Date().toISOString().slice(0, 10) + "')" },
+    { label: 'Weight', icon: '⚖️', action: "showBodyMetricForm()" },
+    { label: 'Injury', icon: '🩹', action: "showInjuryForm()" },
+    { label: 'Plan', icon: '📅', action: "showCreateDailyPlanForm('" + new Date().toISOString().slice(0, 10) + "')" },
+    { label: 'Coaching', icon: '🧠', action: "showCoachingForm()" },
+  ];
+  el.innerHTML = `
+    <div style="padding:12px 0">
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:12px;color:var(--text-dim)">What are you logging?</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+        ${items.map(it => `<button class="card" onclick="${it.action}" style="cursor:pointer;text-align:center;padding:20px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg-secondary)">
+          <div style="font-size:1.5rem;margin-bottom:6px">${it.icon}</div>
+          <div style="font-weight:600;font-size:0.85rem">${it.label}</div>
+        </button>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ─── Fitness > History (unified browse) ──────────────────────────
+let historyFilter = 'all';
+let historySearchQuery = '';
+let historySearchTimer = null;
+
+function debounceHistorySearch(q) {
+  historySearchQuery = q;
+  clearTimeout(historySearchTimer);
+  historySearchTimer = setTimeout(() => loadFitnessHistory(), 300);
+}
+
+async function loadFitnessHistory() {
+  const el = document.getElementById('fitness-content');
+  if (!el) return;
+  el.innerHTML = skeletonCards(4);
+
+  try {
+    const params = new URLSearchParams({ limit: '50' });
+    if (historySearchQuery) params.set('q', historySearchQuery);
+    const filter = historyFilter;
+
+    // Fetch data based on filter
+    const fetches = {};
+    if (filter === 'all' || filter === 'workouts') {
+      const wp = new URLSearchParams(params);
+      fetches.workouts = api('/workouts?' + wp.toString());
+    }
+    if (filter === 'all' || filter === 'meals') {
+      const mp = new URLSearchParams(params);
+      fetches.meals = api('/meals?' + mp.toString());
+    }
+    if (filter === 'all' || filter === 'body') {
+      const bp = new URLSearchParams(params);
+      fetches.body = api('/body-metrics?' + bp.toString());
+    }
+    if (filter === 'all' || filter === 'plans') {
+      const pp = new URLSearchParams(params);
+      fetches.plans = api('/daily-plans?' + pp.toString());
+    }
+
+    const results = {};
+    const keys = Object.keys(fetches);
+    const values = await Promise.all(Object.values(fetches));
+    keys.forEach((k, i) => results[k] = values[i]);
+
+    // Build unified timeline items
+    const items = [];
+    if (results.workouts) {
+      (results.workouts.workouts || []).forEach(w => items.push({
+        type: 'workout', date: w.workout_date, title: w.title,
+        meta: `${w.workout_type || ''}${w.effort ? ' · E' + w.effort : ''}${w.time_duration ? ' · ' + w.time_duration : ''}`,
+        color: ({ hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' })[w.workout_type] || '#6366f1',
+        action: `showWorkoutDetail('${w.id}')`, raw: w
+      }));
+    }
+    if (results.meals) {
+      (results.meals.meals || []).forEach(m => items.push({
+        type: 'meal', date: m.meal_date, title: m.title,
+        meta: `${m.meal_type || ''}${m.calories ? ' · ' + m.calories + 'cal' : ''}${m.protein_g ? ' · ' + m.protein_g + 'g' : ''}`,
+        color: '#10b981', action: `showMealDetail('${m.id}')`, raw: m
+      }));
+    }
+    if (results.body) {
+      (results.body.body_metrics || []).forEach(b => items.push({
+        type: 'body', date: b.measurement_date, title: `${b.weight_lb}lb`,
+        meta: `${b.body_fat_pct ? b.body_fat_pct + '% BF' : ''}${b.source ? ' · ' + b.source : ''}`,
+        color: '#8b5cf6', action: `showBodyMetricDetail('${b.id}')`, raw: b
+      }));
+    }
+    if (results.plans) {
+      (results.plans.results || []).forEach(p => items.push({
+        type: 'plan', date: p.plan_date, title: p.title || p.workout_type || 'Daily Plan',
+        meta: `${p.status}${p.target_effort ? ' · E' + p.target_effort : ''}`,
+        color: '#3b82f6', action: `editDailyPlan('${p.id}')`, raw: p
+      }));
+    }
+
+    // Sort by date descending
+    items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    // Group by date
+    const grouped = {};
+    items.forEach(it => {
+      const d = (it.date || '').slice(0, 10);
+      if (!grouped[d]) grouped[d] = [];
+      grouped[d].push(it);
+    });
+
+    const typeIcons = { workout: '💪', meal: '🍽️', body: '⚖️', plan: '📅' };
+    const filterBtns = ['all','workouts','meals','body','plans'];
+
+    el.innerHTML = `
+      <div class="list-search-row">
+        <input type="text" class="brain-search" placeholder="Search history..." value="${esc(historySearchQuery)}"
+          oninput="debounceHistorySearch(this.value)">
+        ${filter === 'workouts' ? `<button class="btn-submit btn-secondary btn-compact-sm" onclick="showWorkoutImport()">Import</button>` : ''}
+        ${filter === 'meals' ? `<button class="btn-submit btn-secondary btn-compact-sm" onclick="showMealImport()">Import</button>` : ''}
+        ${filter === 'body' ? `<button class="btn-submit btn-secondary btn-compact-sm" onclick="showBodyMetricImport()">Import</button>` : ''}
+      </div>
+      <div class="filter-row mb-md">
+        ${filterBtns.map(f => `<button class="filter-btn ${filter === f ? 'active' : ''}" onclick="historyFilter='${f}';loadFitnessHistory()">${f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}</button>`).join('')}
+      </div>
+      <div class="transcript-count">${items.length} item${items.length !== 1 ? 's' : ''}</div>
+      <div id="history-list" class="fade-in">
+        ${Object.keys(grouped).length ? Object.entries(grouped).map(([date, dateItems]) => {
+          const d = new Date(date + 'T12:00:00');
+          const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          return `
+            <div class="date-group-label" style="font-size:0.7rem;font-weight:700;color:var(--text-dim);margin:12px 0 4px;text-transform:uppercase">${dateLabel}</div>
+            ${dateItems.map(it => `
+              <div class="list-item" onclick="${it.action}" style="border-left:3px solid ${it.color};cursor:pointer">
+                <div class="transcript-card-header">
+                  <span style="margin-right:4px">${typeIcons[it.type] || ''}</span>
+                  <div class="list-item-title">${esc(it.title)}</div>
+                  <span class="badge-dynamic" style="background:${it.color}22;color:${it.color};font-size:0.6rem">${it.type}</span>
+                </div>
+                <div class="list-item-meta">${esc(it.meta)}</div>
+              </div>
+            `).join('')}`;
+        }).join('') : '<div class="empty-state">No data yet. Use the Log tab to start tracking!</div>'}
+      </div>
+    `;
+  } catch (e) { el.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+// ─── Fitness > Coaching (sessions + injuries) ───────────────────
+let coachingSubFilter = 'sessions';
+
+function loadFitnessCoaching() {
+  const el = document.getElementById('fitness-content');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="filter-row mb-md">
+      <button class="filter-btn ${coachingSubFilter === 'sessions' ? 'active' : ''}" onclick="coachingSubFilter='sessions';loadFitnessCoaching()">Sessions</button>
+      <button class="filter-btn ${coachingSubFilter === 'injuries' ? 'active' : ''}" onclick="coachingSubFilter='injuries';loadFitnessCoaching()">Injuries</button>
+    </div>
+    <div id="coaching-list"></div>
+  `;
+  if (coachingSubFilter === 'sessions') loadCoachingSessions();
+  else loadInjuries();
 }
 
 // ─── Workouts ─────────────────────────────────────────────────
@@ -3733,7 +4156,8 @@ async function saveDailyContext(date, editId) {
       await api('/nutrition/daily-context', { method: 'POST', body: JSON.stringify(body) });
     }
     closeModal();
-    loadNutrition(date);
+    if (fitnessSubTab === 'today') loadFitnessToday();
+    else loadNutrition(date);
   } catch (e) { showToast('Error: ' + e.message); }
 }
 
@@ -4755,7 +5179,8 @@ async function loadUnifiedPlans() {
 async function quickUpdatePlanStatus(id, status) {
   try {
     await api(`/daily-plans/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
-    loadUnifiedPlans();
+    if (fitnessSubTab === 'today') loadFitnessToday();
+    else loadUnifiedPlans();
   } catch (e) { showToast(e.message); }
 }
 
@@ -4884,7 +5309,7 @@ async function saveTrainingPlan(e, id) {
     if (id) await api(`/training/plans/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     else await api('/training/plans', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
-    loadTraining();
+    loadFitness();
   } catch (err) { showToast(err.message); }
 }
 
@@ -4898,13 +5323,13 @@ async function editTrainingPlan(id) {
 
 async function deleteTrainingPlan(id) {
   if (!confirm('Delete this training plan?')) return;
-  try { await api(`/training/plans/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
+  try { await api(`/training/plans/${id}`, { method: 'DELETE' }); closeModal(); if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness(); }
   catch (e) { showToast(e.message); }
 }
 
 // ── Coaching Sessions ──
 async function loadCoachingSessions() {
-  const container = document.getElementById('training-content');
+  const container = document.getElementById('coaching-list') || document.getElementById('training-content');
   try {
     const data = await api('/training/coaching?limit=50');
     container.innerHTML = `
@@ -5025,7 +5450,7 @@ async function saveCoachingSession(e, id) {
     if (id) await api(`/training/coaching/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     else await api('/training/coaching', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
-    loadTraining();
+    if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness();
   } catch (err) { showToast(err.message); }
 }
 
@@ -5039,13 +5464,13 @@ async function editCoachingSession(id) {
 
 async function deleteCoachingSession(id) {
   if (!confirm('Delete this coaching session?')) return;
-  try { await api(`/training/coaching/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
+  try { await api(`/training/coaching/${id}`, { method: 'DELETE' }); closeModal(); if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness(); }
   catch (e) { showToast(e.message); }
 }
 
 // ── Injuries ──
 async function loadInjuries() {
-  const container = document.getElementById('training-content');
+  const container = document.getElementById('coaching-list') || document.getElementById('training-content');
   try {
     const data = await api('/training/injuries?limit=50');
     const statusColors = { active: '#ef4444', monitoring: '#f59e0b', recovering: '#3b82f6', resolved: '#22c55e', chronic: '#78716c' };
@@ -5184,7 +5609,7 @@ async function saveInjury(e, id) {
     if (id) await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     else await api('/training/injuries', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
-    loadTraining();
+    if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness();
   } catch (err) { showToast(err.message); }
 }
 
@@ -5200,13 +5625,13 @@ async function resolveInjury(id) {
   try {
     await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved', resolved_date: new Date().toISOString().slice(0,10) }) });
     closeModal();
-    loadTraining();
+    if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness();
   } catch (e) { showToast(e.message); }
 }
 
 async function deleteInjury(id) {
   if (!confirm('Delete this injury record?')) return;
-  try { await api(`/training/injuries/${id}`, { method: 'DELETE' }); closeModal(); loadTraining(); }
+  try { await api(`/training/injuries/${id}`, { method: 'DELETE' }); closeModal(); if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness(); }
   catch (e) { showToast(e.message); }
 }
 
@@ -5534,7 +5959,8 @@ async function saveDailyPlan(event) {
     await api('/daily-plans', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
     showToast('Daily plan created', 'success');
-    if (trainingSubTab === 'plans') loadUnifiedPlans();
+    if (fitnessSubTab === 'today') loadFitnessToday();
+    else if (typeof loadUnifiedPlans === 'function') loadUnifiedPlans();
     loadGamification();
   } catch (e) {
     showToast(e.message, 'error');
@@ -5599,7 +6025,8 @@ async function updateDailyPlan(event, id) {
     await api(`/daily-plans/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     closeModal();
     showToast('Plan updated', 'success');
-    if (trainingSubTab === 'plans') loadUnifiedPlans();
+    if (fitnessSubTab === 'today') loadFitnessToday();
+    else if (typeof loadUnifiedPlans === 'function') loadUnifiedPlans();
     loadGamification();
   } catch (e) {
     showToast(e.message, 'error');
@@ -5667,16 +6094,17 @@ function fabAction(type) {
       setTimeout(() => { if (typeof showTaskForm === 'function') showTaskForm(); }, 300);
       break;
     case 'workout':
+      fitnessSubTab = 'log';
       switchTab('fitness');
       setTimeout(() => { if (typeof showWorkoutForm === 'function') showWorkoutForm(); }, 300);
       break;
     case 'meal':
-      fitnessSubTab = 'nutrition';
+      fitnessSubTab = 'log';
       switchTab('fitness');
       setTimeout(() => { if (typeof showMealForm === 'function') showMealForm(); }, 300);
       break;
     case 'weight':
-      fitnessSubTab = 'body';
+      fitnessSubTab = 'log';
       switchTab('fitness');
       setTimeout(() => { if (typeof showBodyMetricForm === 'function') showBodyMetricForm(); }, 300);
       break;

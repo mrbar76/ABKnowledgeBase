@@ -3276,6 +3276,53 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
 
 /* ═══ Plans Tab — Week Strip & Hero Card ═══ */
 
+/* Fitness Today — week strip */
+.week-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.week-nav {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.week-nav:hover { color: var(--accent); background: var(--bg-input); }
+.week-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 2px 4px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  transition: background 0.15s;
+}
+.week-day:hover { background: var(--bg-input); }
+.week-day.selected { background: var(--accent); color: #fff; }
+.week-day.today:not(.selected) { border: 2px solid var(--accent); }
+
+/* date group labels in history */
+.date-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin: 12px 0 4px;
+  text-transform: uppercase;
+}
+
 .plans-week-strip {
   display: flex;
   align-items: center;

@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
       sq('SELECT COUNT(*)::int as total FROM workouts', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM body_metrics', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM meals', [{ total: 0 }]),
-      sq("SELECT COUNT(*)::int as total, COUNT(*) FILTER (WHERE status = 'active')::int as active FROM training_plans", [{ total: 0, active: 0 }]),
+      sq("SELECT COUNT(*)::int as total FROM daily_plans", [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM coaching_sessions', [{ total: 0 }]),
       sq('SELECT COUNT(*)::int as total FROM injuries', [{ total: 0 }]),
       sq("SELECT COUNT(*)::int as active FROM injuries WHERE status IN ('active','monitoring')", [{ active: 0 }]),
@@ -56,7 +56,7 @@ router.get('/', async (req, res) => {
       body_metrics: { total: bodyMetricRows[0]?.total || 0 },
       meals: { total: mealRows[0]?.total || 0 },
       training: {
-        plans: { total: trainingPlanRows[0]?.total || 0, active: trainingPlanRows[0]?.active || 0 },
+        plans: { total: trainingPlanRows[0]?.total || 0 },
         coaching_sessions: { total: coachingRows[0]?.total || 0 },
         injuries: { total: injuryRows[0]?.total || 0, active: activeInjuryRows[0]?.active || 0 },
       },

@@ -4,7 +4,7 @@ const router = express.Router();
 
 // Writable fields for daily_plans
 const WRITABLE_FIELDS = [
-  'plan_date', 'training_plan_id', 'status', 'title', 'goal',
+  'plan_date', 'status', 'title', 'goal',
   'workout_type', 'workout_focus', 'target_effort', 'target_duration_min', 'workout_notes',
   'target_calories', 'target_protein_g', 'target_carbs_g', 'target_fat_g', 'target_hydration_liters',
   'target_sleep_hours', 'recovery_notes',
@@ -17,7 +17,7 @@ const WRITABLE_FIELDS = [
 
 router.get('/', async (req, res) => {
   try {
-    const { date, from, to, status: st, training_plan_id, limit = 50, offset = 0 } = req.query;
+    const { date, from, to, status: st, limit = 50, offset = 0 } = req.query;
     const params = [];
     const where = [];
     let i = 1;
@@ -26,7 +26,6 @@ router.get('/', async (req, res) => {
     if (from) { where.push(`plan_date >= $${i++}`); params.push(from); }
     if (to) { where.push(`plan_date <= $${i++}`); params.push(to); }
     if (st) { where.push(`status = $${i++}`); params.push(st); }
-    if (training_plan_id) { where.push(`training_plan_id = $${i++}`); params.push(training_plan_id); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(Number(limit), Number(offset));
@@ -58,7 +57,7 @@ router.get('/by-date/:date', async (req, res) => {
       query('SELECT * FROM daily_plans WHERE plan_date = $1', [date]),
       query('SELECT * FROM workouts WHERE workout_date = $1 ORDER BY created_at', [date]),
       query('SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST', [date]),
-      query('SELECT * FROM daily_nutrition_context WHERE date = $1', [date]),
+      query('SELECT * FROM daily_context WHERE date = $1', [date]),
       query('SELECT * FROM body_metrics WHERE measurement_date = $1 ORDER BY measurement_time ASC NULLS LAST', [date]),
       query('SELECT * FROM gamification_settings WHERE id = 1'),
     ]);
@@ -185,7 +184,7 @@ router.get('/:id/review', async (req, res) => {
     const [workoutsR, mealsR, ctxR, coachingR, injuriesR] = await Promise.all([
       query('SELECT * FROM workouts WHERE workout_date = $1 ORDER BY created_at', [date]),
       query('SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST', [date]),
-      query('SELECT * FROM daily_nutrition_context WHERE date = $1', [date]),
+      query('SELECT * FROM daily_context WHERE date = $1', [date]),
       query('SELECT * FROM coaching_sessions WHERE (session_date = $1 OR daily_plan_id = $2) ORDER BY created_at DESC', [date, plan.id]),
       query(`SELECT * FROM injuries WHERE status IN ('active','monitoring') AND (onset_date IS NULL OR onset_date <= $1) AND (resolved_date IS NULL OR resolved_date >= $1)`, [date]),
     ]);
@@ -274,7 +273,7 @@ router.post('/', async (req, res) => {
 
 router.post('/week', async (req, res) => {
   try {
-    const { start_date, training_plan_id, days } = req.body;
+    const { start_date, days } = req.body;
     if (!start_date) return res.status(400).json({ error: 'start_date is required' });
     if (!days || !Array.isArray(days) || days.length < 1 || days.length > 7) {
       return res.status(400).json({ error: 'days must be an array of 1-7 daily plan objects' });
@@ -289,8 +288,6 @@ router.post('/week', async (req, res) => {
       const dateStr = dayDate.toISOString().split('T')[0];
 
       const dayPlan = { ...days[d], plan_date: dateStr };
-      if (training_plan_id) dayPlan.training_plan_id = training_plan_id;
-
       const cols = [];
       const vals = [];
       const placeholders = [];
@@ -382,95 +379,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════
-//  MIGRATE: Convert single-day training plans (microcycles) to daily plans
-// ══════════════════════════════════════════════════════════════════
-
-router.post('/migrate-from-training-plans', async (req, res) => {
-  try {
-    // Find single-day training plans (start_date = end_date, or microcycle type)
-    const { rows: plans } = await query(`
-      SELECT * FROM training_plans
-      WHERE (plan_type = 'microcycle' OR (start_date IS NOT NULL AND start_date = end_date))
-        AND status IN ('active', 'draft', 'planned')
-      ORDER BY start_date ASC
-    `);
-
-    let migrated = 0, skipped = 0, archived = 0;
-    const results = [];
-
-    for (const tp of plans) {
-      const planDate = (tp.start_date || '').slice(0, 10);
-      if (!planDate) { skipped++; continue; }
-
-      // Check if daily plan already exists for this date
-      const { rows: existing } = await query('SELECT id FROM daily_plans WHERE plan_date = $1', [planDate]);
-      if (existing.length) {
-        skipped++;
-        results.push({ date: planDate, title: tp.title, action: 'skipped — daily plan exists' });
-        continue;
-      }
-
-      // Parse workout type from title (e.g. "Wednesday Plan – Outdoor Spartan Simulation")
-      const titleParts = (tp.title || '').split('–').map(s => s.trim());
-      const workoutDesc = titleParts.length > 1 ? titleParts[1] : titleParts[0];
-
-      // Try to extract workout_type from weekly_structure or title
-      let workoutType = null;
-      let workoutFocus = null;
-      if (tp.weekly_structure && Array.isArray(tp.weekly_structure) && tp.weekly_structure.length > 0) {
-        workoutType = tp.weekly_structure[0].type || null;
-        workoutFocus = tp.weekly_structure[0].focus || null;
-      }
-      if (!workoutType) {
-        // Guess from title/goal keywords
-        const text = (tp.title + ' ' + (tp.goal || '')).toLowerCase();
-        if (text.includes('recovery') || text.includes('mobility') || text.includes('rest')) workoutType = 'recovery';
-        else if (text.includes('run') || text.includes('pacing')) workoutType = 'run';
-        else if (text.includes('strength') || text.includes('upper') || text.includes('push') || text.includes('pull')) workoutType = 'strength';
-        else if (text.includes('hill') || text.includes('spartan') || text.includes('obstacle') || text.includes('outdoor')) workoutType = 'hill';
-        else if (text.includes('hybrid') || text.includes('spin')) workoutType = 'hybrid';
-        else if (text.includes('ruck')) workoutType = 'ruck';
-        else workoutType = 'custom';
-      }
-      if (!workoutFocus) workoutFocus = workoutDesc || null;
-
-      // Determine status — recovery plans as rest
-      const isRest = workoutType === 'recovery' && (tp.goal || '').toLowerCase().includes('recovery');
-      const status = isRest ? 'rest' : 'planned';
-
-      // Insert daily plan
-      const { rows: [created] } = await query(`
-        INSERT INTO daily_plans (plan_date, training_plan_id, status, title, goal, workout_type, workout_focus,
-          workout_notes, coaching_notes, rationale, tags, ai_source, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        RETURNING *
-      `, [
-        planDate, tp.id, status, tp.title || null, tp.goal || null,
-        workoutType, workoutFocus,
-        tp.constraints || null,
-        tp.progression_notes || null,
-        tp.rationale || null,
-        tp.tags || '[]',
-        tp.ai_source || 'chatgpt',
-        JSON.stringify({ migrated_from: 'training_plan', phase: tp.phase, intensity_scheme: tp.intensity_scheme }),
-      ]);
-
-      // Archive the training plan
-      await query(`UPDATE training_plans SET status = 'archived' WHERE id = $1`, [tp.id]);
-
-      migrated++;
-      archived++;
-      results.push({ date: planDate, title: tp.title, action: 'migrated', daily_plan_id: created.id, workout_type: workoutType });
-    }
-
-    await logActivity('daily_plans_migrated', 'daily_plan', null, null,
-      `Migrated ${migrated} training plans to daily plans, archived ${archived}, skipped ${skipped}`);
-
-    res.json({ migrated, skipped, archived, total_found: plans.length, results });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// (migrate-from-training-plans route removed — training_plans table dropped)
 
 module.exports = router;

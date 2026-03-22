@@ -69,7 +69,7 @@ const purgeState = { running: false, progress: null, result: null };
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_nutrition_context', 'training_plans', 'coaching_sessions', 'injuries', 'daily_plans'];
+    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_context', 'coaching_sessions', 'injuries', 'daily_plans'];
     const requested = req.body.databases || allowed;
     const targets = requested.filter(d => allowed.includes(d));
     if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
@@ -118,6 +118,7 @@ app.use('/api/workouts', workoutRoutes);
 app.use('/api/body-metrics', bodyMetricsRoutes);
 app.use('/api/meals', mealsRoutes);
 app.use('/api/nutrition', nutritionRoutes);
+app.use('/api/daily-context', nutritionRoutes); // alias: /api/daily-context → nutrition router (daily-context endpoints)
 app.use('/api/training', trainingRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
@@ -205,7 +206,7 @@ async function start() {
             query(`SELECT COUNT(*)::int AS n FROM workouts WHERE workout_date = CURRENT_DATE`),
             query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status = 'done' AND updated_at::date = CURRENT_DATE`),
             query(`SELECT COUNT(*)::int AS n FROM meals WHERE meal_date = CURRENT_DATE`),
-            query(`SELECT COUNT(*)::int AS n FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
+            query(`SELECT COUNT(*)::int AS n FROM daily_context WHERE date = CURRENT_DATE`),
             query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status IN ('todo', 'in_progress') AND (due_date IS NULL OR due_date <= CURRENT_DATE)`),
           ]);
           const train = trainR.rows[0].n;
@@ -220,7 +221,7 @@ async function start() {
           const trainDone = train >= tG;
           const execDone = exec >= eG;
           // Check sleep logged
-          const sleepR = await query(`SELECT sleep_hours FROM daily_nutrition_context WHERE date = CURRENT_DATE`);
+          const sleepR = await query(`SELECT sleep_hours FROM daily_context WHERE date = CURRENT_DATE`);
           const sleepLogged = sleepR.rows[0]?.sleep_hours != null;
           const recoverDone = ((sleepLogged ? 1 : 0) + (meals >= 2 ? 1 : 0) + (ctx > 0 ? 1 : 0)) >= rG;
 
