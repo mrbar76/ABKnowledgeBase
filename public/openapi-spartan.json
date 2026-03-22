@@ -123,9 +123,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "text"
-                ],
                 "properties": {
                   "text": {
                     "type": "string",
@@ -133,6 +130,10 @@
                   },
                   "ai_source": {
                     "type": "string"
+                  },
+                  "input": {
+                    "type": "string",
+                    "description": "Raw text to classify and store (alias for 'text')"
                   }
                 }
               }

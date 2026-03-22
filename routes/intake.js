@@ -68,10 +68,11 @@ async function classify(userMessage) {
 
 router.post('/', async (req, res) => {
   try {
-    const { input, source, context } = req.body;
-    if (!input || !input.trim()) return res.status(400).json({ error: 'input is required' });
+    const { input, text, source, context } = req.body;
+    const rawInput = input || text;
+    if (!rawInput || !rawInput.trim()) return res.status(400).json({ error: 'input is required' });
 
-    let userMessage = input.trim();
+    let userMessage = rawInput.trim();
     if (context) userMessage = `Context: ${context}\n\n${userMessage}`;
     if (source) userMessage = `[Source: ${source}]\n\n${userMessage}`;
 
@@ -84,7 +85,7 @@ router.post('/', async (req, res) => {
       const result = await query(
         `INSERT INTO tasks (title, description, status, priority, ai_agent, context)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [classification.title || input.substring(0, 80), input,
+        [classification.title || rawInput.substring(0, 80), rawInput,
          classification.status || 'todo', classification.priority || 'medium', aiSource,
          classification.context || null]
       );
@@ -93,8 +94,8 @@ router.post('/', async (req, res) => {
       const result = await query(
         `INSERT INTO transcripts (title, raw_text, summary, source, tags)
          VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id`,
-        [classification.title || input.substring(0, 80), input,
-         classification.summary || input.substring(0, 2000),
+        [classification.title || rawInput.substring(0, 80), rawInput,
+         classification.summary || rawInput.substring(0, 2000),
          aiSource || 'manual', JSON.stringify(classification.tags || [])]
       );
       rowId = result.rows[0].id;
@@ -102,14 +103,14 @@ router.post('/', async (req, res) => {
       const result = await query(
         `INSERT INTO knowledge (title, content, category, tags, source, ai_source)
          VALUES ($1, $2, $3, $4::jsonb, $5, $6) RETURNING id`,
-        [classification.title || input.substring(0, 80), input,
+        [classification.title || rawInput.substring(0, 80), rawInput,
          classification.category || 'general', JSON.stringify(classification.tags || []),
          aiSource || 'api', aiSource]
       );
       rowId = result.rows[0].id;
     }
 
-    await logActivity('create', db, rowId, aiSource, `Smart intake: ${classification.title || input.substring(0, 60)}`);
+    await logActivity('create', db, rowId, aiSource, `Smart intake: ${classification.title || rawInput.substring(0, 60)}`);
     const intakeJob = syncStatus.startJob('intake', `Intake: ${classification.title || 'item'}`);
     syncStatus.completeJob('intake', intakeJob, { imported: 1, details: { database: db, ai_source: aiSource } });
 
