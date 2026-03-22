@@ -699,6 +699,78 @@ body {
 .macro-grid .stat-value { font-size: 1.3rem; }
 .macro-grid .stat-label { font-size: 0.68rem; }
 
+/* --- Macro Dashboard (Nutrition) --- */
+.macro-dashboard { padding: 14px; }
+.intensity-badge {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+  padding: 4px 12px; border-radius: 20px; cursor: pointer;
+  font-family: var(--font-data);
+  transition: all 0.2s;
+}
+.intensity-badge:hover { filter: brightness(1.2); }
+
+.calorie-bar-wrap { padding: 0 2px; }
+.calorie-bar-track {
+  height: 10px; border-radius: 5px;
+  background: rgba(255,255,255,0.08);
+  overflow: visible; position: relative;
+}
+.calorie-bar-fill {
+  height: 100%; border-radius: 5px;
+  transition: width 0.5s ease, background 0.3s;
+  max-width: 115%;
+}
+
+.macro-chart-row {
+  display: flex; align-items: center; gap: 16px;
+}
+.macro-chart-wrap {
+  position: relative; width: 120px; min-width: 120px; height: 120px;
+}
+.macro-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+.macro-chart-center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center; font-size: 1.1rem; font-weight: 700;
+  line-height: 1.2; pointer-events: none;
+}
+.macro-chart-center .text-micro { font-weight: 400; opacity: 0.6; }
+
+.macro-bars-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.macro-bar-row { display: flex; align-items: center; gap: 8px; }
+.macro-bar-label {
+  width: 16px; font-size: 0.75rem; font-weight: 700;
+  font-family: var(--font-data); color: var(--text-dim); text-align: center;
+}
+.macro-bar-track {
+  flex: 1; height: 8px; border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  position: relative; overflow: visible;
+}
+.macro-bar-zone {
+  position: absolute; top: 0; height: 100%; border-radius: 4px;
+  background: rgba(255,255,255,0.06); pointer-events: none;
+}
+.macro-bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width 0.5s ease;
+  max-width: 115%; position: relative; z-index: 1;
+}
+.macro-bar-value {
+  width: 72px; font-size: 0.7rem; text-align: right;
+  color: var(--text-dim); white-space: nowrap;
+}
+.macro-legend {
+  display: flex; gap: 12px; font-size: 0.68rem; font-family: var(--font-data);
+  font-weight: 600; padding-left: 24px;
+}
+
+@media (max-width: 380px) {
+  .macro-chart-row { flex-direction: column; }
+  .macro-chart-wrap { width: 110px; min-width: 110px; height: 110px; margin: 0 auto; }
+  .macro-bars-wrap { width: 100%; }
+}
+
 /* --- Dashboard Sections --- */
 .dash-section {
   background: var(--bg-card);

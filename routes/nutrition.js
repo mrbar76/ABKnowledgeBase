@@ -171,8 +171,52 @@ router.delete('/daily-context/:id', async (req, res) => {
 // DAILY SUMMARY — computed from meals, merged with context
 // ═══════════════════════════════════════════════════════════════
 
+const HARD_TYPES = new Set(['hill','hybrid','ruck','hiit','crossfit','boxing','race']);
+const MOD_TYPES  = new Set(['strength','run','cycling','swim','rowing','class','hike']);
+
+function classifyWorkoutType(type) {
+  const t = (type || '').toLowerCase().trim();
+  if (HARD_TYPES.has(t)) return 'hard';
+  if (MOD_TYPES.has(t)) return 'moderate';
+  return 'rest';
+}
+
+const TIER_RANK = { hard: 3, moderate: 2, rest: 1 };
+
+function classifyIntensity(dayType, workouts, planStructure, targetDate) {
+  // Priority 1: actual workouts logged
+  if (workouts && workouts.length > 0) {
+    let best = 'rest';
+    for (const w of workouts) {
+      const tier = classifyWorkoutType(w.workout_type);
+      if (TIER_RANK[tier] > TIER_RANK[best]) best = tier;
+    }
+    return { intensity_tier: best, intensity_source: 'workout', planned_type: workouts[0].workout_type };
+  }
+
+  // Priority 2: training plan weekly_structure
+  if (planStructure && planStructure.length > 0) {
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const dow = dayNames[new Date(targetDate + 'T12:00:00').getDay()].toLowerCase();
+    const match = planStructure.find(d => (d.day || d.name || '').toLowerCase().startsWith(dow));
+    if (match && match.type) {
+      const tier = classifyWorkoutType(match.type);
+      return { intensity_tier: tier, intensity_source: 'plan', planned_type: match.type };
+    }
+  }
+
+  // Priority 3: manual day_type from context
+  if (dayType) {
+    const tier = classifyWorkoutType(dayType);
+    return { intensity_tier: tier, intensity_source: 'context', planned_type: dayType };
+  }
+
+  // Default
+  return { intensity_tier: 'moderate', intensity_source: 'default', planned_type: null };
+}
+
 async function buildDailySummary(targetDate) {
-  const [mealsResult, contextResult] = await Promise.all([
+  const [mealsResult, contextResult, workoutsResult, planResult] = await Promise.all([
     query(
       `SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST, created_at ASC`,
       [targetDate]
@@ -181,10 +225,30 @@ async function buildDailySummary(targetDate) {
       `SELECT * FROM daily_nutrition_context WHERE date = $1`,
       [targetDate]
     ),
+    query(
+      `SELECT workout_type, effort FROM workouts WHERE workout_date = $1`,
+      [targetDate]
+    ),
+    query(
+      `SELECT weekly_structure FROM training_plans WHERE status = 'active'
+       AND (start_date IS NULL OR start_date <= $1)
+       AND (end_date IS NULL OR end_date >= $1)
+       ORDER BY created_at DESC LIMIT 1`,
+      [targetDate]
+    ),
   ]);
 
   const meals = mealsResult.rows;
   const context = contextResult.rows[0] || null;
+  const workouts = workoutsResult.rows;
+  const plan = planResult.rows[0] || null;
+
+  const intensity = classifyIntensity(
+    context?.day_type,
+    workouts,
+    plan?.weekly_structure,
+    targetDate
+  );
 
   // Aggregate macros from meals
   const totals = {
@@ -216,6 +280,8 @@ async function buildDailySummary(targetDate) {
   return {
     date: targetDate,
     ...totals,
+    ...intensity,
+    workouts_today: workouts,
     context: context ? {
       id: context.id,
       day_type: context.day_type,

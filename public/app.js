@@ -3345,6 +3345,149 @@ async function deleteWorkout(id) {
 // ─── Nutrition (Meals + Daily Context + Summary) ──────────────
 let nutritionDate = new Date().toISOString().slice(0, 10);
 
+const MACRO_GOALS = {
+  hard:     { cal: [2700, 2900], p: [140, 150], c: [275, 325], f: [70, 90] },
+  moderate: { cal: [2300, 2500], p: [140, 150], c: [200, 250], f: [70, 85] },
+  rest:     { cal: [2000, 2200], p: [140, 150], c: [150, 200], f: [65, 80] },
+};
+
+function getMacroTarget(tier) {
+  const g = MACRO_GOALS[tier] || MACRO_GOALS.moderate;
+  return {
+    cal: Math.round((g.cal[0] + g.cal[1]) / 2), calRange: g.cal,
+    p: Math.round((g.p[0] + g.p[1]) / 2), pRange: g.p,
+    c: Math.round((g.c[0] + g.c[1]) / 2), cRange: g.c,
+    f: Math.round((g.f[0] + g.f[1]) / 2), fRange: g.f,
+  };
+}
+
+let _macroChart = null;
+let _currentTierOverride = null;
+
+function buildMacroBar(label, actual, goalRange, color) {
+  const mid = Math.round((goalRange[0] + goalRange[1]) / 2);
+  const pct = mid > 0 ? Math.min((actual / mid) * 100, 115) : 0;
+  const inRange = actual >= goalRange[0] && actual <= goalRange[1];
+  const over = actual > goalRange[1];
+  const fillColor = over ? '#ef4444' : color;
+  const zoneLeft = mid > 0 ? (goalRange[0] / mid * 100) : 0;
+  const zoneWidth = mid > 0 ? ((goalRange[1] - goalRange[0]) / mid * 100) : 0;
+  return `<div class="macro-bar-row">
+    <div class="macro-bar-label">${label}</div>
+    <div class="macro-bar-track">
+      <div class="macro-bar-zone" style="left:${zoneLeft}%;width:${zoneWidth}%"></div>
+      <div class="macro-bar-fill" style="width:${pct}%;background:${fillColor}"></div>
+    </div>
+    <div class="macro-bar-value font-data">${Math.round(actual)}/${mid}g</div>
+  </div>`;
+}
+
+function buildMacroDashboard(summary) {
+  const tier = _currentTierOverride || summary.intensity_tier || 'moderate';
+  const src = _currentTierOverride ? 'override' : (summary.intensity_source || 'default');
+  const planned = summary.planned_type;
+  const goals = getMacroTarget(tier);
+
+  const calActual = summary.total_calories || 0;
+  const calPct = goals.cal > 0 ? Math.min((calActual / goals.cal) * 100, 115) : 0;
+  const calOver = calActual > goals.calRange[1];
+  const calColor = calOver ? '#ef4444' : calActual >= goals.calRange[0] ? '#10b981' : '#f59e0b';
+
+  const badgeColors = { hard: '#ef4444', moderate: '#f59e0b', rest: '#10b981' };
+  const badgeColor = badgeColors[tier] || '#f59e0b';
+  const sourceLabel = src === 'workout' ? `workout: ${planned}`
+    : src === 'plan' ? `plan: ${planned}`
+    : src === 'context' ? `set: ${planned}`
+    : src === 'override' ? 'manual'
+    : 'default';
+
+  const pCal = (summary.total_protein_g || 0) * 4;
+  const cCal = (summary.total_carbs_g || 0) * 4;
+  const fCal = (summary.total_fat_g || 0) * 9;
+  const totalMacroCal = pCal + cCal + fCal;
+  const pPct = totalMacroCal > 0 ? Math.round(pCal / totalMacroCal * 100) : 0;
+  const cPct = totalMacroCal > 0 ? Math.round(cCal / totalMacroCal * 100) : 0;
+  const fPct = totalMacroCal > 0 ? Math.round(fCal / totalMacroCal * 100) : 0;
+
+  return `<div class="macro-dashboard card mb-md">
+    <div class="flex-between mb-sm">
+      <button class="intensity-badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44"
+        onclick="cycleMacroTier()" title="Tap to change">
+        ${tier.toUpperCase()} DAY
+      </button>
+      <span class="text-micro text-dim">${sourceLabel}</span>
+    </div>
+
+    <div class="calorie-bar-wrap mb-sm">
+      <div class="flex-between mb-xs">
+        <span class="text-micro text-dim">Calories</span>
+        <span class="font-data" style="font-size:0.85rem;color:${calColor}">${Math.round(calActual)} / ${goals.cal}</span>
+      </div>
+      <div class="calorie-bar-track">
+        <div class="calorie-bar-fill" style="width:${calPct}%;background:${calColor}"></div>
+      </div>
+    </div>
+
+    <div class="macro-chart-row">
+      <div class="macro-chart-wrap">
+        <canvas id="macro-chart"></canvas>
+        <div class="macro-chart-center font-data">${totalMacroCal > 0 ? Math.round(calActual) : '—'}<br><span class="text-micro">kcal</span></div>
+      </div>
+      <div class="macro-bars-wrap">
+        ${buildMacroBar('P', summary.total_protein_g || 0, goals.pRange, '#3b82f6')}
+        ${buildMacroBar('C', summary.total_carbs_g || 0, goals.cRange, '#f59e0b')}
+        ${buildMacroBar('F', summary.total_fat_g || 0, goals.fRange, '#ef4444')}
+        <div class="macro-legend mt-xs">
+          <span style="color:#3b82f6">${pPct}% P</span>
+          <span style="color:#f59e0b">${cPct}% C</span>
+          <span style="color:#ef4444">${fPct}% F</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderMacroChart(summary) {
+  if (_macroChart) { _macroChart.destroy(); _macroChart = null; }
+  const el = document.getElementById('macro-chart');
+  if (!el) return;
+  const p = (summary.total_protein_g || 0) * 4;
+  const c = (summary.total_carbs_g || 0) * 4;
+  const f = (summary.total_fat_g || 0) * 9;
+  if (p + c + f === 0) {
+    // Empty state: single gray ring
+    _macroChart = new Chart(el, {
+      type: 'doughnut',
+      data: { datasets: [{ data: [1], backgroundColor: ['rgba(255,255,255,0.1)'], borderWidth: 0 }] },
+      options: { cutout: '70%', plugins: { legend: { display: false }, tooltip: { enabled: false } }, responsive: true, maintainAspectRatio: true, events: [] }
+    });
+    return;
+  }
+  _macroChart = new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: ['Protein','Carbs','Fat'],
+      datasets: [{ data: [p, c, f], backgroundColor: ['#3b82f6','#f59e0b','#ef4444'], borderWidth: 0 }]
+    },
+    options: {
+      cutout: '70%',
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => `${ctx.label}: ${Math.round(ctx.parsed)}cal (${Math.round(ctx.parsed / (p+c+f) * 100)}%)` }
+      }},
+      responsive: true,
+      maintainAspectRatio: true,
+    }
+  });
+}
+
+function cycleMacroTier() {
+  const tiers = ['hard', 'moderate', 'rest'];
+  const current = _currentTierOverride || 'moderate';
+  const idx = tiers.indexOf(current);
+  _currentTierOverride = tiers[(idx + 1) % tiers.length];
+  loadNutrition();
+}
+
 async function loadNutrition(date) {
   if (date) nutritionDate = date;
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
@@ -3371,12 +3514,7 @@ async function loadNutrition(date) {
         <button class="btn-action btn-icon" onclick="loadNutrition(shiftDate(nutritionDate,1))">&gt;</button>
       </div>
 
-      <div class="macro-grid">
-        <div class="stat-card"><div class="stat-value">${summary.total_calories}</div><div class="stat-label">Calories</div></div>
-        <div class="stat-card"><div class="stat-value">${summary.total_protein_g}g</div><div class="stat-label">Protein</div></div>
-        <div class="stat-card"><div class="stat-value">${summary.total_carbs_g}g</div><div class="stat-label">Carbs</div></div>
-        <div class="stat-card"><div class="stat-value">${summary.total_fat_g}g</div><div class="stat-label">Fat</div></div>
-      </div>
+      ${buildMacroDashboard(summary)}
 
       ${ctx ? `
       <div class="card mb-md" style="padding:10px;font-size:0.8rem">
@@ -3429,6 +3567,8 @@ async function loadNutrition(date) {
         }).join('') : '<div class="empty-state">No meals logged. Tap "+ Meal" to add one!</div>'}
       </div>
     `;
+    renderMacroChart(summary);
+    if (window.lucide) lucide.createIcons();
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
