@@ -308,37 +308,7 @@ async function initDB() {
 
   // ===== TRAINING PLANS =====
   await safeQuery('training_plans table', `
-    CREATE TABLE IF NOT EXISTS training_plans (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      title TEXT NOT NULL,
-      plan_type TEXT DEFAULT 'block' CHECK(plan_type IN ('block','mesocycle','microcycle','deload','race_prep','rehab','custom')),
-      status TEXT DEFAULT 'active' CHECK(status IN ('draft','active','completed','paused','archived')),
-      goal TEXT,
-      start_date DATE,
-      end_date DATE,
-      weeks INTEGER,
-      phase TEXT,
-      weekly_structure JSONB DEFAULT '[]'::jsonb,
-      intensity_scheme TEXT,
-      progression_notes TEXT,
-      rationale TEXT,
-      constraints TEXT,
-      tags JSONB DEFAULT '[]'::jsonb,
-      ai_source TEXT,
-      metadata JSONB DEFAULT '{}'::jsonb,
-      search_vector TSVECTOR,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-  await safeQuery('training_plans indexes', `
-    CREATE INDEX IF NOT EXISTS idx_training_plans_status ON training_plans(status);
-    CREATE INDEX IF NOT EXISTS idx_training_plans_type ON training_plans(plan_type);
-    CREATE INDEX IF NOT EXISTS idx_training_plans_dates ON training_plans(start_date, end_date);
-    CREATE INDEX IF NOT EXISTS idx_training_plans_tags ON training_plans USING gin(tags);
-    CREATE INDEX IF NOT EXISTS idx_training_plans_search ON training_plans USING gin(search_vector);
-    CREATE INDEX IF NOT EXISTS idx_training_plans_trgm ON training_plans USING gin(
-      (coalesce(title,'') || ' ' || coalesce(goal,'') || ' ' || coalesce(rationale,'') || ' ' || coalesce(progression_notes,'')) gin_trgm_ops
-    )`);
+    SELECT 1`); // training_plans table removed — all planning now uses daily_plans
 
   // ===== COACHING SESSIONS =====
   await safeQuery('coaching_sessions table', `
@@ -355,7 +325,6 @@ async function initDB() {
       mental_notes TEXT,
       next_steps TEXT,
       data_reviewed JSONB DEFAULT '{}'::jsonb,
-      training_plan_id UUID REFERENCES training_plans(id) ON DELETE SET NULL,
       conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
       ai_source TEXT DEFAULT 'chatgpt',
       tags JSONB DEFAULT '[]'::jsonb,
@@ -378,7 +347,6 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS daily_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_date DATE NOT NULL UNIQUE,
-      training_plan_id UUID REFERENCES training_plans(id) ON DELETE SET NULL,
       status TEXT DEFAULT 'planned' CHECK(status IN ('planned','completed','partial','missed','rest','amended')),
       title TEXT,
       goal TEXT,
@@ -634,6 +602,11 @@ async function initDB() {
   // -- daily_plans: add title + goal columns (unified plan concept) --
   await safeQuery('daily_plans +title', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS title TEXT`);
   await safeQuery('daily_plans +goal', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS goal TEXT`);
+
+  // -- remove training_plan_id FKs and drop training_plans table --
+  await safeQuery('daily_plans drop training_plan_id', `ALTER TABLE daily_plans DROP COLUMN IF EXISTS training_plan_id`);
+  await safeQuery('coaching drop training_plan_id', `ALTER TABLE coaching_sessions DROP COLUMN IF EXISTS training_plan_id`);
+  await safeQuery('drop training_plans', `DROP TABLE IF EXISTS training_plans CASCADE`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
