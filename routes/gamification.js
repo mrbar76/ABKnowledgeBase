@@ -213,7 +213,7 @@ router.get('/', async (req, res) => {
       const missing = [];
       if (mealsCount === 0) missing.push('meals');
       else if (mealsCount < 3) missing.push(`only ${mealsCount} meal${mealsCount > 1 ? 's' : ''} logged`);
-      if (ctxCount === 0) missing.push('daily context');
+      if (!ctxRow.sleep_hours && !ctxRow.hydration_liters) missing.push('daily context');
       nudges.push({ type: 'warning', ring: 'recover', message: missing.length ? `Missing: ${missing.join(', ')}` : `Recovery ${recoverCount}/${goals.ring_recover_goal}` });
     }
     if (rings.train.percent >= 100 && rings.execute.percent >= 100 && rings.recover.percent >= 100) {
