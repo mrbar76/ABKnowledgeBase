@@ -120,15 +120,18 @@ router.get('/', async (req, res) => {
       query(`SELECT COUNT(*)::int AS n FROM workouts WHERE workout_date = CURRENT_DATE`),
       query(`SELECT COUNT(*)::int AS n FROM tasks WHERE status = 'done' AND updated_at::date = CURRENT_DATE`),
       query(`SELECT COUNT(*)::int AS n FROM meals WHERE meal_date = CURRENT_DATE`),
-      query(`SELECT COUNT(*)::int AS n FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
+      query(`SELECT sleep_hours, hydration_liters FROM daily_nutrition_context WHERE date = CURRENT_DATE`),
     ]);
 
     const trainCount = trainR.rows[0].n;
     const executeCount = executeR.rows[0].n;
     const mealsCount = mealsR.rows[0].n;
-    const ctxCount = ctxR.rows[0].n;
-    // Recover: meals logged + context filled. Goal is e.g. 3 = at least 2 meals + context, or 3 meals + context
-    const recoverCount = mealsCount + ctxCount;
+    const ctxRow = ctxR.rows[0] || {};
+    // Recover: sleep logged + 2+ meals + hydration logged
+    const sleepLogged = ctxRow.sleep_hours != null ? 1 : 0;
+    const mealsOk = mealsCount >= 2 ? 1 : 0;
+    const hydrationLogged = ctxRow.hydration_liters != null ? 1 : 0;
+    const recoverCount = sleepLogged + mealsOk + hydrationLogged;
 
     const rings = {
       train: { current: trainCount, goal: goals.ring_train_goal, percent: Math.min(100, Math.round((trainCount / Math.max(1, goals.ring_train_goal)) * 100)) },

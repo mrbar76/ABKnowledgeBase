@@ -11,7 +11,7 @@ function validateContext(b) {
   const errors = [];
   if (!b.date) errors.push('date is required');
   if (b.day_type && !DAY_TYPES.includes(b.day_type)) errors.push(`day_type must be one of: ${DAY_TYPES.join(', ')}`);
-  for (const f of ['energy_rating', 'hunger_rating']) {
+  for (const f of ['energy_rating', 'hunger_rating', 'sleep_quality', 'recovery_rating']) {
     if (b[f] != null && b[f] !== '') {
       const v = Number(b[f]);
       if (!Number.isInteger(v) || v < 1 || v > 10) errors.push(`${f} must be an integer 1-10`);
@@ -19,6 +19,14 @@ function validateContext(b) {
   }
   if (b.hydration_liters != null && b.hydration_liters !== '' && (isNaN(Number(b.hydration_liters)) || Number(b.hydration_liters) < 0)) {
     errors.push('hydration_liters must be a non-negative number');
+  }
+  if (b.sleep_hours != null && b.sleep_hours !== '') {
+    const v = Number(b.sleep_hours);
+    if (isNaN(v) || v < 0 || v > 24) errors.push('sleep_hours must be 0-24');
+  }
+  if (b.body_weight_lb != null && b.body_weight_lb !== '') {
+    const v = Number(b.body_weight_lb);
+    if (isNaN(v) || v <= 0) errors.push('body_weight_lb must be a positive number');
   }
   return errors;
 }
@@ -80,8 +88,9 @@ router.post('/daily-context', async (req, res) => {
     const result = await query(
       `INSERT INTO daily_nutrition_context (
         date, day_type, hydration_liters, energy_rating, hunger_rating,
+        sleep_hours, sleep_quality, recovery_rating, body_weight_lb,
         cravings, digestion, notes, tags
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *`,
       [
         b.date,
@@ -89,6 +98,10 @@ router.post('/daily-context', async (req, res) => {
         num(b.hydration_liters),
         int(b.energy_rating),
         int(b.hunger_rating),
+        num(b.sleep_hours),
+        int(b.sleep_quality),
+        int(b.recovery_rating),
+        num(b.body_weight_lb),
         b.cravings || null,
         b.digestion || null,
         b.notes || null,
@@ -117,10 +130,11 @@ router.patch('/daily-context/:id', async (req, res) => {
 
     const allowed = [
       'date', 'day_type', 'hydration_liters', 'energy_rating', 'hunger_rating',
+      'sleep_hours', 'sleep_quality', 'recovery_rating', 'body_weight_lb',
       'cravings', 'digestion', 'notes', 'tags',
     ];
-    const numericFields = ['hydration_liters'];
-    const intFields = ['energy_rating', 'hunger_rating'];
+    const numericFields = ['hydration_liters', 'sleep_hours', 'body_weight_lb'];
+    const intFields = ['energy_rating', 'hunger_rating', 'sleep_quality', 'recovery_rating'];
 
     for (const key of allowed) {
       if (b[key] !== undefined) {
@@ -288,6 +302,10 @@ async function buildDailySummary(targetDate) {
       hydration_liters: context.hydration_liters,
       energy_rating: context.energy_rating,
       hunger_rating: context.hunger_rating,
+      sleep_hours: context.sleep_hours,
+      sleep_quality: context.sleep_quality,
+      recovery_rating: context.recovery_rating,
+      body_weight_lb: context.body_weight_lb,
       cravings: context.cravings,
       digestion: context.digestion,
       notes: context.notes,

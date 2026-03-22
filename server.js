@@ -21,6 +21,7 @@ const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
 const outlookRoutes = require('./routes/outlook');
 const gamificationRoutes = require('./routes/gamification');
+const recoveryRoutes = require('./routes/recovery');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -119,6 +120,7 @@ app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
+app.use('/api/recovery', recoveryRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
@@ -215,12 +217,17 @@ async function start() {
           const rG = settings.ring_recover_goal;
           const trainDone = train >= tG;
           const execDone = exec >= eG;
-          const recoverDone = (meals + ctx) >= rG;
+          // Check sleep logged
+          const sleepR = await query(`SELECT sleep_hours FROM daily_nutrition_context WHERE date = CURRENT_DATE`);
+          const sleepLogged = sleepR.rows[0]?.sleep_hours != null;
+          const recoverDone = ((sleepLogged ? 1 : 0) + (meals >= 2 ? 1 : 0) + (ctx > 0 ? 1 : 0)) >= rG;
 
           switch (slot.type) {
             case 'morning_briefing':
               title = 'Morning Briefing';
-              body = `${pending} tasks pending. Rings: 0/0/0. Time to train and execute.`;
+              body = sleepLogged
+                ? `${pending} tasks pending. Time to train and execute.`
+                : `Log last night's sleep! ${pending} tasks pending.`;
               break;
             case 'pre_lunch':
               title = 'Midday Check';

@@ -755,6 +755,12 @@ async function initDB() {
   await safeQuery('injuries +search_vector', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('injuries +updated_at', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
+  // -- daily_nutrition_context recovery/sleep migrations --
+  await safeQuery('dnc +sleep_hours', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS sleep_hours NUMERIC(3,1)`);
+  await safeQuery('dnc +sleep_quality', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS sleep_quality INTEGER CHECK(sleep_quality >= 1 AND sleep_quality <= 10)`);
+  await safeQuery('dnc +recovery_rating', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS recovery_rating INTEGER CHECK(recovery_rating >= 1 AND recovery_rating <= 10)`);
+  await safeQuery('dnc +body_weight_lb', `ALTER TABLE daily_nutrition_context ADD COLUMN IF NOT EXISTS body_weight_lb NUMERIC(5,1)`);
+
   // (progress_checkins and progress_photos migrations removed)
 
   // Backfill search vectors for any existing rows

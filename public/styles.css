@@ -771,6 +771,63 @@ body {
   .macro-bars-wrap { width: 100%; }
 }
 
+/* --- Recovery Section --- */
+.recovery-score-hero {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  padding: 20px; min-height: 200px;
+}
+.recovery-score-ring { width: 160px; height: 160px; }
+.recovery-score-center {
+  position: absolute; text-align: center;
+}
+.recovery-score-number { font-size: 2.5rem; font-weight: 700; line-height: 1; }
+.recovery-score-label { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+
+.recovery-component-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 0;
+}
+.recovery-comp-label {
+  font-size: 0.72rem; color: var(--text-dim); min-width: 95px;
+}
+
+.muscle-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.muscle-card {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px; padding: 8px;
+}
+.muscle-status-badge {
+  font-size: 0.6rem; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+  text-transform: capitalize; font-family: var(--font-data);
+}
+
+.recovery-rec {
+  border-left: 3px solid var(--accent);
+}
+
+.recovery-trend {
+  display: flex; gap: 4px; align-items: flex-end; height: 80px;
+}
+.recovery-trend-bar {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  height: 100%; position: relative; justify-content: flex-end;
+}
+.recovery-trend-fill {
+  width: 100%; border-radius: 3px 3px 0 0; min-height: 2px;
+  transition: height 0.5s ease;
+}
+.recovery-trend-score {
+  font-size: 0.6rem; margin-top: 2px; color: var(--text-dim);
+}
+.recovery-trend-day {
+  font-size: 0.55rem; color: var(--text-dim); margin-top: 1px;
+}
+
+@media (max-width: 400px) {
+  .muscle-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 /* --- Dashboard Sections --- */
 .dash-section {
   background: var(--bg-card);

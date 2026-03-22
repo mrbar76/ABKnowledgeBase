@@ -157,7 +157,7 @@ function switchTab(tab) {
   main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the unified fitness tab
-  if (['workouts', 'nutrition', 'body', 'training'].includes(tab)) {
+  if (['workouts', 'nutrition', 'body', 'training', 'recovery'].includes(tab)) {
     fitnessSubTab = tab;
     tab = 'fitness';
     currentTab = 'fitness';
@@ -552,7 +552,7 @@ const RING_LABELS = { train: 'Train', execute: 'Execute', recover: 'Recover' };
 const RING_DESCRIPTIONS = {
   train: { what: 'Log workouts', how: 'Go to Fitness > Workouts and log a workout session', unit: 'workouts', min: 1, max: 5 },
   execute: { what: 'Complete tasks', how: 'Mark tasks as Done in the Tasks tab', unit: 'tasks', min: 1, max: 15 },
-  recover: { what: 'Log meals + daily context', how: 'Log meals in Fitness > Nutrition and fill in your daily context (sleep, hydration, energy)', unit: 'entries', min: 1, max: 10 },
+  recover: { what: 'Track recovery inputs', how: 'Log sleep, 2+ meals, and hydration in Fitness > Recovery or Nutrition', unit: 'actions', min: 1, max: 5 },
 };
 const RING_GOAL_KEYS = { train: 'ring_train_goal', execute: 'ring_execute_goal', recover: 'ring_recover_goal' };
 let _badgesOpen = false;
@@ -3031,6 +3031,7 @@ function loadFitness() {
     { key: 'nutrition', label: 'Nutrition', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18.06 22.99h1.66c.84 0 1.53-.64 1.63-1.46L23 5.05h-5V1h-1.97v4.05h-4.97l.3 2.34c1.71.47 3.31 1.32 4.27 2.26 1.44 1.42 2.43 2.89 2.43 5.29v8.05zM1 21.99V21h15.03v.99c0 .55-.45 1-1.01 1H2.01c-.56 0-1.01-.45-1.01-1zm15.03-7c0-4.5-6.83-5-9.52-5C3.92 9.99 1 10.99 1 14.99h15.03zm-15.03 2h15.03v2H1v-2z"/></svg>' },
     { key: 'body', label: 'Body', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>' },
     { key: 'training', label: 'Training', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' },
+    { key: 'recovery', label: 'Recovery', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -3042,6 +3043,7 @@ function loadFitness() {
   else if (fitnessSubTab === 'nutrition') loadNutrition();
   else if (fitnessSubTab === 'body') loadBodyMetrics();
   else if (fitnessSubTab === 'training') loadTraining();
+  else if (fitnessSubTab === 'recovery') loadRecovery();
 }
 
 // ─── Workouts ─────────────────────────────────────────────────
@@ -4370,6 +4372,178 @@ function openModal(title, bodyHtml) { document.getElementById('modal-title').tex
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 
 // ─── Training Tab ─────────────────────────────────────────────
+// ─── Recovery ──────────────────────────────────────────────────
+async function loadRecovery() {
+  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
+  main.innerHTML = skeletonCards(3);
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const [scoreData, trendData] = await Promise.all([
+      api(`/recovery/score?date=${today}`),
+      api('/recovery/trend?days=7'),
+    ]);
+
+    const s = scoreData;
+    const scoreColor = s.score >= 81 ? '#10b981' : s.score >= 61 ? '#f59e0b' : s.score >= 31 ? '#f97316' : '#ef4444';
+    const scoreRingPct = s.score;
+    const circumference = 2 * Math.PI * 70;
+    const offset = circumference - (scoreRingPct / 100) * circumference;
+
+    const statusColors = { fresh: '#10b981', recovering: '#f59e0b', fatigued: '#ef4444' };
+    const componentIcons = {
+      sleep: 'moon', training_load: 'activity', muscle_freshness: 'body',
+      injury: 'heart-pulse', nutrition: 'utensils', subjective: 'brain'
+    };
+    const componentLabels = {
+      sleep: 'Sleep', training_load: 'Training Load', muscle_freshness: 'Muscle Freshness',
+      injury: 'Injury Impact', nutrition: 'Nutrition', subjective: 'Subjective'
+    };
+
+    // Check if sleep is logged
+    const ctx = await api(`/nutrition/daily-context?date=${today}`);
+    const sleepLogged = ctx && ctx.sleep_hours != null;
+
+    main.innerHTML = `
+      <!-- Recovery Score Hero -->
+      <div class="recovery-score-hero card mb-md">
+        <svg viewBox="0 0 160 160" class="recovery-score-ring">
+          <circle cx="80" cy="80" r="70" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
+          <circle cx="80" cy="80" r="70" fill="none" stroke="${scoreColor}" stroke-width="10"
+            stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+            transform="rotate(-90 80 80)" style="transition: stroke-dashoffset 0.8s ease"/>
+        </svg>
+        <div class="recovery-score-center">
+          <div class="recovery-score-number font-data" style="color:${scoreColor}">${s.score}</div>
+          <div class="recovery-score-label">${s.label}</div>
+        </div>
+      </div>
+
+      <!-- Sleep Card -->
+      <div class="card mb-md" style="padding:12px">
+        <div class="flex-between mb-sm">
+          <strong style="font-size:0.85rem">Sleep</strong>
+          ${sleepLogged ? `<button class="btn-action btn-compact-sm" onclick="showSleepForm()" style="font-size:0.7rem;padding:2px 8px">Edit</button>` : ''}
+        </div>
+        ${sleepLogged ? `
+          <div class="flex-row-wrap text-dim" style="font-size:0.8rem">
+            <span class="font-data">${ctx.sleep_hours}h</span>
+            <span>Quality: ${ctx.sleep_quality || '—'}/10</span>
+            ${ctx.recovery_rating ? `<span>Recovery feel: ${ctx.recovery_rating}/10</span>` : ''}
+          </div>
+          <div class="calorie-bar-track mt-sm" style="height:6px">
+            <div class="calorie-bar-fill" style="width:${Math.min((ctx.sleep_hours / 8) * 100, 115)}%;background:${ctx.sleep_hours >= 7 ? '#10b981' : ctx.sleep_hours >= 6 ? '#f59e0b' : '#ef4444'}"></div>
+          </div>
+          <div class="text-micro text-dim mt-xs">${ctx.sleep_hours}h / 8h target</div>
+        ` : `
+          <div class="sleep-quick-form">
+            <div class="flex-row-wrap" style="gap:8px">
+              <div class="form-group" style="flex:1;min-width:80px;margin:0">
+                <label style="font-size:0.7rem">Hours</label>
+                <input type="number" id="sleep-hrs-quick" min="0" max="24" step="0.5" placeholder="7.5" style="padding:6px 8px">
+              </div>
+              <div class="form-group" style="flex:1;min-width:80px;margin:0">
+                <label style="font-size:0.7rem">Quality (1-10)</label>
+                <input type="number" id="sleep-q-quick" min="1" max="10" step="1" placeholder="7" style="padding:6px 8px">
+              </div>
+              <button class="btn-submit btn-compact-sm" onclick="saveSleepQuick()" style="align-self:flex-end;padding:6px 14px">Log</button>
+            </div>
+          </div>
+        `}
+      </div>
+
+      <!-- Score Breakdown -->
+      <div class="card mb-md" style="padding:12px">
+        <div class="flex-between mb-sm" onclick="document.getElementById('recovery-breakdown').classList.toggle('hidden')" style="cursor:pointer">
+          <strong style="font-size:0.85rem">Score Breakdown</strong>
+          <span class="text-dim" style="font-size:0.75rem">tap to expand</span>
+        </div>
+        <div id="recovery-breakdown" class="hidden">
+          ${Object.entries(s.components).map(([key, comp]) => `
+            <div class="recovery-component-row">
+              <span class="recovery-comp-label">${componentLabels[key] || key}</span>
+              <div class="macro-bar-track" style="flex:1;height:6px">
+                <div class="macro-bar-fill" style="width:${comp.score}%;background:${comp.score >= 70 ? '#10b981' : comp.score >= 40 ? '#f59e0b' : '#ef4444'}"></div>
+              </div>
+              <span class="font-data" style="font-size:0.7rem;min-width:28px;text-align:right">${comp.score}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Muscle Status Grid -->
+      <div class="card mb-md" style="padding:12px">
+        <strong style="font-size:0.85rem;display:block;margin-bottom:8px">Muscle Status</strong>
+        <div class="muscle-grid">
+          ${Object.entries(s.muscle_status).map(([key, m]) => {
+            const color = statusColors[m.status] || '#64748b';
+            return `
+            <div class="muscle-card" style="border-color:${color}33">
+              <div class="flex-between">
+                <span style="font-size:0.75rem;font-weight:600">${m.label}</span>
+                <span class="muscle-status-badge" style="background:${color}22;color:${color}">${m.status}</span>
+              </div>
+              <div class="macro-bar-track mt-xs" style="height:4px">
+                <div class="macro-bar-fill" style="width:${m.recovery_pct}%;background:${color}"></div>
+              </div>
+              <div class="text-micro text-dim mt-xs">${m.hours_since != null ? m.hours_since + 'h ago' : 'No recent load'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Recommendation -->
+      ${s.recommendation ? `
+      <div class="card mb-md recovery-rec" style="padding:10px;font-size:0.8rem">
+        <strong style="font-size:0.75rem;color:var(--accent);display:block;margin-bottom:4px">Recommendation</strong>
+        ${esc(s.recommendation)}
+      </div>` : ''}
+
+      <!-- 7-Day Trend -->
+      <div class="card mb-md" style="padding:12px">
+        <strong style="font-size:0.85rem;display:block;margin-bottom:8px">7-Day Trend</strong>
+        <div class="recovery-trend">
+          ${trendData.trend.map(d => {
+            const c = d.score >= 81 ? '#10b981' : d.score >= 61 ? '#f59e0b' : d.score >= 31 ? '#f97316' : '#ef4444';
+            const day = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+            return `<div class="recovery-trend-bar">
+              <div class="recovery-trend-fill" style="height:${d.score}%;background:${c}"></div>
+              <div class="recovery-trend-score font-data">${d.score}</div>
+              <div class="recovery-trend-day">${day}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
+  }
+}
+
+async function saveSleepQuick() {
+  const hrs = document.getElementById('sleep-hrs-quick')?.value;
+  const qual = document.getElementById('sleep-q-quick')?.value;
+  if (!hrs) return;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    // Check if context exists
+    const existing = await api(`/nutrition/daily-context?date=${today}`);
+    if (existing && existing.id) {
+      await api(`/nutrition/daily-context/${existing.id}`, 'PATCH', { sleep_hours: Number(hrs), sleep_quality: qual ? Number(qual) : null });
+    } else {
+      await api('/nutrition/daily-context', 'POST', { date: today, sleep_hours: Number(hrs), sleep_quality: qual ? Number(qual) : null });
+    }
+    loadRecovery();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+function showSleepForm() {
+  // Reuse the daily context form which already has sleep fields
+  showDailyContextForm(new Date().toISOString().slice(0, 10));
+}
+
 let trainingSubTab = 'plans';
 
 async function loadTraining() {
