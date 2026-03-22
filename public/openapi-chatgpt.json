@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate \u2192 Plan \u2192 Execute \u2192 Review \u2192 Repeat)\n\n### 1. EVALUATE \u2014 Review past performance\n- `GET /daily-plans/by-date/{yesterday}` \u2014 see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` \u2014 full context (workouts, nutrition, body, injuries, active plan, daily plan)\n- `GET /recovery/score` \u2014 today's recovery readiness\n\n### 2. PLAN \u2014 Set daily plans\n- `POST /daily-plans` \u2014 create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` \u2014 create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n\n### 3. EXECUTE \u2014 User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`, context via `POST /nutrition/daily-context`\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep + quality + recovery rating)\n\n### 4. REVIEW \u2014 End-of-day coaching review\n- `GET /daily-plans/{id}/review` \u2014 structured plan-vs-actual comparison\n- `POST /training/coaching` \u2014 save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND \u2014 Adjust plans based on progress\n- `PUT /daily-plans/{id}` \u2014 amend today's or future plans\n- `PUT /training/plans/{id}` \u2014 update the parent training plan if needed\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score \u2014 actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Nutrition checklist \u2014 protein target + calories in range + hydration target (0-3).\n- **Recover** (indigo): Recovery checklist \u2014 sleep hours + sleep quality + recovery/energy rating (0-3).\n- Targets cascade: daily plan \u2192 gamification settings defaults.\n- `GET /gamification` \u2014 today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create block/mesocycle plan: `POST /training/plans` \u2014 include goal, rationale, weekly_structure\n5. Generate daily plans from it: `POST /daily-plans/week` with training_plan_id\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate → Plan → Execute → Review → Repeat)\n\n### 1. EVALUATE — Review past performance\n- `GET /daily-plans/by-date/{yesterday}` — see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` — full context (workouts, nutrition, body, injuries, active plan, daily plan)\n- `GET /recovery/score` — today's recovery readiness\n\n### 2. PLAN — Set daily plans\n- `POST /daily-plans` — create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` — create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n\n### 3. EXECUTE — User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`, context via `POST /nutrition/daily-context`\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep + quality + recovery rating)\n\n### 4. REVIEW — End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` — plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` — save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND — Adjust plans based on progress\n- `PUT /daily-plans/{id}` — amend today's or future plans\n- `PUT /training/plans/{id}` — update the parent training plan if needed\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score — actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Nutrition checklist — protein target + calories in range + hydration target (0-3).\n- **Recover** (indigo): Recovery checklist — sleep hours + sleep quality + recovery/energy rating (0-3).\n- Targets cascade: daily plan → gamification settings defaults.\n- `GET /gamification` — today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create block/mesocycle plan: `POST /training/plans` — include goal, rationale, weekly_structure\n5. Generate daily plans from it: `POST /daily-plans/week` with training_plan_id\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -163,54 +163,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/knowledge/{id}": {
-      "put": {
-        "operationId": "updateKnowledge",
-        "summary": "Update a knowledge entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "content": {
-                    "type": "string"
-                  },
-                  "category": {
-                    "type": "string"
-                  },
-                  "tags": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated entry"
           }
         }
       }
@@ -435,40 +387,6 @@
         }
       }
     },
-    "/intake": {
-      "post": {
-        "operationId": "smartIntake",
-        "summary": "AI-powered smart intake \u2014 auto-classifies text into knowledge, fact, task, or transcript",
-        "description": "Send raw text and OpenAI will classify it and store it in the appropriate table automatically.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "text"
-                ],
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "description": "Raw text to classify and store"
-                  },
-                  "ai_source": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Classified and stored result"
-          }
-        }
-      }
-    },
     "/workouts": {
       "get": {
         "operationId": "listWorkouts",
@@ -583,7 +501,7 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "description": "Auto-generated if empty: 'Spartan Workout \u2013 DATE \u2013 TYPE'"
+                    "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'"
                   },
                   "workout_date": {
                     "type": "string",
@@ -763,7 +681,7 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "description": "Auto-generated if empty: 'Spartan Workout \u2013 DATE \u2013 TYPE'"
+                    "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'"
                   },
                   "workout_date": {
                     "type": "string",
@@ -1049,37 +967,6 @@
         }
       }
     },
-    "/body-metrics/{id}": {
-      "patch": {
-        "operationId": "updateBodyMetric",
-        "summary": "Update an existing body metric entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BodyMetricInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated body metric"
-          }
-        }
-      }
-    },
     "/meals": {
       "get": {
         "operationId": "listMeals",
@@ -1192,37 +1079,6 @@
         }
       }
     },
-    "/meals/{id}": {
-      "patch": {
-        "operationId": "updateMeal",
-        "summary": "Update an existing meal entry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MealInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated meal"
-          }
-        }
-      }
-    },
     "/nutrition/daily-context": {
       "get": {
         "operationId": "getDailyContext",
@@ -1279,37 +1135,6 @@
           },
           "409": {
             "description": "Context already exists for this date"
-          }
-        }
-      }
-    },
-    "/nutrition/daily-context/{id}": {
-      "patch": {
-        "operationId": "updateDailyContext",
-        "summary": "Update an existing daily nutrition context",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DailyContextInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated daily context"
           }
         }
       }
@@ -1891,18 +1716,94 @@
         "operationId": "listDailyPlans",
         "summary": "List daily plans with date range filters",
         "parameters": [
-          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Exact date to match" },
-          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Start date for range" },
-          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "End date for range" },
-          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["planned", "completed", "partial", "missed", "rest", "amended"] } },
-          { "name": "training_plan_id", "in": "query", "schema": { "type": "string", "format": "uuid" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
-          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Exact date to match"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date for range"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date for range"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "planned",
+                "completed",
+                "partial",
+                "missed",
+                "rest",
+                "amended"
+              ]
+            }
+          },
+          {
+            "name": "training_plan_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "List of daily plans",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "total": { "type": "integer" }, "results": { "type": "array", "items": { "$ref": "#/components/schemas/DailyPlan" } } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DailyPlan"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -1914,14 +1815,22 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/DailyPlanInput" }
+              "schema": {
+                "$ref": "#/components/schemas/DailyPlanInput"
+              }
             }
           }
         },
         "responses": {
           "201": {
             "description": "Created daily plan",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyPlan" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyPlan"
+                }
+              }
+            }
           },
           "409": {
             "description": "A plan already exists for this date. Use PUT to amend it."
@@ -1940,14 +1849,27 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["start_date", "days"],
+                "required": [
+                  "start_date",
+                  "days"
+                ],
                 "properties": {
-                  "start_date": { "type": "string", "format": "date", "description": "First day of the week (usually Monday)" },
-                  "training_plan_id": { "type": "string", "format": "uuid", "description": "Optional link to parent training plan" },
+                  "start_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "First day of the week (usually Monday)"
+                  },
+                  "training_plan_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional link to parent training plan"
+                  },
                   "days": {
                     "type": "array",
                     "description": "Array of 1-7 daily plan objects. Each gets consecutive dates starting from start_date.",
-                    "items": { "$ref": "#/components/schemas/DailyPlanInput" },
+                    "items": {
+                      "$ref": "#/components/schemas/DailyPlanInput"
+                    },
                     "minItems": 1,
                     "maxItems": 7
                   }
@@ -1959,7 +1881,24 @@
         "responses": {
           "201": {
             "description": "Created plans",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "created": { "type": "integer" }, "plans": { "type": "array", "items": { "$ref": "#/components/schemas/DailyPlan" } } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "created": {
+                      "type": "integer"
+                    },
+                    "plans": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DailyPlan"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1970,70 +1909,97 @@
         "summary": "Get daily plan + actual data + plan-vs-actual comparison + ring progress for a date",
         "description": "The key endpoint for the daily fitness workflow. Returns the plan, all actual logged data (workouts, meals, nutrition context, body metrics), a structured comparison, and ring progress calculations.",
         "parameters": [
-          { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "format": "date" }, "description": "Date in YYYY-MM-DD format" }
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date in YYYY-MM-DD format"
+          }
         ],
         "responses": {
           "200": {
             "description": "Plan + actual + comparison + ring progress",
-            "content": { "application/json": { "schema": { "type": "object", "properties": {
-              "plan": { "$ref": "#/components/schemas/DailyPlan" },
-              "actual": { "type": "object", "properties": { "workouts": { "type": "array" }, "meals": { "type": "array" }, "nutrition_context": { "type": "object" }, "body_metrics": { "type": "array" } } },
-              "comparison": { "type": "object", "description": "Actual vs target for effort, calories, protein, hydration, sleep" },
-              "ring_progress": { "type": "object", "description": "Train/Fuel/Recover ring percentages and hit/miss details" }
-            } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "$ref": "#/components/schemas/DailyPlan"
+                    },
+                    "actual": {
+                      "type": "object",
+                      "properties": {
+                        "workouts": {
+                          "type": "array"
+                        },
+                        "meals": {
+                          "type": "array"
+                        },
+                        "nutrition_context": {
+                          "type": "object"
+                        },
+                        "body_metrics": {
+                          "type": "array"
+                        }
+                      }
+                    },
+                    "comparison": {
+                      "type": "object",
+                      "description": "Actual vs target for effort, calories, protein, hydration, sleep"
+                    },
+                    "ring_progress": {
+                      "type": "object",
+                      "description": "Train/Fuel/Recover ring percentages and hit/miss details"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/daily-plans/{id}": {
-      "get": {
-        "operationId": "getDailyPlan",
-        "summary": "Get a single daily plan by ID",
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
-        ],
-        "responses": {
-          "200": { "description": "Daily plan", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyPlan" } } } }
-        }
-      },
       "put": {
         "operationId": "updateDailyPlan",
         "summary": "Amend/update a daily plan",
         "description": "Use this to adjust today's or future plans based on how things are going. Can change targets, status, notes, etc.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyPlanInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyPlanInput"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Updated plan", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyPlan" } } } }
-        }
-      },
-      "delete": {
-        "operationId": "deleteDailyPlan",
-        "summary": "Delete a daily plan",
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
-        ],
-        "responses": {
-          "200": { "description": "Deleted" }
-        }
-      }
-    },
-    "/daily-plans/{id}/review": {
-      "get": {
-        "operationId": "reviewDailyPlan",
-        "summary": "Get plan-vs-actual review data for coaching",
-        "description": "Returns the daily plan alongside all actual data for that date, a structured summary comparing plan targets vs actuals, and any coaching sessions already linked to this plan. Use this for end-of-day coaching reviews.",
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
-        ],
-        "responses": {
           "200": {
-            "description": "Review data with plan, actuals, summary, and coaching sessions",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "description": "Updated plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyPlan"
+                }
+              }
+            }
           }
         }
       }
@@ -2684,7 +2650,7 @@
           },
           "rationale": {
             "type": "string",
-            "description": "WHY this plan was chosen \u2014 training philosophy, injury avoidance, periodization reasoning"
+            "description": "WHY this plan was chosen — training philosophy, injury avoidance, periodization reasoning"
           },
           "constraints": {
             "type": "string",
@@ -3186,58 +3152,203 @@
       }
     },
     "DailyPlan": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "plan_date": { "type": "string", "format": "date" },
-          "training_plan_id": { "type": "string", "format": "uuid" },
-          "status": { "type": "string", "enum": ["planned", "completed", "partial", "missed", "rest", "amended"] },
-          "workout_type": { "type": "string", "description": "e.g. strength, run, hybrid, hill, recovery, ruck" },
-          "workout_focus": { "type": "string", "description": "e.g. upper push, legs, zone 2, full body" },
-          "target_effort": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Target effort rating. Train ring = actual effort / target effort." },
-          "target_duration_min": { "type": "integer", "description": "Target workout duration in minutes" },
-          "workout_notes": { "type": "string" },
-          "target_calories": { "type": "number", "description": "Target daily calories. Fuel ring checks actual within ±10%." },
-          "target_protein_g": { "type": "number", "description": "Target daily protein in grams. Fuel ring checks actual >= target." },
-          "target_carbs_g": { "type": "number" },
-          "target_fat_g": { "type": "number" },
-          "target_hydration_liters": { "type": "number", "description": "Target daily water intake in liters. Fuel ring checks actual >= target." },
-          "target_sleep_hours": { "type": "number", "description": "Target sleep hours. Recover ring checks actual >= target." },
-          "recovery_notes": { "type": "string" },
-          "coaching_notes": { "type": "string", "description": "Context from coaching session — why this plan was chosen" },
-          "rationale": { "type": "string", "description": "Training rationale for this day's plan" },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "ai_source": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "plan_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "training_plan_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "completed",
+            "partial",
+            "missed",
+            "rest",
+            "amended"
+          ]
+        },
+        "workout_type": {
+          "type": "string",
+          "description": "e.g. strength, run, hybrid, hill, recovery, ruck"
+        },
+        "workout_focus": {
+          "type": "string",
+          "description": "e.g. upper push, legs, zone 2, full body"
+        },
+        "target_effort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Target effort rating. Train ring = actual effort / target effort."
+        },
+        "target_duration_min": {
+          "type": "integer",
+          "description": "Target workout duration in minutes"
+        },
+        "workout_notes": {
+          "type": "string"
+        },
+        "target_calories": {
+          "type": "number",
+          "description": "Target daily calories. Fuel ring checks actual within ±10%."
+        },
+        "target_protein_g": {
+          "type": "number",
+          "description": "Target daily protein in grams. Fuel ring checks actual >= target."
+        },
+        "target_carbs_g": {
+          "type": "number"
+        },
+        "target_fat_g": {
+          "type": "number"
+        },
+        "target_hydration_liters": {
+          "type": "number",
+          "description": "Target daily water intake in liters. Fuel ring checks actual >= target."
+        },
+        "target_sleep_hours": {
+          "type": "number",
+          "description": "Target sleep hours. Recover ring checks actual >= target."
+        },
+        "recovery_notes": {
+          "type": "string"
+        },
+        "coaching_notes": {
+          "type": "string",
+          "description": "Context from coaching session — why this plan was chosen"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Training rationale for this day's plan"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ai_source": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
         }
-      },
-      "DailyPlanInput": {
-        "type": "object",
-        "required": ["plan_date"],
-        "properties": {
-          "plan_date": { "type": "string", "format": "date", "description": "Date for the plan (YYYY-MM-DD). Must be unique." },
-          "training_plan_id": { "type": "string", "format": "uuid", "description": "Optional link to parent training plan (mesocycle/block)" },
-          "status": { "type": "string", "enum": ["planned", "completed", "partial", "missed", "rest", "amended"], "default": "planned" },
-          "workout_type": { "type": "string", "description": "e.g. strength, run, hybrid, hill, recovery, ruck" },
-          "workout_focus": { "type": "string", "description": "e.g. upper push, legs, zone 2, full body" },
-          "target_effort": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Target effort 1-10. Higher = harder session." },
-          "target_duration_min": { "type": "integer", "description": "Target workout duration in minutes" },
-          "workout_notes": { "type": "string", "description": "Specific workout instructions or notes" },
-          "target_calories": { "type": "number", "description": "Target daily calories" },
-          "target_protein_g": { "type": "number", "description": "Target daily protein in grams" },
-          "target_carbs_g": { "type": "number", "description": "Target daily carbs in grams" },
-          "target_fat_g": { "type": "number", "description": "Target daily fat in grams" },
-          "target_hydration_liters": { "type": "number", "description": "Target daily water in liters" },
-          "target_sleep_hours": { "type": "number", "description": "Target sleep hours for the night before" },
-          "recovery_notes": { "type": "string", "description": "Recovery-specific notes (stretching, foam rolling, etc.)" },
-          "coaching_notes": { "type": "string", "description": "Context from coaching — why this plan" },
-          "rationale": { "type": "string", "description": "Training rationale" },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "ai_source": { "type": "string", "description": "chatgpt, claude, gemini, or manual" }
+      }
+    },
+    "DailyPlanInput": {
+      "type": "object",
+      "required": [
+        "plan_date"
+      ],
+      "properties": {
+        "plan_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date for the plan (YYYY-MM-DD). Must be unique."
+        },
+        "training_plan_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Optional link to parent training plan (mesocycle/block)"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "completed",
+            "partial",
+            "missed",
+            "rest",
+            "amended"
+          ],
+          "default": "planned"
+        },
+        "workout_type": {
+          "type": "string",
+          "description": "e.g. strength, run, hybrid, hill, recovery, ruck"
+        },
+        "workout_focus": {
+          "type": "string",
+          "description": "e.g. upper push, legs, zone 2, full body"
+        },
+        "target_effort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Target effort 1-10. Higher = harder session."
+        },
+        "target_duration_min": {
+          "type": "integer",
+          "description": "Target workout duration in minutes"
+        },
+        "workout_notes": {
+          "type": "string",
+          "description": "Specific workout instructions or notes"
+        },
+        "target_calories": {
+          "type": "number",
+          "description": "Target daily calories"
+        },
+        "target_protein_g": {
+          "type": "number",
+          "description": "Target daily protein in grams"
+        },
+        "target_carbs_g": {
+          "type": "number",
+          "description": "Target daily carbs in grams"
+        },
+        "target_fat_g": {
+          "type": "number",
+          "description": "Target daily fat in grams"
+        },
+        "target_hydration_liters": {
+          "type": "number",
+          "description": "Target daily water in liters"
+        },
+        "target_sleep_hours": {
+          "type": "number",
+          "description": "Target sleep hours for the night before"
+        },
+        "recovery_notes": {
+          "type": "string",
+          "description": "Recovery-specific notes (stretching, foam rolling, etc.)"
+        },
+        "coaching_notes": {
+          "type": "string",
+          "description": "Context from coaching — why this plan"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Training rationale"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ai_source": {
+          "type": "string",
+          "description": "chatgpt, claude, gemini, or manual"
         }
-      },
-      "securitySchemes": {
+      }
+    },
+    "securitySchemes": {
       "apiKey": {
         "type": "apiKey",
         "in": "header",
