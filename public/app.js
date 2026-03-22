@@ -200,6 +200,9 @@ function skeletonCards(n) {
   return Array(n).fill('<div class="skeleton-card"><div class="skeleton skeleton-line skeleton-line-lg"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line skeleton-line-sm"></div></div>').join('');
 }
 
+let _statsOpen = false;
+let _activeFilter = null; // null = 'all', or 'train'|'execute'|'recover'
+
 async function loadDashboard() {
   const main = document.getElementById('main-content');
   const hour = new Date().getHours();
@@ -207,25 +210,39 @@ async function loadDashboard() {
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   main.innerHTML = `
-    <div class="dash-greeting">${greeting}.</div>
-    <div class="dash-date">${dateStr}</div>
+    <div id="xp-bar-container"></div>
+    <div class="dash-greeting animate-in">${greeting}.</div>
+    <div class="dash-date animate-in stagger-1">${dateStr}</div>
+    <div id="today-actions" class="animate-in stagger-2"></div>
     <div id="gamification-section"></div>
-    <div id="dash-content">
+    <div id="activity-stream" class="animate-in stagger-4"></div>
+    <div class="stats-toggle-row animate-in stagger-5" id="dash-stats-toggle" onclick="toggleDashStats()">
+      ${icon('bar-chart-2', 14)}
+      <span>Stats Overview</span>
+      <span class="stats-toggle-chevron" id="stats-chevron">${icon('chevron-down', 14)}</span>
+    </div>
+    <div id="dash-content" class="dash-content-collapsible" style="display:none">
       <div class="dash-section">
         <div class="dash-section-header">
-          ${icon('check-square', 14, 'text-tactical')} Tasks
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-tactical) 10%, transparent);color:var(--color-tactical)">
+            ${icon('check-square', 12)} Tasks
+          </div>
         </div>
         <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
       <div class="dash-section">
         <div class="dash-section-header">
-          ${icon('brain', 14, 'text-mental')} Knowledge Base
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-mental) 10%, transparent);color:var(--color-mental)">
+            ${icon('brain', 12)} Knowledge Base
+          </div>
         </div>
         <div class="stats-grid">${skeletonStats(4)}</div>
       </div>
       <div class="dash-section">
         <div class="dash-section-header">
-          ${icon('dumbbell', 14, 'text-physical')} Fitness
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-physical) 10%, transparent);color:var(--color-physical)">
+            ${icon('dumbbell', 12)} Fitness
+          </div>
         </div>
         <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
@@ -235,6 +252,135 @@ async function loadDashboard() {
 
   loadDashboardStats();
   loadGamification();
+}
+
+function toggleDashStats() {
+  _statsOpen = !_statsOpen;
+  const content = document.getElementById('dash-content');
+  const chevron = document.getElementById('stats-chevron');
+  if (content) {
+    content.style.display = _statsOpen ? 'block' : 'none';
+    if (_statsOpen) content.classList.add('animate-in');
+  }
+  if (chevron) chevron.style.transform = _statsOpen ? 'rotate(180deg)' : '';
+}
+
+function setRingFilter(ring) {
+  _activeFilter = _activeFilter === ring ? null : ring;
+  // Update ring visual state
+  document.querySelectorAll('.ring-filter-target').forEach(el => {
+    el.classList.toggle('ring-active', el.dataset.ring === _activeFilter);
+    el.classList.toggle('ring-dimmed', _activeFilter && el.dataset.ring !== _activeFilter);
+  });
+  // Filter activity stream items
+  document.querySelectorAll('.stream-card').forEach(el => {
+    if (!_activeFilter) { el.style.display = ''; return; }
+    el.style.display = el.dataset.category === _activeFilter ? '' : 'none';
+  });
+  // Update filter label
+  const label = document.getElementById('stream-filter-label');
+  if (label) label.textContent = _activeFilter ? RING_LABELS[_activeFilter] : 'All';
+}
+
+// ─── Spartan XP Bar ──────────────────────────────────────────
+function buildXPBar(data) {
+  const container = document.getElementById('xp-bar-container');
+  if (!container) return;
+  // Try to find active training plan with dates for XP calculation
+  const plan = data?.training?.plans;
+  if (!plan) { container.innerHTML = ''; return; }
+
+  // Use gamification data for XP if available
+  const gam = _gamificationData;
+  if (!gam) { container.innerHTML = ''; return; }
+
+  const { rings } = gam;
+  const avgPercent = Math.round(((rings.train?.percent || 0) + (rings.execute?.percent || 0) + (rings.recover?.percent || 0)) / 3);
+
+  container.innerHTML = `
+    <div class="xp-bar-label">
+      <span>Today's Progress</span>
+      <span class="font-data">${avgPercent}%</span>
+    </div>
+    <div class="xp-bar">
+      <div class="xp-bar-fill" style="width:0%"></div>
+    </div>
+  `;
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const fill = container.querySelector('.xp-bar-fill');
+      if (fill) fill.style.width = avgPercent + '%';
+    }, 200);
+  });
+}
+
+// ─── Activity Stream ─────────────────────────────────────────
+const STREAM_CATEGORY_MAP = {
+  workout: { ring: 'train', color: 'var(--color-physical)', ic: 'dumbbell', label: 'Workout' },
+  meal: { ring: 'recover', color: 'var(--color-mental)', ic: 'utensils', label: 'Meal' },
+  body_metric: { ring: 'recover', color: 'var(--color-body)', ic: 'ruler', label: 'Body' },
+  task: { ring: 'execute', color: 'var(--color-tactical)', ic: 'check-square', label: 'Task' },
+  knowledge: { ring: 'recover', color: 'var(--color-mental)', ic: 'brain', label: 'Knowledge' },
+  transcript: { ring: 'recover', color: 'var(--color-mental)', ic: 'mic', label: 'Transcript' },
+  conversation: { ring: 'recover', color: 'var(--color-mental)', ic: 'message-square', label: 'Conversation' },
+  coaching: { ring: 'train', color: 'var(--color-physical)', ic: 'graduation-cap', label: 'Coaching' },
+  injury: { ring: 'train', color: 'var(--red)', ic: 'heart-pulse', label: 'Injury' },
+};
+
+function buildStreamCard(item) {
+  const type = item.entity_type || 'task';
+  const cat = STREAM_CATEGORY_MAP[type] || { ring: 'execute', color: 'var(--accent)', ic: 'activity', label: type };
+  const time = item.created_at ? timeAgo(item.created_at) : '';
+  const title = item.details || item.action || 'Activity';
+  const action = item.action || '';
+  const actionIcon = action === 'create' ? 'plus' : action === 'update' ? 'pencil' : action === 'delete' ? 'trash-2' : 'activity';
+  const metric = item.metric || '';
+
+  return `<div class="stream-card" data-category="${cat.ring}" style="--stream-color:${cat.color}" onclick="toggleStreamDetail(this)">
+    <div class="stream-card-header">
+      <div class="stream-card-icon">${icon(cat.ic, 15)}</div>
+      <div class="stream-card-body">
+        <div class="stream-card-title">${esc(title)}</div>
+        <div class="stream-card-meta">
+          <span>${icon(actionIcon, 10)} ${cat.label}</span>
+          <span class="stream-card-time">${time}</span>
+        </div>
+      </div>
+      ${metric ? `<span class="stream-card-metric">${esc(metric)}</span>` : ''}
+    </div>
+    <div class="stream-card-detail">
+      <div class="stream-card-detail-inner">
+        ${item.ai_source ? `<span style="color:var(--accent);font-size:0.65rem;text-transform:uppercase">${esc(item.ai_source)}</span> · ` : ''}
+        ${item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleStreamDetail(el) {
+  const detail = el.querySelector('.stream-card-detail');
+  if (detail) detail.classList.toggle('open');
+}
+
+function renderActivityStream(items) {
+  const container = document.getElementById('activity-stream');
+  if (!container) return;
+  if (!items?.length) {
+    container.innerHTML = `<div class="stream-empty">${icon('inbox', 20)}<div style="margin-top:8px">No recent activity</div></div>`;
+    renderIcons();
+    return;
+  }
+  const filterLabel = _activeFilter ? RING_LABELS[_activeFilter] : 'All';
+  container.innerHTML = `
+    <div class="stream-header">
+      <span class="type-section">${icon('activity', 12)} Activity</span>
+      <span class="stream-filter-pill" id="stream-filter-label">${filterLabel}</span>
+    </div>
+    <div class="activity-stream">
+      ${items.map(i => buildStreamCard(i)).join('')}
+    </div>
+  `;
+  renderIcons();
 }
 
 async function loadDashboardStats() {
@@ -320,29 +466,71 @@ async function loadDashboardStats() {
         <div class="ring-grid">${fitnessCards.map(c => renderRingCard(c, `event.stopPropagation();fitnessSubTab='${c.sub}';switchTab('fitness')`)).join('')}</div>
       </div>
 
-      <div class="card fade-in stagger-4" id="activity-card" style="display:none">
-        <div class="activity-header clickable" onclick="toggleActivity()">
-          <h2>Recent Activity</h2>
-          <svg id="activity-chevron" viewBox="0 0 24 24" width="16" height="16" style="color:var(--text-dim);transition:transform 0.2s"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-        </div>
-        <div id="recent-activity" class="activity-body collapsed"></div>
-      </div>
     `;
     renderIcons();
     // Animate all stat values
     document.querySelectorAll('#dash-content [data-target]').forEach(el => {
       animateValue(el, parseInt(el.dataset.target) || 0);
     });
+    // Activity Stream
     if (data.recent_activity?.length) {
-      const ac = document.getElementById('activity-card');
-      if (ac) { ac.style.display = ''; document.getElementById('recent-activity').innerHTML = data.recent_activity.map(renderActivityItem).join(''); }
+      renderActivityStream(data.recent_activity);
     }
+    // XP Bar
+    buildXPBar(data);
   } catch (e) {
     if (e.message === 'Unauthorized') return;
     const container = document.getElementById('dash-content');
     if (container) container.innerHTML = '<div class="empty-state">Could not load stats</div>';
   }
 }
+
+// ─── Focus Edit Mode (Dark Room) ─────────────────────────────
+function openFocusMode(title, bodyHtml, onSave) {
+  closeFocusMode(); // close any existing
+  const overlay = document.createElement('div');
+  overlay.className = 'focus-overlay';
+  overlay.id = 'focus-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) closeFocusMode(); };
+  overlay.innerHTML = `
+    <div class="focus-card">
+      <div class="focus-card-header">
+        <div class="focus-card-title">${esc(title)}</div>
+        <button class="focus-card-close" onclick="closeFocusMode()">${icon('x', 18)}</button>
+      </div>
+      <div class="focus-card-body" id="focus-card-body">${bodyHtml}</div>
+      ${onSave ? `<div class="focus-card-footer"><button class="focus-save-btn" id="focus-save-btn" onclick="handleFocusSave()">Save</button></div>` : ''}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  renderIcons();
+  // Store save callback
+  if (onSave) window._focusSaveCallback = onSave;
+}
+
+function closeFocusMode() {
+  const overlay = document.getElementById('focus-overlay');
+  if (overlay) overlay.remove();
+  window._focusSaveCallback = null;
+}
+
+async function handleFocusSave() {
+  if (window._focusSaveCallback) {
+    const btn = document.getElementById('focus-save-btn');
+    try {
+      await window._focusSaveCallback();
+      if (btn) { btn.textContent = 'Saved'; btn.classList.add('saved'); }
+      setTimeout(() => closeFocusMode(), 600);
+    } catch (e) {
+      showToast(`Save failed: ${e.message}`, 'error');
+    }
+  }
+}
+
+// Close focus mode on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('focus-overlay')) closeFocusMode();
+});
 
 // ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
 
@@ -615,10 +803,19 @@ async function loadGamification() {
 
     const allClosed = rings.train?.percent >= 100 && rings.execute?.percent >= 100 && rings.recover?.percent >= 100;
 
+    // Nudges + Suggestions → promoted to #today-actions
+    const actionsEl = document.getElementById('today-actions');
+    if (actionsEl) {
+      const actionNudges = [...(regularNudges || []).slice(0, 3)];
+      const suggestionHtml = suggestions?.length ? buildSuggestionCards(suggestions) : '';
+      actionsEl.innerHTML = buildNudges(actionNudges) + suggestionHtml;
+    }
+
+    // Rings hero — tapping individual rings sets a filter
     container.innerHTML = `
       ${pushBanner}
-      <div class="rings-hero fade-in" onclick="toggleRingsDetail()">
-        <div class="rings-container">
+      <div class="rings-hero fade-in animate-in stagger-3">
+        <div class="rings-container" onclick="toggleRingsDetail()" style="cursor:pointer">
           ${buildRingSVG(rings)}
           <div class="rings-center-label"><span class="rings-a">${allClosed ? '&#10003;' : 'A'}</span></div>
         </div>
@@ -626,33 +823,21 @@ async function loadGamification() {
           ${Object.keys(RING_COLORS).map(k => {
             const r = rings[k] || {};
             const closed = r.percent >= 100;
-            return `<div class="rings-legend-item">
+            return `<div class="rings-legend-item ring-filter-target${_activeFilter === k ? ' ring-active' : ''}${_activeFilter && _activeFilter !== k ? ' ring-dimmed' : ''}" data-ring="${k}" onclick="event.stopPropagation();setRingFilter('${k}')">
               <span class="rings-legend-dot" style="background:${RING_COLORS[k]}"></span>
               <span>${RING_LABELS[k]}</span>
               <span class="rings-legend-value" style="color:${RING_COLORS[k]}">${r.current || 0}/${r.goal || 0}${closed ? ' &#10003;' : ''}</span>
             </div>`;
           }).join('')}
         </div>
-        <div class="rings-tap-hint">Tap for details &amp; adjust goals</div>
+        <div class="rings-tap-hint" onclick="toggleRingsDetail()" style="cursor:pointer">Tap for details &amp; adjust goals</div>
       </div>
       <div class="rings-detail-panel${_ringsDetailOpen ? ' open' : ''}" id="rings-detail-panel">
         <div class="rings-detail-title">How to close your rings</div>
         ${buildRingDetailCards(rings)}
+        ${buildWeeklyBar(weekly)}
       </div>
-      ${buildWeeklyBar(weekly)}
       <div class="streaks-row fade-in stagger-1">${buildStreakChips(streaks)}</div>
-      ${suggestions?.length ? `<div class="suggestions-container fade-in stagger-1">${buildSuggestionCards(suggestions)}</div>` : ''}
-      <div id="nudges-container" class="fade-in stagger-1">${buildNudges(regularNudges)}</div>
-      <div class="badges-section fade-in stagger-2">
-        <div class="badges-toggle${_badgesOpen ? ' open' : ''}" onclick="toggleBadges()">
-          <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-          Badges
-          <span class="badge-progress-text">${badges.total_unlocked}/${badges.total_available} unlocked</span>
-        </div>
-        <div id="badge-grid" style="display:${_badgesOpen ? 'block' : 'none'}">
-          ${buildBadgeGrid(badges)}
-        </div>
-      </div>
     `;
 
     renderIcons();
