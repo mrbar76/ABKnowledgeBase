@@ -216,8 +216,7 @@ async function loadDashboard() {
     <div class="dash-date animate-in stagger-1">${dateStr}</div>
     <div id="today-actions" class="animate-in stagger-2"></div>
     <div id="gamification-section"></div>
-    <div id="activity-stream" class="animate-in stagger-4"></div>
-    <div class="stats-toggle-row animate-in stagger-5" id="dash-stats-toggle" onclick="toggleDashStats()">
+    <div class="stats-toggle-row animate-in stagger-4" id="dash-stats-toggle" onclick="toggleDashStats()">
       ${icon('bar-chart-2', 14)}
       <span>Stats Overview</span>
       <span class="stats-toggle-chevron" id="stats-chevron">${icon('chevron-down', 14)}</span>
@@ -248,11 +247,29 @@ async function loadDashboard() {
         <div class="stats-grid">${skeletonStats(6)}</div>
       </div>
     </div>
+    <div class="stats-toggle-row animate-in stagger-5" id="activity-stream-toggle" onclick="toggleActivityStream()">
+      ${icon('activity', 14)}
+      <span>System Activity</span>
+      <span class="stats-toggle-chevron" id="activity-chevron">${icon('chevron-down', 14)}</span>
+    </div>
+    <div id="activity-stream" style="display:none"></div>
   `;
   renderIcons();
 
   loadDashboardStats();
   loadGamification();
+}
+
+let _activityOpen = false;
+function toggleActivityStream() {
+  _activityOpen = !_activityOpen;
+  const content = document.getElementById('activity-stream');
+  const chevron = document.getElementById('activity-chevron');
+  if (content) {
+    content.style.display = _activityOpen ? 'block' : 'none';
+    if (_activityOpen) content.classList.add('animate-in');
+  }
+  if (chevron) chevron.style.transform = _activityOpen ? 'rotate(180deg)' : '';
 }
 
 function toggleDashStats() {
@@ -371,12 +388,7 @@ function renderActivityStream(items) {
     renderIcons();
     return;
   }
-  const filterLabel = _activeFilter ? RING_LABELS[_activeFilter] : 'All';
   container.innerHTML = `
-    <div class="stream-header">
-      <span class="type-section">${icon('activity', 12)} Activity</span>
-      <span class="stream-filter-pill" id="stream-filter-label">${filterLabel}</span>
-    </div>
     <div class="activity-stream">
       ${items.map(i => buildStreamCard(i)).join('')}
     </div>
