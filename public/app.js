@@ -201,7 +201,7 @@ function skeletonCards(n) {
   return Array(n).fill('<div class="skeleton-card"><div class="skeleton skeleton-line skeleton-line-lg"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line skeleton-line-sm"></div></div>').join('');
 }
 
-let _statsOpen = false;
+let _statsOpen = true;
 let _activeFilter = null; // null = 'all', or 'train'|'execute'|'recover'
 
 async function loadDashboard() {
@@ -219,9 +219,9 @@ async function loadDashboard() {
     <div class="stats-toggle-row animate-in stagger-4" id="dash-stats-toggle" onclick="toggleDashStats()">
       ${icon('bar-chart-2', 14)}
       <span>Stats Overview</span>
-      <span class="stats-toggle-chevron" id="stats-chevron">${icon('chevron-down', 14)}</span>
+      <span class="stats-toggle-chevron" id="stats-chevron" style="transform:rotate(180deg)">${icon('chevron-down', 14)}</span>
     </div>
-    <div id="dash-content" class="dash-content-collapsible" style="display:none">
+    <div id="dash-content" class="dash-content-collapsible">
       <div class="dash-section">
         <div class="dash-section-header">
           <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-tactical) 10%, transparent);color:var(--color-tactical)">
@@ -4373,11 +4373,14 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 
 // ─── Training Tab ─────────────────────────────────────────────
 // ─── Recovery ──────────────────────────────────────────────────
-async function loadRecovery() {
+let recoveryDate = new Date().toISOString().slice(0, 10);
+
+async function loadRecovery(date) {
+  if (date) recoveryDate = date;
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = skeletonCards(3);
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = recoveryDate;
     const [scoreData, trendData] = await Promise.all([
       api(`/recovery/score?date=${today}`),
       api('/recovery/trend?days=7'),
@@ -4403,7 +4406,19 @@ async function loadRecovery() {
     const ctx = await api(`/nutrition/daily-context?date=${today}`);
     const sleepLogged = ctx && ctx.sleep_hours != null;
 
+    const dLabel = new Date(today + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     main.innerHTML = `
+      <!-- Date Navigation -->
+      <div class="flex-between mb-sm">
+        <button class="btn-action btn-icon" onclick="loadRecovery(shiftDate(recoveryDate,-1))">&lt;</button>
+        <div class="text-center flex-1">
+          <input type="date" value="${today}" onchange="loadRecovery(this.value)"
+            style="background:transparent;border:none;color:var(--text);font-size:1rem;text-align:center;cursor:pointer">
+          <div class="text-micro">${dLabel}</div>
+        </div>
+        <button class="btn-action btn-icon" onclick="loadRecovery(shiftDate(recoveryDate,1))">&gt;</button>
+      </div>
+
       <!-- Recovery Score Hero -->
       <div class="recovery-score-hero card mb-md">
         <svg viewBox="0 0 160 160" class="recovery-score-ring">
@@ -4524,14 +4539,14 @@ async function saveSleepQuick() {
   const hrs = document.getElementById('sleep-hrs-quick')?.value;
   const qual = document.getElementById('sleep-q-quick')?.value;
   if (!hrs) return;
-  const today = new Date().toISOString().slice(0, 10);
+  const dateToSave = recoveryDate;
   try {
     // Check if context exists
-    const existing = await api(`/nutrition/daily-context?date=${today}`);
+    const existing = await api(`/nutrition/daily-context?date=${dateToSave}`);
     if (existing && existing.id) {
-      await api(`/nutrition/daily-context/${existing.id}`, 'PATCH', { sleep_hours: Number(hrs), sleep_quality: qual ? Number(qual) : null });
+      await api(`/nutrition/daily-context/${existing.id}`, { method: 'PATCH', body: JSON.stringify({ sleep_hours: Number(hrs), sleep_quality: qual ? Number(qual) : null }) });
     } else {
-      await api('/nutrition/daily-context', 'POST', { date: today, sleep_hours: Number(hrs), sleep_quality: qual ? Number(qual) : null });
+      await api('/nutrition/daily-context', { method: 'POST', body: JSON.stringify({ date: dateToSave, sleep_hours: Number(hrs), sleep_quality: qual ? Number(qual) : null }) });
     }
     loadRecovery();
   } catch (e) {
@@ -4541,7 +4556,7 @@ async function saveSleepQuick() {
 
 function showSleepForm() {
   // Reuse the daily context form which already has sleep fields
-  showDailyContextForm(new Date().toISOString().slice(0, 10));
+  showDailyContextForm(recoveryDate);
 }
 
 let trainingSubTab = 'plans';
