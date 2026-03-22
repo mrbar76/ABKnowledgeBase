@@ -5067,8 +5067,9 @@ async function loadUnifiedPlans() {
         <div style="text-align:center;padding:16px 0;font-size:1.1rem;font-weight:700;color:#6366f1">Rest Day</div>
         ${dp.recovery_notes ? `<div style="font-size:0.8rem;color:var(--text-dim);text-align:center">${esc(dp.recovery_notes)}</div>` : ''}
         ${dp.coaching_notes ? `<div style="font-size:0.8rem;color:var(--text-dim);text-align:center;font-style:italic;margin-top:4px">${esc(dp.coaching_notes)}</div>` : ''}
-        <div class="plans-actions">
-          <button class="btn-action" onclick="editDailyPlan('${dp.id}')">Edit Plan</button>
+        <div class="plans-actions" style="display:flex;gap:8px">
+          <button class="btn-action" style="flex:1" onclick="editDailyPlan('${dp.id}')">Edit Plan</button>
+          <button class="btn-action" style="flex:0 0 auto;background:#ef444422;color:#ef4444" onclick="if(confirm('Delete this plan?'))deleteDailyPlan('${dp.id}')">Delete</button>
         </div>
       </div>`;
     } else {
@@ -5182,8 +5183,9 @@ async function loadUnifiedPlans() {
         <button class="plans-status-btn ${dp.status === 'partial' ? 'active' : ''}" style="--btn-color:#f59e0b" onclick="quickUpdatePlanStatus('${dp.id}','partial')">Partial</button>
         <button class="plans-status-btn ${dp.status === 'missed' ? 'active' : ''}" style="--btn-color:#ef4444" onclick="quickUpdatePlanStatus('${dp.id}','missed')">Missed</button>
       </div>
-      <div class="plans-actions">
-        <button class="btn-action" onclick="editDailyPlan('${dp.id}')">Edit Plan</button>
+      <div class="plans-actions" style="display:flex;gap:8px">
+        <button class="btn-action" style="flex:1" onclick="editDailyPlan('${dp.id}')">Edit Plan</button>
+        <button class="btn-action" style="flex:0 0 auto;background:#ef444422;color:#ef4444" onclick="if(confirm('Delete this plan?'))deleteDailyPlan('${dp.id}')">Delete</button>
       </div>`;
 
       html += '</div>'; // close plans-hero-card
@@ -6050,6 +6052,7 @@ async function editDailyPlan(id) {
         <label>Coaching Notes</label>
         <textarea name="coaching_notes" rows="2" style="width:100%">${plan.coaching_notes || ''}</textarea>
         <button type="submit" class="btn-action" style="width:100%;margin-top:12px">Save Changes</button>
+        <button type="button" class="btn-action" style="width:100%;margin-top:8px;background:#ef444422;color:#ef4444" onclick="if(confirm('Delete this plan?'))deleteDailyPlan('${id}')">Delete Plan</button>
       </form>
     `);
   } catch (e) {
@@ -6084,7 +6087,8 @@ async function deleteDailyPlan(id) {
     await api(`/daily-plans/${id}`, { method: 'DELETE' });
     closeModal();
     showToast('Plan deleted', 'success');
-    if (trainingSubTab === 'plans') loadUnifiedPlans();
+    if (typeof loadUnifiedPlans === 'function') loadUnifiedPlans();
+    if (typeof loadFitnessToday === 'function') loadFitnessToday();
     loadGamification();
   } catch (e) {
     showToast(e.message, 'error');
