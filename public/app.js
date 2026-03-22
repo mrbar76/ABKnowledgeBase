@@ -4524,7 +4524,6 @@ async function loadTraining() {
   main.innerHTML = `
     <div class="filter-row" style="margin-bottom:12px">
       <button class="filter-btn ${trainingSubTab === 'day' ? 'active' : ''}" onclick="trainingSubTab='day';loadTraining()">Day View</button>
-      <button class="filter-btn ${trainingSubTab === 'daily_plans' ? 'active' : ''}" onclick="trainingSubTab='daily_plans';loadTraining()">Daily Plans</button>
       <button class="filter-btn ${trainingSubTab === 'plans' ? 'active' : ''}" onclick="trainingSubTab='plans';loadTraining()">Plans</button>
       <button class="filter-btn ${trainingSubTab === 'coaching' ? 'active' : ''}" onclick="trainingSubTab='coaching';loadTraining()">Coaching</button>
       <button class="filter-btn ${trainingSubTab === 'injuries' ? 'active' : ''}" onclick="trainingSubTab='injuries';loadTraining()">Injuries</button>
@@ -4532,43 +4531,143 @@ async function loadTraining() {
     <div id="training-content"><div class="loading">Loading...</div></div>
   `;
   if (trainingSubTab === 'day') loadTrainingDay();
-  else if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
-  else if (trainingSubTab === 'plans') loadTrainingPlans();
+  else if (trainingSubTab === 'plans') loadUnifiedPlans();
   else if (trainingSubTab === 'coaching') loadCoachingSessions();
   else if (trainingSubTab === 'injuries') loadInjuries();
 }
 
-// ── Training Plans ──
-async function loadTrainingPlans() {
+// ── Unified Plans (active training plan banner + weekly daily plans) ──
+async function loadUnifiedPlans() {
   const container = document.getElementById('training-content');
+  const tpColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
+  const dpColors = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
+
+  let html = '';
+
+  // ── Active training plan banner ──
   try {
-    const data = await api('/training/plans?limit=50');
-    const statusColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="transcript-count">${data.total} plan${data.total !== 1 ? 's' : ''}</div>
-        <button class="btn-submit" onclick="showTrainingPlanForm()" style="padding:8px 16px">+ Plan</button>
-      </div>
-      ${data.plans.length ? data.plans.map(p => {
-        const color = statusColors[p.status] || '#6366f1';
-        const dates = p.start_date ? `${new Date(p.start_date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}${p.end_date ? ' - ' + new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : ''}` : '';
-        return `
-        <div class="list-item" onclick="showTrainingPlanDetail('${p.id}')" style="border-left:3px solid ${color}">
-          <div class="transcript-card-header">
-            <div class="list-item-title">${esc(p.title)}</div>
-            <span class="content-type-badge" style="background:${color}22;color:${color}">${p.status}</span>
-            <span class="content-type-badge" style="background:var(--bg-input);color:var(--text-dim)">${p.plan_type}</span>
-          </div>
-          ${p.goal ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(p.goal)}</div>` : ''}
-          <div class="list-item-meta">
-            ${dates ? `<span>${dates}</span>` : ''}
-            ${p.weeks ? `<span>${p.weeks}wk</span>` : ''}
-            ${p.phase ? `<span>${esc(p.phase)}</span>` : ''}
+    const planData = await api('/training/plans?status=active&limit=5');
+    if (planData.plans?.length) {
+      html += planData.plans.map(p => {
+        const color = tpColors[p.status] || '#6366f1';
+        const dates = p.start_date ? `${new Date(p.start_date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}${p.end_date ? ' – ' + new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : ''}` : '';
+        return `<div class="card" onclick="showTrainingPlanDetail('${p.id}')" style="border-left:4px solid ${color};cursor:pointer;margin-bottom:8px;padding:10px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:0.6rem;text-transform:uppercase;color:${color};font-weight:700;letter-spacing:0.5px">Active Plan</div>
+              <div style="font-weight:700;font-size:0.9rem">${esc(p.title)}</div>
+              ${p.goal ? `<div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px">${esc(p.goal)}</div>` : ''}
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              ${dates ? `<div style="font-size:0.75rem;color:var(--text-dim)">${dates}</div>` : ''}
+              ${p.weeks ? `<div style="font-size:0.7rem;color:var(--accent)">${p.weeks}wk${p.phase ? ' · ' + esc(p.phase) : ''}</div>` : ''}
+            </div>
           </div>
         </div>`;
-      }).join('') : '<div class="empty-state">No training plans yet. Create one to track your programming!</div>'}
-    `;
-  } catch (e) { container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+      }).join('');
+    }
+  } catch (e) { /* non-fatal */ }
+
+  // ── Weekly daily plans grid ──
+  const today = new Date();
+  const dayOfWeek = (today.getDay() + 6) % 7;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek);
+  const monStr = monday.toISOString().slice(0, 10);
+  const sunDate = new Date(monday);
+  sunDate.setDate(monday.getDate() + 6);
+  const sunStr = sunDate.toISOString().slice(0, 10);
+
+  try {
+    const data = await api(`/daily-plans?from=${monStr}&to=${sunStr}`);
+    const plans = data.results || [];
+    const planMap = {};
+    for (const p of plans) planMap[p.plan_date?.slice(0, 10)] = p;
+
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const todayStr = today.toISOString().slice(0, 10);
+
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="color:var(--accent);margin:0;font-size:0.95rem">This Week</h3>
+      <button class="btn-action" onclick="showCreateDailyPlanForm()">+ Day Plan</button>
+    </div>`;
+
+    html += '<div class="daily-plans-week">';
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const plan = planMap[dateStr];
+      const isToday = dateStr === todayStr;
+      const isPast = dateStr < todayStr;
+      const statusColor = plan ? (dpColors[plan.status] || '#6366f1') : 'var(--border)';
+      html += `<div class="daily-plan-day-card${isToday ? ' today' : ''}${isPast && !plan ? ' past' : ''}" onclick="${plan ? `showDailyPlanDetail('${plan.id}')` : `showCreateDailyPlanForm('${dateStr}')`}" style="border-top:3px solid ${statusColor}">
+        <div class="daily-plan-day-label">${dayLabels[i]}</div>
+        <div class="daily-plan-day-date">${d.getDate()}</div>
+        ${plan ? `
+          <div class="daily-plan-day-type" style="color:${statusColor}">${plan.status === 'rest' ? 'Rest' : (plan.workout_type || '—')}</div>
+          ${plan.target_effort ? `<div class="daily-plan-day-effort">E${plan.target_effort}</div>` : ''}
+        ` : `<div class="daily-plan-day-type" style="color:var(--text-dim)">—</div>`}
+      </div>`;
+    }
+    html += '</div>';
+
+    if (plans.length) {
+      html += '<div style="margin-top:4px">';
+      for (const p of plans.sort((a, b) => a.plan_date > b.plan_date ? 1 : -1)) {
+        const dateLabel = new Date(p.plan_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const sc = dpColors[p.status] || '#6366f1';
+        html += `<div class="list-item" onclick="showDailyPlanDetail('${p.id}')" style="border-left:3px solid ${sc};cursor:pointer;margin-bottom:6px;padding:8px 12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:700;font-size:0.85rem">${dateLabel}</span>
+            <span style="font-size:0.65rem;background:${sc}22;color:${sc};padding:1px 8px;border-radius:10px;font-weight:600">${p.status}</span>
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px">${p.status === 'rest' ? 'Rest Day' : (p.workout_type || 'Workout') + (p.workout_focus ? ' — ' + p.workout_focus : '')}${p.target_effort ? ' · Effort ' + p.target_effort : ''}</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // ── Manage training plans footer ──
+    html += `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <button class="btn-action" style="background:none;color:var(--text-dim);font-size:0.8rem;padding:4px 0" onclick="showAllTrainingPlans()">Manage Training Plans ›</button>
+      <button class="btn-action" onclick="showTrainingPlanForm()" style="font-size:0.8rem;padding:6px 12px">+ Training Plan</button>
+    </div>`;
+
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = activeBannerHtml + `<div class="empty-state">${esc(e.message)}</div>`;
+  }
+}
+
+// ── All Training Plans (modal) ──
+async function showAllTrainingPlans() {
+  const statusColors = { draft: '#6b7280', active: '#22c55e', completed: '#3b82f6', paused: '#f59e0b', archived: '#78716c' };
+  try {
+    const data = await api('/training/plans?limit=50');
+    let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="transcript-count">${data.total} plan${data.total !== 1 ? 's' : ''}</div>
+      <button class="btn-submit" onclick="closeModal();showTrainingPlanForm()" style="padding:8px 16px">+ Plan</button>
+    </div>`;
+    html += data.plans.length ? data.plans.map(p => {
+      const color = statusColors[p.status] || '#6366f1';
+      const dates = p.start_date ? `${new Date(p.start_date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}${p.end_date ? ' - ' + new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : ''}` : '';
+      return `<div class="list-item" onclick="closeModal();showTrainingPlanDetail('${p.id}')" style="border-left:3px solid ${color}">
+        <div class="transcript-card-header">
+          <div class="list-item-title">${esc(p.title)}</div>
+          <span class="content-type-badge" style="background:${color}22;color:${color}">${p.status}</span>
+          <span class="content-type-badge" style="background:var(--bg-input);color:var(--text-dim)">${p.plan_type}</span>
+        </div>
+        ${p.goal ? `<div class="transcript-summary" style="-webkit-line-clamp:2">${esc(p.goal)}</div>` : ''}
+        <div class="list-item-meta">
+          ${dates ? `<span>${dates}</span>` : ''}
+          ${p.weeks ? `<span>${p.weeks}wk</span>` : ''}
+          ${p.phase ? `<span>${esc(p.phase)}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty-state">No training plans yet.</div>';
+    openModal('Training Plans', html);
+  } catch (e) { openModal('Training Plans', `<div class="empty-state">${esc(e.message)}</div>`); }
 }
 
 async function showTrainingPlanDetail(id) {
@@ -5414,7 +5513,7 @@ async function saveDailyPlan(event) {
     await api('/daily-plans', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
     showToast('Daily plan created', 'success');
-    if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+    if (trainingSubTab === 'plans') loadUnifiedPlans();
     loadGamification();
   } catch (e) {
     showToast(e.message, 'error');
@@ -5475,7 +5574,7 @@ async function updateDailyPlan(event, id) {
     await api(`/daily-plans/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     closeModal();
     showToast('Plan updated', 'success');
-    if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+    if (trainingSubTab === 'plans') loadUnifiedPlans();
     loadGamification();
   } catch (e) {
     showToast(e.message, 'error');
@@ -5488,7 +5587,7 @@ async function deleteDailyPlan(id) {
     await api(`/daily-plans/${id}`, { method: 'DELETE' });
     closeModal();
     showToast('Plan deleted', 'success');
-    if (trainingSubTab === 'daily_plans') loadDailyPlanManager();
+    if (trainingSubTab === 'plans') loadUnifiedPlans();
     loadGamification();
   } catch (e) {
     showToast(e.message, 'error');
