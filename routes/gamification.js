@@ -79,13 +79,14 @@ const STREAK_SQL = {
     SELECT COALESCE((SELECT COUNT(*)::int FROM numbered WHERE grp = (SELECT grp FROM numbered WHERE d = CURRENT_DATE LIMIT 1)), 0) AS streak`,
 };
 
-// Fuel streak: consecutive days where 2+ of 3 nutrition targets hit
-// Recover streak: consecutive days where 2+ of 3 recovery targets hit
-// These need settings, so computed in JS
+// Fuel streak: consecutive days where fuel ring >= 80%
+// Recover streak: consecutive days where recover ring >= 80%
+// Uses proportional model (average of sub-criteria ratios)
 async function computeFuelStreak(settings) {
   const proteinTarget = parseFloat(settings.default_protein_target) || 150;
   const calMin = parseFloat(settings.default_calorie_min) || 2000;
   const calMax = parseFloat(settings.default_calorie_max) || 2800;
+  const calMid = (calMin + calMax) / 2;
   const hydrationTarget = parseFloat(settings.default_hydration_target) || 2.5;
 
   const { rows } = await query(`
@@ -102,10 +103,12 @@ async function computeFuelStreak(settings) {
 
   let streak = 0;
   for (const row of rows) {
-    const proteinHit = parseFloat(row.protein) >= proteinTarget ? 1 : 0;
-    const calHit = parseFloat(row.cal) >= calMin && parseFloat(row.cal) <= calMax ? 1 : 0;
-    const hydrationHit = parseFloat(row.hydration) >= hydrationTarget ? 1 : 0;
-    if (proteinHit + calHit + hydrationHit >= 2) streak++;
+    const pProg = Math.min(1, parseFloat(row.protein) / proteinTarget);
+    const c = parseFloat(row.cal);
+    const cProg = c <= 0 ? 0 : (c >= calMin && c <= calMax) ? 1 : Math.min(1, c / calMid);
+    const hProg = hydrationTarget > 0 ? Math.min(1, parseFloat(row.hydration) / hydrationTarget) : 0;
+    const fuelPct = ((pProg + cProg + hProg) / 3) * 100;
+    if (fuelPct >= 80) streak++;
     else break;
   }
   return streak;
@@ -131,10 +134,12 @@ async function computeRecoverStreak(settings) {
 
   let streak = 0;
   for (const row of rows) {
-    const sleepHit = parseFloat(row.sleep_hours) >= sleepTarget ? 1 : 0;
-    const qualHit = parseInt(row.sleep_quality) >= sleepQualThreshold ? 1 : 0;
-    const recHit = parseInt(row.recovery_rating) >= recoveryThreshold || parseInt(row.energy_rating) >= recoveryThreshold ? 1 : 0;
-    if (sleepHit + qualHit + recHit >= 2) streak++;
+    const sProg = sleepTarget > 0 ? Math.min(1, parseFloat(row.sleep_hours) / sleepTarget) : 0;
+    const qProg = sleepQualThreshold > 0 ? Math.min(1, parseInt(row.sleep_quality) / sleepQualThreshold) : 0;
+    const best = Math.max(parseInt(row.recovery_rating) || 0, parseInt(row.energy_rating) || 0);
+    const rProg = recoveryThreshold > 0 ? Math.min(1, best / recoveryThreshold) : 0;
+    const recPct = ((sProg + qProg + rProg) / 3) * 100;
+    if (recPct >= 80) streak++;
     else break;
   }
   return streak;
@@ -177,17 +182,20 @@ async function computePerfectStreak(settings) {
     const targetEffort = row.plan_effort || defaultEffort;
     const trainOk = row.plan_status === 'rest' || (row.workout_count > 0 && row.max_effort >= targetEffort);
 
-    // Fuel: 2+ of 3 targets
-    const proteinHit = parseFloat(row.protein) >= proteinTarget ? 1 : 0;
-    const calHit = parseFloat(row.cal) >= calMin && parseFloat(row.cal) <= calMax ? 1 : 0;
-    const hydrationHit = parseFloat(row.hydration) >= hydrationTarget ? 1 : 0;
-    const fuelOk = proteinHit + calHit + hydrationHit >= 2;
+    // Fuel: proportional >= 80%
+    const calMid = (calMin + calMax) / 2;
+    const pProg = Math.min(1, parseFloat(row.protein) / proteinTarget);
+    const c = parseFloat(row.cal);
+    const cProg = c <= 0 ? 0 : (c >= calMin && c <= calMax) ? 1 : Math.min(1, c / calMid);
+    const hProg = hydrationTarget > 0 ? Math.min(1, parseFloat(row.hydration) / hydrationTarget) : 0;
+    const fuelOk = ((pProg + cProg + hProg) / 3) * 100 >= 80;
 
-    // Recover: 2+ of 3 targets
-    const sleepHit = parseFloat(row.sleep_hours) >= sleepTarget ? 1 : 0;
-    const qualHit = parseInt(row.sleep_quality) >= sleepQualThreshold ? 1 : 0;
-    const recHit = parseInt(row.recovery_rating) >= recoveryThreshold || parseInt(row.energy_rating) >= recoveryThreshold ? 1 : 0;
-    const recoverOk = sleepHit + qualHit + recHit >= 2;
+    // Recover: proportional >= 80%
+    const sProg = sleepTarget > 0 ? Math.min(1, parseFloat(row.sleep_hours) / sleepTarget) : 0;
+    const qProg = sleepQualThreshold > 0 ? Math.min(1, parseInt(row.sleep_quality) / sleepQualThreshold) : 0;
+    const bestRec = Math.max(parseInt(row.recovery_rating) || 0, parseInt(row.energy_rating) || 0);
+    const rProg = recoveryThreshold > 0 ? Math.min(1, bestRec / recoveryThreshold) : 0;
+    const recoverOk = ((sProg + qProg + rProg) / 3) * 100 >= 80;
 
     if (trainOk && fuelOk && recoverOk) streak++;
     else break;
@@ -245,19 +253,27 @@ router.get('/', async (req, res) => {
       trainPercent = 0;
     }
 
-    // ── FUEL ring: protein + calories + hydration (0-3 checklist) ──
-    const proteinHit = parseFloat(protein) >= targetProtein;
-    const caloriesHit = parseFloat(cal) >= calMin && parseFloat(cal) <= calMax;
+    // ── FUEL ring: proportional progress across protein + calories + hydration ──
+    const proteinActual = parseFloat(protein) || 0;
+    const caloriesActual = parseFloat(cal) || 0;
+    const proteinHit = proteinActual >= targetProtein;
+    const caloriesHit = caloriesActual >= calMin && caloriesActual <= calMax;
     const hydrationHit = hydration >= targetHydration;
-    const fuelCount = (proteinHit ? 1 : 0) + (caloriesHit ? 1 : 0) + (hydrationHit ? 1 : 0);
-    const fuelPercent = Math.min(100, Math.round((fuelCount / 3) * 100));
+    const proteinProgress = Math.min(1, proteinActual / targetProtein);
+    const calMid = (calMin + calMax) / 2;
+    const caloriesProgress = caloriesActual <= 0 ? 0 : caloriesActual >= calMin && caloriesActual <= calMax ? 1 : Math.min(1, caloriesActual / calMid);
+    const hydrationProgress = targetHydration > 0 ? Math.min(1, hydration / targetHydration) : 0;
+    const fuelPercent = Math.min(100, Math.round(((proteinProgress + caloriesProgress + hydrationProgress) / 3) * 100));
 
-    // ── RECOVER ring: sleep hours + sleep quality + recovery rating (0-3 checklist) ──
+    // ── RECOVER ring: proportional progress across sleep + quality + recovery ──
     const sleepHoursHit = sleepHours >= targetSleep;
     const sleepQualHit = sleepQuality >= sleepQualThreshold;
     const recoveryHit = recoveryRating >= recoveryThreshold || energyRating >= recoveryThreshold;
-    const recoverCount = (sleepHoursHit ? 1 : 0) + (sleepQualHit ? 1 : 0) + (recoveryHit ? 1 : 0);
-    const recoverPercent = Math.min(100, Math.round((recoverCount / 3) * 100));
+    const sleepProgress = targetSleep > 0 ? Math.min(1, sleepHours / targetSleep) : 0;
+    const sleepQualProgress = sleepQualThreshold > 0 ? Math.min(1, sleepQuality / sleepQualThreshold) : 0;
+    const bestRecovery = Math.max(recoveryRating, energyRating);
+    const recoveryProgress = recoveryThreshold > 0 ? Math.min(1, bestRecovery / recoveryThreshold) : 0;
+    const recoverPercent = Math.min(100, Math.round(((sleepProgress + sleepQualProgress + recoveryProgress) / 3) * 100));
 
     const rings = {
       train: {
@@ -266,18 +282,18 @@ router.get('/', async (req, res) => {
         has_plan: !!plan,
       },
       fuel: {
-        current: fuelCount, goal: 3, percent: fuelPercent,
+        percent: fuelPercent,
         protein_hit: proteinHit, calories_hit: caloriesHit, hydration_hit: hydrationHit,
-        protein_actual: Math.round(parseFloat(protein)), protein_target: Math.round(targetProtein),
-        calories_actual: Math.round(parseFloat(cal)), calories_min: Math.round(calMin), calories_max: Math.round(calMax),
-        hydration_actual: hydration, hydration_target: targetHydration,
+        protein_actual: Math.round(proteinActual), protein_target: Math.round(targetProtein), protein_progress: Math.round(proteinProgress * 100),
+        calories_actual: Math.round(caloriesActual), calories_min: Math.round(calMin), calories_max: Math.round(calMax), calories_progress: Math.round(caloriesProgress * 100),
+        hydration_actual: hydration, hydration_target: targetHydration, hydration_progress: Math.round(hydrationProgress * 100),
       },
       recover: {
-        current: recoverCount, goal: 3, percent: recoverPercent,
+        percent: recoverPercent,
         sleep_hit: sleepHoursHit, quality_hit: sleepQualHit, recovery_hit: recoveryHit,
-        sleep_actual: sleepHours, sleep_target: targetSleep,
-        sleep_quality_actual: sleepQuality, sleep_quality_threshold: sleepQualThreshold,
-        recovery_actual: Math.max(recoveryRating, energyRating), recovery_threshold: recoveryThreshold,
+        sleep_actual: sleepHours, sleep_target: targetSleep, sleep_progress: Math.round(sleepProgress * 100),
+        sleep_quality_actual: sleepQuality, sleep_quality_threshold: sleepQualThreshold, quality_progress: Math.round(sleepQualProgress * 100),
+        recovery_actual: bestRecovery, recovery_threshold: recoveryThreshold, recovery_progress: Math.round(recoveryProgress * 100),
       },
     };
 
@@ -410,14 +426,25 @@ router.get('/', async (req, res) => {
       for (const row of wData.rows) {
         const te = row.plan_effort || s.default_effort_target || 6;
         const tOk = row.plan_status === 'rest' || (row.workouts > 0 && row.max_effort >= te);
-        const pHit = parseFloat(row.protein) >= (parseFloat(s.default_protein_target) || 150);
-        const cHit = parseFloat(row.cal) >= (parseFloat(s.default_calorie_min) || 2000) && parseFloat(row.cal) <= (parseFloat(s.default_calorie_max) || 2800);
-        const hHit = parseFloat(row.hydration) >= (parseFloat(s.default_hydration_target) || 2.5);
-        const fOk = (pHit ? 1 : 0) + (cHit ? 1 : 0) + (hHit ? 1 : 0) >= 2;
-        const sHit = parseFloat(row.sleep_hours) >= (parseFloat(s.default_sleep_target) || 7);
-        const qHit = parseInt(row.sleep_quality) >= (s.default_sleep_quality_threshold || 6);
-        const rHit = parseInt(row.recovery_rating) >= (s.default_recovery_threshold || 6) || parseInt(row.energy_rating) >= (s.default_recovery_threshold || 6);
-        const recOk = (sHit ? 1 : 0) + (qHit ? 1 : 0) + (rHit ? 1 : 0) >= 2;
+        const wProteinTarget = parseFloat(s.default_protein_target) || 150;
+        const wCalMin = parseFloat(s.default_calorie_min) || 2000;
+        const wCalMax = parseFloat(s.default_calorie_max) || 2800;
+        const wCalMid = (wCalMin + wCalMax) / 2;
+        const wHydTarget = parseFloat(s.default_hydration_target) || 2.5;
+        const wPProg = Math.min(1, parseFloat(row.protein) / wProteinTarget);
+        const wC = parseFloat(row.cal);
+        const wCProg = wC <= 0 ? 0 : (wC >= wCalMin && wC <= wCalMax) ? 1 : Math.min(1, wC / wCalMid);
+        const wHProg = wHydTarget > 0 ? Math.min(1, parseFloat(row.hydration) / wHydTarget) : 0;
+        const fOk = ((wPProg + wCProg + wHProg) / 3) * 100 >= 80;
+
+        const wSleepTarget = parseFloat(s.default_sleep_target) || 7;
+        const wSQThresh = s.default_sleep_quality_threshold || 6;
+        const wRThresh = s.default_recovery_threshold || 6;
+        const wSProg = wSleepTarget > 0 ? Math.min(1, parseFloat(row.sleep_hours) / wSleepTarget) : 0;
+        const wQProg = wSQThresh > 0 ? Math.min(1, parseInt(row.sleep_quality) / wSQThresh) : 0;
+        const wBest = Math.max(parseInt(row.recovery_rating) || 0, parseInt(row.energy_rating) || 0);
+        const wRProg = wRThresh > 0 ? Math.min(1, wBest / wRThresh) : 0;
+        const recOk = ((wSProg + wQProg + wRProg) / 3) * 100 >= 80;
 
         if (tOk) trainDays++;
         if (fOk) fuelDays++;

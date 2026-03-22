@@ -599,18 +599,36 @@ function buildRingDetailCards(rings) {
         </div>`;
       }
     } else if (k === 'fuel') {
-      const check = v => v ? '<span class="check-mark">&#10003;</span>' : '<span class="check-x">&#10007;</span>';
+      const check = v => v ? '<span class="check-mark">&#10003;</span>' : '';
       checklist = `<div class="ring-checklist">
-        <div class="ring-check-item ${ring.protein_hit ? 'done' : ''}">${check(ring.protein_hit)} Protein: ${ring.protein_actual || 0}g / ${ring.protein_target || '?'}g</div>
-        <div class="ring-check-item ${ring.calories_hit ? 'done' : ''}">${check(ring.calories_hit)} Calories: ${ring.calories_actual || 0} (${ring.calories_min || '?'}-${ring.calories_max || '?'})</div>
-        <div class="ring-check-item ${ring.hydration_hit ? 'done' : ''}">${check(ring.hydration_hit)} Hydration: ${ring.hydration_actual || 0}L / ${ring.hydration_target || '?'}L</div>
+        <div class="ring-check-item ${ring.protein_hit ? 'done' : ''}">
+          <span class="ring-sub-label">Protein: ${ring.protein_actual || 0}g / ${ring.protein_target || '?'}g ${check(ring.protein_hit)}</span>
+          <div class="ring-sub-bar-track"><div class="ring-sub-bar-fill" style="width:${ring.protein_progress || 0}%;background:${color}"></div></div>
+        </div>
+        <div class="ring-check-item ${ring.calories_hit ? 'done' : ''}">
+          <span class="ring-sub-label">Calories: ${ring.calories_actual || 0} (${ring.calories_min || '?'}-${ring.calories_max || '?'}) ${check(ring.calories_hit)}</span>
+          <div class="ring-sub-bar-track"><div class="ring-sub-bar-fill" style="width:${ring.calories_progress || 0}%;background:${color}"></div></div>
+        </div>
+        <div class="ring-check-item ${ring.hydration_hit ? 'done' : ''}">
+          <span class="ring-sub-label">Hydration: ${ring.hydration_actual || 0}L / ${ring.hydration_target || '?'}L ${check(ring.hydration_hit)}</span>
+          <div class="ring-sub-bar-track"><div class="ring-sub-bar-fill" style="width:${ring.hydration_progress || 0}%;background:${color}"></div></div>
+        </div>
       </div>`;
     } else if (k === 'recover') {
-      const check = v => v ? '<span class="check-mark">&#10003;</span>' : '<span class="check-x">&#10007;</span>';
+      const check = v => v ? '<span class="check-mark">&#10003;</span>' : '';
       checklist = `<div class="ring-checklist">
-        <div class="ring-check-item ${ring.sleep_hit ? 'done' : ''}">${check(ring.sleep_hit)} Sleep: ${ring.sleep_actual || '?'}h / ${ring.sleep_target || '?'}h</div>
-        <div class="ring-check-item ${ring.quality_hit ? 'done' : ''}">${check(ring.quality_hit)} Sleep Quality: ${ring.sleep_quality_actual || '?'}/10 (need ${ring.sleep_quality_threshold || '?'}+)</div>
-        <div class="ring-check-item ${ring.recovery_hit ? 'done' : ''}">${check(ring.recovery_hit)} Recovery: ${ring.recovery_actual || '?'}/10 (need ${ring.recovery_threshold || '?'}+)</div>
+        <div class="ring-check-item ${ring.sleep_hit ? 'done' : ''}">
+          <span class="ring-sub-label">Sleep: ${ring.sleep_actual || '?'}h / ${ring.sleep_target || '?'}h ${check(ring.sleep_hit)}</span>
+          <div class="ring-sub-bar-track"><div class="ring-sub-bar-fill" style="width:${ring.sleep_progress || 0}%;background:${color}"></div></div>
+        </div>
+        <div class="ring-check-item ${ring.quality_hit ? 'done' : ''}">
+          <span class="ring-sub-label">Sleep Quality: ${ring.sleep_quality_actual || '?'}/10 (need ${ring.sleep_quality_threshold || '?'}+) ${check(ring.quality_hit)}</span>
+          <div class="ring-sub-bar-track"><div class="ring-sub-bar-fill" style="width:${ring.quality_progress || 0}%;background:${color}"></div></div>
+        </div>
+        <div class="ring-check-item ${ring.recovery_hit ? 'done' : ''}">
+          <span class="ring-sub-label">Recovery: ${ring.recovery_actual || '?'}/10 (need ${ring.recovery_threshold || '?'}+) ${check(ring.recovery_hit)}</span>
+          <div class="ring-sub-bar-track"><div class="ring-sub-bar-fill" style="width:${ring.recovery_progress || 0}%;background:${color}"></div></div>
+        </div>
       </div>`;
     }
 
@@ -1440,29 +1458,32 @@ End-of-day review comparing planned vs actual. Do this at the end of each coachi
 
 4. If tomorrow's plan needs adjusting based on today: \`PUT /daily-plans/{id}\`
 
-## RINGS — ACHIEVEMENT-BASED MOTIVATION
+## RINGS — PROPORTIONAL PROGRESS
 
-Three rings fill based on real achievement against targets, not just logging:
+Three rings fill gradually based on how close you are to each target — partial effort counts.
 
 **🟢 Train Ring** — Weighted effort score
 - Formula: (actual max effort / target effort) × 100%
-- Example: effort 6 vs target 8 = 75% ring progress
+- Example: effort 6 vs target 8 = 75% ring fill
 - Rest day plans auto-close the ring at 100%
 - No plan? Falls back to default effort target (typically 6)
 
-**🟡 Fuel Ring** — Nutrition target checklist (0-3)
-- ✓ Protein ≥ target (from daily plan or default 150g)
-- ✓ Calories within ±10% of target (or default 2000-2800 range)
-- ✓ Hydration ≥ target (from daily plan or default 2.5L)
-- Ring closes at 3/3 (100%)
+**🟡 Fuel Ring** — Average of 3 proportional sub-scores
+- Protein progress: min(1, actual / target) — e.g. 54g/150g = 36%
+- Calories progress: proportional toward midpoint of range, 100% if within range
+- Hydration progress: min(1, actual / target) — e.g. 1L/2.5L = 40%
+- Ring % = average of all three sub-scores
+- Ring "closes" (100%) when all three sub-criteria are fully met
+- Each sub-criterion shows its own mini progress bar in the UI
 
-**🟣 Recover Ring** — Recovery quality checklist (0-3)
-- ✓ Sleep hours ≥ target (from daily plan or default 7h)
-- ✓ Sleep quality ≥ threshold (default 6/10)
-- ✓ Recovery or energy rating ≥ threshold (default 6/10)
-- Ring closes at 3/3 (100%)
+**🟣 Recover Ring** — Average of 3 proportional sub-scores
+- Sleep hours: min(1, actual / target) — e.g. 6h/7h = 86%
+- Sleep quality: min(1, actual / threshold) — e.g. 5/6 = 83%
+- Recovery/energy: min(1, best / threshold) — e.g. 4/6 = 67%
+- Ring % = average of all three sub-scores
+- Streaks count a day as "closed" when the ring reaches ≥ 80%
 
-Use rings in coaching: "Your Fuel ring is at 67% — you need 30g more protein and 0.5L more water."
+Use rings in coaching: "Fuel ring at 25% — protein is 36%, but you haven't logged hydration yet. A high-protein meal + 1.5L water would push you past 70%."
 
 ## TRAINING PLANS (Block/Mesocycle Level)
 
