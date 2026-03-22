@@ -5405,7 +5405,7 @@ function shiftDate(dateStr, days) {
 
 // ── Daily Plan Manager ──
 function showDailyPlanDetail(id) {
-  showModal('daily-plan-detail', 'Daily Plan', `<div class="loading">Loading...</div>`);
+  openModal('Daily Plan', `<div class="loading">Loading...</div>`);
   api(`/daily-plans/${id}`).then(plan => {
     const sc = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
     const color = sc[plan.status] || '#6366f1';
@@ -5462,15 +5462,15 @@ function showDailyPlanDetail(id) {
       <button class="btn-action" style="flex:1;background:var(--red);color:white" onclick="if(confirm('Delete this plan?'))deleteDailyPlan('${plan.id}')">Delete</button>
     </div>`;
 
-    document.querySelector('#modal-daily-plan-detail .modal-body').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
   }).catch(e => {
-    document.querySelector('#modal-daily-plan-detail .modal-body').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
+    document.getElementById('modal-body').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
   });
 }
 
 function showCreateDailyPlanForm(prefillDate) {
   const date = prefillDate || new Date().toISOString().slice(0, 10);
-  showModal('create-daily-plan', 'Create Daily Plan', `
+  openModal('Create Daily Plan', `
     <form onsubmit="return saveDailyPlan(event)">
       <label>Date *</label>
       <input type="date" name="plan_date" value="${date}" required style="width:100%">
@@ -5529,7 +5529,7 @@ async function editDailyPlan(id) {
   try {
     const plan = await api(`/daily-plans/${id}`);
     closeModal();
-    showModal('edit-daily-plan', 'Edit Daily Plan', `
+    openModal('Edit Daily Plan', `
       <form onsubmit="return updateDailyPlan(event, '${id}')">
         <label>Date</label>
         <input type="date" name="plan_date" value="${plan.plan_date?.slice(0, 10)}" style="width:100%" disabled>
