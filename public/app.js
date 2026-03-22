@@ -157,7 +157,7 @@ function switchTab(tab) {
   main.style.animation = '';
 
   // Map legacy fitness sub-tab names to the new structure
-  const legacyFitnessMap = { workouts: 'history', nutrition: 'history', body: 'history', training: 'today', recovery: 'today' };
+  const legacyFitnessMap = { workouts: 'history', nutrition: 'history', body: 'history', training: 'plans', recovery: 'today' };
   if (legacyFitnessMap[tab]) {
     fitnessSubTab = legacyFitnessMap[tab];
     if (tab === 'workouts') historyFilter = 'workouts';
@@ -2996,6 +2996,7 @@ function loadFitness() {
     { key: 'today', label: 'Today', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/></svg>' },
     { key: 'log', label: 'Log', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>' },
     { key: 'history', label: 'History', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>' },
+    { key: 'plans', label: 'Plans', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>' },
     { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
   ];
   main.innerHTML = `
@@ -3006,6 +3007,7 @@ function loadFitness() {
   `;
   if (fitnessSubTab === 'today') loadFitnessToday();
   else if (fitnessSubTab === 'log') loadFitnessLog();
+  else if (fitnessSubTab === 'plans') loadUnifiedPlans();
   else if (fitnessSubTab === 'history') loadFitnessHistory();
   else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
 }
@@ -3194,20 +3196,43 @@ async function loadFitnessToday() {
     }
 
     // Recovery score
-    const score = recoveryData.score;
-    const scoreColor = score >= 81 ? '#10b981' : score >= 61 ? '#f59e0b' : score >= 31 ? '#f97316' : '#ef4444';
+    const score = (recoveryData.score != null && !isNaN(recoveryData.score)) ? recoveryData.score : null;
+    const scoreColor = score == null ? '#6b7280' : score >= 81 ? '#10b981' : score >= 61 ? '#f59e0b' : score >= 31 ? '#f97316' : '#ef4444';
+    const scoreDisplay = score != null ? score : '—';
+    const dashVal = score != null ? score : 0;
     let recoveryHtml = `<div class="card mb-md" style="text-align:center">
       <div class="card-title" style="text-align:left">Recovery Score</div>
       <div style="display:inline-block;position:relative;width:80px;height:80px">
         <svg viewBox="0 0 36 36" style="width:80px;height:80px;transform:rotate(-90deg)">
           <circle cx="18" cy="18" r="16" fill="none" stroke="var(--bg-tertiary)" stroke-width="3"/>
           <circle cx="18" cy="18" r="16" fill="none" stroke="${scoreColor}" stroke-width="3"
-            stroke-dasharray="${score} ${100 - score}" stroke-linecap="round"/>
+            stroke-dasharray="${dashVal} ${100 - dashVal}" stroke-linecap="round"/>
         </svg>
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:${scoreColor}">${score}</div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:${scoreColor}">${scoreDisplay}</div>
       </div>
-      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${recoveryData.label} — ${esc(recoveryData.recommendation || '')}</div>
-    </div>`;
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${score != null ? (recoveryData.label || '') + ' — ' + esc(recoveryData.recommendation || '') : 'Log sleep, workouts & meals to see your recovery score'}</div>`;
+
+    // Component breakdown (collapsed by default)
+    if (recoveryData.components && score != null) {
+      const comps = recoveryData.components;
+      const compOrder = ['sleep','training_load','muscle_freshness','injury','nutrition','subjective'];
+      const compLabels = { sleep: 'Sleep', training_load: 'Training Load', muscle_freshness: 'Muscle Freshness', injury: 'Injuries', nutrition: 'Nutrition', subjective: 'Subjective' };
+      recoveryHtml += `<details style="text-align:left;margin-top:8px"><summary style="font-size:0.72rem;color:var(--text-dim);cursor:pointer">Score Breakdown</summary>
+        <div style="margin-top:6px">
+          ${compOrder.map(k => {
+            const c = comps[k];
+            if (!c) return '';
+            const cColor = c.score >= 81 ? '#10b981' : c.score >= 61 ? '#f59e0b' : c.score >= 31 ? '#f97316' : '#ef4444';
+            return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:0.72rem">
+              <span style="width:90px;color:var(--text-dim)">${compLabels[k]}</span>
+              <div style="flex:1;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden"><div style="height:100%;width:${c.score}%;background:${cColor};border-radius:3px"></div></div>
+              <span style="width:24px;text-align:right;font-weight:600;color:${cColor}">${c.score}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </details>`;
+    }
+    recoveryHtml += `</div>`;
 
     // Active injuries
     let injuriesHtml = '';
@@ -3234,12 +3259,17 @@ async function loadFitnessToday() {
     if (trendData && trendData.trend && trendData.trend.length > 1) {
       const maxScore = 100;
       trendHtml = `<div class="card mb-md"><div class="card-title">7-Day Recovery Trend</div>
-        <div style="display:flex;align-items:flex-end;gap:4px;height:60px">
+        <div style="display:flex;align-items:flex-end;gap:4px;height:80px;padding-top:14px">
           ${trendData.trend.map(t => {
-            const h = Math.max(4, (t.score / maxScore) * 56);
-            const c = t.score >= 81 ? '#10b981' : t.score >= 61 ? '#f59e0b' : t.score >= 31 ? '#f97316' : '#ef4444';
+            const s = (t.score != null && !isNaN(t.score)) ? t.score : 0;
+            const h = Math.max(4, (s / maxScore) * 56);
+            const c = s >= 81 ? '#10b981' : s >= 61 ? '#f59e0b' : s >= 31 ? '#f97316' : '#ef4444';
             const dayLabel = new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' });
-            return `<div style="flex:1;text-align:center"><div style="height:${h}px;background:${c};border-radius:3px;margin-bottom:2px"></div><div style="font-size:0.55rem;color:var(--text-dim)">${dayLabel}</div></div>`;
+            return `<div style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+              <div style="font-size:0.55rem;font-weight:600;color:${c};margin-bottom:2px">${s > 0 ? s : ''}</div>
+              <div style="width:100%;height:${h}px;background:${c};border-radius:3px;margin-bottom:2px"></div>
+              <div style="font-size:0.55rem;color:var(--text-dim)">${dayLabel}</div>
+            </div>`;
           }).join('')}
         </div>
       </div>`;
@@ -4968,7 +4998,7 @@ async function loadTraining() {
 
 // ── Plans Tab — Today-first with check-in ──
 async function loadUnifiedPlans() {
-  const container = document.getElementById('training-content');
+  const container = document.getElementById('training-content') || document.getElementById('fitness-content');
   const dpColors = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
 
   // Compute week dates from offset
@@ -4995,6 +5025,12 @@ async function loadUnifiedPlans() {
 
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let html = '';
+
+    // ── Header with + Plan button ──
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-weight:600;font-size:0.9rem;color:var(--text-secondary)">plans</div>
+      <button class="btn-submit" onclick="showCreateDailyPlanForm('${plansSelectedDate}')" style="padding:4px 14px;font-size:0.8rem">+ Plan</button>
+    </div>`;
 
     // ── Week strip with navigation ──
     html += `<div class="plans-week-strip">
@@ -5168,6 +5204,33 @@ async function loadUnifiedPlans() {
       </div>`;
 
       html += '</div>'; // close plans-hero-card
+    }
+
+    // ── Week plan list (all plans for the week) ──
+    const sortedPlans = weekPlans.slice().sort((a, b) => (a.plan_date || '').localeCompare(b.plan_date || ''));
+    if (sortedPlans.length) {
+      html += `<div style="margin-top:12px">`;
+      for (const p of sortedPlans) {
+        const pDate = p.plan_date?.slice(0, 10) || '';
+        const pLabel = new Date(pDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        const sc = dpColors[p.status] || '#6366f1';
+        const isSelected = pDate === plansSelectedDate;
+        const title = p.title || (p.workout_type ? `${p.workout_type}${p.workout_focus ? ' — ' + p.workout_focus : ''}` : 'Plan');
+        html += `<div class="card mb-sm" onclick="plansSelectedDate='${pDate}';loadUnifiedPlans()" style="cursor:pointer;border-left:3px solid ${sc};padding:10px 12px;${isSelected ? 'background:var(--bg-tertiary);' : ''}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:600;font-size:0.85rem">${esc(title)}</div>
+              <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">${pLabel}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="badge-dynamic" style="background:${sc}22;color:${sc};font-size:0.6rem;padding:2px 6px;border-radius:4px">${p.status}</span>
+              ${p.workout_type ? `<span style="font-size:0.65rem;color:var(--text-dim)">${esc(p.workout_type)}</span>` : ''}
+            </div>
+          </div>
+          ${p.goal ? `<div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px">${esc(p.goal)}</div>` : ''}
+        </div>`;
+      }
+      html += `</div>`;
     }
 
     container.innerHTML = html;
