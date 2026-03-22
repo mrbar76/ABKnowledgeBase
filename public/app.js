@@ -1026,15 +1026,22 @@ const SKIP_OPS = new Set([
   'deleteKnowledge','deleteTask','deleteConversation','deleteTranscript',
   'deleteWorkout','deleteBodyMetric','deleteMeal','deleteTrainingPlan',
   'deleteCoachingSession','deleteInjury',
-  'bulkImportWorkouts','bulkImportBodyMetrics','bulkImportMeals'
+  'bulkImportWorkouts','bulkImportBodyMetrics','bulkImportMeals',
+  'listProjects','createProject','searchFacts','createFact','getFact','updateFact','deleteFact'
 ]);
 
 // Fitness-focused paths for Spartan preset
-const SPARTAN_PATHS = ['/workouts','/workouts/{id}','/workouts/stats/summary','/body-metrics','/body-metrics/{id}',
-  '/meals','/meals/{id}','/nutrition/daily-context','/nutrition/daily-summary',
+const SPARTAN_PATHS = [
+  '/workouts','/workouts/{id}','/workouts/stats/summary','/workouts/bulk',
+  '/body-metrics','/body-metrics/{id}','/body-metrics/stats/summary','/body-metrics/bulk',
+  '/meals','/meals/{id}','/meals/bulk',
+  '/nutrition/daily-context','/nutrition/daily-context/{id}','/nutrition/daily-summary','/nutrition/daily-summary/range',
   '/training/plans','/training/plans/{id}','/training/coaching','/training/coaching/{id}',
   '/training/injuries','/training/injuries/{id}','/training/injuries/active/summary',
-  '/training/day/{date}','/gamification','/gamification/settings','/intake','/search','/dashboard'];
+  '/training/day/{date}',
+  '/gamification','/gamification/settings',
+  '/intake','/search','/search/ai','/dashboard'
+];
 
 async function loadSchemaBuilder() {
   if (_fullSchema) return;

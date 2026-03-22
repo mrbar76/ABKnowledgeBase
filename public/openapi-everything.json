@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Complete API",
-    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Tasks, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -448,84 +448,6 @@
         }
       }
     },
-    "/projects": {
-      "get": {
-        "operationId": "listProjects",
-        "summary": "List projects",
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "active",
-                "paused",
-                "completed",
-                "archived"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Projects list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "count": {
-                      "type": "integer"
-                    },
-                    "projects": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Project"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "createProject",
-        "summary": "Create a new project",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "status": {
-                    "type": "string",
-                    "default": "active"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Project created"
-          }
-        }
-      }
-    },
     "/transcripts": {
       "get": {
         "operationId": "searchTranscripts",
@@ -643,175 +565,35 @@
         }
       }
     },
-    "/facts": {
+    "/tasks/kanban": {
       "get": {
-        "operationId": "searchFacts",
-        "summary": "Search or list fact entries",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Full-text search"
-          },
-          {
-            "name": "category",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 50
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 0
-            }
-          }
-        ],
+        "operationId": "getTasksKanban",
+        "summary": "Get tasks grouped by status columns for kanban view",
         "responses": {
           "200": {
-            "description": "Facts list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "count": {
-                      "type": "integer"
-                    },
-                    "facts": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Fact"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "createFact",
-        "summary": "Create a new fact",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "title",
-                  "content"
-                ],
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "content": {
-                    "type": "string"
-                  },
-                  "category": {
-                    "type": "string"
-                  },
-                  "tags": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "source": {
-                    "type": "string"
-                  },
-                  "confirmed": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created fact"
+            "description": "Tasks grouped by status (todo, in_progress, review, done)"
           }
         }
       }
     },
-    "/facts/{id}": {
+    "/knowledge/meta/categories": {
       "get": {
-        "operationId": "getFact",
-        "summary": "Get a single fact by ID",
+        "operationId": "getKnowledgeCategories",
+        "summary": "Get all unique knowledge categories",
         "responses": {
           "200": {
-            "description": "Single fact",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Fact"
-                }
-              }
-            }
+            "description": "Array of category strings"
           }
         }
-      },
-      "put": {
-        "operationId": "updateFact",
-        "summary": "Update a fact",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "content": {
-                    "type": "string"
-                  },
-                  "category": {
-                    "type": "string"
-                  },
-                  "tags": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "confirmed": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
+      }
+    },
+    "/body-metrics/stats/summary": {
+      "get": {
+        "operationId": "getBodyMetricsSummary",
+        "summary": "Get body metrics summary stats (latest weight, trends, averages)",
         "responses": {
           "200": {
-            "description": "Updated fact"
-          }
-        }
-      },
-      "delete": {
-        "operationId": "deleteFact",
-        "summary": "Delete a fact",
-        "responses": {
-          "200": {
-            "description": "Deleted"
+            "description": "Summary statistics for body metrics"
           }
         }
       }
@@ -3154,35 +2936,6 @@
           },
           "project_name": {
             "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "Project": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "task_counts": {
-            "type": "object"
           },
           "created_at": {
             "type": "string",
