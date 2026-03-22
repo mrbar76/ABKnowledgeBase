@@ -5003,6 +5003,7 @@ function showInjuryForm(existing) {
       <div class="form-group"><label>Treatment</label><textarea name="treatment" rows="2">${esc(inj.treatment || '')}</textarea></div>
       <div class="form-group"><label>Workout Modifications</label><textarea name="modifications" rows="2" placeholder="How to modify workouts to avoid aggravation...">${esc(inj.modifications || '')}</textarea></div>
       <div class="form-group"><label>Prevention Notes</label><textarea name="prevention_notes" rows="2">${esc(inj.prevention_notes || '')}</textarea></div>
+      <div class="form-group"><label>Additional Notes</label><textarea name="notes" rows="2" placeholder="Any other notes...">${esc(inj.notes || '')}</textarea></div>
       <div class="form-group"><label>Tags (comma separated)</label><input name="tags" value="${(inj.tags || []).join(', ')}"></div>
       <button type="submit" class="btn-submit" style="width:100%;margin-top:8px">${inj.id ? 'Update' : 'Log'} Injury</button>
     </form>
@@ -5028,6 +5029,7 @@ async function saveInjury(e, id) {
     treatment: f.get('treatment') || null,
     modifications: f.get('modifications') || null,
     prevention_notes: f.get('prevention_notes') || null,
+    notes: f.get('notes') || null,
     tags: f.get('tags') ? f.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
   };
   try {

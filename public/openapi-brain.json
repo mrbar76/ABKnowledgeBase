@@ -126,6 +126,15 @@
                     "type": "string",
                     "default": "chatgpt"
                   },
+                  "source": {
+                    "type": "string",
+                    "default": "api",
+                    "description": "Source of the entry"
+                  },
+                  "confirmed": {
+                    "type": "boolean",
+                    "default": false
+                  },
                   "metadata": {
                     "type": "object"
                   }
@@ -251,14 +260,6 @@
         "summary": "List tasks with optional filters",
         "parameters": [
           {
-            "name": "project_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
             "name": "status",
             "in": "query",
             "schema": {
@@ -338,10 +339,6 @@
                   "description": {
                     "type": "string"
                   },
-                  "project_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
                   "status": {
                     "type": "string",
                     "enum": [
@@ -365,6 +362,15 @@
                   "ai_agent": {
                     "type": "string",
                     "default": "chatgpt"
+                  },
+                  "due_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Due date for the task"
+                  },
+                  "context": {
+                    "type": "string",
+                    "description": "Task context/category grouping"
                   },
                   "next_steps": {
                     "type": "string"
@@ -1305,6 +1311,9 @@
           "source": {
             "type": "string"
           },
+          "confirmed": {
+            "type": "boolean"
+          },
           "ai_source": {
             "type": "string"
           },
@@ -1328,10 +1337,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "project_id": {
-            "type": "string",
-            "format": "uuid"
-          },
           "title": {
             "type": "string"
           },
@@ -1347,13 +1352,19 @@
           "ai_agent": {
             "type": "string"
           },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Due date for the task"
+          },
+          "context": {
+            "type": "string",
+            "description": "Task context/category grouping"
+          },
           "next_steps": {
             "type": "string"
           },
           "output_log": {
-            "type": "string"
-          },
-          "project_name": {
             "type": "string"
           },
           "created_at": {

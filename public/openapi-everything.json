@@ -122,6 +122,14 @@
                       "type": "string"
                     }
                   },
+                  "source": {
+                    "type": "string",
+                    "description": "Source of the knowledge (e.g. URL, book, conversation)"
+                  },
+                  "confirmed": {
+                    "type": "boolean",
+                    "description": "Whether this knowledge has been confirmed/verified"
+                  },
                   "ai_source": {
                     "type": "string",
                     "default": "chatgpt"
@@ -225,14 +233,6 @@
         "summary": "List tasks with optional filters",
         "parameters": [
           {
-            "name": "project_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
             "name": "status",
             "in": "query",
             "schema": {
@@ -312,10 +312,6 @@
                   "description": {
                     "type": "string"
                   },
-                  "project_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
                   "status": {
                     "type": "string",
                     "enum": [
@@ -341,6 +337,13 @@
                     "default": "chatgpt"
                   },
                   "next_steps": {
+                    "type": "string"
+                  },
+                  "due_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "context": {
                     "type": "string"
                   }
                 }
@@ -1293,6 +1296,44 @@
                   "adjustment": {
                     "type": "string",
                     "description": "What to change next time: weight, pace, structure"
+                  },
+                  "heart_rate_avg": {
+                    "type": "integer",
+                    "description": "Average heart rate in bpm"
+                  },
+                  "heart_rate_max": {
+                    "type": "integer",
+                    "description": "Max heart rate in bpm"
+                  },
+                  "pace_avg": {
+                    "type": "string",
+                    "description": "Average pace, e.g. 8:30/mi"
+                  },
+                  "cadence_avg": {
+                    "type": "number",
+                    "description": "Average cadence (steps per minute)"
+                  },
+                  "active_calories": {
+                    "type": "number",
+                    "description": "Active calories burned"
+                  },
+                  "total_calories": {
+                    "type": "number",
+                    "description": "Total calories burned"
+                  },
+                  "splits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Split/lap data"
+                  },
+                  "exercises": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Individual exercises with sets/reps/weight"
                   },
                   "tags": {
                     "type": "array",
@@ -2857,6 +2898,98 @@
           }
         }
       }
+    },
+    "/recovery/score": {
+      "get": {
+        "operationId": "getRecoveryScore",
+        "summary": "Get recovery score for a specific date",
+        "description": "Returns a composite recovery score based on sleep, soreness, energy, and other recovery indicators.",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date to get recovery score for (YYYY-MM-DD). Defaults to today."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recovery score",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "score": {
+                      "type": "number"
+                    },
+                    "components": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recovery/trend": {
+      "get": {
+        "operationId": "getRecoveryTrend",
+        "summary": "Get recovery trend over a number of days",
+        "description": "Returns recovery scores over a time period to identify trends.",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 7
+            },
+            "description": "Number of days to look back"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recovery trend data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "days": {
+                      "type": "integer"
+                    },
+                    "trend": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2886,6 +3019,9 @@
           "source": {
             "type": "string"
           },
+          "confirmed": {
+            "type": "boolean"
+          },
           "ai_source": {
             "type": "string"
           },
@@ -2906,10 +3042,6 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "project_id": {
             "type": "string",
             "format": "uuid"
           },
@@ -2935,6 +3067,13 @@
             "type": "string"
           },
           "project_name": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "context": {
             "type": "string"
           },
           "created_at": {
@@ -3022,6 +3161,36 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "heart_rate_avg": {
+            "type": "integer"
+          },
+          "heart_rate_max": {
+            "type": "integer"
+          },
+          "pace_avg": {
+            "type": "string"
+          },
+          "cadence_avg": {
+            "type": "number"
+          },
+          "active_calories": {
+            "type": "number"
+          },
+          "total_calories": {
+            "type": "number"
+          },
+          "splits": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "exercises": {
+            "type": "array",
+            "items": {
+              "type": "object"
             }
           },
           "created_at": {
@@ -3122,6 +3291,18 @@
             "items": {
               "type": "string"
             },
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "ai_source": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
             "nullable": true
           }
         }
@@ -3595,10 +3776,6 @@
           "constraints": {
             "type": "string"
           },
-          "project_id": {
-            "type": "string",
-            "format": "uuid"
-          },
           "tags": {
             "type": "array",
             "items": {
@@ -3843,13 +4020,8 @@
             "type": "string",
             "description": "Long-term prevention strategy"
           },
-          "related_workout_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "training_plan_id": {
-            "type": "string",
-            "format": "uuid"
+          "notes": {
+            "type": "string"
           },
           "tags": {
             "type": "array",
@@ -3950,13 +4122,8 @@
           "prevention_notes": {
             "type": "string"
           },
-          "related_workout_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "training_plan_id": {
-            "type": "string",
-            "format": "uuid"
+          "notes": {
+            "type": "string"
           },
           "tags": {
             "type": "array",

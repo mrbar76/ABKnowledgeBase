@@ -3,7 +3,7 @@
   "info": {
     "title": "AB Brain - Spartan Training Platform",
     "version": "1.1.0",
-    "description": "AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` — check for contraindications FIRST\n2. Call `GET /training/day/{today}` — see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` — understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` — save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` — log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` — update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` — include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` — full-text search across ALL data types\n- `POST /search/ai` — AI-optimized search returning typed results\n- `GET /dashboard` — overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` — rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` — adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array — the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)"
+    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)"
   },
   "servers": [
     {
@@ -52,7 +52,7 @@
     "/workouts/stats/summary": {
       "get": {
         "operationId": "getWorkoutStats",
-        "summary": "Get workout statistics — total count, by type, average effort, recent workouts",
+        "summary": "Get workout statistics \u2014 total count, by type, average effort, recent workouts",
         "responses": {
           "200": {
             "description": "Workout stats summary"
@@ -63,7 +63,7 @@
     "/intake": {
       "post": {
         "operationId": "smartIntake",
-        "summary": "AI-powered smart intake — auto-classifies text into knowledge, fact, task, or transcript",
+        "summary": "AI-powered smart intake \u2014 auto-classifies text into knowledge, fact, task, or transcript",
         "description": "Send raw text and OpenAI will classify it and store it in the appropriate table automatically.",
         "requestBody": {
           "required": true,
@@ -342,7 +342,7 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'"
+                    "description": "Auto-generated if empty: 'Spartan Workout \u2013 DATE \u2013 TYPE'"
                   },
                   "workout_date": {
                     "type": "string",
@@ -444,6 +444,52 @@
                   "ai_source": {
                     "type": "string",
                     "default": "chatgpt"
+                  },
+                  "heart_rate_avg": {
+                    "type": "integer",
+                    "description": "Average heart rate in bpm",
+                    "nullable": true
+                  },
+                  "heart_rate_max": {
+                    "type": "integer",
+                    "description": "Max heart rate in bpm",
+                    "nullable": true
+                  },
+                  "pace_avg": {
+                    "type": "string",
+                    "description": "Average pace, e.g. 9:30/mi",
+                    "nullable": true
+                  },
+                  "cadence_avg": {
+                    "type": "integer",
+                    "description": "Average cadence in steps/min",
+                    "nullable": true
+                  },
+                  "active_calories": {
+                    "type": "integer",
+                    "description": "Active calories burned",
+                    "nullable": true
+                  },
+                  "total_calories": {
+                    "type": "integer",
+                    "description": "Total calories burned",
+                    "nullable": true
+                  },
+                  "splits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Split data per lap/mile",
+                    "nullable": true
+                  },
+                  "exercises": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Structured exercise list with sets/reps/weight",
+                    "nullable": true
                   }
                 }
               }
@@ -1296,7 +1342,7 @@
     "/training/injuries/active/summary": {
       "get": {
         "operationId": "getActiveInjuriesSummary",
-        "summary": "Get all active/monitoring injuries — use this before recommending exercises to check for contraindications",
+        "summary": "Get all active/monitoring injuries \u2014 use this before recommending exercises to check for contraindications",
         "responses": {
           "200": {
             "description": "Active injuries with body areas, severity, and modifications"
@@ -1551,6 +1597,133 @@
           }
         }
       }
+    },
+    "/recovery/score": {
+      "get": {
+        "operationId": "getRecoveryScore",
+        "summary": "Get recovery score for a specific date",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date in YYYY-MM-DD format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recovery score for the given date",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "score": {
+                      "type": "number"
+                    },
+                    "factors": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recovery/trend": {
+      "get": {
+        "operationId": "getRecoveryTrend",
+        "summary": "Get recovery trend over a number of days",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "default": 7
+            },
+            "description": "Number of days to look back"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recovery trend data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "days": {
+                      "type": "integer"
+                    },
+                    "trend": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "average": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nutrition/daily-context/{id}": {
+      "patch": {
+        "operationId": "updateDailyContext",
+        "summary": "Update a daily nutrition context entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyContextInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated daily context"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1635,6 +1808,52 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "heart_rate_avg": {
+            "type": "integer",
+            "description": "Average heart rate in bpm",
+            "nullable": true
+          },
+          "heart_rate_max": {
+            "type": "integer",
+            "description": "Max heart rate in bpm",
+            "nullable": true
+          },
+          "pace_avg": {
+            "type": "string",
+            "description": "Average pace, e.g. 9:30/mi",
+            "nullable": true
+          },
+          "cadence_avg": {
+            "type": "integer",
+            "description": "Average cadence in steps/min",
+            "nullable": true
+          },
+          "active_calories": {
+            "type": "integer",
+            "description": "Active calories burned",
+            "nullable": true
+          },
+          "total_calories": {
+            "type": "integer",
+            "description": "Total calories burned",
+            "nullable": true
+          },
+          "splits": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Split data per lap/mile",
+            "nullable": true
+          },
+          "exercises": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Structured exercise list with sets/reps/weight",
+            "nullable": true
           }
         }
       },
@@ -1730,6 +1949,21 @@
             "items": {
               "type": "string"
             },
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "Source of the meal entry",
+            "nullable": true
+          },
+          "ai_source": {
+            "type": "string",
+            "description": "AI source that created this entry",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Additional metadata",
             "nullable": true
           }
         }
@@ -2072,7 +2306,7 @@
           },
           "rationale": {
             "type": "string",
-            "description": "WHY this plan was chosen — training philosophy, injury avoidance, periodization reasoning"
+            "description": "WHY this plan was chosen \u2014 training philosophy, injury avoidance, periodization reasoning"
           },
           "constraints": {
             "type": "string",
@@ -2164,10 +2398,6 @@
           },
           "constraints": {
             "type": "string"
-          },
-          "project_id": {
-            "type": "string",
-            "format": "uuid"
           },
           "tags": {
             "type": "array",
@@ -2520,14 +2750,6 @@
           "prevention_notes": {
             "type": "string"
           },
-          "related_workout_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "training_plan_id": {
-            "type": "string",
-            "format": "uuid"
-          },
           "tags": {
             "type": "array",
             "items": {
@@ -2539,6 +2761,10 @@
           },
           "metadata": {
             "type": "object"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Additional notes about the injury"
           }
         }
       }

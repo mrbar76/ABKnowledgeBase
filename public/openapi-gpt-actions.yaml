@@ -170,6 +170,34 @@ paths:
           description: Unauthorized
         '500':
           description: Server error
+  /workouts/{id}:
+    put:
+      operationId: updateWorkout
+      summary: Update a workout by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutCreate'
+      responses:
+        '200':
+          description: Updated workout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '404':
+          description: Workout not found
+        '401':
+          description: Unauthorized
   /body-metrics:
     get:
       operationId: getBodyMetrics
@@ -355,6 +383,41 @@ paths:
       responses:
         '201':
           description: Bulk import results
+  /body-metrics/{id}:
+    patch:
+      operationId: patchBodyMetric
+      summary: Partially update a body metric entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                weight_lb:
+                  type: number
+                body_fat_pct:
+                  type: number
+                muscle_mass_lb:
+                  type: number
+                notes:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Updated body metric
+        '404':
+          description: Body metric not found
   /meals:
     get:
       operationId: getMeals
@@ -461,9 +524,60 @@ paths:
                   type: array
                   items:
                     type: string
+                source:
+                  type: string
+                  description: Where the meal data came from (e.g. manual, myfitnesspal, apple-health)
+                ai_source:
+                  type: string
+                  default: chatgpt
+                  description: Which AI agent logged this meal
+                metadata:
+                  type: object
+                  description: Any additional data that doesn't fit other fields
       responses:
         '201':
           description: Created meal
+  /meals/{id}:
+    patch:
+      operationId: patchMeal
+      summary: Partially update a meal entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                meal_type:
+                  type: string
+                calories:
+                  type: number
+                protein_g:
+                  type: number
+                carbs_g:
+                  type: number
+                fat_g:
+                  type: number
+                notes:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Updated meal
+        '404':
+          description: Meal not found
   /meals/bulk:
     post:
       operationId: bulkImportMeals
@@ -577,6 +691,47 @@ paths:
           description: Created context
         '409':
           description: Context already exists for this date
+  /nutrition/daily-context/{id}:
+    patch:
+      operationId: patchDailyContext
+      summary: Partially update a daily nutrition context entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                day_type:
+                  type: string
+                hydration_liters:
+                  type: number
+                energy_rating:
+                  type: integer
+                sleep_hours:
+                  type: number
+                sleep_quality:
+                  type: integer
+                recovery_rating:
+                  type: integer
+                notes:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Updated daily context
+        '404':
+          description: Daily context not found
   /nutrition/daily-summary:
     get:
       operationId: getDailySummary
@@ -612,6 +767,80 @@ paths:
       responses:
         '200':
           description: Range summary with daily breakdowns
+  /recovery/score:
+    get:
+      operationId: getRecoveryScore
+      summary: Get current recovery score
+      description: Returns a computed recovery score based on sleep, soreness, HRV, and recent training load.
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Date to get recovery score for (defaults to today)
+      responses:
+        '200':
+          description: Recovery score data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  score:
+                    type: number
+                    description: Recovery score 0-100
+                  factors:
+                    type: object
+                    description: Breakdown of factors contributing to the score
+  /recovery/trend:
+    get:
+      operationId: getRecoveryTrend
+      summary: Get recovery trend over time
+      description: Returns recovery scores over a date range to identify trends and patterns.
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start date (inclusive)
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End date (exclusive)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 14
+          description: Number of days to return (default 14)
+      responses:
+        '200':
+          description: Recovery trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trend:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        score:
+                          type: number
+                  average:
+                    type: number
+                    description: Average recovery score over the period
   /training/plans:
     get:
       operationId: listTrainingPlans
@@ -803,7 +1032,6 @@ paths:
       description: |
         Record an injury with body_area, severity (1-10), symptoms, aggravating_movements,
         treatment, modifications (workout adjustments), and prevention_notes.
-        Link to the workout that caused it via related_workout_id.
       requestBody:
         required: true
         content:
@@ -1261,9 +1489,6 @@ components:
         constraints:
           type: string
           description: Limitations (injuries, schedule, equipment, recovery needs)
-        project_id:
-          type: string
-          format: uuid
         tags:
           type: array
           items:
@@ -1382,13 +1607,9 @@ components:
         prevention_notes:
           type: string
           description: Long-term prevention strategy
-        related_workout_id:
+        notes:
           type: string
-          format: uuid
-          description: Link to the workout that caused it
-        training_plan_id:
-          type: string
-          format: uuid
+          description: General notes about the injury
         tags:
           type: array
           items:

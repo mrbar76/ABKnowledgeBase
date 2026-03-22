@@ -348,8 +348,9 @@ router.post('/injuries', async (req, res) => {
       `INSERT INTO injuries (
         title, body_area, side, injury_type, severity, status,
         onset_date, resolved_date, symptoms, treatment, notes,
+        mechanism, aggravating_movements, relieving_factors, modifications, prevention_notes,
         tags, ai_source, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [
         b.title,
         b.body_area,
@@ -362,6 +363,11 @@ router.post('/injuries', async (req, res) => {
         b.symptoms || null,
         b.treatment || null,
         b.notes || null,
+        b.mechanism || null,
+        b.aggravating_movements || null,
+        b.relieving_factors || null,
+        b.modifications || null,
+        b.prevention_notes || null,
         JSON.stringify(b.tags || []),
         b.ai_source || null,
         JSON.stringify(b.metadata || {}),
@@ -386,6 +392,7 @@ router.put('/injuries/:id', async (req, res) => {
     const allowed = [
       'title', 'body_area', 'side', 'injury_type', 'severity', 'status',
       'onset_date', 'resolved_date', 'symptoms', 'treatment', 'notes',
+      'mechanism', 'aggravating_movements', 'relieving_factors', 'modifications', 'prevention_notes',
       'tags', 'ai_source', 'metadata',
     ];
 

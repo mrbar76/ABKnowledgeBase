@@ -128,6 +128,16 @@
                   },
                   "metadata": {
                     "type": "object"
+                  },
+                  "source": {
+                    "type": "string",
+                    "default": "api",
+                    "description": "Source of the entry"
+                  },
+                  "confirmed": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether the entry is confirmed"
                   }
                 }
               }
@@ -298,10 +308,6 @@
                   "description": {
                     "type": "string"
                   },
-                  "project_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
                   "status": {
                     "type": "string",
                     "enum": [
@@ -328,6 +334,15 @@
                   },
                   "next_steps": {
                     "type": "string"
+                  },
+                  "due_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Due date for the task"
+                  },
+                  "context": {
+                    "type": "string",
+                    "description": "Task context/category grouping"
                   }
                 }
               }
@@ -630,7 +645,7 @@
       "post": {
         "operationId": "logWorkout",
         "summary": "Log a new Spartan workout with structured fields for type, workout details, metrics, performance, body feedback, and adjustments",
-        "description": "Post a structured workout log. ChatGPT should use this after a workout recap conversation. Include workout_type, focus, warmup, main_sets, carries, metrics (time, distance, elevation), effort rating 1-10, performance notes (slowdown, failure point), body feedback (grip, legs, cardio, shoulder), and adjustment for next time. Tags should be lowercase without # prefix.",
+        "description": "Post a structured workout log. ChatGPT should use this after a workout recap conversation. Include workout_type, focus, warmup, main_sets, carries, metrics (time, distance, elevation), effort rating 1-10, performance notes (slowdown, failure point), body feedback (grip, legs, cardio, shoulder), and adjustment for next time. Tags should be lowercase without # prefix. Also include heart_rate_avg, heart_rate_max, pace_avg, cadence_avg, active_calories, total_calories, splits, and exercises when available.",
         "requestBody": {
           "required": true,
           "content": {
@@ -745,6 +760,39 @@
                   "ai_source": {
                     "type": "string",
                     "default": "chatgpt"
+                  },
+                  "heart_rate_avg": {
+                    "type": "string",
+                    "description": "Average heart rate, e.g. '145 bpm'"
+                  },
+                  "heart_rate_max": {
+                    "type": "string",
+                    "description": "Max heart rate, e.g. '180 bpm'"
+                  },
+                  "pace_avg": {
+                    "type": "string",
+                    "description": "Average pace, e.g. '8:30/mile'"
+                  },
+                  "cadence_avg": {
+                    "type": "string",
+                    "description": "Average cadence, e.g. '180 spm'"
+                  },
+                  "active_calories": {
+                    "type": "string",
+                    "description": "Active calories burned, e.g. '450'"
+                  },
+                  "total_calories": {
+                    "type": "string",
+                    "description": "Total calories burned, e.g. '620'"
+                  },
+                  "splits": {
+                    "type": "object",
+                    "description": "Split times per mile or lap"
+                  },
+                  "exercises": {
+                    "type": "array",
+                    "items": { "type": "object" },
+                    "description": "Structured exercise list with sets, reps, weight"
                   }
                 }
               }
@@ -754,6 +802,184 @@
         "responses": {
           "201": {
             "description": "Workout logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workouts/{id}": {
+      "put": {
+        "operationId": "updateWorkout",
+        "summary": "Update an existing workout log",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Auto-generated if empty: 'Spartan Workout – DATE – TYPE'"
+                  },
+                  "workout_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "YYYY-MM-DD, defaults to today"
+                  },
+                  "workout_type": {
+                    "type": "string",
+                    "enum": [
+                      "hill",
+                      "strength",
+                      "run",
+                      "hybrid",
+                      "recovery",
+                      "ruck"
+                    ]
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "e.g. Runyon Canyon, Home Gym"
+                  },
+                  "elevation": {
+                    "type": "string",
+                    "description": "Base elevation if relevant, e.g. 1,320 ft"
+                  },
+                  "focus": {
+                    "type": "string",
+                    "description": "Goal of the workout, e.g. hill durability, grip endurance"
+                  },
+                  "warmup": {
+                    "type": "string",
+                    "description": "Warm-up activities"
+                  },
+                  "main_sets": {
+                    "type": "string",
+                    "description": "Main workout sets and exercises"
+                  },
+                  "carries": {
+                    "type": "string",
+                    "description": "Carries, lifts, or loaded movements"
+                  },
+                  "time_duration": {
+                    "type": "string",
+                    "description": "Total time, e.g. 45 min, 1:15:00"
+                  },
+                  "distance": {
+                    "type": "string",
+                    "description": "Distance covered, e.g. 3.2 mi"
+                  },
+                  "elevation_gain": {
+                    "type": "string",
+                    "description": "Elevation gained, e.g. 850 ft"
+                  },
+                  "effort": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "description": "Effort rating 1-10"
+                  },
+                  "slowdown_notes": {
+                    "type": "string",
+                    "description": "Where did I slow down or break form"
+                  },
+                  "failure_first": {
+                    "type": "string",
+                    "description": "What failed first: legs / grip / cardio / shoulders"
+                  },
+                  "grip_feedback": {
+                    "type": "string",
+                    "description": "Grip status: solid / pumped / gave out"
+                  },
+                  "legs_feedback": {
+                    "type": "string",
+                    "description": "Legs status: strong / heavy / cramped"
+                  },
+                  "cardio_feedback": {
+                    "type": "string",
+                    "description": "Cardio status: steady / gasping / recovered fast"
+                  },
+                  "shoulder_feedback": {
+                    "type": "string",
+                    "description": "Shoulder status: fine / tight / clicking"
+                  },
+                  "body_notes": {
+                    "type": "string",
+                    "description": "Additional body feedback or recovery notes"
+                  },
+                  "adjustment": {
+                    "type": "string",
+                    "description": "What to change next time: weight, pace, structure"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Tags without # prefix, e.g. [\"spartan\", \"hill\", \"carry\"]"
+                  },
+                  "ai_source": {
+                    "type": "string",
+                    "default": "chatgpt"
+                  },
+                  "heart_rate_avg": {
+                    "type": "string",
+                    "description": "Average heart rate, e.g. '145 bpm'"
+                  },
+                  "heart_rate_max": {
+                    "type": "string",
+                    "description": "Max heart rate, e.g. '180 bpm'"
+                  },
+                  "pace_avg": {
+                    "type": "string",
+                    "description": "Average pace, e.g. '8:30/mile'"
+                  },
+                  "cadence_avg": {
+                    "type": "string",
+                    "description": "Average cadence, e.g. '180 spm'"
+                  },
+                  "active_calories": {
+                    "type": "string",
+                    "description": "Active calories burned, e.g. '450'"
+                  },
+                  "total_calories": {
+                    "type": "string",
+                    "description": "Total calories burned, e.g. '620'"
+                  },
+                  "splits": {
+                    "type": "object",
+                    "description": "Split times per mile or lap"
+                  },
+                  "exercises": {
+                    "type": "array",
+                    "items": { "type": "object" },
+                    "description": "Structured exercise list with sets, reps, weight"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated workout",
             "content": {
               "application/json": {
                 "schema": {
@@ -894,6 +1120,37 @@
         }
       }
     },
+    "/body-metrics/{id}": {
+      "patch": {
+        "operationId": "updateBodyMetric",
+        "summary": "Update an existing body metric entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BodyMetricInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated body metric"
+          }
+        }
+      }
+    },
     "/meals": {
       "get": {
         "operationId": "listMeals",
@@ -1006,6 +1263,37 @@
         }
       }
     },
+    "/meals/{id}": {
+      "patch": {
+        "operationId": "updateMeal",
+        "summary": "Update an existing meal entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MealInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated meal"
+          }
+        }
+      }
+    },
     "/nutrition/daily-context": {
       "get": {
         "operationId": "getDailyContext",
@@ -1062,6 +1350,37 @@
           },
           "409": {
             "description": "Context already exists for this date"
+          }
+        }
+      }
+    },
+    "/nutrition/daily-context/{id}": {
+      "patch": {
+        "operationId": "updateDailyContext",
+        "summary": "Update an existing daily nutrition context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyContextInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated daily context"
           }
         }
       }
@@ -1674,6 +1993,67 @@
         }
       }
     },
+    "/recovery/score": {
+      "get": {
+        "operationId": "getRecoveryScore",
+        "summary": "Get recovery score for a specific date",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date to get recovery score for (defaults to today)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recovery score object",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recovery/trend": {
+      "get": {
+        "operationId": "getRecoveryTrend",
+        "summary": "Get recovery trend over a period of days",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 7
+            },
+            "description": "Number of days to include in the trend"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recovery trend array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/transcripts": {
       "get": {
         "operationId": "searchTranscripts",
@@ -2056,6 +2436,17 @@
               "type": "string"
             },
             "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "default": "manual"
+          },
+          "ai_source": {
+            "type": "string",
+            "default": "chatgpt"
+          },
+          "metadata": {
+            "type": "object"
           }
         }
       },
@@ -2490,10 +2881,6 @@
           "constraints": {
             "type": "string"
           },
-          "project_id": {
-            "type": "string",
-            "format": "uuid"
-          },
           "tags": {
             "type": "array",
             "items": {
@@ -2845,13 +3232,9 @@
           "prevention_notes": {
             "type": "string"
           },
-          "related_workout_id": {
+          "notes": {
             "type": "string",
-            "format": "uuid"
-          },
-          "training_plan_id": {
-            "type": "string",
-            "format": "uuid"
+            "description": "Additional notes about the injury"
           },
           "tags": {
             "type": "array",
