@@ -3335,6 +3335,16 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   font-weight: 700;
   color: var(--text);
 }
+.plans-day-pill-type {
+  font-size: 0.5rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.1;
+}
 .plans-day-pill-dot {
   width: 5px;
   height: 5px;

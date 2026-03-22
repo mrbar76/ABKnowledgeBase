@@ -4554,16 +4554,32 @@ async function loadUnifiedPlans() {
   sunDate.setDate(monday.getDate() + 6);
   const sunStr = sunDate.toISOString().slice(0, 10);
 
-  // Fetch week plans + selected day data in parallel
+  // Fetch week plans + training plans + selected day data in parallel
   try {
-    const [weekData, dayData] = await Promise.all([
+    const [weekData, tpData, dayData] = await Promise.all([
       api(`/daily-plans?from=${monStr}&to=${sunStr}`),
+      api(`/training/plans?status=active&limit=20`),
       api(`/training/day/${plansSelectedDate}`),
     ]);
 
     const weekPlans = weekData.results || [];
     const planMap = {};
     for (const p of weekPlans) planMap[p.plan_date?.slice(0, 10)] = p;
+
+    // Build training plan map for days that have no daily plan
+    const tpMap = {};
+    for (const tp of (tpData.plans || [])) {
+      if (!tp.start_date) continue;
+      const start = tp.start_date.slice(0, 10);
+      const end = (tp.end_date || tp.start_date).slice(0, 10);
+      // For single-day training plans (microcycles), map to that date
+      if (start >= monStr && start <= sunStr) {
+        if (!planMap[start] && !tpMap[start]) tpMap[start] = tp;
+      }
+      if (end !== start && end >= monStr && end <= sunStr) {
+        if (!planMap[end] && !tpMap[end]) tpMap[end] = tp;
+      }
+    }
 
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let html = '';
@@ -4577,13 +4593,18 @@ async function loadUnifiedPlans() {
       d.setDate(monday.getDate() + i);
       const dateStr = d.toISOString().slice(0, 10);
       const plan = planMap[dateStr];
+      const tp = tpMap[dateStr];
+      const hasPlan = plan || tp;
       const isToday = dateStr === todayStr;
       const isSelected = dateStr === plansSelectedDate;
-      const statusColor = plan ? (dpColors[plan.status] || '#6366f1') : 'transparent';
-      html += `<button class="plans-day-pill${isToday ? ' is-today' : ''}${isSelected ? ' selected' : ''}" onclick="plansSelectedDate='${dateStr}';loadUnifiedPlans()" style="--pill-status:${statusColor}">
+      const statusColor = plan ? (dpColors[plan.status] || '#6366f1') : tp ? '#22c55e' : 'transparent';
+      let pillType = '';
+      if (plan) pillType = plan.status === 'rest' ? 'Rest' : (plan.workout_type || '—');
+      else if (tp) pillType = tp.title?.replace(/^.*?–\s*/, '').slice(0, 12) || tp.plan_type || '—';
+      html += `<button class="plans-day-pill${isToday ? ' is-today' : ''}${isSelected ? ' selected' : ''}${hasPlan ? ' has-plan' : ''}" onclick="plansSelectedDate='${dateStr}';loadUnifiedPlans()" style="--pill-status:${statusColor}">
         <span class="plans-day-pill-label">${dayLabels[i]}</span>
         <span class="plans-day-pill-date">${d.getDate()}</span>
-        ${plan ? `<span class="plans-day-pill-dot" style="background:${statusColor}"></span>` : ''}
+        ${hasPlan ? `<span class="plans-day-pill-type" style="color:${statusColor}">${esc(pillType)}</span>` : '<span class="plans-day-pill-type" style="color:var(--text-dim)">—</span>'}
       </button>`;
     }
     html += `</div>
@@ -4599,16 +4620,63 @@ async function loadUnifiedPlans() {
     const isRest = dp?.status === 'rest';
 
     if (!dp) {
-      // No plan
+      // No daily plan — check for active training plan
+      const tp = dayData.active_plan;
       html += `<div class="plans-hero-card">
         <div class="plans-hero-header">
           <span class="plans-hero-date">${selectedLabel}</span>
-        </div>
-        <div class="empty-state" style="padding:24px 0">
+        </div>`;
+      if (tp) {
+        // Show training plan as the plan for this day
+        const tpColor = '#22c55e';
+        html += `<div class="plans-section" style="border-top:none">
+          <div class="plans-section-label" style="color:${tpColor}">Training Plan</div>
+          <div style="font-weight:700;font-size:0.95rem;cursor:pointer" onclick="showTrainingPlanDetail('${tp.id}')">${esc(tp.title)}</div>
+          ${tp.goal ? `<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px">${esc(tp.goal)}</div>` : ''}
+          <div class="plans-section-meta" style="margin-top:4px">
+            ${tp.plan_type ? `<span>${tp.plan_type}</span>` : ''}
+            ${tp.phase ? `<span>Phase: ${esc(tp.phase)}</span>` : ''}
+            ${tp.weeks ? `<span>${tp.weeks}wk</span>` : ''}
+          </div>
+          ${tp.rationale ? `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:6px;font-style:italic">${esc(tp.rationale)}</div>` : ''}
+        </div>`;
+
+        // Check-in section for training plan days too
+        const hasActual = dayData.workouts?.length || dayData.meals?.length || dayData.nutrition_context;
+        if (hasActual) {
+          const maxEffort = Math.max(0, ...(dayData.workouts || []).map(w => w.effort || 0));
+          const totalCal = (dayData.meals || []).reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
+          const totalProtein = (dayData.meals || []).reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
+          const nc = dayData.nutrition_context || {};
+          const rows = [];
+          if (maxEffort > 0) rows.push({ label: 'Effort', actual: maxEffort, target: '—', pct: 0, showBar: false });
+          if (totalCal > 0) rows.push({ label: 'Calories', actual: Math.round(totalCal), target: '—', pct: 0, showBar: false });
+          if (totalProtein > 0) rows.push({ label: 'Protein', actual: Math.round(totalProtein) + 'g', target: '—', pct: 0, showBar: false });
+          if (nc.hydration_liters) rows.push({ label: 'Water', actual: nc.hydration_liters + 'L', target: '—', pct: 0, showBar: false });
+          if (nc.sleep_hours) rows.push({ label: 'Sleep', actual: nc.sleep_hours + 'h', target: '—', pct: 0, showBar: false });
+          if (rows.length) {
+            html += `<div class="plans-checkin">
+              <div class="plans-section-label">Logged Today</div>
+              ${rows.map(r => `<div class="plans-checkin-row">
+                <div class="plans-checkin-meta">
+                  <span class="plans-checkin-label">${r.label}</span>
+                  <span><strong>${r.actual}</strong></span>
+                </div>
+              </div>`).join('')}
+            </div>`;
+          }
+        }
+
+        html += `<div class="plans-actions">
+          <button class="btn-action" onclick="showCreateDailyPlanForm('${plansSelectedDate}')">+ Create Daily Plan</button>
+        </div>`;
+      } else {
+        html += `<div class="empty-state" style="padding:24px 0">
           <div style="color:var(--text-dim);margin-bottom:12px">No plan for this day</div>
           <button class="btn-submit" onclick="showCreateDailyPlanForm('${plansSelectedDate}')" style="padding:8px 20px">+ Create Plan</button>
-        </div>
-      </div>`;
+        </div>`;
+      }
+      html += '</div>';
     } else if (isRest) {
       // Rest day
       html += `<div class="plans-hero-card" style="border-left:4px solid #6366f1">
