@@ -3,6 +3,12 @@
 const API = '/api';
 let currentTab = 'home';
 
+// Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
+function localDateStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // ─── Theme Management ─────────────────────────────────────────
 function getThemeMode() { return localStorage.getItem('ab_theme') || 'auto'; }
 
@@ -3014,13 +3020,13 @@ function loadFitness() {
 }
 
 // ─── Fitness > Today ──────────────────────────────────────────
-let fitnessTodayDate = new Date().toISOString().slice(0, 10);
+let fitnessTodayDate = localDateStr();
 let fitnessTodayWeekOffset = 0;
 
 function shiftFitnessToday(delta) {
   const d = new Date(fitnessTodayDate + 'T12:00:00');
   d.setDate(d.getDate() + delta);
-  fitnessTodayDate = d.toISOString().slice(0, 10);
+  fitnessTodayDate = localDateStr(d);
   loadFitnessToday();
 }
 
@@ -3044,7 +3050,7 @@ async function loadFitnessToday() {
     const bodyMetrics = dayData.body_metrics || [];
 
     // Week strip
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateStr();
     const sel = new Date(fitnessTodayDate + 'T12:00:00');
     const dayOfWeek = sel.getDay();
     const monday = new Date(sel);
@@ -3054,16 +3060,16 @@ async function loadFitnessToday() {
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(d.getDate() + i);
-      const ds = d.toISOString().slice(0, 10);
+      const ds = d.toLocaleDateString('en-CA');
       weekDays.push({ date: ds, label: dayLabels[i], isToday: ds === today, isSelected: ds === fitnessTodayDate });
     }
 
     const prevWeekDate = new Date(monday);
     prevWeekDate.setDate(prevWeekDate.getDate() - 7);
-    const prevWeekStr = prevWeekDate.toISOString().slice(0, 10);
+    const prevWeekStr = prevWeekDate.toLocaleDateString('en-CA');
     const nextWeekDate = new Date(monday);
     nextWeekDate.setDate(nextWeekDate.getDate() + 7);
-    const nextWeekStr = nextWeekDate.toISOString().slice(0, 10);
+    const nextWeekStr = nextWeekDate.toLocaleDateString('en-CA');
 
     const weekDayBtns = weekDays.map(d => {
       const dayNum = new Date(d.date + 'T12:00:00').getDate();
@@ -3317,10 +3323,10 @@ function loadFitnessLog() {
   const items = [
     { label: 'Workout', icon: '💪', action: "showWorkoutForm()" },
     { label: 'Meal', icon: '🍽️', action: "showMealForm()" },
-    { label: 'Sleep', icon: '😴', action: "showDailyContextForm('" + new Date().toISOString().slice(0, 10) + "')" },
+    { label: 'Sleep', icon: '😴', action: "showDailyContextForm('" + localDateStr() + "')" },
     { label: 'Weight', icon: '⚖️', action: "showBodyMetricForm()" },
     { label: 'Injury', icon: '🩹', action: "showInjuryForm()" },
-    { label: 'Plan', icon: '📅', action: "showCreateDailyPlanForm('" + new Date().toISOString().slice(0, 10) + "')" },
+    { label: 'Plan', icon: '📅', action: "showCreateDailyPlanForm('" + localDateStr() + "')" },
     { label: 'Coaching', icon: '🧠', action: "showCoachingForm()" },
   ];
   el.innerHTML = `
@@ -3647,7 +3653,7 @@ async function showWorkoutForm(editId) {
     try { w = await api(`/workouts/${editId}`); } catch {}
   }
   const isEdit = !!editId;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const tagsStr = (w.tags || []).join(', ');
 
   const html = `
@@ -3777,7 +3783,7 @@ async function deleteWorkout(id) {
 }
 
 // ─── Nutrition (Meals + Daily Context + Summary) ──────────────
-let nutritionDate = new Date().toISOString().slice(0, 10);
+let nutritionDate = localDateStr();
 
 const MACRO_GOALS = {
   hard:     { cal: [2700, 2900], p: [140, 150], c: [275, 325], f: [70, 90] },
@@ -3999,7 +4005,7 @@ async function loadNutrition(date) {
 function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('en-CA');
 }
 
 async function showMealDetail(id) {
@@ -4397,7 +4403,7 @@ async function showBodyMetricForm(editId) {
   if (isEdit) {
     try { m = await api(`/body-metrics/${editId}`); } catch {}
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
 
   const numField = (id, label, val, step) =>
     `<div class="form-group flex-1" style="min-width:100px"><label>${label}</label><input type="number" step="${step || '0.1'}" id="${id}" value="${val != null ? val : ''}" placeholder="—"></div>`;
@@ -4772,7 +4778,7 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 
 // ─── Training Tab ─────────────────────────────────────────────
 // ─── Recovery ──────────────────────────────────────────────────
-let recoveryDate = new Date().toISOString().slice(0, 10);
+let recoveryDate = localDateStr();
 
 async function loadRecovery(date) {
   if (date) recoveryDate = date;
@@ -4960,7 +4966,7 @@ function showSleepForm() {
 
 let trainingSubTab = 'day';
 let plansWeekOffset = 0;
-let plansSelectedDate = new Date().toISOString().slice(0, 10);
+let plansSelectedDate = localDateStr();
 
 async function loadTraining() {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
@@ -4986,14 +4992,14 @@ async function loadUnifiedPlans() {
 
   // Compute week dates from offset
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = now.toLocaleDateString('en-CA');
   const dayOfWeek = (now.getDay() + 6) % 7;
   const monday = new Date(now);
   monday.setDate(now.getDate() - dayOfWeek + (plansWeekOffset * 7));
-  const monStr = monday.toISOString().slice(0, 10);
+  const monStr = monday.toLocaleDateString('en-CA');
   const sunDate = new Date(monday);
   sunDate.setDate(monday.getDate() + 6);
-  const sunStr = sunDate.toISOString().slice(0, 10);
+  const sunStr = sunDate.toLocaleDateString('en-CA');
 
   // Fetch week plans + training plans + selected day data in parallel
   try {
@@ -5022,7 +5028,7 @@ async function loadUnifiedPlans() {
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = d.toLocaleDateString('en-CA');
       const plan = planMap[dateStr];
       const isToday = dateStr === todayStr;
       const isSelected = dateStr === plansSelectedDate;
@@ -5460,7 +5466,7 @@ function showCoachingForm(existing) {
   const html = `
     <form onsubmit="saveCoachingSession(event, '${s.id || ''}')">
       <div class="form-group"><label>Title *</label><input name="title" value="${esc(s.title || '')}" required placeholder="e.g. Weekly Training Review - March 18"></div>
-      <div class="form-group"><label>Date</label><input type="date" name="session_date" value="${s.session_date ? s.session_date.slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-group"><label>Date</label><input type="date" name="session_date" value="${s.session_date ? s.session_date.slice(0,10) : localDateStr()}"></div>
       <div class="form-group"><label>Summary *</label><textarea name="summary" rows="4" required placeholder="Full summary of the coaching conversation...">${esc(s.summary || '')}</textarea></div>
       <div class="form-group"><label>Key Decisions (one per line)</label><textarea name="key_decisions" rows="3" placeholder="Reduce upper body volume 20%\nAdd hip mobility work">${(s.key_decisions || []).map(d => typeof d === 'string' ? d : JSON.stringify(d)).join('\n')}</textarea></div>
       <div class="form-group"><label>Injury Notes</label><textarea name="injury_notes" rows="2">${esc(s.injury_notes || '')}</textarea></div>
@@ -5671,7 +5677,7 @@ async function editInjury(id) {
 
 async function resolveInjury(id) {
   try {
-    await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved', resolved_date: new Date().toISOString().slice(0,10) }) });
+    await api(`/training/injuries/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved', resolved_date: localDateStr() }) });
     closeModal();
     if (fitnessSubTab === 'coaching') loadFitnessCoaching(); else loadFitness();
   } catch (e) { showToast(e.message); }
@@ -5684,7 +5690,7 @@ async function deleteInjury(id) {
 }
 
 // ── Training Day View ──
-let trainingDayDate = new Date().toISOString().slice(0, 10);
+let trainingDayDate = localDateStr();
 
 async function loadTrainingDay() {
   const container = document.getElementById('training-content');
@@ -5693,7 +5699,7 @@ async function loadTrainingDay() {
       <button class="btn-action" onclick="trainingDayDate=shiftDate(trainingDayDate,-1);loadTrainingDay()">&larr;</button>
       <input type="date" value="${trainingDayDate}" onchange="trainingDayDate=this.value;loadTrainingDay()" style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);text-align:center">
       <button class="btn-action" onclick="trainingDayDate=shiftDate(trainingDayDate,1);loadTrainingDay()">&rarr;</button>
-      <button class="btn-action" onclick="trainingDayDate=new Date().toISOString().slice(0,10);loadTrainingDay()">Today</button>
+      <button class="btn-action" onclick="trainingDayDate=localDateStr();loadTrainingDay()">Today</button>
     </div>
     <div id="day-view-content"><div class="loading">Loading...</div></div>
   `;
@@ -5885,7 +5891,7 @@ async function loadTrainingDay() {
 function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('en-CA');
 }
 
 // ── Daily Plan Manager ──
@@ -5954,7 +5960,7 @@ function showDailyPlanDetail(id) {
 }
 
 function showCreateDailyPlanForm(prefillDate) {
-  const date = prefillDate || new Date().toISOString().slice(0, 10);
+  const date = prefillDate || localDateStr();
   openModal('Create Plan', `
     <form onsubmit="return saveDailyPlan(event)">
       <label>Date *</label>
