@@ -77,12 +77,14 @@ function computeTrainingLoadScore(workouts7d) {
   const threeDaysAgo = new Date(now);
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-  const recent = workouts7d.filter(w => new Date(w.workout_date) >= threeDaysAgo);
+  const recent = workouts7d.filter(w => new Date(dateStr(w.workout_date) + 'T12:00:00') >= threeDaysAgo);
   const acuteEfforts = recent.map(w => Number(w.effort || 5));
   const acuteLoad = acuteEfforts.length > 0 ? acuteEfforts.reduce((a, b) => a + b, 0) / acuteEfforts.length : 0;
   const score = clamp(Math.round(100 - (acuteLoad * 10)));
   return { score, detail: `Avg effort ${acuteLoad.toFixed(1)} last 3d (${recent.length} sessions)` };
 }
+
+function dateStr(d) { return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10); }
 
 function computeMuscleFreshness(workoutsRecent, targetDate) {
   const now = new Date(targetDate + 'T23:59:59');
@@ -90,7 +92,7 @@ function computeMuscleFreshness(workoutsRecent, targetDate) {
 
   for (const w of workoutsRecent) {
     const regions = getRegionsForWorkout(w);
-    const wDate = new Date(w.workout_date + 'T' + (w.start_time || '12:00:00'));
+    const wDate = new Date(dateStr(w.workout_date) + 'T' + (w.start_time || '12:00:00'));
     for (const r of regions) {
       if (!regionLastHit[r] || wDate > regionLastHit[r]) {
         regionLastHit[r] = wDate;
@@ -261,14 +263,14 @@ router.get('/trend', async (req, res) => {
     ]);
 
     const ctxByDate = {};
-    ctxResult.rows.forEach(r => { ctxByDate[r.date instanceof Date ? r.date.toISOString().slice(0, 10) : r.date] = r; });
+    ctxResult.rows.forEach(r => { ctxByDate[dateStr(r.date)] = r; });
     const mealsByDate = {};
-    mealsResult.rows.forEach(r => { const d = r.meal_date instanceof Date ? r.meal_date.toISOString().slice(0, 10) : r.meal_date; mealsByDate[d] = r; });
+    mealsResult.rows.forEach(r => { mealsByDate[dateStr(r.meal_date)] = r; });
 
     const trend = dates.map(date => {
       const ctx = ctxByDate[date] || null;
       const workouts7d = workoutsResult.rows.filter(w => {
-        const wd = w.workout_date instanceof Date ? w.workout_date.toISOString().slice(0, 10) : w.workout_date;
+        const wd = dateStr(w.workout_date);
         const target = new Date(date + 'T12:00:00');
         const sevenAgo = new Date(target); sevenAgo.setDate(sevenAgo.getDate() - 7);
         return new Date(wd + 'T12:00:00') >= sevenAgo && new Date(wd + 'T12:00:00') <= target;
