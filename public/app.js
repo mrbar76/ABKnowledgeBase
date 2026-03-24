@@ -3256,7 +3256,23 @@ async function loadFitnessToday() {
         </svg>
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:${scoreColor}">${scoreDisplay}</div>
       </div>
-      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${score != null ? (recoveryData.label || '') + ' — ' + esc(recoveryData.recommendation || '') : 'Log sleep, workouts & meals to see your recovery score'}</div>`;
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${score != null ? (recoveryData.label || '') + ' — ' + esc(recoveryData.recommendation || '') : 'Log sleep, workouts & meals to see your recovery score'}</div>
+      <details style="text-align:left;margin-top:8px"><summary style="font-size:0.68rem;color:var(--text-dim);cursor:pointer;opacity:0.7">What is this?</summary>
+        <div style="font-size:0.68rem;color:var(--text-dim);margin-top:6px;line-height:1.5;text-align:left">
+          <div style="margin-bottom:6px">Your Recovery Score (0–100) measures how ready you are to train based on 6 factors:</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">81–100 Peak</strong> — fully recovered, push hard</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">61–80 Good</strong> — train normally</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">31–60 Moderate</strong> — reduce intensity, focus on technique</div>
+          <div style="margin-bottom:6px"><strong style="color:var(--text)">0–30 Low</strong> — active recovery only</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — hours + quality</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — 7-day volume</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — time since each group was trained</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury impact</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — yesterday's calories + protein</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — your self-reported readiness</div>
+          <div style="margin-top:6px">Unlogged components default to 50. Log sleep and subjective readiness for the most accurate score.</div>
+        </div>
+      </details>`;
 
     // Component breakdown (collapsed by default)
     if (recoveryData.components && score != null) {
@@ -4860,6 +4876,27 @@ async function loadRecovery(date) {
           <div class="recovery-score-label">${s.label}</div>
         </div>
       </div>
+
+      <!-- Explainer -->
+      <details class="card mb-md" style="padding:12px">
+        <summary style="font-size:0.75rem;color:var(--text-dim);cursor:pointer">What is the Recovery Score?</summary>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:8px;line-height:1.6">
+          <div style="margin-bottom:6px">Your Recovery Score (0–100) measures how ready you are to train based on 6 weighted factors.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:8px">
+            <div><strong style="color:#10b981">81–100 Peak</strong> — push hard</div>
+            <div><strong style="color:#f59e0b">61–80 Good</strong> — train normally</div>
+            <div><strong style="color:#f97316">31–60 Moderate</strong> — dial back</div>
+            <div><strong style="color:#ef4444">0–30 Low</strong> — recovery only</div>
+          </div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — hours + quality</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — 7-day volume</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — time since each group was trained</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury impact</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — yesterday's calories + protein</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — self-reported readiness</div>
+          <div style="margin-top:6px">Unlogged components default to 50. Log sleep and subjective feel for the most accurate score. Watch the 7-day trend — a steady decline signals accumulating fatigue.</div>
+        </div>
+      </details>
 
       <!-- Sleep Card -->
       <div class="card mb-md" style="padding:12px">
