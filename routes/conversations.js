@@ -85,7 +85,7 @@ router.post('/import/chatgpt', async (req, res) => {
 
         const createdAt = conv.create_time
           ? new Date(conv.create_time * 1000).toISOString()
-          : new Date().toISOString();
+          : req.getNow();
 
         await query(
           `INSERT INTO conversations (title, ai_source, full_thread, summary, message_count, metadata, created_at, updated_at)

@@ -187,7 +187,7 @@ function generateRecommendation(muscleStatus, injuries) {
 
 router.get('/score', async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = req.query.date || req.getToday();
 
     const [ctxResult, workouts7dResult, injuriesResult, yesterdayResult] = await Promise.all([
       query('SELECT * FROM daily_context WHERE date = $1', [date]),
@@ -243,7 +243,7 @@ router.get('/score', async (req, res) => {
 router.get('/trend', async (req, res) => {
   try {
     const days = Math.min(Number(req.query.days) || 7, 30);
-    const endDate = req.query.date || new Date().toISOString().slice(0, 10);
+    const endDate = req.query.date || req.getToday();
 
     // Generate date range
     const dates = [];

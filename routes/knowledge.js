@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9) RETURNING id`,
       [title, content, category || 'general', JSON.stringify(tags || []),
        source || 'api', ai_source || null, confirmed || false,
-       JSON.stringify(metadata || {}), created_at || new Date().toISOString()]
+       JSON.stringify(metadata || {}), created_at || req.getNow()]
     );
 
     await logActivity('create', 'knowledge', result.rows[0].id, ai_source, `Created knowledge: ${title}`);

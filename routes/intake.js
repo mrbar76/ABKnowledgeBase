@@ -218,7 +218,7 @@ router.post('/distill', async (req, res) => {
     try { extracted = JSON.parse(text); }
     catch { const m = text.match(/\{[\s\S]*\}/); extracted = m ? JSON.parse(m[0]) : { facts: [], decisions: [], tasks: [] }; }
 
-    const originalDate = created_at || new Date().toISOString();
+    const originalDate = created_at || req.getNow();
     const results = { facts: 0, decisions: 0, tasks: 0, project: extracted.project || null };
 
     for (const fact of (extracted.facts || [])) {

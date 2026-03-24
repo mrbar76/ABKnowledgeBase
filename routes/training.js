@@ -65,7 +65,7 @@ router.post('/coaching', async (req, res) => {
         data_reviewed, training_plan_id, conversation_id, ai_source, tags, metadata
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
-        b.session_date || new Date().toISOString().slice(0, 10),
+        b.session_date || req.getToday(),
         b.title,
         b.summary,
         JSON.stringify(b.key_decisions || []),

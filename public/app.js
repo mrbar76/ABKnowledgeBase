@@ -99,7 +99,7 @@ function logout() { sessionStorage.removeItem('ab_api_key'); localStorage.remove
 // ─── API helper ───────────────────────────────────────────────
 async function api(path, opts = {}) {
   const key = getStoredKey();
-  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  const headers = { 'Content-Type': 'application/json', 'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone, ...opts.headers };
   if (key) headers['X-Api-Key'] = key;
   let res;
   try { res = await fetch(API + path, { ...opts, headers }); } catch (e) { throw new Error(`Network error: ${e.message}`); }

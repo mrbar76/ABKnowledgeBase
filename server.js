@@ -33,6 +33,29 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Timezone-aware "today" helper — uses client's X-Timezone header
+app.use((req, res, next) => {
+  const tz = req.headers['x-timezone'];
+  req.getToday = () => {
+    try {
+      if (tz) {
+        return new Date().toLocaleDateString('en-CA', { timeZone: tz }); // en-CA = YYYY-MM-DD
+      }
+    } catch (e) { /* invalid tz, fall through */ }
+    return new Date().toISOString().slice(0, 10);
+  };
+  req.getNow = () => {
+    try {
+      if (tz) {
+        const d = new Date();
+        return d.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T') + '.000Z';
+      }
+    } catch (e) { /* invalid tz, fall through */ }
+    return new Date().toISOString();
+  };
+  next();
+});
+
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
 

@@ -74,7 +74,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = req.body;
-    const title = b.title || `Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
+    const title = b.title || `Workout – ${b.workout_date || req.getToday()} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
 
     const result = await query(
       `INSERT INTO workouts (
@@ -100,7 +100,7 @@ router.post('/', async (req, res) => {
       ) RETURNING *`,
       [
         title,
-        b.workout_date || new Date().toISOString().slice(0, 10),
+        b.workout_date || req.getToday(),
         b.workout_type || 'hybrid',
         b.location || null,
         b.elevation || null,
@@ -159,7 +159,7 @@ router.post('/bulk', async (req, res) => {
 
     for (const b of workouts) {
       try {
-        const title = b.title || `Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
+        const title = b.title || `Workout – ${b.workout_date || req.getToday()} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
 
         const result = await query(
           `INSERT INTO workouts (
@@ -185,7 +185,7 @@ router.post('/bulk', async (req, res) => {
           ) RETURNING id, title, workout_date, workout_type`,
           [
             title,
-            b.workout_date || new Date().toISOString().slice(0, 10),
+            b.workout_date || req.getToday(),
             b.workout_type || 'hybrid',
             b.location || null,
             b.elevation || null,
