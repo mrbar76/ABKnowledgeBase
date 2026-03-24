@@ -3120,6 +3120,7 @@ async function loadFitnessToday() {
     }
 
     // Sleep & Context section
+    const hasCheckIn = !!(ctx.id);
     let checkInHtml = '';
     if (ctx.id && (ctx.sleep_hours != null || ctx.sleep_quality != null)) {
       const sleepColor = ctx.sleep_hours >= 7 ? '#10b981' : ctx.sleep_hours >= 5.5 ? '#f59e0b' : '#ef4444';
