@@ -98,6 +98,20 @@
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
+          <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">Claude Schema</div>
+          <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px">Copy this schema for Claude AI integration:</div>
+          <div style="display:flex;gap:6px;margin-bottom:4px">
+            <button class="btn-action" onclick="copyClaudeSchema()" id="btn-copy-claude-schema" style="flex:1">Copy JSON</button>
+            <button class="btn-action btn-action-secondary" onclick="copyClaudeSchemaYaml()" id="btn-copy-claude-yaml" style="flex:1">Copy YAML</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:4px">
+            <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-claude.json','_blank')" style="flex:1">View JSON</button>
+            <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-claude.yaml','_blank')" style="flex:1">View YAML</button>
+          </div>
+          <div id="sm-claude-schema-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:6px"></div>
+        </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
           <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">GPT Actions Schema</div>
           <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px">Copy this schema into your GPT Actions configuration:</div>
           <div style="display:flex;gap:6px;margin-bottom:4px">
@@ -105,6 +119,16 @@
             <button class="btn-action btn-action-secondary" onclick="window.open('/openapi-gpt-actions.yaml','_blank')" style="flex:1">View Raw</button>
           </div>
           <div id="sm-schema-result" style="display:none;font-size:0.8rem;padding:10px;border-radius:6px;background:var(--bg-input);margin-top:6px"></div>
+        </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
+          <div style="font-size:0.85rem;font-weight:700;margin-bottom:8px">Version & Changelog</div>
+          <div id="sm-version-info" style="font-size:0.78rem;color:var(--text-dim)">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>API Version</span><span style="color:var(--text);font-weight:600" id="sm-api-version">—</span></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Last Updated</span><span style="color:var(--text);font-weight:600" id="sm-last-updated">—</span></div>
+          </div>
+          <div id="sm-changelog" style="max-height:200px;overflow-y:auto;font-size:0.75rem;color:var(--text-dim);background:var(--bg-input);border-radius:6px;padding:10px;display:none"></div>
+          <button class="btn-action btn-action-secondary" onclick="toggleChangelog()" id="btn-toggle-changelog" style="width:100%;margin-top:6px">Show Changelog</button>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--border);margin-top:14px">
