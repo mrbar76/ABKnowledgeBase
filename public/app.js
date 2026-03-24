@@ -1466,6 +1466,27 @@ async function copyGptInstructions(type) {
   }
 }
 
+async function copyClaudeSchema() {
+  const btn = document.getElementById('btn-copy-claude-schema');
+  const resultEl = document.getElementById('sm-claude-schema-result');
+  try {
+    btn.textContent = 'Fetching...';
+    const res = await fetch('/claude-schema.json');
+    const text = await res.text();
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    resultEl.style.display = 'block';
+    resultEl.style.color = 'var(--accent)';
+    resultEl.textContent = 'Claude schema copied to clipboard.';
+    setTimeout(() => { btn.textContent = 'Copy JSON Schema'; }, 3000);
+  } catch (err) {
+    btn.textContent = 'Copy JSON Schema';
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
 async function loadSettingsMenuInfo() {
   const bkEl = document.getElementById('sm-backend-val');
   const beeEl = document.getElementById('sm-bee-val');

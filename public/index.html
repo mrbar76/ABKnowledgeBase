@@ -141,10 +141,20 @@
           </div>
         </div>
 
-        <!-- ─── Custom GPTs ─── -->
+        <!-- ─── AI Integrations ─── -->
         <div class="sm-section">
-          <div class="sm-section-title">Custom GPTs</div>
+          <div class="sm-section-title">AI Integrations</div>
           <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Claude Schema</div>
+              <div class="sm-card-desc">Full OpenAPI spec for Claude — all endpoints, no limits</div>
+              <div class="sm-btn-row">
+                <button class="btn-action sm-btn-full" onclick="copyClaudeSchema()" id="btn-copy-claude-schema">Copy JSON Schema</button>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="window.open('/claude-schema.json','_blank')">View JSON</button>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="window.open('/claude-schema.yaml','_blank')">View YAML</button>
+              </div>
+              <div id="sm-claude-schema-result" class="sm-result"></div>
+            </div>
             <div class="sm-card">
               <div class="sm-card-label">Knowledge Base GPT</div>
               <div class="sm-card-desc">Knowledge, tasks, transcripts, conversations, search</div>
