@@ -245,6 +245,7 @@ function toggleSettingsMenu() {
   if (menu.classList.contains('open')) { closeSettingsMenu(); return; }
   menu.classList.add('open');
   loadSettingsMenuInfo();
+  loadVersionInfo();
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
 
@@ -267,6 +268,106 @@ async function copyGptActionsSchema() {
     resultEl.style.display = 'block';
     resultEl.style.color = '#e74c3c';
     resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function copyClaudeSchema() {
+  const btn = document.getElementById('btn-copy-claude-schema');
+  const resultEl = document.getElementById('sm-claude-schema-result');
+  try {
+    btn.textContent = 'Loading...';
+    const resp = await fetch('/openapi-claude.json');
+    if (!resp.ok) throw new Error('Failed to fetch Claude schema');
+    const text = await resp.text();
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    resultEl.style.display = 'block';
+    resultEl.style.color = 'var(--accent)';
+    resultEl.textContent = 'Claude JSON schema copied to clipboard.';
+    setTimeout(() => { btn.textContent = 'Copy JSON'; }, 3000);
+  } catch (err) {
+    btn.textContent = 'Copy JSON';
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function copyClaudeSchemaYaml() {
+  const btn = document.getElementById('btn-copy-claude-yaml');
+  const resultEl = document.getElementById('sm-claude-schema-result');
+  try {
+    btn.textContent = 'Loading...';
+    const resp = await fetch('/openapi-claude.yaml');
+    if (!resp.ok) throw new Error('Failed to fetch Claude YAML schema');
+    const text = await resp.text();
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    resultEl.style.display = 'block';
+    resultEl.style.color = 'var(--accent)';
+    resultEl.textContent = 'Claude YAML schema copied to clipboard.';
+    setTimeout(() => { btn.textContent = 'Copy YAML'; }, 3000);
+  } catch (err) {
+    btn.textContent = 'Copy YAML';
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+const APP_CHANGELOG = [
+  { version: '1.2.0', date: '2026-03-24', changes: [
+    'Added Claude AI schema (JSON + YAML) with all 72 operations',
+    'Added getBodyMetricsSummary endpoint to Claude schema',
+    'Added getDailyContextById and deleteDailyContext to Claude schema',
+    'All ai_source defaults set to "claude" in Claude schema',
+    'Added version info and changelog to settings page',
+  ]},
+  { version: '1.1.0', date: '2026-03-18', changes: [
+    'Training plans with full CRUD (list, get, create, update, delete)',
+    'Coaching sessions with key_decisions, adjustments, injury tracking',
+    'Injury tracking with body area, severity, modifications',
+    'Training day cross-reference view (GET /training/day/{date})',
+    'Active injuries summary endpoint',
+    'Daily nutrition context and summaries',
+    'Bulk import for workouts, meals, and body metrics',
+    'Unified search across all data types',
+    'AI-powered search endpoint',
+  ]},
+  { version: '1.0.0', date: '2026-02-01', changes: [
+    'Initial release: Knowledge, Facts, Tasks, Projects, Transcripts',
+    'Workout logging with Spartan-specific fields',
+    'Body metrics tracking (RENPHO integration)',
+    'Meal logging with macro tracking',
+    'Bee AI wearable sync',
+    'PWA support with offline caching',
+    'GPT Actions schema for ChatGPT integration',
+  ]},
+];
+
+function loadVersionInfo() {
+  const latest = APP_CHANGELOG[0];
+  const versionEl = document.getElementById('sm-api-version');
+  const updatedEl = document.getElementById('sm-last-updated');
+  if (versionEl) versionEl.textContent = 'v' + latest.version;
+  if (updatedEl) updatedEl.textContent = latest.date;
+}
+
+function toggleChangelog() {
+  const el = document.getElementById('sm-changelog');
+  const btn = document.getElementById('btn-toggle-changelog');
+  if (el.style.display === 'none' || !el.style.display) {
+    el.style.display = 'block';
+    btn.textContent = 'Hide Changelog';
+    el.innerHTML = APP_CHANGELOG.map(entry =>
+      `<div style="margin-bottom:12px">` +
+      `<div style="font-weight:700;color:var(--text);margin-bottom:4px">v${entry.version} <span style="font-weight:400;color:var(--text-dim)">(${entry.date})</span></div>` +
+      `<ul style="margin:0;padding-left:16px">${entry.changes.map(c => `<li style="margin-bottom:2px">${c}</li>`).join('')}</ul>` +
+      `</div>`
+    ).join('');
+  } else {
+    el.style.display = 'none';
+    btn.textContent = 'Show Changelog';
   }
 }
 

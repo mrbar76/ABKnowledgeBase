@@ -43,6 +43,9 @@ app.get('/api/health-check', (req, res) => {
 app.get('/openapi.json', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'openapi-chatgpt.json'));
 });
+app.get('/openapi-claude.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'openapi-claude.json'));
+});
 
 // Privacy policy
 app.get('/privacy', (req, res) => {
