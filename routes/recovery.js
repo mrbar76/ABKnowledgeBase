@@ -188,6 +188,12 @@ function generateRecommendation(muscleStatus, injuries) {
 router.get('/score', async (req, res) => {
   try {
     const date = req.query.date || req.getToday();
+    const today = req.getToday();
+
+    // Don't compute recovery for future dates
+    if (date > today) {
+      return res.json({ date, score: null, label: 'N/A', components: {}, muscle_status: {}, recommendation: 'No data — this date hasn\'t happened yet.' });
+    }
 
     const [ctxResult, workouts7dResult, injuriesResult, yesterdayResult] = await Promise.all([
       query('SELECT * FROM daily_context WHERE date = $1', [date]),
@@ -243,14 +249,18 @@ router.get('/score', async (req, res) => {
 router.get('/trend', async (req, res) => {
   try {
     const days = Math.min(Number(req.query.days) || 7, 30);
-    const endDate = req.query.date || req.getToday();
+    const today = req.getToday();
+    const requestedEnd = req.query.date || today;
+    // Cap end date at today — no future dates in trend
+    const endDate = requestedEnd > today ? today : requestedEnd;
 
     // Generate date range
     const dates = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(endDate + 'T12:00:00');
       d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().slice(0, 10));
+      const ds = d.toISOString().slice(0, 10);
+      if (ds <= today) dates.push(ds);
     }
 
     // Fetch all data in bulk
