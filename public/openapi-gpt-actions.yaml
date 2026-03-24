@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AB Brain Unified AI Platform
-  version: 1.1.0
+  version: 1.2.0
   description: |
     AB Brain action for workout logging, daily plans, coaching sessions, injury tracking, meal tracking, nutrition context, task creation, and gamification (activity rings, streaks, badges, dynamic goals).
 

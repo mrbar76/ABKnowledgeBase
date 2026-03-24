@@ -37,13 +37,23 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Health check — BEFORE auth middleware
+const APP_VERSION = require('./package.json').version;
+
 app.get('/api/health-check', (req, res) => {
-  res.json({ status: 'ok', backend: 'postgresql', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', version: APP_VERSION, backend: 'postgresql', timestamp: new Date().toISOString() });
 });
 
 // OpenAPI spec — no auth
 app.get('/openapi.json', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'openapi-chatgpt.json'));
+});
+
+// Claude schema — no auth
+app.get('/claude-schema.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'claude-schema.json'));
+});
+app.get('/claude-schema.yaml', (req, res) => {
+  res.type('text/yaml').sendFile(path.join(__dirname, 'public', 'claude-schema.yaml'));
 });
 
 // Privacy policy

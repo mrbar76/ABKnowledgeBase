@@ -1,0 +1,1474 @@
+openapi: 3.1.0
+info:
+  title: AB Brain — Claude AI Integration
+  version: 1.2.0
+  description: |
+    AB Brain — Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.
+    This schema is for Claude AI integration. All ai_source fields default to "claude".
+
+    ## Base URL
+    https://ab-brain.up.railway.app/api
+
+    ## Authentication
+    All endpoints require X-Api-Key header.
+
+    ## Daily Fitness Workflow (Evaluate → Plan → Execute → Review → Repeat)
+
+    ### 1. EVALUATE — Review past performance
+    - GET /daily-plans/by-date/{yesterday} — see yesterday's plan vs actual
+    - GET /training/day/{date} — full context (workouts, nutrition, body, injuries, daily plan)
+    - GET /recovery/score — today's recovery readiness
+
+    ### 2. PLAN — Set daily plans
+    - POST /daily-plans — create today's plan (workout type, effort target, nutrition targets, sleep target)
+    - POST /daily-plans/week — create 7 daily plans at once (start_date + array of 7 day objects)
+    - Check GET /training/injuries/active/summary before planning to account for injuries
+    - NEVER use /training/plans — that endpoint is REMOVED. All planning uses /daily-plans.
+
+    ### 3. EXECUTE — User logs activity
+    - User logs workouts via POST /workouts, meals via POST /meals
+    - Log sleep + water via POST /nutrition/daily-context (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)
+    - Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)
+
+    ### 4. REVIEW — End-of-day coaching review
+    - GET /daily-plans/by-date/{date} — plan vs actual comparison + ring progress for the day
+    - POST /training/coaching — save the coaching review with key_decisions, adjustments, injury_notes, next_steps
+
+    ### 5. AMEND — Adjust plans based on progress
+    - PUT /daily-plans/{id} — amend today's or future plans
+
+    ### Rings (Achievement-Based Motivation)
+    - **Train** (green): Weighted effort score — actual effort / target effort. Rest days auto-close.
+    - **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).
+    - **Recover** (indigo): Proportional average of sleep hours + sleep quality progress (each 0-100%).
+    - GET /gamification — today's ring progress, streaks, badges, nudges.
+
+    ### Daily Context (Simplified)
+    - Only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text)
+    - Weight goes in POST /body-metrics, not daily context
+
+    ### Search & Discovery
+    - GET /search?q=term — full-text search across ALL data types
+    - POST /search/ai — AI-optimized search returning typed results
+    - GET /dashboard — overview stats for all tables
+
+    ### Data Types Available
+    Knowledge, Tasks, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)
+
+servers:
+  - url: https://ab-brain.up.railway.app/api
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  # ─── Knowledge ───────────────────────────────────────────
+  /knowledge:
+    get:
+      operationId: searchKnowledge
+      summary: Search or list knowledge entries
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Full-text search query
+        - name: category
+          in: query
+          schema: { type: string }
+          description: Filter by category (general, code, meeting, research, decision, reference, health, personal, journal, daily-summary)
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: ai_source
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Knowledge entries
+    post:
+      operationId: createKnowledge
+      summary: Create a knowledge entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeCreate'
+      responses:
+        '201':
+          description: Created
+
+  /knowledge/{id}:
+    get:
+      operationId: getKnowledge
+      summary: Get a knowledge entry by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Knowledge entry
+    put:
+      operationId: updateKnowledge
+      summary: Update a knowledge entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeCreate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      operationId: deleteKnowledge
+      summary: Delete a knowledge entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Deleted
+
+  # ─── Tasks ──────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: listTasks
+      summary: List tasks with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [todo, in_progress, review, done] }
+        - name: priority
+          in: query
+          schema: { type: string, enum: [low, medium, high, urgent] }
+        - name: context
+          in: query
+          schema: { type: string, enum: [work, personal] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Task list
+    post:
+      operationId: createTask
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '201':
+          description: Created
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      summary: Get a task by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Task
+    put:
+      operationId: updateTask
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      operationId: deleteTask
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Deleted
+
+  /tasks/kanban:
+    get:
+      operationId: getKanban
+      summary: Get Kanban board grouped by status
+      responses:
+        '200':
+          description: Kanban board
+
+  # ─── Workouts ───────────────────────────────────────────
+  /workouts:
+    get:
+      operationId: getWorkouts
+      summary: Retrieve workout history
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: workout_type
+          in: query
+          schema: { type: string }
+          description: Filter by type (hill, strength, run, hybrid, recovery, ruck, cycling, swim, yoga, etc.)
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Full-text search
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+          description: Workouts on or after this date (YYYY-MM-DD)
+        - name: before
+          in: query
+          schema: { type: string, format: date }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [newest, oldest, effort_high, effort_low] }
+      responses:
+        '200':
+          description: List of workouts
+    post:
+      operationId: logWorkout
+      summary: Log a workout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutCreate'
+      responses:
+        '201':
+          description: Created
+
+  /workouts/{id}:
+    patch:
+      operationId: updateWorkout
+      summary: Update a workout
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutCreate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      operationId: deleteWorkout
+      summary: Delete a workout
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Deleted
+
+  /workouts/bulk:
+    post:
+      operationId: bulkImportWorkouts
+      summary: Bulk import workouts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workouts]
+              properties:
+                workouts:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/WorkoutCreate'
+      responses:
+        '201':
+          description: Bulk created
+
+  # ─── Body Metrics ───────────────────────────────────────
+  /body-metrics:
+    get:
+      operationId: getBodyMetrics
+      summary: List body measurements
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 30 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+        - name: before
+          in: query
+          schema: { type: string, format: date }
+        - name: source
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Body metrics list
+    post:
+      operationId: createBodyMetric
+      summary: Record a body measurement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BodyMetricCreate'
+      responses:
+        '201':
+          description: Created
+
+  /body-metrics/stats/summary:
+    get:
+      operationId: getBodyMetricsSummary
+      summary: Get body metrics summary stats
+      responses:
+        '200':
+          description: Summary stats
+
+  /body-metrics/{id}:
+    patch:
+      operationId: patchBodyMetric
+      summary: Update a body metric
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BodyMetricCreate'
+      responses:
+        '200':
+          description: Updated
+
+  # ─── Meals ─────────────────────────────────────────────
+  /meals:
+    get:
+      operationId: getMeals
+      summary: List meals
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 30 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: meal_date
+          in: query
+          schema: { type: string, format: date }
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+        - name: before
+          in: query
+          schema: { type: string, format: date }
+        - name: meal_type
+          in: query
+          schema: { type: string, enum: [breakfast, lunch, dinner, snack] }
+      responses:
+        '200':
+          description: Meals list
+    post:
+      operationId: createMeal
+      summary: Log a meal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealCreate'
+      responses:
+        '201':
+          description: Created
+
+  /meals/{id}:
+    get:
+      operationId: getMeal
+      summary: Get a meal by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Meal
+    patch:
+      operationId: patchMeal
+      summary: Update a meal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealCreate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      operationId: deleteMeal
+      summary: Delete a meal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Deleted
+
+  # ─── Daily Plans ────────────────────────────────────────
+  /daily-plans:
+    get:
+      operationId: listDailyPlans
+      summary: List daily plans
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+        - name: before
+          in: query
+          schema: { type: string, format: date }
+        - name: status
+          in: query
+          schema: { type: string, enum: [planned, completed, partial, missed, rest, amended] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 14 }
+      responses:
+        '200':
+          description: Plans list
+    post:
+      operationId: createDailyPlan
+      summary: Create a daily plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyPlanCreate'
+      responses:
+        '201':
+          description: Created
+
+  /daily-plans/week:
+    post:
+      operationId: createWeeklyPlans
+      summary: Create 7 daily plans at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_date, days]
+              properties:
+                start_date:
+                  type: string
+                  format: date
+                days:
+                  type: array
+                  minItems: 7
+                  maxItems: 7
+                  items:
+                    $ref: '#/components/schemas/DailyPlanCreate'
+      responses:
+        '201':
+          description: Created 7 plans
+
+  /daily-plans/by-date/{date}:
+    get:
+      operationId: getDailyPlanByDate
+      summary: Get plan for a specific date with actual vs target comparison
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Plan with comparison data
+
+  /daily-plans/{id}:
+    get:
+      operationId: getDailyPlan
+      summary: Get a daily plan by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Plan
+    put:
+      operationId: updateDailyPlan
+      summary: Update a daily plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyPlanCreate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      operationId: deleteDailyPlan
+      summary: Delete a daily plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Deleted
+
+  # ─── Daily Context (Sleep/Hydration) ────────────────────
+  /nutrition/daily-context:
+    get:
+      operationId: getDailyContext
+      summary: List daily context entries
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+        - name: before
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Daily context entries
+    post:
+      operationId: createDailyContext
+      summary: Log daily context (sleep, hydration, notes)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyContextCreate'
+      responses:
+        '201':
+          description: Created
+
+  /nutrition/daily-context/{id}:
+    patch:
+      operationId: patchDailyContext
+      summary: Update daily context
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyContextCreate'
+      responses:
+        '200':
+          description: Updated
+
+  /nutrition/daily-summary:
+    get:
+      operationId: getDailySummary
+      summary: Get daily nutrition summary
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Nutrition summary for the day
+
+  /nutrition/daily-summary/range:
+    get:
+      operationId: getDailySummaryRange
+      summary: Get daily nutrition summaries for a date range
+      parameters:
+        - name: since
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: before
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Array of daily summaries
+
+  # ─── Recovery ───────────────────────────────────────────
+  /recovery/score:
+    get:
+      operationId: getRecoveryScore
+      summary: Get today's recovery readiness score
+      responses:
+        '200':
+          description: Recovery score with breakdown
+
+  /recovery/trend:
+    get:
+      operationId: getRecoveryTrend
+      summary: Get recovery trend over time
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, default: 14 }
+      responses:
+        '200':
+          description: Array of daily recovery scores
+
+  # ─── Training (Coaching & Injuries) ─────────────────────
+  /training/coaching:
+    get:
+      operationId: listCoachingSessions
+      summary: List coaching sessions
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10 }
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Coaching sessions
+    post:
+      operationId: createCoachingSession
+      summary: Save a coaching review session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoachingSessionCreate'
+      responses:
+        '201':
+          description: Created
+
+  /training/coaching/{id}:
+    get:
+      operationId: getCoachingSession
+      summary: Get a coaching session by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Session
+    put:
+      operationId: updateCoachingSession
+      summary: Update a coaching session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoachingSessionCreate'
+      responses:
+        '200':
+          description: Updated
+
+  /training/injuries:
+    get:
+      operationId: listInjuries
+      summary: List injuries
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, monitoring, recovering, resolved, chronic] }
+        - name: body_area
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Injuries list
+    post:
+      operationId: createInjury
+      summary: Log a new injury
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InjuryCreate'
+      responses:
+        '201':
+          description: Created
+
+  /training/injuries/{id}:
+    get:
+      operationId: getInjury
+      summary: Get an injury by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Injury
+    put:
+      operationId: updateInjury
+      summary: Update an injury
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InjuryCreate'
+      responses:
+        '200':
+          description: Updated
+
+  /training/injuries/active/summary:
+    get:
+      operationId: getActiveInjuriesSummary
+      summary: Get summary of all active injuries (check before planning)
+      responses:
+        '200':
+          description: Active injuries summary
+
+  /training/day/{date}:
+    get:
+      operationId: getTrainingDayView
+      summary: Get full day context — workouts, meals, body metrics, injuries, daily plan
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Full day view
+
+  # ─── Gamification ───────────────────────────────────────
+  /gamification:
+    get:
+      operationId: getGamification
+      summary: Get today's ring progress, streaks, badges, and nudges
+      responses:
+        '200':
+          description: Gamification state
+    put:
+      operationId: updateGamificationSettings
+      summary: Update ring goals and gamification settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GamificationSettings'
+      responses:
+        '200':
+          description: Updated settings
+
+  # ─── Search ─────────────────────────────────────────────
+  /search:
+    get:
+      operationId: searchAll
+      summary: Full-text search across all data types
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+          description: Filter by type (knowledge, tasks, transcripts, conversations, workouts, meals)
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Search results grouped by type
+
+  /search/ai:
+    post:
+      operationId: aiSearch
+      summary: AI-optimized flat search returning typed results
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [q]
+              properties:
+                q:
+                  type: string
+                limit:
+                  type: integer
+                  default: 20
+      responses:
+        '200':
+          description: Flat typed results
+
+  # ─── Smart Intake ───────────────────────────────────────
+  /intake:
+    post:
+      operationId: smartIntake
+      summary: Auto-classify and file raw input via AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: Raw text to classify and file
+                ai_source:
+                  type: string
+                  default: claude
+      responses:
+        '200':
+          description: Classification result with created entity
+
+  # ─── Transcripts ────────────────────────────────────────
+  /transcripts:
+    get:
+      operationId: listTranscripts
+      summary: List transcripts
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: source
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Transcripts list
+    post:
+      operationId: createTranscript
+      summary: Upload a transcript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranscriptCreate'
+      responses:
+        '201':
+          description: Created
+
+  /transcripts/{id}:
+    get:
+      operationId: getTranscript
+      summary: Get a transcript with speaker utterances
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Transcript with speakers
+
+  # ─── Conversations ─────────────────────────────────────
+  /conversations:
+    get:
+      operationId: listConversations
+      summary: List AI conversation threads
+      parameters:
+        - name: ai_source
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Conversations list
+    post:
+      operationId: createConversation
+      summary: Store a conversation thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCreate'
+      responses:
+        '201':
+          description: Created
+
+  /conversations/{id}:
+    get:
+      operationId: getConversation
+      summary: Get a conversation thread
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Full conversation
+
+  # ─── Dashboard ──────────────────────────────────────────
+  /dashboard:
+    get:
+      operationId: getDashboard
+      summary: Get aggregated stats across all tables
+      responses:
+        '200':
+          description: Dashboard stats
+
+  /activity:
+    get:
+      operationId: getActivityLog
+      summary: Get recent activity log
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Activity entries
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+
+  schemas:
+    KnowledgeCreate:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+          enum: [general, code, meeting, research, decision, reference, health, personal, journal, daily-summary]
+        tags:
+          type: array
+          items: { type: string }
+        ai_source:
+          type: string
+          default: claude
+        confirmed:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+
+    TaskCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [todo, in_progress, review, done]
+          default: todo
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          default: medium
+        due_date:
+          type: string
+          format: date
+        context:
+          type: string
+          enum: [work, personal]
+        ai_agent:
+          type: string
+          default: claude
+        next_steps:
+          type: string
+
+    WorkoutCreate:
+      type: object
+      required: [workout_type]
+      properties:
+        workout_type:
+          type: string
+          description: "Any type: hill, strength, run, hybrid, recovery, ruck, cycling, swim, yoga, crossfit, hiit, etc."
+        workout_date:
+          type: string
+          format: date
+          description: YYYY-MM-DD, defaults to today
+        title:
+          type: string
+          description: Auto-generated if omitted
+        location:
+          type: string
+        focus:
+          type: string
+          description: "Session goal (e.g. hill durability, upper body hypertrophy)"
+        warmup:
+          type: string
+        main_sets:
+          type: string
+          description: Full workout as text — sets x reps @ weight
+        exercises:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              sets: { type: integer }
+              reps: { type: integer }
+              weight: { type: string }
+              duration: { type: string }
+              distance: { type: string }
+              machine: { type: string }
+              notes: { type: string }
+        time_duration:
+          type: string
+        distance:
+          type: string
+        elevation_gain:
+          type: string
+        heart_rate_avg:
+          type: string
+        heart_rate_max:
+          type: string
+        pace_avg:
+          type: string
+        splits:
+          type: string
+        active_calories:
+          type: string
+        total_calories:
+          type: string
+        effort:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Effort rating 1-10
+        body_notes:
+          type: string
+        adjustment:
+          type: string
+        tags:
+          type: array
+          items: { type: string }
+        ai_source:
+          type: string
+          default: claude
+        metadata:
+          type: object
+
+    BodyMetricCreate:
+      type: object
+      required: [weight_lb]
+      properties:
+        measurement_date:
+          type: string
+          format: date
+          description: Defaults to today
+        measurement_time:
+          type: string
+          description: "HH:MM format"
+        source:
+          type: string
+          description: "RENPHO, Withings, Apple Health, manual"
+        weight_lb:
+          type: number
+        bmi:
+          type: number
+        body_fat_pct:
+          type: number
+        skeletal_muscle_pct:
+          type: number
+        fat_free_mass_lb:
+          type: number
+        visceral_fat:
+          type: integer
+        body_water_pct:
+          type: number
+        muscle_mass_lb:
+          type: number
+        bone_mass_lb:
+          type: number
+        protein_pct:
+          type: number
+        bmr_kcal:
+          type: integer
+        metabolic_age:
+          type: integer
+        measurement_context:
+          type: string
+          description: "morning, evening, fasted, fed"
+        notes:
+          type: string
+
+    MealCreate:
+      type: object
+      required: [title]
+      properties:
+        meal_date:
+          type: string
+          format: date
+          description: Defaults to today
+        meal_time:
+          type: string
+          description: "HH:MM format"
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        title:
+          type: string
+          description: Food/meal name
+        calories:
+          type: number
+        protein_g:
+          type: number
+        carbs_g:
+          type: number
+        fat_g:
+          type: number
+        fiber_g:
+          type: number
+        sugar_g:
+          type: number
+        sodium_mg:
+          type: number
+        serving_size:
+          type: string
+        hunger_before:
+          type: integer
+          minimum: 1
+          maximum: 10
+        fullness_after:
+          type: integer
+          minimum: 1
+          maximum: 10
+        energy_after:
+          type: integer
+          minimum: 1
+          maximum: 10
+        notes:
+          type: string
+        tags:
+          type: array
+          items: { type: string }
+        ai_source:
+          type: string
+          default: claude
+
+    DailyPlanCreate:
+      type: object
+      required: [plan_date]
+      properties:
+        plan_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [planned, completed, partial, missed, rest, amended]
+          default: planned
+        title:
+          type: string
+        goal:
+          type: string
+        workout_type:
+          type: string
+        workout_focus:
+          type: string
+        target_effort:
+          type: integer
+          minimum: 1
+          maximum: 10
+        target_duration_min:
+          type: integer
+        workout_notes:
+          type: string
+        target_calories:
+          type: number
+        target_protein_g:
+          type: number
+        target_carbs_g:
+          type: number
+        target_fat_g:
+          type: number
+        target_hydration_liters:
+          type: number
+        target_sleep_hours:
+          type: number
+        recovery_notes:
+          type: string
+        coaching_notes:
+          type: string
+        rationale:
+          type: string
+        tags:
+          type: array
+          items: { type: string }
+        ai_source:
+          type: string
+          default: claude
+
+    DailyContextCreate:
+      type: object
+      required: [date]
+      properties:
+        date:
+          type: string
+          format: date
+        sleep_hours:
+          type: number
+          description: Hours of sleep (e.g. 7.5)
+        sleep_quality:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Subjective sleep quality 1-10
+        hydration_liters:
+          type: number
+          description: Water intake in liters
+        notes:
+          type: string
+          description: Free text notes for the day
+
+    CoachingSessionCreate:
+      type: object
+      required: [title, summary]
+      properties:
+        session_date:
+          type: string
+          format: date
+          description: Defaults to today
+        title:
+          type: string
+        summary:
+          type: string
+        key_decisions:
+          type: array
+          items: { type: string }
+        adjustments:
+          type: array
+          items:
+            type: object
+        injury_notes:
+          type: string
+        nutrition_notes:
+          type: string
+        recovery_notes:
+          type: string
+        mental_notes:
+          type: string
+        next_steps:
+          type: string
+        data_reviewed:
+          type: object
+        conversation_id:
+          type: string
+          format: uuid
+        ai_source:
+          type: string
+          default: claude
+        tags:
+          type: array
+          items: { type: string }
+
+    InjuryCreate:
+      type: object
+      required: [title, body_area]
+      properties:
+        title:
+          type: string
+        body_area:
+          type: string
+          description: "shoulder, knee, lower_back, hip, ankle, wrist, etc."
+        side:
+          type: string
+          enum: [left, right, bilateral, central, "n/a"]
+        injury_type:
+          type: string
+          enum: [strain, sprain, tendinitis, soreness, tightness, pain, fracture, contusion, overuse, other]
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: "1=minor, 5=limits some movements, 10=cannot train"
+        status:
+          type: string
+          enum: [active, monitoring, recovering, resolved, chronic]
+          default: active
+        onset_date:
+          type: string
+          format: date
+        resolved_date:
+          type: string
+          format: date
+        symptoms:
+          type: string
+        treatment:
+          type: string
+        modifications:
+          type: string
+          description: Workout modifications to avoid aggravation
+        notes:
+          type: string
+        tags:
+          type: array
+          items: { type: string }
+        ai_source:
+          type: string
+          default: claude
+
+    TranscriptCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        raw_text:
+          type: string
+        summary:
+          type: string
+        source:
+          type: string
+          default: api
+        ai_source:
+          type: string
+          default: claude
+        duration_seconds:
+          type: integer
+        recorded_at:
+          type: string
+          format: date-time
+        location:
+          type: string
+        tags:
+          type: array
+          items: { type: string }
+
+    ConversationCreate:
+      type: object
+      required: [title, ai_source]
+      properties:
+        title:
+          type: string
+        ai_source:
+          type: string
+          default: claude
+        full_thread:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string }
+              content: { type: string }
+        summary:
+          type: string
+        tags:
+          type: array
+          items: { type: string }
+        message_count:
+          type: integer
+
+    GamificationSettings:
+      type: object
+      properties:
+        train_effort_goal:
+          type: integer
+          description: Daily effort target for Train ring (1-10)
+        fuel_calories_goal:
+          type: number
+        fuel_protein_g_goal:
+          type: number
+        fuel_hydration_liters_goal:
+          type: number
+        recover_sleep_hours_goal:
+          type: number
+        recover_sleep_quality_goal:
+          type: integer

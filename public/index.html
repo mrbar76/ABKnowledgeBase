@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.2.0</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -192,6 +192,11 @@
             <button class="btn-action btn-action-danger sm-btn-full" id="btn-purge-settings" onclick="confirmPurgeFromMenu()">Purge All Data</button>
             <div id="purge-menu-result" class="sm-result"></div>
           </div>
+        </div>
+
+        <!-- ─── Version ─── -->
+        <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
+          AB Brain <span id="sm-version">v1.2.0</span>
         </div>
 
       </div>

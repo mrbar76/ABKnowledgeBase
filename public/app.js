@@ -1474,13 +1474,14 @@ async function loadSettingsMenuInfo() {
 
   // Health / backend
   try {
-    const key = getStoredKey();
-    const res = await fetch(API + '/health', { headers: key ? { 'X-Api-Key': key } : {} });
+    const res = await fetch(API + '/health-check');
     const data = await res.json().catch(() => ({}));
     if (bkEl) {
       bkEl.textContent = res.ok ? (data.backend || 'PostgreSQL') + ' — connected' : 'error';
       bkEl.style.color = res.ok ? 'var(--green)' : 'var(--red)';
     }
+    const verEl = document.getElementById('sm-version');
+    if (verEl && data.version) verEl.textContent = 'v' + data.version;
   } catch {
     if (bkEl) { bkEl.textContent = 'offline'; bkEl.style.color = 'var(--red)'; }
   }
