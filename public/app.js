@@ -4811,7 +4811,7 @@ async function loadRecovery(date) {
     const today = recoveryDate;
     const [scoreData, trendData] = await Promise.all([
       api(`/recovery/score?date=${today}`),
-      api('/recovery/trend?days=7'),
+      api(`/recovery/trend?date=${today}&days=7`),
     ]);
 
     const s = scoreData;
