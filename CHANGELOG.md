@@ -4,6 +4,50 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.3.0] — 2026-03-25
+
+### Added
+- **Recovery Score v2** — completely rebuilt with sports-science-backed methodology
+  - **TSB-based Training Load** (TrainingPeaks model) — compares 7-day fatigue (ATL) to 42-day fitness (CTL) using session-RPE (effort × duration). Replaces naive 3-day average. Properly reflects progressive overload blocks.
+  - **Effort-aware Muscle Freshness** — high-effort workouts now need up to 1.5× longer recovery time. A brutal effort-9 session needs ~72h, not just 48h.
+  - **Blended Nutrition** — yesterday 70% + today 30%. Capped at 85 if no meals logged today. Shows both days.
+  - **Recovery Score Explainer** — collapsible "What is this?" section on both fitness day and recovery views explaining all components.
+- **Proper numeric workout columns** — `duration_minutes`, `distance_value`, `elevation_gain_ft`, `hr_avg`, `hr_max`, `cadence`, `cal_active`, `cal_total`. Auto-parsed from text fields on save, with SQL migration backfilling all historical data.
+- **Exercise Library** — 65 seeded exercises with exact Fitbod naming, muscle groups, and equipment requirements
+  - `POST /exercises/import-fitbod` — smart import that auto-detects 4 CSV formats (exercise library, Fitbod details, workout exports, tab-separated)
+  - Normalizes muscle names to recovery schema (e.g. "Quads" → quadriceps, "front delts" → shoulders)
+  - Upserts: duplicates enriched, not created
+- **Gym Profiles** — Home/Gym/Travel equipment profiles with 42 equipment types matching Fitbod categories
+  - Checkbox picker UI in Fitness tab (gear icon)
+  - Coach checks active profile before planning workouts
+  - `GET /exercises/available` — exercises filtered to active profile's equipment
+- **Equipment Catalog** — 42 equipment types organized by category (free weights, machines, benches, racks, accessories, cardio, bodyweight)
+- **Plan-Workout Connection** — plans and workouts formally linked
+  - `daily_plans.planned_exercises` JSONB — structured exercise array from coach
+  - `daily_plans.actual_exercises` JSONB — what was actually done (from Fitbod screenshots)
+  - `daily_plans.completion_notes` — coach's review after workout
+  - `workouts.daily_plan_id` FK — links workout to its plan (legacy data backfilled by date match)
+  - Recovery reads structured exercises for granular per-muscle tracking (falls back to workout_type for pre-March 2026 data)
+- **Today's Plan card** — enhanced UI showing structured exercises grouped by warmup/main/superset/circuit/finisher, with status icons (✓/~/✗), PR badges, set-level detail, coach notes, and planned-vs-actual comparison
+- **Workout Notes display** — plan card shows workout_notes in monospace block for Fitbod transcription reference
+- **Fitbod CSV import in Settings** — Settings → Fitness & Gym section with multi-file upload support
+- **Fitbod screenshot logging instructions** — coach knows how to read Fitbod screenshots, handle band resistance labels (keep as-is, don't convert to lbs), mark PRs, use exact exercise names
+
+### Changed
+- **Coach must specify exact weights** — instructions updated: "Do NOT write 'build to heavy' — give a number: '3x10 @ 50 lb'"
+- **Duration parsing** — handles MM:SS vs HH:MM ambiguity (52:30 = 52 min, not 52 hours). Caps at 300 min.
+- **Recovery component detail** — Score Breakdown now shows detail text below each bar (TSB values, meal data, muscle status)
+- **Claude schema** — all exercise, gym profile, and equipment endpoints documented. DailyPlanCreate schema includes planned_exercises, actual_exercises, completion_notes.
+- **All OpenAPI schemas updated** — claude-schema.yaml/json, openapi-everything.json, openapi-spartan.json, openapi-chatgpt.json, openapi-gpt-actions.yaml now include numeric workout fields and exercise/gym endpoints.
+- **Version bumped** to 1.3.0
+
+### Fixed
+- **TSB calculation NaN** — `time_duration` stored as text ("45 min") caused `Number("45 min") = NaN`, zeroing out CTL/ATL. Fixed with proper numeric columns and text parsing.
+- **Duration backfill** — "52:30" was parsed as 52 hours (3150 min) instead of 52 minutes. Fixed HH:MM vs MM:SS detection.
+- **Recovery score inflated** — was 81 "Peak" during progressive overload. Now ~70 "Good" with TSB properly reflecting accumulated training stress.
+
+---
+
 ## [1.2.0] — 2026-03-24
 
 ### Added
