@@ -155,6 +155,17 @@
               </div>
               <div id="exercise-import-result" class="sm-result"></div>
             </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Gym Profile</div>
+              <div class="sm-card-desc">Your available equipment. Coach filters exercises to match your gym.</div>
+              <div id="gym-profiles-list" style="margin-bottom:8px"></div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <input type="text" id="gym-profile-name" placeholder="Gym name (e.g. Home Gym, LA Fitness)" class="sm-date-input" style="width:100%;box-sizing:border-box">
+                <textarea id="gym-profile-equipment" placeholder="Equipment (comma-separated): Barbell, Dumbbells, Pull Up Bar, Cable Machine..." rows="3" style="width:100%;box-sizing:border-box;font-size:0.8rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);resize:vertical"></textarea>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="addGymProfile()">Add Gym Profile</button>
+              </div>
+              <div id="gym-profile-result" class="sm-result"></div>
+            </div>
           </div>
         </div>
 

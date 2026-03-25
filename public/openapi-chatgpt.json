@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate \u2192 Plan \u2192 Execute \u2192 Review \u2192 Repeat)\n\n### 1. EVALUATE \u2014 Review past performance\n- `GET /daily-plans/by-date/{yesterday}` \u2014 see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` \u2014 full context (workouts, nutrition, body, injuries, daily plan)\n- `GET /recovery/score` \u2014 today's recovery readiness\n\n### 2. PLAN \u2014 Set daily plans\n- `POST /daily-plans` \u2014 create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` \u2014 create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n- NEVER use /training/plans \u2014 that endpoint is REMOVED. All planning uses /daily-plans.\n\n### 3. EXECUTE \u2014 User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`\n- Log sleep + water via `POST /nutrition/daily-context` (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)\n\n### 4. REVIEW \u2014 End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` \u2014 plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` \u2014 save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND \u2014 Adjust plans based on progress\n- `PUT /daily-plans/{id}` \u2014 amend today's or future plans\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score \u2014 actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).\n- **Recover** (indigo): Proportional average of sleep hours + sleep quality progress (each 0-100%).\n- Targets cascade: daily plan \u2192 gamification settings defaults.\n- `GET /gamification` \u2014 today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Weekly Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create 7 daily plans: `POST /daily-plans/week` \u2014 each day gets workout_type, targets, coaching_notes\n\n### Daily Context (Simplified)\n- Only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text)\n- No energy_rating, hunger_rating, recovery_rating, body_weight_lb, cravings, digestion, day_type \u2014 these are REMOVED\n- Weight goes in `POST /body-metrics`, not daily context\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Exercises (1060+ with mscore), Meals, Body Metrics, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate \u2192 Plan \u2192 Execute \u2192 Review \u2192 Repeat)\n\n### 1. EVALUATE \u2014 Review past performance\n- `GET /daily-plans/by-date/{yesterday}` \u2014 see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` \u2014 full context (workouts, nutrition, body, injuries, daily plan)\n- `GET /recovery/score` \u2014 today's recovery readiness\n\n### 2. PLAN \u2014 Set daily plans\n- `POST /daily-plans` \u2014 create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` \u2014 create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n- NEVER use /training/plans \u2014 that endpoint is REMOVED. All planning uses /daily-plans.\n\n### 3. EXECUTE \u2014 User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`\n- Log sleep + water via `POST /nutrition/daily-context` (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)\n\n### 4. REVIEW \u2014 End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` \u2014 plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` \u2014 save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND \u2014 Adjust plans based on progress\n- `PUT /daily-plans/{id}` \u2014 amend today's or future plans\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score \u2014 actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).\n- **Recover** (indigo): Proportional average of sleep hours + sleep quality progress (each 0-100%).\n- Targets cascade: daily plan \u2192 gamification settings defaults.\n- `GET /gamification` \u2014 today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Weekly Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create 7 daily plans: `POST /daily-plans/week` \u2014 each day gets workout_type, targets, coaching_notes\n\n### Daily Context (Simplified)\n- Only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text)\n- No energy_rating, hunger_rating, recovery_rating, body_weight_lb, cravings, digestion, day_type \u2014 these are REMOVED\n- Weight goes in `POST /body-metrics`, not daily context\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Exercises (1060+ with mscore), Gym Profiles (equipment availability), Meals, Body Metrics, Daily Plans (with planned exercises), Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -955,6 +955,75 @@
           "200": {
             "description": "Exercise details",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exercise" } } }
+          }
+        }
+      }
+    },
+    "/gym-profiles": {
+      "get": {
+        "operationId": "listGymProfiles",
+        "summary": "List all gym profiles with their equipment",
+        "responses": {
+          "200": {
+            "description": "List of gym profiles",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "gym_profiles": { "type": "array", "items": { "$ref": "#/components/schemas/GymProfile" } } } } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGymProfile",
+        "summary": "Create a gym profile with available equipment list",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfileInput" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfile" } } }
+          }
+        }
+      }
+    },
+    "/gym-profiles/primary": {
+      "get": {
+        "operationId": "getPrimaryGymProfile",
+        "summary": "Get the primary gym profile — check this to know what equipment the user has available before recommending exercises",
+        "responses": {
+          "200": {
+            "description": "Primary gym profile with equipment list",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfile" } } }
+          }
+        }
+      }
+    },
+    "/gym-profiles/{id}": {
+      "put": {
+        "operationId": "updateGymProfile",
+        "summary": "Update gym profile name, equipment, or primary status",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfileInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfile" } } }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteGymProfile",
+        "summary": "Delete a gym profile",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
           }
         }
       }
@@ -2174,6 +2243,28 @@
           "created_at": { "type": "string", "format": "date-time" }
         }
       },
+      "GymProfile": {
+        "type": "object",
+        "description": "A gym or training location with its available equipment. The primary gym profile is used to filter exercise recommendations.",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "description": "Gym or location name (e.g. 'Home Gym', 'LA Fitness', 'Outdoor / Trail')" },
+          "equipment": { "type": "array", "items": { "type": "string" }, "description": "List of available equipment (e.g. ['Barbell', 'Dumbbells', 'Cable Machine', 'Pull Up Bar'])" },
+          "is_primary": { "type": "boolean", "description": "If true, this is the default gym for exercise recommendations" },
+          "notes": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "GymProfileInput": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "equipment": { "type": "array", "items": { "type": "string" } },
+          "is_primary": { "type": "boolean" },
+          "notes": { "type": "string" }
+        }
+      },
       "Workout": {
         "type": "object",
         "properties": {
@@ -2244,6 +2335,36 @@
           },
           "adjustment": {
             "type": "string"
+          },
+          "heart_rate_avg": { "type": "string" },
+          "heart_rate_max": { "type": "string" },
+          "active_calories": { "type": "string" },
+          "total_calories": { "type": "string" },
+          "pace_avg": { "type": "string" },
+          "cadence_avg": { "type": "string" },
+          "exercises": {
+            "type": "array",
+            "description": "Structured exercise data with plan vs actual comparison per exercise and set",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "exercise_id": { "type": "string", "format": "uuid" },
+                "planned": { "type": "object", "properties": { "sets": { "type": "integer" }, "reps": { "type": "integer" }, "weight_lb": { "type": "number" } } },
+                "actual": { "type": "array", "items": { "type": "object", "properties": { "set": { "type": "integer" }, "reps": { "type": "integer" }, "weight_lb": { "type": "number" }, "notes": { "type": "string" } } } },
+                "status": { "type": "string", "enum": ["complete", "modified", "skipped"] },
+                "notes": { "type": "string" }
+              }
+            }
+          },
+          "completion_status": {
+            "type": "string",
+            "enum": ["logged", "complete", "modified", "incomplete"],
+            "description": "Overall workout completion relative to daily plan: complete=as planned, modified=changes made, incomplete=exercises skipped"
+          },
+          "plan_comparison_notes": {
+            "type": "string",
+            "description": "Free text summary of deviations from plan (weight changes, substitutions, reasons)"
           },
           "tags": {
             "type": "array",
@@ -3028,6 +3149,23 @@
           "workout_notes": {
             "type": "string"
           },
+          "planned_exercises": {
+            "type": "array",
+            "description": "Structured exercise prescription from the catalog — format for easy Fitbod transcription",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Exercise name from catalog" },
+                "exercise_id": { "type": "string", "format": "uuid" },
+                "sets": { "type": "integer" },
+                "reps": { "type": "integer" },
+                "weight_lb": { "type": "number" },
+                "rest_sec": { "type": "integer" },
+                "notes": { "type": "string" },
+                "superset_group": { "type": "string", "nullable": true }
+              }
+            }
+          },
           "target_calories": {
             "type": "number"
           },
@@ -3118,6 +3256,23 @@
           },
           "workout_notes": {
             "type": "string"
+          },
+          "planned_exercises": {
+            "type": "array",
+            "description": "Prescribed exercises from the catalog with sets/reps/weight for easy Fitbod transcription",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "exercise_id": { "type": "string", "format": "uuid" },
+                "sets": { "type": "integer" },
+                "reps": { "type": "integer" },
+                "weight_lb": { "type": "number" },
+                "rest_sec": { "type": "integer" },
+                "notes": { "type": "string" },
+                "superset_group": { "type": "string", "nullable": true }
+              }
+            }
           },
           "target_calories": {
             "type": "number"

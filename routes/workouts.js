@@ -12,6 +12,7 @@ const WRITABLE_FIELDS = [
   'effort', 'body_notes', 'adjustment',
   'slowdown_notes', 'failure_first',
   'grip_feedback', 'legs_feedback', 'cardio_feedback', 'shoulder_feedback',
+  'completion_status', 'plan_comparison_notes',
   'tags', 'source', 'ai_source', 'metadata',
 ];
 
@@ -86,6 +87,7 @@ router.post('/', async (req, res) => {
         effort, body_notes, adjustment,
         slowdown_notes, failure_first,
         grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
+        completion_status, plan_comparison_notes,
         tags, source, ai_source, metadata
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -96,7 +98,8 @@ router.post('/', async (req, res) => {
         $21, $22, $23,
         $24, $25,
         $26, $27, $28, $29,
-        $30, $31, $32, $33
+        $30, $31,
+        $32, $33, $34, $35
       ) RETURNING *`,
       [
         title,
@@ -128,6 +131,8 @@ router.post('/', async (req, res) => {
         b.legs_feedback || null,
         b.cardio_feedback || null,
         b.shoulder_feedback || null,
+        b.completion_status || 'logged',
+        b.plan_comparison_notes || null,
         JSON.stringify(b.tags || []),
         b.source || 'manual',
         b.ai_source || null,
@@ -171,6 +176,7 @@ router.post('/bulk', async (req, res) => {
             effort, body_notes, adjustment,
             slowdown_notes, failure_first,
             grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
+            completion_status, plan_comparison_notes,
             tags, source, ai_source, metadata
           ) VALUES (
             $1, $2, $3, $4, $5, $6,
@@ -181,7 +187,8 @@ router.post('/bulk', async (req, res) => {
             $21, $22, $23,
             $24, $25,
             $26, $27, $28, $29,
-            $30, $31, $32, $33
+            $30, $31,
+            $32, $33, $34, $35
           ) RETURNING id, title, workout_date, workout_type`,
           [
             title,
@@ -213,6 +220,8 @@ router.post('/bulk', async (req, res) => {
             b.legs_feedback || null,
             b.cardio_feedback || null,
             b.shoulder_feedback || null,
+            b.completion_status || 'logged',
+            b.plan_comparison_notes || null,
             JSON.stringify(b.tags || []),
             b.source || 'import',
             b.ai_source || null,

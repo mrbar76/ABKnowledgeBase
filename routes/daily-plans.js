@@ -6,10 +6,13 @@ const router = express.Router();
 const WRITABLE_FIELDS = [
   'plan_date', 'status', 'title', 'goal',
   'workout_type', 'workout_focus', 'target_effort', 'target_duration_min', 'workout_notes',
+  'planned_exercises',
   'target_calories', 'target_protein_g', 'target_carbs_g', 'target_fat_g', 'target_hydration_liters',
   'target_sleep_hours', 'recovery_notes',
   'coaching_notes', 'rationale', 'tags', 'ai_source', 'metadata',
 ];
+
+const JSONB_FIELDS = new Set(['planned_exercises', 'tags', 'metadata']);
 
 // ══════════════════════════════════════════════════════════════════
 //  LIST / SEARCH DAILY PLANS
@@ -245,8 +248,8 @@ router.post('/', async (req, res) => {
     for (const field of WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) {
         cols.push(field);
-        vals.push(field === 'tags' || field === 'metadata' ? JSON.stringify(req.body[field]) : req.body[field]);
-        placeholders.push(`$${i++}`);
+        vals.push(JSONB_FIELDS.has(field) ? JSON.stringify(req.body[field]) : req.body[field]);
+        placeholders.push(JSONB_FIELDS.has(field) ? `$${i++}::jsonb` : `$${i++}`);
       }
     }
 
@@ -296,8 +299,8 @@ router.post('/week', async (req, res) => {
       for (const field of WRITABLE_FIELDS) {
         if (dayPlan[field] !== undefined) {
           cols.push(field);
-          vals.push(field === 'tags' || field === 'metadata' ? JSON.stringify(dayPlan[field]) : dayPlan[field]);
-          placeholders.push(`$${i++}`);
+          vals.push(JSONB_FIELDS.has(field) ? JSON.stringify(dayPlan[field]) : dayPlan[field]);
+          placeholders.push(JSONB_FIELDS.has(field) ? `$${i++}::jsonb` : `$${i++}`);
         }
       }
 
@@ -335,8 +338,8 @@ router.put('/:id', async (req, res) => {
 
     for (const field of WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) {
-        fields.push(`${field} = $${i++}`);
-        vals.push(field === 'tags' || field === 'metadata' ? JSON.stringify(req.body[field]) : req.body[field]);
+        fields.push(JSONB_FIELDS.has(field) ? `${field} = $${i++}::jsonb` : `${field} = $${i++}`);
+        vals.push(JSONB_FIELDS.has(field) ? JSON.stringify(req.body[field]) : req.body[field]);
       }
     }
 

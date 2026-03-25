@@ -288,6 +288,65 @@ paths:
       responses:
         '200':
           description: Exercise stats
+  /gym-profiles:
+    get:
+      operationId: listGymProfiles
+      summary: List all gym profiles with their equipment
+      responses:
+        '200':
+          description: List of gym profiles
+    post:
+      operationId: createGymProfile
+      summary: Create a gym profile with available equipment list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GymProfileInput'
+      responses:
+        '201':
+          description: Created
+  /gym-profiles/primary:
+    get:
+      operationId: getPrimaryGymProfile
+      summary: Get the primary gym profile — check this before recommending exercises
+      responses:
+        '200':
+          description: Primary gym profile
+  /gym-profiles/{id}:
+    put:
+      operationId: updateGymProfile
+      summary: Update gym profile name, equipment, or primary status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GymProfileInput'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      operationId: deleteGymProfile
+      summary: Delete a gym profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Deleted
   /body-metrics:
     get:
       operationId: getBodyMetrics
@@ -2049,6 +2108,39 @@ components:
           description: Total sets logged across all Fitbod users (popularity)
         description:
           type: string
+    GymProfile:
+      type: object
+      description: A gym or training location with available equipment
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Gym name (e.g. Home Gym, LA Fitness, Outdoor / Trail)
+        equipment:
+          type: array
+          items:
+            type: string
+          description: Available equipment list
+        is_primary:
+          type: boolean
+        notes:
+          type: string
+    GymProfileInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        equipment:
+          type: array
+          items:
+            type: string
+        is_primary:
+          type: boolean
+        notes:
+          type: string
     Workout:
       type: object
       properties:
@@ -2124,6 +2216,13 @@ components:
           type: string
         adjustment:
           type: string
+        completion_status:
+          type: string
+          enum: [logged, complete, modified, incomplete]
+          description: Workout completion vs daily plan
+        plan_comparison_notes:
+          type: string
+          description: Summary of deviations from plan
         tags:
           type: array
           items:
@@ -2166,6 +2265,29 @@ components:
           type: integer
         workout_notes:
           type: string
+        planned_exercises:
+          type: array
+          description: Prescribed exercises from catalog with sets/reps/weight
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              exercise_id:
+                type: string
+                format: uuid
+              sets:
+                type: integer
+              reps:
+                type: integer
+              weight_lb:
+                type: number
+              rest_sec:
+                type: integer
+              notes:
+                type: string
+              superset_group:
+                type: string
         target_calories:
           type: number
         target_protein_g:

@@ -978,6 +978,7 @@ function toggleSettingsMenu() {
   menu.classList.add('open');
   loadSettingsMenuInfo();
   loadSchemaBuilder();
+  loadGymProfiles();
   updateThemeButtons(getThemeMode());
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
@@ -1072,7 +1073,9 @@ const SPARTAN_PATHS = [
   '/training/plans','/training/plans/{id}','/training/coaching','/training/coaching/{id}',
   '/training/injuries','/training/injuries/{id}','/training/injuries/active/summary',
   '/training/day/{date}',
-  '/exercises','/exercises/equipment','/exercises/categories','/exercises/stats',
+  '/exercises','/exercises/{id}','/exercises/equipment','/exercises/categories','/exercises/stats',
+  '/gym-profiles','/gym-profiles/{id}','/gym-profiles/primary',
+  '/daily-plans','/daily-plans/{id}','/daily-plans/by-date/{date}','/daily-plans/{id}/review','/daily-plans/week',
   '/gamification','/gamification/settings',
   '/intake','/search','/search/ai','/dashboard'
 ];
@@ -1373,36 +1376,110 @@ HARD RULES
 - Before training advice or planning, check:
   1. active injuries
   2. today's training/day context
-  3. active plans
+  3. gym profile (available equipment)
+  4. active plans
 - After substantive coaching, save a coaching session.
 - Factor active injuries into every recommendation automatically.
 - Set \`ai_source: "chatgpt"\` on created records when supported.
+
+EXERCISE CATALOG (1060+ exercises)
+The catalog stores Fitbod exercises with Muscle Strength Score (mscore):
+- 90-100: elite compound movements (Barbell Squat, Deadlift, Bench Press) — use for main lifts
+- 70-89: strong accessories (Romanian Deadlift, Incline DB Press) — pair with compounds
+- 50-69: moderate isolation/single-joint (Lateral Raise, Leg Curl) — accessory work
+- <50: light/stabilizer (Wrist Curls, Face Pulls) — warm-up or prehab
+Search exercises: \`GET /exercises?q=keyword&equipment=Barbell&muscle_group=Chest&level=intermediate&sort=mscore_desc\`
+Equipment list: \`GET /exercises/equipment\` — all equipment types with counts
+Categories: \`GET /exercises/categories\`
+Stats overview: \`GET /exercises/stats\` — top mscore exercises, counts by level/equipment
+When prescribing exercises, ALWAYS select from the catalog. Prefer higher mscore exercises for main work.
+To add custom exercises (Spartan-specific, hybrid): \`POST /exercises\` with name, equipment, primary_muscle_groups, category, level, and estimated muscle_strength_score.
+
+GYM PROFILE
+Check \`GET /gym-profiles/primary\` to know what equipment Avi has available.
+ALWAYS filter exercise recommendations to equipment in the gym profile. If equipment is unavailable, suggest the best alternative from available equipment.
+Coach can create/update gym profiles: \`POST /gym-profiles\`, \`PUT /gym-profiles/{id}\`.
+Equipment is a JSON array of strings, e.g. ["Barbell","Dumbbells","Cable Machine","Pull Up Bar"].
+
 CORE WORKFLOW
 1. Evaluate: review recent training, recovery, injuries, adherence.
-2. Plan: create or adjust daily/weekly training targets.
-3. Execute: log workouts, meals, daily context.
-4. Review: compare plan vs actual, extract lesson, adjust next step, save coaching summary.
-USE THESE ENDPOINT PATTERNS
-- Workouts: list/search by filters, log with \`POST /workouts\`
-- Meals: \`GET /meals?date=...\` or range; log with \`POST /meals\`
-- Body metrics: \`GET /body-metrics?latest=true\` or range; log with \`POST /body-metrics\`
-- Daily context: \`GET/POST /nutrition/daily-context\`
-- Daily summary: \`GET /nutrition/daily-summary?date=...\`
-- Range nutrition review: \`GET /nutrition/daily-summary/range?since=...&before=...\`
-- Daily plans: \`GET /daily-plans?from=&to=\`, create with \`POST /daily-plans\`, \`POST /daily-plans/week\` for 7 days at once
-- Coaching sessions: list by date range, create after substantive reviews
-- Full day view when needed: \`GET /training/day/YYYY-MM-DD\`
-WORKOUT LOGGING
+2. Plan: create daily plans with specific exercises from the catalog.
+3. Execute: log workouts with structured exercise data (plan vs actual).
+4. Review: compare plan vs actual at set level, mark completion status, save coaching summary.
+
+DAILY PLANS (with planned_exercises)
+Use \`POST /daily-plans\` for single day, \`POST /daily-plans/week\` for 7 days at once.
+NEVER use training plans (/training/plans). All planning goes through daily plans.
+Fields: title, goal, workout_type, workout_focus, target_effort (1-10), target_duration_min,
+planned_exercises (JSONB array), target_calories, target_protein_g, target_carbs_g, target_fat_g,
+target_hydration_liters, target_sleep_hours, workout_notes, coaching_notes, rationale, status (planned/rest).
+Always include title and goal.
+
+planned_exercises structure — make it easy to transcribe into Fitbod:
+\`[{
+  "name": "Barbell Squat",
+  "exercise_id": "uuid-from-catalog",
+  "sets": 4, "reps": 8, "weight_lb": 185,
+  "rest_sec": 120,
+  "notes": "ATG depth, pause at bottom",
+  "superset_group": null
+}]\`
+Format the plan output clearly: exercise name, sets x reps @ weight, rest time. Group supersets together.
+
+WORKOUT LOGGING (with plan vs actual)
 Use \`POST /workouts\`. Required: \`workout_type\`.
-Include when relevant:
+The exercises JSONB field now supports structured plan-vs-actual comparison:
+\`exercises: [{
+  "name": "Barbell Squat",
+  "exercise_id": "uuid",
+  "planned": {"sets": 4, "reps": 8, "weight_lb": 185},
+  "actual": [
+    {"set": 1, "reps": 8, "weight_lb": 185},
+    {"set": 2, "reps": 8, "weight_lb": 185},
+    {"set": 3, "reps": 6, "weight_lb": 185, "notes": "grip slipped"},
+    {"set": 4, "reps": 5, "weight_lb": 175, "notes": "dropped weight"}
+  ],
+  "status": "modified",
+  "notes": "Reduced weight last 2 sets due to grip fatigue"
+}]\`
+Also set: completion_status ("complete", "modified", "incomplete"), plan_comparison_notes (free text summary of deviations).
+
+PLAN VS ACTUAL WORKFLOW
+When Avi sends a post-workout update or screenshot:
+1. Fetch today's plan: \`GET /daily-plans/by-date/YYYY-MM-DD\`
+2. Compare each planned exercise with what was actually done at the set level.
+3. Note: weight changes, rep changes, exercise substitutions (with reason), skipped exercises.
+4. Log workout via \`POST /workouts\` with structured exercises array showing planned vs actual.
+5. Set completion_status: "complete" (all exercises done as planned), "modified" (changes made), "incomplete" (exercises skipped).
+6. Add plan_comparison_notes summarizing key deviations and coaching observations.
+7. Update daily plan status to "completed" or "partial" via \`PUT /daily-plans/{id}\`.
+Review endpoint: \`GET /daily-plans/{id}/review\` — returns plan + actual + comparison summary.
+
+Other workout fields (include when relevant):
 - focus, warmup, main_sets, carries
 - time_duration, distance, elevation_gain
 - effort 1–10
 - slowdown_notes, failure_first
 - grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback, body_notes
 - adjustment
+- heart_rate_avg, heart_rate_max, active_calories, total_calories, pace_avg, cadence_avg, splits
 - lowercase tags
-Workout types commonly used: hill, strength, run, hybrid, recovery, ruck.
+Workout types: hill, strength, run, hybrid, recovery, ruck.
+
+ENDPOINT PATTERNS
+- Exercises: \`GET /exercises?q=&equipment=&muscle_group=&sort=mscore_desc\`
+- Gym profiles: \`GET /gym-profiles\`, \`GET /gym-profiles/primary\`
+- Workouts: list/search by filters, log with \`POST /workouts\`
+- Meals: \`GET /meals?date=...\` or range; log with \`POST /meals\`
+- Body metrics: \`GET /body-metrics?latest=true\` or range; log with \`POST /body-metrics\`
+- Daily context: \`GET/POST /nutrition/daily-context\`
+- Daily summary: \`GET /nutrition/daily-summary?date=...\`
+- Range nutrition review: \`GET /nutrition/daily-summary/range?since=...&before=...\`
+- Daily plans: \`GET /daily-plans?from=&to=\`, \`POST /daily-plans\`, \`POST /daily-plans/week\`
+- Plan review: \`GET /daily-plans/{id}/review\`
+- Coaching sessions: list by date range, create after substantive reviews
+- Full day view: \`GET /training/day/YYYY-MM-DD\`
+
 MEAL LOGGING
 Use \`POST /meals\`. Required: \`title\`, \`meal_date\`.
 - Estimate macros reasonably if Avi describes food casually.
@@ -1410,37 +1487,18 @@ Use \`POST /meals\`. Required: \`title\`, \`meal_date\`.
 BODY METRICS
 RENPHO trends matter more than single readings.
 Key fields: weight_lb, body_fat_pct, skeletal_muscle_pct, visceral_fat, bmr_kcal, metabolic_age.
-DAILY PLANS
-Use \`POST /daily-plans\` for single day, \`POST /daily-plans/week\` for 7 days at once.
-NEVER use training plans (/training/plans). All planning goes through daily plans.
-Fields: title, goal, workout_type, workout_focus, target_effort (1-10), target_duration_min,
-target_calories, target_protein_g, target_carbs_g, target_fat_g, target_hydration_liters,
-target_sleep_hours, workout_notes, coaching_notes, rationale, status (planned/rest).
-Always include title and goal — they describe what the session is about and why.
 INJURIES
 Always check active injury summary first.
 Track severity, symptoms, aggravating movements, relieving factors, modifications, prevention notes.
 WEEKLY SCORECARD
-When asked, score:
-- Engine
-- Strength & carries
-- Race specificity
-- Recovery
-- Nutrition
-- Injury management
-- Overall grade
-Use actual logged patterns, not hype. Distinguish meaningful work from filler. Call out junk volume, poor fueling, fake recovery, and rising injury risk. If meal logging is incomplete, say so and lower confidence.
+When asked, score: Engine, Strength & carries, Race specificity, Recovery, Nutrition, Injury management, Overall grade.
+Use actual logged patterns, not hype. Call out junk volume, poor fueling, fake recovery, rising injury risk.
 VERNON NJ RACE CONTEXT
-Bias recommendations toward:
-- steep trail running and descents
-- short high-output climbs
-- carry durability
-- grip under fatigue
-- fast obstacle transitions
-- leg durability without trashing recovery
+Bias recommendations toward: steep trail running, short high-output climbs, carry durability, grip under fatigue, fast obstacle transitions, leg durability without trashing recovery.
 OUTPUT STYLE
 - Logging: one-line confirmation.
 - Analysis: insight first, then supporting data.
+- Plans: format exercises clearly for Fitbod transcription (Exercise Name: SetsxReps @Weight, rest).
 - Coaching: clear next action.
 - Tell the truth. Don't inflate progress.`;
 }
@@ -3113,6 +3171,90 @@ async function purgeExercises() {
   }
   btn.disabled = false;
   btn.textContent = 'Purge All';
+}
+
+// ─── Gym Profiles (Settings) ─────────────────────────────────
+async function loadGymProfiles() {
+  const list = document.getElementById('gym-profiles-list');
+  if (!list) return;
+  list.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem">Loading...</div>';
+  try {
+    const data = await api('/gym-profiles');
+    const profiles = data.gym_profiles || [];
+    if (!profiles.length) {
+      list.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem">No gym profiles yet. Add one below.</div>';
+      return;
+    }
+    list.innerHTML = profiles.map(p => `
+      <div class="sm-card" style="margin-bottom:6px;padding:8px 10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong>${esc(p.name)}</strong>${p.is_primary ? ' <span style="color:var(--green);font-size:0.7rem">PRIMARY</span>' : ''}
+            <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">${(p.equipment || []).length} equipment items</div>
+          </div>
+          <div style="display:flex;gap:4px">
+            ${!p.is_primary ? `<button class="btn-action btn-action-secondary" style="font-size:0.65rem;padding:2px 6px" onclick="setGymPrimary('${p.id}')">Set Primary</button>` : ''}
+            <button class="btn-action btn-action-secondary" style="font-size:0.65rem;padding:2px 6px" onclick="editGymProfile('${p.id}')">Edit</button>
+            <button class="btn-action btn-action-danger" style="font-size:0.65rem;padding:2px 6px" onclick="deleteGymProfile('${p.id}')">Del</button>
+          </div>
+        </div>
+        ${(p.equipment || []).length > 0 ? `<div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px;line-height:1.4">${(p.equipment || []).map(e => esc(e)).join(', ')}</div>` : ''}
+      </div>
+    `).join('');
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--red);font-size:0.8rem">${err.message}</div>`;
+  }
+}
+
+async function addGymProfile() {
+  const nameEl = document.getElementById('gym-profile-name');
+  const equipEl = document.getElementById('gym-profile-equipment');
+  const result = document.getElementById('gym-profile-result');
+  const name = (nameEl.value || '').trim();
+  const equipStr = (equipEl.value || '').trim();
+  if (!name) { result.textContent = 'Name is required'; result.style.display = 'block'; result.style.color = 'var(--red)'; return; }
+
+  const equipment = equipStr ? equipStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+  try {
+    await api('/gym-profiles', { method: 'POST', body: JSON.stringify({ name, equipment, is_primary: true }) });
+    nameEl.value = ''; equipEl.value = '';
+    result.style.display = 'block'; result.style.color = 'var(--green)'; result.textContent = 'Gym profile created';
+    showToast('Gym profile created', 'success');
+    loadGymProfiles();
+  } catch (err) {
+    result.style.display = 'block'; result.style.color = 'var(--red)'; result.textContent = err.message;
+  }
+}
+
+async function setGymPrimary(id) {
+  try {
+    await api('/gym-profiles/' + id, { method: 'PUT', body: JSON.stringify({ is_primary: true }) });
+    loadGymProfiles();
+    showToast('Primary gym updated', 'success');
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+}
+
+async function editGymProfile(id) {
+  try {
+    const profile = await api('/gym-profiles/' + id);
+    const name = prompt('Gym name:', profile.name);
+    if (name === null) return;
+    const equipStr = prompt('Equipment (comma-separated):', (profile.equipment || []).join(', '));
+    if (equipStr === null) return;
+    const equipment = equipStr.split(',').map(s => s.trim()).filter(Boolean);
+    await api('/gym-profiles/' + id, { method: 'PUT', body: JSON.stringify({ name, equipment }) });
+    loadGymProfiles();
+    showToast('Gym profile updated', 'success');
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+}
+
+async function deleteGymProfile(id) {
+  if (!confirm('Delete this gym profile?')) return;
+  try {
+    await api('/gym-profiles/' + id, { method: 'DELETE' });
+    loadGymProfiles();
+    showToast('Gym profile deleted', 'success');
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
 }
 
 // ─── Fitness > Today ──────────────────────────────────────────

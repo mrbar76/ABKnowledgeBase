@@ -240,6 +240,22 @@ async function initDB() {
       (coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) gin_trgm_ops
     )`);
 
+  // ===== GYM PROFILES =====
+  await safeQuery('gym_profiles table', `
+    CREATE TABLE IF NOT EXISTS gym_profiles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      equipment JSONB DEFAULT '[]'::jsonb,
+      is_primary BOOLEAN DEFAULT false,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('gym_profiles indexes', `
+    CREATE INDEX IF NOT EXISTS idx_gym_profiles_primary ON gym_profiles(is_primary);
+    CREATE INDEX IF NOT EXISTS idx_gym_profiles_equipment ON gym_profiles USING gin(equipment)
+  `);
+
   // ===== BODY METRICS =====
   await safeQuery('body_metrics table', `
     CREATE TABLE IF NOT EXISTS body_metrics (
@@ -539,6 +555,11 @@ async function initDB() {
   await safeQuery('workouts +legs_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS legs_feedback TEXT`);
   await safeQuery('workouts +cardio_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cardio_feedback TEXT`);
   await safeQuery('workouts +shoulder_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS shoulder_feedback TEXT`);
+  await safeQuery('workouts +completion_status', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS completion_status TEXT DEFAULT 'logged'`);
+  await safeQuery('workouts +plan_comparison_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_comparison_notes TEXT`);
+
+  // -- daily_plans migrations --
+  await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
 
   // -- meals migrations --
   await safeQuery('meals +meal_date', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_date DATE NOT NULL DEFAULT CURRENT_DATE`);
