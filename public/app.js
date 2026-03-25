@@ -1400,6 +1400,7 @@ Check \`GET /gym-profiles/primary\` to know what equipment Avi has available.
 ALWAYS filter exercise recommendations to equipment in the gym profile. If equipment is unavailable, suggest the best alternative from available equipment.
 Coach can create/update gym profiles: \`POST /gym-profiles\`, \`PUT /gym-profiles/{id}\`.
 Equipment is a JSON array of strings, e.g. ["Barbell","Dumbbells","Cable Machine","Pull Up Bar"].
+When the user shares GYM PHOTOS: identify all visible equipment, create a gym profile via \`POST /gym-profiles\` with the equipment list, and set \`is_primary: true\` if no primary profile exists. Confirm what was saved.
 
 CORE WORKFLOW
 1. Evaluate: review recent training, recovery, injuries, adherence.
