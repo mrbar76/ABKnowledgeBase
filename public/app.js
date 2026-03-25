@@ -5504,19 +5504,6 @@ async function showGymProfilePicker() {
           Create a profile to select your equipment
         </div>
       `}
-      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bg-tertiary)">
-        <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px">Import Fitbod Exercises</div>
-        <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:8px">
-          In Fitbod: Log tab → ⚙ → Export Workout Data → share the CSV file. Then upload here or paste the text.
-        </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="file" id="fitbod-csv-file" accept=".csv,.txt" style="font-size:0.7rem;flex:1" onchange="importFitbodFile(this)">
-        </div>
-        <div style="margin-top:6px;text-align:center;font-size:0.65rem;color:var(--text-dim)">— or paste CSV text —</div>
-        <textarea id="fitbod-csv-paste" rows="3" placeholder="Paste Fitbod CSV text here..." style="width:100%;font-size:0.7rem;margin-top:4px;padding:6px"></textarea>
-        <button class="btn-submit btn-secondary" style="width:100%;margin-top:6px;font-size:0.72rem" onclick="importFitbodPaste()">Import from Paste</button>
-        <div id="fitbod-import-result" style="margin-top:6px;font-size:0.7rem"></div>
-      </div>
     `;
     openModal('Gym Profiles', html);
   } catch (e) { showToast(e.message); }
@@ -5552,6 +5539,39 @@ async function saveGymProfileEquipment(id) {
   } catch (e) { showToast(e.message); }
 }
 
+// Settings menu import — handles multiple files
+async function handleFitbodImportFromSettings(input) {
+  const resultEl = document.getElementById('sm-fitbod-import-result');
+  const files = input.files;
+  if (!files.length) return;
+
+  let totalImported = 0, totalUpdated = 0, totalRows = 0;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = `Importing ${files.length} file(s)...`;
+
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const result = await api('/exercises/import-fitbod', { method: 'POST', body: JSON.stringify({ csv_text: text }) });
+      totalImported += result.imported || 0;
+      totalUpdated += result.updated || 0;
+      totalRows += result.total_rows || 0;
+    } catch (e) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `Error in ${file.name}: ${e.message}`;
+      input.value = '';
+      return;
+    }
+  }
+
+  resultEl.style.color = 'var(--green)';
+  resultEl.textContent = `✓ ${totalRows} rows processed: ${totalImported} new exercises, ${totalUpdated} enriched`;
+  input.value = '';
+  showToast(`Imported ${totalImported} exercises, enriched ${totalUpdated}`);
+}
+
+// Gym profile modal import (legacy — kept for backward compat)
 async function importFitbodFile(input) {
   const file = input.files[0];
   if (!file) return;

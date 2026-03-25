@@ -141,6 +141,25 @@
           </div>
         </div>
 
+        <!-- ─── Fitness & Gym ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Fitness &amp; Gym</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Fitbod Exercise Import</div>
+              <div class="sm-card-desc">Import your Fitbod exercise library or workout export CSV. Auto-detects format, maps muscles, skips duplicates.</div>
+              <input type="file" id="fitbod-import-file" accept=".csv,.txt,.tsv" style="display:none" onchange="handleFitbodImportFromSettings(this)" multiple>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('fitbod-import-file').click()">Choose CSV Files</button>
+              <div id="sm-fitbod-import-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Gym Profiles</div>
+              <div class="sm-card-desc">Set up equipment for Home, Gym, Travel. Coach uses this to plan workouts.</div>
+              <button class="btn-action sm-btn-full" onclick="closeSettingsMenu();showGymProfilePicker()">Manage Gym Profiles</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ─── AI Integrations ─── -->
         <div class="sm-section">
           <div class="sm-section-title">AI Integrations</div>
