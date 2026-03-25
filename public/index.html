@@ -140,10 +140,10 @@
             </div>
             <div class="sm-card">
               <div class="sm-card-label">Exercise Catalog (Fitbod)</div>
-              <div class="sm-card-desc">Import 1060+ exercises with equipment, muscle groups &amp; mscore. Duplicates auto-updated.</div>
-              <input type="file" id="exercise-import-file" accept=".json" style="display:none" onchange="handleExerciseImportFile(this)">
+              <div class="sm-card-desc">Import 1060+ exercises with equipment, muscle groups &amp; mscore. Supports CSV or JSON. Duplicates auto-updated.</div>
+              <input type="file" id="exercise-import-file" accept=".json,.csv" style="display:none" onchange="handleExerciseImportFile(this)">
               <div class="sm-btn-row">
-                <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('exercise-import-file').click()" id="exercise-import-btn" style="flex:1">Choose JSON File</button>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('exercise-import-file').click()" id="exercise-import-btn" style="flex:1">Choose File</button>
                 <button class="btn-action btn-action-danger" onclick="purgeExercises()" id="exercise-purge-btn" style="flex:0 0 auto;font-size:0.75rem">Purge All</button>
               </div>
               <div id="exercise-import-progress" style="display:none;margin-top:8px">

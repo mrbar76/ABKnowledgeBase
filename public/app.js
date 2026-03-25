@@ -3095,15 +3095,20 @@ async function handleExerciseImportFile(input) {
   let exercises;
   try {
     const text = await file.text();
-    let parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) {
-      if (parsed.exercises && Array.isArray(parsed.exercises)) parsed = parsed.exercises;
-      else throw new Error('Expected a JSON array or {exercises:[...]}');
+    const isCSV = file.name.toLowerCase().endsWith('.csv') || (!text.trim().startsWith('[') && !text.trim().startsWith('{'));
+    if (isCSV) {
+      exercises = parseCSVToExercises(text);
+    } else {
+      let parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        if (parsed.exercises && Array.isArray(parsed.exercises)) parsed = parsed.exercises;
+        else throw new Error('Expected a JSON array or {exercises:[...]}');
+      }
+      exercises = parsed;
     }
-    exercises = parsed;
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = 'Choose JSON File';
+    btn.textContent = 'Choose File';
     result.style.display = 'block';
     result.style.color = 'var(--red)';
     result.textContent = 'Error reading file: ' + err.message;
@@ -3142,7 +3147,7 @@ async function handleExerciseImportFile(input) {
 
   progress.style.display = 'none';
   btn.disabled = false;
-  btn.textContent = 'Choose JSON File';
+  btn.textContent = 'Choose File';
   input.value = '';
 
   result.style.display = 'block';
@@ -3150,6 +3155,43 @@ async function handleExerciseImportFile(input) {
   result.textContent = 'Done: ' + imported + ' imported/updated, ' + errors + ' errors (' + total + ' total)';
 
   if (imported > 0) showToast('Imported ' + imported + ' exercises', 'success');
+}
+
+function parseCSVToExercises(csvText) {
+  const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+  const headers = parseCSVLine(lines[0]);
+  const exercises = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseCSVLine(lines[i]);
+    if (vals.length < 2) continue;
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      row[headers[j]] = vals[j] || '';
+    }
+    exercises.push(row);
+  }
+  return exercises;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { result.push(current.trim()); current = ''; }
+      else { current += ch; }
+    }
+  }
+  result.push(current.trim());
+  return result;
 }
 
 async function purgeExercises() {

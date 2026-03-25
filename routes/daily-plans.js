@@ -307,7 +307,7 @@ router.post('/week', async (req, res) => {
       try {
         const { rows } = await query(
           `INSERT INTO daily_plans (${cols.join(', ')}) VALUES (${placeholders.join(', ')})
-           ON CONFLICT (plan_date) DO UPDATE SET ${cols.map((c, idx) => `${c} = $${idx + 1}`).join(', ')}, updated_at = NOW()
+           ON CONFLICT (plan_date) DO UPDATE SET ${cols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}, updated_at = NOW()
            RETURNING *`,
           vals
         );
