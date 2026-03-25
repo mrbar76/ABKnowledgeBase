@@ -1122,8 +1122,13 @@ function schemaPreset(type) {
   const cbs = Array.from(document.querySelectorAll('#schema-builder-list input[type=checkbox]'));
   if (type === 'none') {
     cbs.forEach(cb => cb.checked = false);
+  } else if (type === 'claude') {
+    // Select ALL endpoints, no limit
+    cbs.forEach(cb => {
+      cb.checked = true;
+    });
   } else if (type === 'all') {
-    // Select best 30: skip deletes and bulk, prioritize by order
+    // Select best 30: skip deletes and bulk, prioritize by order (ChatGPT limit)
     let count = 0;
     cbs.forEach(cb => {
       const dominated = SKIP_OPS.has(cb.dataset.opid);
@@ -1174,9 +1179,8 @@ async function copyBuiltSchema() {
   }
   if (checked.length > 30) {
     resultEl.style.display = 'block';
-    resultEl.style.color = '#e74c3c';
-    resultEl.textContent = `Too many endpoints (${checked.length}/30). ChatGPT allows only one action per domain with max 30 operations.`;
-    return;
+    resultEl.style.color = '#f39c12';
+    resultEl.textContent = `${checked.length} endpoints selected. ChatGPT limit is 30 — Claude has no limit.`;
   }
   // Build filtered schema
   const selected = new Map();

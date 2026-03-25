@@ -841,17 +841,85 @@
     "/exercises": {
       "get": {
         "operationId": "listExercises",
-        "summary": "Search the exercise catalog — 1060+ exercises with equipment, muscle groups, level, and muscle_strength_score (mscore). Use mscore to pick the most effective exercises for a given muscle group.",
+        "summary": "Search the exercise catalog \u2014 1060+ exercises with equipment, muscle groups, level, and muscle_strength_score (mscore). Use mscore to pick the most effective exercises for a given muscle group.",
         "description": "Returns exercises sorted by muscle_strength_score (mscore) descending by default. Each exercise includes: name, level (beginner/intermediate/advanced), equipment needed, primary_muscle_groups, category, muscle_strength_score (0-100, higher=more effective), sets_logged (popularity), and description.\n\n**mscore ranges:** 90-100 = elite compound movements (primary lifts), 70-89 = strong accessories, 50-69 = moderate/isolation, below 50 = light/stabilizer.\n\n**sets_logged** = popularity across all Fitbod users. Higher = more commonly performed and validated.",
         "parameters": [
-          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search across name, equipment, muscle groups, description" },
-          { "name": "level", "in": "query", "schema": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] }, "description": "Filter by difficulty level" },
-          { "name": "equipment", "in": "query", "schema": { "type": "string" }, "description": "Filter by equipment type (e.g. Barbell, Dumbbell, Cable, Body Weight, Kettlebell)" },
-          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "Filter by muscle category (e.g. chest, back, shoulders, legs, arms, core, lower_back)" },
-          { "name": "muscle_group", "in": "query", "schema": { "type": "string" }, "description": "Filter by primary muscle group name (partial match, e.g. 'chest', 'quadriceps', 'hamstrings')" },
-          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["mscore_desc", "mscore_asc", "name", "sets_logged", "level"] }, "description": "Sort order (default: mscore descending)" },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
-          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search across name, equipment, muscle groups, description"
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "beginner",
+                "intermediate",
+                "advanced"
+              ]
+            },
+            "description": "Filter by difficulty level"
+          },
+          {
+            "name": "equipment",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by equipment type (e.g. Barbell, Dumbbell, Cable, Body Weight, Kettlebell)"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by muscle category (e.g. chest, back, shoulders, legs, arms, core, lower_back)"
+          },
+          {
+            "name": "muscle_group",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by primary muscle group name (partial match, e.g. 'chest', 'quadriceps', 'hamstrings')"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mscore_desc",
+                "mscore_asc",
+                "name",
+                "sets_logged",
+                "level"
+              ]
+            },
+            "description": "Sort order (default: mscore descending)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -861,9 +929,18 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "total": { "type": "integer" },
-                    "count": { "type": "integer" },
-                    "exercises": { "type": "array", "items": { "$ref": "#/components/schemas/Exercise" } }
+                    "total": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "exercises": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Exercise"
+                      }
+                    }
                   }
                 }
               }
@@ -889,8 +966,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "equipment": { "type": "string" },
-                          "exercise_count": { "type": "integer" }
+                          "equipment": {
+                            "type": "string"
+                          },
+                          "exercise_count": {
+                            "type": "integer"
+                          }
                         }
                       }
                     }
@@ -919,8 +1000,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "category": { "type": "string" },
-                          "exercise_count": { "type": "integer" }
+                          "category": {
+                            "type": "string"
+                          },
+                          "exercise_count": {
+                            "type": "integer"
+                          }
                         }
                       }
                     }
@@ -935,11 +1020,17 @@
     "/exercises/stats": {
       "get": {
         "operationId": "getExerciseStats",
-        "summary": "Get exercise catalog statistics — totals, breakdown by level/equipment/category, top exercises by mscore",
+        "summary": "Get exercise catalog statistics \u2014 totals, breakdown by level/equipment/category, top exercises by mscore",
         "responses": {
           "200": {
             "description": "Exercise stats",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -949,12 +1040,26 @@
         "operationId": "getExercise",
         "summary": "Get a single exercise by ID with full details including description and mscore",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Exercise details",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exercise" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exercise"
+                }
+              }
+            }
           }
         }
       }
@@ -966,7 +1071,21 @@
         "responses": {
           "200": {
             "description": "List of gym profiles",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "gym_profiles": { "type": "array", "items": { "$ref": "#/components/schemas/GymProfile" } } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "gym_profiles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GymProfile"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -975,12 +1094,24 @@
         "summary": "Create a gym profile with available equipment list",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfileInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GymProfileInput"
+              }
+            }
+          }
         },
         "responses": {
           "201": {
             "description": "Created",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfile" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GymProfile"
+                }
+              }
+            }
           }
         }
       }
@@ -988,11 +1119,17 @@
     "/gym-profiles/primary": {
       "get": {
         "operationId": "getPrimaryGymProfile",
-        "summary": "Get the primary gym profile — check this to know what equipment the user has available before recommending exercises",
+        "summary": "Get the primary gym profile \u2014 check this to know what equipment the user has available before recommending exercises",
         "responses": {
           "200": {
             "description": "Primary gym profile with equipment list",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfile" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GymProfile"
+                }
+              }
+            }
           }
         }
       }
@@ -1002,16 +1139,36 @@
         "operationId": "updateGymProfile",
         "summary": "Update gym profile name, equipment, or primary status",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfileInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GymProfileInput"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "Updated",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GymProfile" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GymProfile"
+                }
+              }
+            }
           }
         }
       },
@@ -1019,7 +1176,15 @@
         "operationId": "deleteGymProfile",
         "summary": "Delete a gym profile",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -2136,6 +2301,28 @@
           }
         }
       }
+    },
+    "/daily-plans/{id}/review": {
+      "get": {
+        "operationId": "reviewDailyPlan",
+        "summary": "Review a daily plan with actual results \u2014 plan vs actual comparison with workouts, meals, nutrition, injuries, and summary stats",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan with actual data and comparison summary"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2230,39 +2417,109 @@
         "type": "object",
         "description": "An exercise from the Fitbod catalog. muscle_strength_score (mscore) is a 0-100 score of how effectively this exercise builds strength in its target muscle group. sets_logged is total sets logged across all Fitbod users (popularity indicator).",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string", "description": "Exercise name (e.g. 'Barbell Bench Press', 'Pull Up', 'Romanian Deadlift')" },
-          "level": { "type": "string", "enum": ["beginner", "intermediate", "advanced"], "description": "Difficulty level" },
-          "equipment": { "type": "string", "description": "Equipment required (e.g. 'Barbell', 'Dumbbell', 'Cable', 'Body Weight', 'Kettlebell', 'Machine')" },
-          "primary_muscle_groups": { "type": "string", "description": "Primary muscles targeted (e.g. 'chest', 'quadriceps', 'hamstrings', 'lower-back')" },
-          "category": { "type": "string", "description": "Muscle category for grouping (e.g. 'chest', 'back', 'shoulders', 'legs', 'arms', 'core', 'lower_back')" },
-          "muscle_strength_score": { "type": "number", "description": "mscore: 0-100 effectiveness rating for building strength in target muscle. 100=most effective (e.g. Deadlift). Use this to prioritize exercise selection." },
-          "sets_logged": { "type": "integer", "description": "Total sets logged across all Fitbod users — higher means more commonly used and validated" },
-          "description": { "type": "string", "description": "Detailed description of the exercise, form cues, and benefits" },
-          "source": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Exercise name (e.g. 'Barbell Bench Press', 'Pull Up', 'Romanian Deadlift')"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "beginner",
+              "intermediate",
+              "advanced"
+            ],
+            "description": "Difficulty level"
+          },
+          "equipment": {
+            "type": "string",
+            "description": "Equipment required (e.g. 'Barbell', 'Dumbbell', 'Cable', 'Body Weight', 'Kettlebell', 'Machine')"
+          },
+          "primary_muscle_groups": {
+            "type": "string",
+            "description": "Primary muscles targeted (e.g. 'chest', 'quadriceps', 'hamstrings', 'lower-back')"
+          },
+          "category": {
+            "type": "string",
+            "description": "Muscle category for grouping (e.g. 'chest', 'back', 'shoulders', 'legs', 'arms', 'core', 'lower_back')"
+          },
+          "muscle_strength_score": {
+            "type": "number",
+            "description": "mscore: 0-100 effectiveness rating for building strength in target muscle. 100=most effective (e.g. Deadlift). Use this to prioritize exercise selection."
+          },
+          "sets_logged": {
+            "type": "integer",
+            "description": "Total sets logged across all Fitbod users \u2014 higher means more commonly used and validated"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the exercise, form cues, and benefits"
+          },
+          "source": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "GymProfile": {
         "type": "object",
         "description": "A gym or training location with its available equipment. The primary gym profile is used to filter exercise recommendations.",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string", "description": "Gym or location name (e.g. 'Home Gym', 'LA Fitness', 'Outdoor / Trail')" },
-          "equipment": { "type": "array", "items": { "type": "string" }, "description": "List of available equipment (e.g. ['Barbell', 'Dumbbells', 'Cable Machine', 'Pull Up Bar'])" },
-          "is_primary": { "type": "boolean", "description": "If true, this is the default gym for exercise recommendations" },
-          "notes": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Gym or location name (e.g. 'Home Gym', 'LA Fitness', 'Outdoor / Trail')"
+          },
+          "equipment": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of available equipment (e.g. ['Barbell', 'Dumbbells', 'Cable Machine', 'Pull Up Bar'])"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "description": "If true, this is the default gym for exercise recommendations"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "GymProfileInput": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "equipment": { "type": "array", "items": { "type": "string" } },
-          "is_primary": { "type": "boolean" },
-          "notes": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "equipment": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "is_primary": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
         }
       },
       "Workout": {
@@ -2336,30 +2593,93 @@
           "adjustment": {
             "type": "string"
           },
-          "heart_rate_avg": { "type": "string" },
-          "heart_rate_max": { "type": "string" },
-          "active_calories": { "type": "string" },
-          "total_calories": { "type": "string" },
-          "pace_avg": { "type": "string" },
-          "cadence_avg": { "type": "string" },
+          "heart_rate_avg": {
+            "type": "string"
+          },
+          "heart_rate_max": {
+            "type": "string"
+          },
+          "active_calories": {
+            "type": "string"
+          },
+          "total_calories": {
+            "type": "string"
+          },
+          "pace_avg": {
+            "type": "string"
+          },
+          "cadence_avg": {
+            "type": "string"
+          },
           "exercises": {
             "type": "array",
             "description": "Structured exercise data with plan vs actual comparison per exercise and set",
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
-                "exercise_id": { "type": "string", "format": "uuid" },
-                "planned": { "type": "object", "properties": { "sets": { "type": "integer" }, "reps": { "type": "integer" }, "weight_lb": { "type": "number" } } },
-                "actual": { "type": "array", "items": { "type": "object", "properties": { "set": { "type": "integer" }, "reps": { "type": "integer" }, "weight_lb": { "type": "number" }, "notes": { "type": "string" } } } },
-                "status": { "type": "string", "enum": ["complete", "modified", "skipped"] },
-                "notes": { "type": "string" }
+                "name": {
+                  "type": "string"
+                },
+                "exercise_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "planned": {
+                  "type": "object",
+                  "properties": {
+                    "sets": {
+                      "type": "integer"
+                    },
+                    "reps": {
+                      "type": "integer"
+                    },
+                    "weight_lb": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "actual": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "set": {
+                        "type": "integer"
+                      },
+                      "reps": {
+                        "type": "integer"
+                      },
+                      "weight_lb": {
+                        "type": "number"
+                      },
+                      "notes": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "complete",
+                    "modified",
+                    "skipped"
+                  ]
+                },
+                "notes": {
+                  "type": "string"
+                }
               }
             }
           },
           "completion_status": {
             "type": "string",
-            "enum": ["logged", "complete", "modified", "incomplete"],
+            "enum": [
+              "logged",
+              "complete",
+              "modified",
+              "incomplete"
+            ],
             "description": "Overall workout completion relative to daily plan: complete=as planned, modified=changes made, incomplete=exercises skipped"
           },
           "plan_comparison_notes": {
@@ -3151,18 +3471,37 @@
           },
           "planned_exercises": {
             "type": "array",
-            "description": "Structured exercise prescription from the catalog — format for easy Fitbod transcription",
+            "description": "Structured exercise prescription from the catalog \u2014 format for easy Fitbod transcription",
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string", "description": "Exercise name from catalog" },
-                "exercise_id": { "type": "string", "format": "uuid" },
-                "sets": { "type": "integer" },
-                "reps": { "type": "integer" },
-                "weight_lb": { "type": "number" },
-                "rest_sec": { "type": "integer" },
-                "notes": { "type": "string" },
-                "superset_group": { "type": "string", "nullable": true }
+                "name": {
+                  "type": "string",
+                  "description": "Exercise name from catalog"
+                },
+                "exercise_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "sets": {
+                  "type": "integer"
+                },
+                "reps": {
+                  "type": "integer"
+                },
+                "weight_lb": {
+                  "type": "number"
+                },
+                "rest_sec": {
+                  "type": "integer"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "superset_group": {
+                  "type": "string",
+                  "nullable": true
+                }
               }
             }
           },
@@ -3263,14 +3602,32 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
-                "exercise_id": { "type": "string", "format": "uuid" },
-                "sets": { "type": "integer" },
-                "reps": { "type": "integer" },
-                "weight_lb": { "type": "number" },
-                "rest_sec": { "type": "integer" },
-                "notes": { "type": "string" },
-                "superset_group": { "type": "string", "nullable": true }
+                "name": {
+                  "type": "string"
+                },
+                "exercise_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "sets": {
+                  "type": "integer"
+                },
+                "reps": {
+                  "type": "integer"
+                },
+                "weight_lb": {
+                  "type": "number"
+                },
+                "rest_sec": {
+                  "type": "integer"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "superset_group": {
+                  "type": "string",
+                  "nullable": true
+                }
               }
             }
           },

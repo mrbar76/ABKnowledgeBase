@@ -1068,6 +1068,20 @@ paths:
                 $ref: '#/components/schemas/DailyPlan'
         '404':
           description: Plan not found
+  /daily-plans/{id}/review:
+    get:
+      operationId: reviewDailyPlan
+      summary: Review a daily plan with actual results — plan vs actual comparison with workouts, meals, nutrition, injuries, and summary stats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Plan with actual data and comparison summary
   /nutrition/daily-context:
     get:
       operationId: getDailyContext
