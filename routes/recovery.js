@@ -82,7 +82,10 @@ function computeTrainingLoadScore(allWorkouts, targetDate) {
   for (const w of allWorkouts) {
     const d = dateStr(w.workout_date);
     const effort = Number(w.effort) || 5;
-    const duration = Number(w.duration_minutes) || 45; // numeric column, fallback 45 min
+    // Cap duration at 300 min (5 hrs) — catches bad parses (e.g. seconds stored as minutes)
+    let duration = Number(w.duration_minutes) || 45;
+    if (duration > 300) duration = Math.min(Math.round(duration / 60), 300); // probably seconds, convert
+    if (duration < 1) duration = 45;
     const load = effort * duration;
     dailyLoad[d] = (dailyLoad[d] || 0) + load;
   }

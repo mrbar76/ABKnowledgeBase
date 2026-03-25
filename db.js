@@ -521,18 +521,22 @@ async function initDB() {
   await safeQuery('workouts +cal_total', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cal_total INTEGER`);
 
   // Backfill numeric columns from TEXT fields (safe: only updates NULLs)
-  await safeQuery('backfill duration_minutes', `
+  await safeQuery('backfill duration_minutes v2', `
     UPDATE workouts SET duration_minutes = (
       CASE
-        WHEN time_duration ~ '^\\d+:\\d+' THEN
+        WHEN time_duration ~ '^\\d+:\\d+:\\d+' THEN
           SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
+        WHEN time_duration ~ '^\\d+:\\d+' AND SPLIT_PART(time_duration, ':', 1)::int <= 12 THEN
+          SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
+        WHEN time_duration ~ '^\\d+:\\d+' THEN
+          SPLIT_PART(time_duration, ':', 1)::int
         WHEN time_duration ~ '^[\\d.]+ *h' THEN
           ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric * 60)::int
         WHEN time_duration ~ '^[\\d.]+' THEN
-          ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric)::int
+          LEAST(ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric)::int, 300)
         ELSE NULL
       END
-    ) WHERE duration_minutes IS NULL AND time_duration IS NOT NULL AND time_duration != ''
+    ) WHERE time_duration IS NOT NULL AND time_duration != ''
   `);
   await safeQuery('backfill distance_value', `
     UPDATE workouts SET distance_value = ROUND(REGEXP_REPLACE(distance, '[^\\d.]', '', 'g')::numeric, 2)
