@@ -1864,19 +1864,34 @@ components:
           description: Instructor or coach name
         time_duration:
           type: string
-          description: Total workout time (e.g. 52 min, 1:23:45)
+          description: "Text duration (e.g. '52 min', '1:23:45'). Server auto-parses to duration_minutes."
+        duration_minutes:
+          type: integer
+          description: Duration in minutes. Auto-computed from time_duration if not provided.
         distance:
           type: string
-          description: Total distance if applicable (e.g. 3.2 mi)
+          description: "Text distance (e.g. '3.2 mi'). Server auto-parses to distance_value."
+        distance_value:
+          type: number
+          description: Distance as number. Auto-computed from distance if not provided.
         elevation_gain:
           type: string
-          description: Climbing gained (e.g. 850 ft)
+          description: "Text elevation (e.g. '850 ft'). Server auto-parses to elevation_gain_ft."
+        elevation_gain_ft:
+          type: integer
+          description: Elevation gain in feet. Auto-computed from elevation_gain if not provided.
         heart_rate_avg:
           type: string
-          description: Average heart rate (e.g. 109 bpm)
+          description: "Text HR (e.g. '109 bpm'). Server auto-parses to hr_avg."
+        hr_avg:
+          type: integer
+          description: Average heart rate. Auto-computed from heart_rate_avg if not provided.
         heart_rate_max:
           type: string
-          description: Max heart rate (e.g. 150 bpm)
+          description: "Text max HR (e.g. '150 bpm'). Server auto-parses to hr_max."
+        hr_max:
+          type: integer
+          description: Max heart rate. Auto-computed from heart_rate_max if not provided.
         pace_avg:
           type: string
           description: Average pace (e.g. 18:43 /mi, 5:30 /km)
@@ -1885,13 +1900,22 @@ components:
           description: Per-mile or per-km splits (e.g. Mile 1 16:37 @ 104 bpm)
         cadence_avg:
           type: string
-          description: Average cadence (e.g. 104 spm, 85 rpm)
+          description: "Text cadence (e.g. '104 spm'). Server auto-parses to cadence."
+        cadence:
+          type: integer
+          description: Cadence. Auto-computed from cadence_avg if not provided.
         active_calories:
           type: string
-          description: Active calories burned (e.g. 284 kcal)
+          description: "Text calories (e.g. '284 kcal'). Server auto-parses to cal_active."
+        cal_active:
+          type: integer
+          description: Active calories. Auto-computed from active_calories if not provided.
         total_calories:
           type: string
-          description: Total calories burned (e.g. 346 kcal)
+          description: "Text total calories (e.g. '346 kcal'). Server auto-parses to cal_total."
+        cal_total:
+          type: integer
+          description: Total calories. Auto-computed from total_calories if not provided.
         effort:
           type: integer
           minimum: 1
@@ -1972,24 +1996,40 @@ components:
           type: string
         time_duration:
           type: string
+        duration_minutes:
+          type: integer
         distance:
           type: string
+        distance_value:
+          type: number
         elevation_gain:
           type: string
+        elevation_gain_ft:
+          type: integer
         heart_rate_avg:
           type: string
+        hr_avg:
+          type: integer
         heart_rate_max:
           type: string
+        hr_max:
+          type: integer
         pace_avg:
           type: string
         splits:
           type: string
         cadence_avg:
           type: string
+        cadence:
+          type: integer
         active_calories:
           type: string
+        cal_active:
+          type: integer
         total_calories:
           type: string
+        cal_total:
+          type: integer
         effort:
           type: integer
         slowdown_notes:

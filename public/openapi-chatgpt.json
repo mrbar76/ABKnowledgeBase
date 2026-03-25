@@ -606,11 +606,19 @@
                   },
                   "heart_rate_avg": {
                     "type": "string",
-                    "description": "Average heart rate, e.g. '145 bpm'"
+                    "description": "Text HR (e.g. '145 bpm'). Server auto-parses to hr_avg."
+                  },
+                  "hr_avg": {
+                    "type": "integer",
+                    "description": "Average heart rate (numeric). Auto-computed from heart_rate_avg if not provided."
                   },
                   "heart_rate_max": {
                     "type": "string",
-                    "description": "Max heart rate, e.g. '180 bpm'"
+                    "description": "Text max HR (e.g. '180 bpm'). Server auto-parses to hr_max."
+                  },
+                  "hr_max": {
+                    "type": "integer",
+                    "description": "Max heart rate (numeric). Auto-computed from heart_rate_max if not provided."
                   },
                   "pace_avg": {
                     "type": "string",
@@ -618,15 +626,27 @@
                   },
                   "cadence_avg": {
                     "type": "string",
-                    "description": "Average cadence, e.g. '180 spm'"
+                    "description": "Text cadence (e.g. '180 spm'). Server auto-parses to cadence."
+                  },
+                  "cadence": {
+                    "type": "integer",
+                    "description": "Cadence (numeric). Auto-computed from cadence_avg if not provided."
                   },
                   "active_calories": {
                     "type": "string",
-                    "description": "Active calories burned, e.g. '450'"
+                    "description": "Text calories (e.g. '450'). Server auto-parses to cal_active."
+                  },
+                  "cal_active": {
+                    "type": "integer",
+                    "description": "Active calories (numeric). Auto-computed from active_calories if not provided."
                   },
                   "total_calories": {
                     "type": "string",
-                    "description": "Total calories burned, e.g. '620'"
+                    "description": "Text total calories (e.g. '620'). Server auto-parses to cal_total."
+                  },
+                  "cal_total": {
+                    "type": "integer",
+                    "description": "Total calories (numeric). Auto-computed from total_calories if not provided."
                   },
                   "splits": {
                     "type": "object",
@@ -786,11 +806,19 @@
                   },
                   "heart_rate_avg": {
                     "type": "string",
-                    "description": "Average heart rate, e.g. '145 bpm'"
+                    "description": "Text HR (e.g. '145 bpm'). Server auto-parses to hr_avg."
+                  },
+                  "hr_avg": {
+                    "type": "integer",
+                    "description": "Average heart rate (numeric). Auto-computed from heart_rate_avg if not provided."
                   },
                   "heart_rate_max": {
                     "type": "string",
-                    "description": "Max heart rate, e.g. '180 bpm'"
+                    "description": "Text max HR (e.g. '180 bpm'). Server auto-parses to hr_max."
+                  },
+                  "hr_max": {
+                    "type": "integer",
+                    "description": "Max heart rate (numeric). Auto-computed from heart_rate_max if not provided."
                   },
                   "pace_avg": {
                     "type": "string",
@@ -798,15 +826,27 @@
                   },
                   "cadence_avg": {
                     "type": "string",
-                    "description": "Average cadence, e.g. '180 spm'"
+                    "description": "Text cadence (e.g. '180 spm'). Server auto-parses to cadence."
+                  },
+                  "cadence": {
+                    "type": "integer",
+                    "description": "Cadence (numeric). Auto-computed from cadence_avg if not provided."
                   },
                   "active_calories": {
                     "type": "string",
-                    "description": "Active calories burned, e.g. '450'"
+                    "description": "Text calories (e.g. '450'). Server auto-parses to cal_active."
+                  },
+                  "cal_active": {
+                    "type": "integer",
+                    "description": "Active calories (numeric). Auto-computed from active_calories if not provided."
                   },
                   "total_calories": {
                     "type": "string",
-                    "description": "Total calories burned, e.g. '620'"
+                    "description": "Text total calories (e.g. '620'). Server auto-parses to cal_total."
+                  },
+                  "cal_total": {
+                    "type": "integer",
+                    "description": "Total calories (numeric). Auto-computed from total_calories if not provided."
                   },
                   "splits": {
                     "type": "object",

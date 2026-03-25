@@ -1330,15 +1330,27 @@
                   },
                   "time_duration": {
                     "type": "string",
-                    "description": "Total time, e.g. 45 min, 1:15:00"
+                    "description": "Text duration (e.g. '45 min', '1:15:00'). Server auto-parses to duration_minutes."
+                  },
+                  "duration_minutes": {
+                    "type": "integer",
+                    "description": "Duration in minutes. Auto-computed from time_duration if not provided."
                   },
                   "distance": {
                     "type": "string",
-                    "description": "Distance covered, e.g. 3.2 mi"
+                    "description": "Text distance (e.g. '3.2 mi'). Server auto-parses to distance_value."
+                  },
+                  "distance_value": {
+                    "type": "number",
+                    "description": "Distance as number. Auto-computed from distance if not provided."
                   },
                   "elevation_gain": {
                     "type": "string",
-                    "description": "Elevation gained, e.g. 850 ft"
+                    "description": "Text elevation (e.g. '850 ft'). Server auto-parses to elevation_gain_ft."
+                  },
+                  "elevation_gain_ft": {
+                    "type": "integer",
+                    "description": "Elevation gain in feet. Auto-computed from elevation_gain if not provided."
                   },
                   "effort": {
                     "type": "integer",
@@ -3543,11 +3555,20 @@
           "time_duration": {
             "type": "string"
           },
+          "duration_minutes": {
+            "type": "integer"
+          },
           "distance": {
             "type": "string"
           },
+          "distance_value": {
+            "type": "number"
+          },
           "elevation_gain": {
             "type": "string"
+          },
+          "elevation_gain_ft": {
+            "type": "integer"
           },
           "effort": {
             "type": "integer"
@@ -3585,7 +3606,13 @@
           "heart_rate_avg": {
             "type": "integer"
           },
+          "hr_avg": {
+            "type": "integer"
+          },
           "heart_rate_max": {
+            "type": "integer"
+          },
+          "hr_max": {
             "type": "integer"
           },
           "pace_avg": {
@@ -3594,11 +3621,20 @@
           "cadence_avg": {
             "type": "number"
           },
+          "cadence": {
+            "type": "integer"
+          },
           "active_calories": {
             "type": "number"
           },
+          "cal_active": {
+            "type": "integer"
+          },
           "total_calories": {
             "type": "number"
+          },
+          "cal_total": {
+            "type": "integer"
           },
           "splits": {
             "type": "array",
