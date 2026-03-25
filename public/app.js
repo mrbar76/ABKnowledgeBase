@@ -1405,7 +1405,10 @@ When planning workouts, ALWAYS:
 1. Check the active gym profile: \`GET /exercises/gym-profiles/active\`
 2. Only suggest exercises available for that profile's equipment: \`GET /exercises/available\`
 3. Use EXACT exercise names from the library (these match Fitbod naming so Avi can quickly find them)
-4. Save structured planned_exercises on the daily plan using \`PUT /daily-plans/:id\`:
+4. ALWAYS include specific weight targets for every exercise. Look up Avi's recent workout history to set appropriate weights.
+   Do NOT write "build to heavy" or "moderate-heavy" — give a number: "3x10 @ 50 lb" not "3x10, build to moderate-heavy".
+   If unsure, give a range: "3x10 @ 45-55 lb". For bodyweight exercises, say "bodyweight". For bands, say the band level.
+5. Save structured planned_exercises on the daily plan using \`PUT /daily-plans/:id\`:
    \`planned_exercises\` is a JSONB array:
    [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "175 lb",
       "group": "main", "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
@@ -1413,8 +1416,9 @@ When planning workouts, ALWAYS:
     { "name": "Cable Fly", "sets": 3, "reps": 12, "weight": "30 lb",
       "group": "superset", "superset_with": "Dumbbell Lateral Raise" }]
    Valid groups: warmup, main, superset, circuit, finisher
-5. Also put a human-readable summary in workout_notes for Avi to reference in Fitbod
-6. If an exercise isn't in the library, add it: \`POST /exercises\` with name, muscle_primary, equipment
+6. Also put a human-readable summary in workout_notes for Avi to reference in Fitbod.
+   Format each exercise as: "- Exercise Name: SETSxREPS @ WEIGHT" (e.g. "- Leg Press: 4x10 @ 180 lb")
+7. If an exercise isn't in the library, add it: \`POST /exercises\` with name, muscle_primary, equipment
 
 PLAN-WORKOUT CONNECTION
 - Plans and workouts are linked by date (plan_date = workout_date) and optionally by daily_plan_id
