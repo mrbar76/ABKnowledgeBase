@@ -211,6 +211,18 @@ async function initDB() {
     )`);
 
   // ===== EXERCISE CATALOG =====
+  // Drop old exercises table if columns have wrong types (TEXT[] instead of TEXT)
+  await safeQuery('exercises check and recreate', `
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'exercises' AND column_name = 'equipment'
+          AND udt_name = '_text'
+      ) THEN
+        DROP TABLE exercises CASCADE;
+      END IF;
+    END $$
+  `);
   await safeQuery('exercises table', `
     CREATE TABLE IF NOT EXISTS exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
