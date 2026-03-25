@@ -1395,7 +1395,9 @@ WORKOUT LOGGING
 Use \`POST /workouts\`. Required: \`workout_type\`.
 Include when relevant:
 - focus, warmup, main_sets, carries
-- time_duration, distance, elevation_gain
+- time_duration (text, e.g. "45 min") or duration_minutes (integer) — server auto-parses text to numeric
+- distance (text) or distance_value (number), elevation_gain (text) or elevation_gain_ft (integer)
+- heart_rate_avg/hr_avg, heart_rate_max/hr_max, active_calories/cal_active, total_calories/cal_total — text or numeric
 - effort 1–10
 - slowdown_notes, failure_first
 - grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback, body_notes

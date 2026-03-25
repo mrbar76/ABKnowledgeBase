@@ -1112,22 +1112,53 @@ components:
               notes: { type: string }
         time_duration:
           type: string
+          description: "Text duration (e.g. '45 min', '1:30:00'). Server auto-parses to duration_minutes."
+        duration_minutes:
+          type: integer
+          description: "Duration in minutes (numeric). Auto-computed from time_duration if not provided."
         distance:
           type: string
+          description: "Text distance (e.g. '3.2 mi'). Server auto-parses to distance_value."
+        distance_value:
+          type: number
+          description: "Distance as number. Auto-computed from distance if not provided."
         elevation_gain:
           type: string
+          description: "Text elevation (e.g. '850 ft'). Server auto-parses to elevation_gain_ft."
+        elevation_gain_ft:
+          type: integer
+          description: "Elevation gain in feet (numeric). Auto-computed from elevation_gain if not provided."
         heart_rate_avg:
           type: string
+          description: "Text HR (e.g. '135 bpm'). Server auto-parses to hr_avg."
+        hr_avg:
+          type: integer
+          description: "Average heart rate (numeric). Auto-computed from heart_rate_avg if not provided."
         heart_rate_max:
           type: string
+          description: "Text max HR. Server auto-parses to hr_max."
+        hr_max:
+          type: integer
+          description: "Max heart rate (numeric). Auto-computed from heart_rate_max if not provided."
         pace_avg:
           type: string
         splits:
           type: string
         active_calories:
           type: string
+          description: "Text calories (e.g. '284 kcal'). Server auto-parses to cal_active."
+        cal_active:
+          type: integer
+          description: "Active calories (numeric). Auto-computed from active_calories if not provided."
         total_calories:
           type: string
+          description: "Text total calories. Server auto-parses to cal_total."
+        cal_total:
+          type: integer
+          description: "Total calories (numeric). Auto-computed from total_calories if not provided."
+        cadence:
+          type: integer
+          description: "Cadence (numeric). Auto-computed from cadence_avg text if not provided."
         effort:
           type: integer
           minimum: 1
