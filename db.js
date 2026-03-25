@@ -732,6 +732,22 @@ async function initDB() {
   await safeQuery('coaching drop training_plan_id', `ALTER TABLE coaching_sessions DROP COLUMN IF EXISTS training_plan_id`);
   await safeQuery('drop training_plans', `DROP TABLE IF EXISTS training_plans CASCADE`);
 
+  // -- daily_plans: structured exercises and completion tracking --
+  await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('daily_plans +completion_notes', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
+  await safeQuery('daily_plans +actual_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS actual_exercises JSONB DEFAULT '[]'::jsonb`);
+
+  // -- workouts: link to daily plan --
+  await safeQuery('workouts +daily_plan_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS daily_plan_id UUID REFERENCES daily_plans(id) ON DELETE SET NULL`);
+  await safeQuery('workouts daily_plan idx', `CREATE INDEX IF NOT EXISTS idx_workouts_daily_plan ON workouts(daily_plan_id)`);
+
+  // Backfill: link workouts to plans by matching date
+  await safeQuery('backfill workout plan links', `
+    UPDATE workouts w SET daily_plan_id = dp.id
+    FROM daily_plans dp
+    WHERE w.workout_date = dp.plan_date AND w.daily_plan_id IS NULL
+  `);
+
   // ===== EXERCISES & GYM PROFILES =====
 
   await safeQuery('exercises table', `

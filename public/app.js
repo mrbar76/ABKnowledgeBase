@@ -1405,17 +1405,37 @@ When planning workouts, ALWAYS:
 1. Check the active gym profile: \`GET /exercises/gym-profiles/active\`
 2. Only suggest exercises available for that profile's equipment: \`GET /exercises/available\`
 3. Use EXACT exercise names from the library (these match Fitbod naming so Avi can quickly find them)
-4. Structure workouts Fitbod-style:
-   - Warmup: 1-2 light sets of the first compound exercise
-   - Main exercises: 3-5 exercises, specify sets × reps @ weight guidance
-   - Supersets: pair exercises clearly as "SUPERSET: Exercise A + Exercise B"
-   - Carries/finishers: at the end
-5. In workout_notes, format as a clean exercise list Avi can reference while building in Fitbod
+4. Save structured planned_exercises on the daily plan using \`PUT /daily-plans/:id\`:
+   \`planned_exercises\` is a JSONB array:
+   [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "175 lb",
+      "group": "main", "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
+      "superset_with": null, "notes": "" },
+    { "name": "Cable Fly", "sets": 3, "reps": 12, "weight": "30 lb",
+      "group": "superset", "superset_with": "Dumbbell Lateral Raise" }]
+   Valid groups: warmup, main, superset, circuit, finisher
+5. Also put a human-readable summary in workout_notes for Avi to reference in Fitbod
+6. If an exercise isn't in the library, add it: \`POST /exercises\` with name, muscle_primary, equipment
+
+PLAN-WORKOUT CONNECTION
+- Plans and workouts are linked by date (plan_date = workout_date) and optionally by daily_plan_id
+- After Avi completes a workout (sends Fitbod screenshots), log the actual workout:
+  \`POST /workouts\` with \`daily_plan_id\` set to the plan's id, and structured \`exercises\` JSONB:
+  [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "180 lb",
+     "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
+     "completed": true, "notes": "PR" }]
+- Then update the plan: \`PUT /daily-plans/:id\` with:
+  - status: "completed" or "partial"
+  - actual_exercises: same structured array of what was actually done
+  - completion_notes: your review (what changed, what was skipped, why)
+- Recovery scoring reads structured exercises for granular per-muscle tracking.
+  Exercises before March 2026 use legacy workout_type mapping. New structured data gives better accuracy.
 
 WORKOUT LOGGING
 Use \`POST /workouts\`. Required: \`workout_type\`.
 Include when relevant:
-- focus, warmup, main_sets, carries
+- daily_plan_id — link to the plan this workout fulfills (if planned)
+- exercises — structured JSONB array (see schema above). Include muscle_primary for recovery tracking.
+- focus, warmup, main_sets, carries (legacy text fields, still supported)
 - time_duration (text, e.g. "45 min") or duration_minutes (integer) — server auto-parses text to numeric
 - distance (text) or distance_value (number), elevation_gain (text) or elevation_gain_ft (integer)
 - heart_rate_avg/hr_avg, heart_rate_max/hr_max, active_calories/cal_active, total_calories/cal_total — text or numeric

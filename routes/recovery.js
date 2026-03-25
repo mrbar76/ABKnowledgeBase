@@ -38,9 +38,37 @@ const REGION_LABELS = {
 
 const ALL_REGIONS = Object.keys(RECOVERY_HOURS);
 
+// Map muscle names from exercise library → recovery regions
+const MUSCLE_TO_REGION = {
+  chest: 'upper_push', triceps: 'upper_push', shoulders: 'upper_push',
+  back: 'upper_pull', biceps: 'upper_pull', traps: 'upper_pull', forearms: 'upper_pull',
+  quadriceps: 'legs', hamstrings: 'legs', glutes: 'legs', calves: 'legs',
+  core: 'core', abs: 'core',
+  full_body: 'full_body',
+  cardio: 'cardio',
+};
+
 function getRegionsForWorkout(w) {
+  // New path: if workout has structured exercises with muscle data, use those
+  const exercises = w.exercises;
+  if (Array.isArray(exercises) && exercises.length > 0) {
+    const regions = new Set();
+    for (const ex of exercises) {
+      if (ex.completed === false) continue; // skip exercises marked as skipped
+      const primary = (ex.muscle_primary || '').toLowerCase();
+      if (MUSCLE_TO_REGION[primary]) regions.add(MUSCLE_TO_REGION[primary]);
+      const secondaries = Array.isArray(ex.muscle_secondary) ? ex.muscle_secondary : [];
+      for (const s of secondaries) {
+        const r = MUSCLE_TO_REGION[(s || '').toLowerCase()];
+        if (r) regions.add(r);
+      }
+    }
+    if (regions.size > 0) return [...regions];
+    // Fall through if no muscle data on exercises
+  }
+
+  // Legacy path: use focus keywords or workout_type mapping
   const focus = (w.focus || '').toLowerCase();
-  // Override by focus keywords
   if (focus.includes('upper') && focus.includes('push')) return ['upper_push'];
   if (focus.includes('upper') && focus.includes('pull')) return ['upper_pull'];
   if (focus.includes('upper')) return ['upper_push', 'upper_pull'];

@@ -9,7 +9,10 @@ const WRITABLE_FIELDS = [
   'target_calories', 'target_protein_g', 'target_carbs_g', 'target_fat_g', 'target_hydration_liters',
   'target_sleep_hours', 'recovery_notes',
   'coaching_notes', 'rationale', 'tags', 'ai_source', 'metadata',
+  'planned_exercises', 'completion_notes', 'actual_exercises',
 ];
+
+const JSONB_PLAN_FIELDS = new Set(['tags', 'metadata', 'planned_exercises', 'actual_exercises']);
 
 // ══════════════════════════════════════════════════════════════════
 //  LIST / SEARCH DAILY PLANS
@@ -245,7 +248,7 @@ router.post('/', async (req, res) => {
     for (const field of WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) {
         cols.push(field);
-        vals.push(field === 'tags' || field === 'metadata' ? JSON.stringify(req.body[field]) : req.body[field]);
+        vals.push(JSONB_PLAN_FIELDS.has(field) ? JSON.stringify(req.body[field]) : req.body[field]);
         placeholders.push(`$${i++}`);
       }
     }
@@ -336,7 +339,7 @@ router.put('/:id', async (req, res) => {
     for (const field of WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) {
         fields.push(`${field} = $${i++}`);
-        vals.push(field === 'tags' || field === 'metadata' ? JSON.stringify(req.body[field]) : req.body[field]);
+        vals.push(JSONB_PLAN_FIELDS.has(field) ? JSON.stringify(req.body[field]) : req.body[field]);
       }
     }
 

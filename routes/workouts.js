@@ -13,6 +13,7 @@ const WRITABLE_FIELDS = [
   'slowdown_notes', 'failure_first',
   'grip_feedback', 'legs_feedback', 'cardio_feedback', 'shoulder_feedback',
   'tags', 'source', 'ai_source', 'metadata',
+  'daily_plan_id',
 ];
 
 const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata', 'splits']);
