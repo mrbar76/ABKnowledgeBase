@@ -3259,18 +3259,19 @@ async function loadFitnessToday() {
       <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${score != null ? (recoveryData.label || '') + ' — ' + esc(recoveryData.recommendation || '') : 'Log sleep, workouts & meals to see your recovery score'}</div>
       <details style="text-align:left;margin-top:8px"><summary style="font-size:0.68rem;color:var(--text-dim);cursor:pointer;opacity:0.7">What is this?</summary>
         <div style="font-size:0.68rem;color:var(--text-dim);margin-top:6px;line-height:1.5;text-align:left">
-          <div style="margin-bottom:6px">Your Recovery Score (0–100) measures how ready you are to train based on 6 factors:</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">81–100 Peak</strong> — fully recovered, push hard</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">61–80 Good</strong> — train normally</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">31–60 Moderate</strong> — reduce intensity, focus on technique</div>
-          <div style="margin-bottom:6px"><strong style="color:var(--text)">0–30 Low</strong> — active recovery only</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — hours + quality</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — 7-day volume</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — time since each group was trained</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury impact</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — yesterday's calories + protein</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — your self-reported readiness</div>
-          <div style="margin-top:6px">Unlogged components default to 50. Log sleep and subjective readiness for the most accurate score.</div>
+          <div style="margin-bottom:6px"><strong style="color:var(--text)">This is your body's readiness to train right now</strong> — not how hard you've been training. A high score after heavy training means your body has recovered well, not that you haven't worked hard.</div>
+          <div style="margin-bottom:4px"><strong style="color:#10b981">81–100 Peak</strong> — body can handle max effort</div>
+          <div style="margin-bottom:4px"><strong style="color:#f59e0b">61–80 Good</strong> — train normally</div>
+          <div style="margin-bottom:4px"><strong style="color:#f97316">31–60 Moderate</strong> — reduce intensity, focus on technique</div>
+          <div style="margin-bottom:6px"><strong style="color:#ef4444">0–30 Low</strong> — active recovery only</div>
+          <div style="margin-bottom:2px;color:var(--text);font-weight:600;font-size:0.66rem">WHAT EACH COMPONENT MEASURES</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — last night's hours + quality. Biggest single factor</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — 7-day volume vs capacity. High volume = lower score here, even if overall score is high</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — hours since each group was last worked. Rest days push this up</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury severity impact</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — <em>yesterday's</em> calories + protein (not today's)</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — your self-reported readiness. Defaults to 50 if not logged</div>
+          <div style="margin-top:6px;border-top:1px solid var(--bg-tertiary);padding-top:6px">A high overall score with a low Training Load component (orange/red) is normal after progressive overload — it means your sleep and rest are compensating well. The score tells you what your body <em>can</em> handle, not what your program says to do.</div>
         </div>
       </details>`;
 
@@ -4881,20 +4882,21 @@ async function loadRecovery(date) {
       <details class="card mb-md" style="padding:12px">
         <summary style="font-size:0.75rem;color:var(--text-dim);cursor:pointer">What is the Recovery Score?</summary>
         <div style="font-size:0.72rem;color:var(--text-dim);margin-top:8px;line-height:1.6">
-          <div style="margin-bottom:6px">Your Recovery Score (0–100) measures how ready you are to train based on 6 weighted factors.</div>
+          <div style="margin-bottom:8px"><strong style="color:var(--text)">This is your body's readiness to train right now</strong> — not how hard you've been training. A high score after heavy training means your body has recovered well, not that you haven't worked hard.</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:8px">
-            <div><strong style="color:#10b981">81–100 Peak</strong> — push hard</div>
+            <div><strong style="color:#10b981">81–100 Peak</strong> — body can handle max effort</div>
             <div><strong style="color:#f59e0b">61–80 Good</strong> — train normally</div>
             <div><strong style="color:#f97316">31–60 Moderate</strong> — dial back</div>
             <div><strong style="color:#ef4444">0–30 Low</strong> — recovery only</div>
           </div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — hours + quality</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — 7-day volume</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — time since each group was trained</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury impact</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — yesterday's calories + protein</div>
-          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — self-reported readiness</div>
-          <div style="margin-top:6px">Unlogged components default to 50. Log sleep and subjective feel for the most accurate score. Watch the 7-day trend — a steady decline signals accumulating fatigue.</div>
+          <div style="margin-bottom:2px;color:var(--text);font-weight:600;font-size:0.68rem">WHAT EACH COMPONENT MEASURES</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — last night's hours + quality. Biggest single factor</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — 7-day volume vs capacity. High volume = lower score here, even if overall score is high</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — hours since each group was last worked. Rest days push this up</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury severity impact</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — <em>yesterday's</em> calories + protein (not today's)</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — your self-reported readiness. Defaults to 50 if not logged</div>
+          <div style="margin-top:6px;border-top:1px solid var(--bg-tertiary);padding-top:6px">A high overall score with a low Training Load component (orange/red) is normal after progressive overload — it means your sleep and rest are compensating well. The score tells you what your body <em>can</em> handle, not what your program says to do. Watch the 7-day trend — a steady decline signals accumulating fatigue.</div>
         </div>
       </details>
 
