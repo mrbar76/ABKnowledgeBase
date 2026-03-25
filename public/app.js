@@ -3117,7 +3117,7 @@ async function handleExerciseImportFile(input) {
   }
 
   const total = exercises.length;
-  const BATCH = 500;
+  const BATCH = 100;
   let imported = 0, errors = 0;
 
   progress.style.display = 'block';
@@ -3135,7 +3135,9 @@ async function handleExerciseImportFile(input) {
       });
       imported += res.imported || 0;
       errors += res.errors || 0;
+      if (res.errors > 0) console.warn('Bulk import batch errors:', res.results?.filter(r => r.error));
     } catch (err) {
+      console.error('Bulk import batch failed:', err.message, 'First item:', JSON.stringify(batch[0]).slice(0, 200));
       errors += batch.length;
     }
     const done = Math.min(i + BATCH, total);
@@ -3152,9 +3154,10 @@ async function handleExerciseImportFile(input) {
 
   result.style.display = 'block';
   result.style.color = errors > 0 ? 'var(--yellow)' : 'var(--green)';
-  result.textContent = 'Done: ' + imported + ' imported/updated, ' + errors + ' errors (' + total + ' total)';
+  result.textContent = 'Done: ' + imported + ' imported/updated, ' + errors + ' errors (' + total + ' total). Check browser console (F12) for error details.';
 
   if (imported > 0) showToast('Imported ' + imported + ' exercises', 'success');
+  if (errors > 0 && imported === 0) showToast('Import failed. Open browser console (F12) for details.', 'error');
 }
 
 function parseCSVToExercises(csvText) {

@@ -183,10 +183,8 @@ router.post('/bulk', async (req, res) => {
             b.equipment || b.Equipment || 'Body Weight',
             b.primary_muscle_groups || b['Primary Muscle Groups'] || null,
             b.category || b.Category || null,
-            b.muscle_strength_score != null ? parseFloat(b.muscle_strength_score) :
-              (b['Muscle Strength Score'] != null ? parseFloat(b['Muscle Strength Score']) : 0),
-            b.sets_logged != null ? parseInt(b.sets_logged, 10) :
-              (b['Sets Logged'] != null ? parseInt(b['Sets Logged'], 10) : 0),
+            parseFloat(b.muscle_strength_score || b['Muscle Strength Score']) || 0,
+            parseInt(b.sets_logged || b['Sets Logged'], 10) || 0,
             b.description || b.Description || null,
             b.secondary_muscle_groups || b['Secondary Muscle Groups'] || null,
             JSON.stringify(b.tags || []),
