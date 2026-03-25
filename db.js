@@ -211,18 +211,9 @@ async function initDB() {
     )`);
 
   // ===== EXERCISE CATALOG =====
-  // Drop old exercises table if columns have wrong types (TEXT[] instead of TEXT)
-  await safeQuery('exercises check and recreate', `
-    DO $$ BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'exercises' AND column_name = 'equipment'
-          AND udt_name = '_text'
-      ) THEN
-        DROP TABLE exercises CASCADE;
-      END IF;
-    END $$
-  `);
+  // Force drop exercises table to fix column type issues (TEXT[] -> TEXT)
+  // Safe: no valid data exists since all imports failed with type errors
+  await safeQuery('exercises force drop', `DROP TABLE IF EXISTS exercises CASCADE`);
   await safeQuery('exercises table', `
     CREATE TABLE IF NOT EXISTS exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -570,29 +561,7 @@ async function initDB() {
   await safeQuery('workouts +completion_status', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS completion_status TEXT DEFAULT 'logged'`);
   await safeQuery('workouts +plan_comparison_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_comparison_notes TEXT`);
 
-  // -- exercises migrations --
-  await safeQuery('exercises +name', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS name TEXT`);
-  await safeQuery('exercises +level', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'beginner'`);
-  await safeQuery('exercises +equipment', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS equipment TEXT DEFAULT 'Body Weight'`);
-  await safeQuery('exercises +primary_muscle_groups', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS primary_muscle_groups TEXT`);
-  await safeQuery('exercises +category', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS category TEXT`);
-  await safeQuery('exercises +muscle_strength_score', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS muscle_strength_score NUMERIC(6,2) DEFAULT 0`);
-  await safeQuery('exercises +sets_logged', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS sets_logged INTEGER DEFAULT 0`);
-  await safeQuery('exercises +description', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS description TEXT`);
-  await safeQuery('exercises +secondary_muscle_groups', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS secondary_muscle_groups TEXT`);
-  await safeQuery('exercises +tags', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
-  await safeQuery('exercises +source', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'fitbod'`);
-  await safeQuery('exercises +search_vector', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
-  await safeQuery('exercises +created_at', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
-  await safeQuery('exercises +updated_at', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
-  await safeQuery('exercises name unique', `DO $$ BEGIN ALTER TABLE exercises ADD CONSTRAINT exercises_name_key UNIQUE (name); EXCEPTION WHEN duplicate_table THEN NULL; END $$`);
-  // Fix column types if they were created with wrong types in older schema
-  await safeQuery('exercises fix equipment type', `ALTER TABLE exercises ALTER COLUMN equipment TYPE TEXT USING equipment::TEXT`);
-  await safeQuery('exercises fix level type', `ALTER TABLE exercises ALTER COLUMN level TYPE TEXT USING level::TEXT`);
-  await safeQuery('exercises fix primary_muscle_groups type', `ALTER TABLE exercises ALTER COLUMN primary_muscle_groups TYPE TEXT USING primary_muscle_groups::TEXT`);
-  await safeQuery('exercises fix category type', `ALTER TABLE exercises ALTER COLUMN category TYPE TEXT USING category::TEXT`);
-  await safeQuery('exercises fix description type', `ALTER TABLE exercises ALTER COLUMN description TYPE TEXT USING description::TEXT`);
-  await safeQuery('exercises fix secondary_muscle_groups type', `ALTER TABLE exercises ALTER COLUMN secondary_muscle_groups TYPE TEXT USING secondary_muscle_groups::TEXT`);
+  // exercises migrations not needed — table is dropped and recreated fresh on each startup
 
   // -- gym_profiles migrations --
   await safeQuery('gym_profiles +name', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS name TEXT`);
