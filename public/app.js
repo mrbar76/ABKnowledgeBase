@@ -3253,6 +3253,9 @@ async function loadFitnessToday() {
           ${plan.title ? `<div style="font-weight:600;font-size:0.85rem">${esc(plan.title)}</div>` : ''}
           ${plan.workout_type ? `<div style="font-size:0.75rem;color:var(--text-dim)">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}${plan.target_effort ? ' · effort ' + plan.target_effort : ''}${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
           ${exerciseHtml ? `<div style="margin-top:8px">${exerciseHtml}</div>` : ''}
+          ${!exerciseHtml && plan.workout_notes ? `
+            <div style="margin-top:8px;padding:8px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:0.75rem;line-height:1.6;white-space:pre-line;font-family:var(--font-mono, monospace)">${esc(plan.workout_notes)}</div>
+          ` : ''}
           ${vsLine}
           ${plan.target_calories || plan.target_protein_g || plan.target_hydration_liters || plan.target_sleep_hours ? `
             <div class="list-item-meta" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg-tertiary)">
