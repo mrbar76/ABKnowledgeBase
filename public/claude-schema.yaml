@@ -19,19 +19,26 @@ info:
     - GET /training/day/{date} — full context (workouts, nutrition, body, injuries, daily plan)
     - GET /recovery/score — today's recovery readiness
 
-    ### 2. PLAN — Set daily plans
-    - POST /daily-plans — create today's plan (workout type, effort target, nutrition targets, sleep target)
-    - POST /daily-plans/week — create 7 daily plans at once (start_date + array of 7 day objects)
+    ### 2. PLAN — Set daily plans with structured exercises
+    - GET /exercises/gym-profiles/active — check active gym profile FIRST
+    - GET /exercises/available — get exercises for that profile's equipment
+    - POST /daily-plans — create plan with planned_exercises JSONB array (use exact Fitbod exercise names)
+    - POST /daily-plans/week — create 7 daily plans at once
     - Check GET /training/injuries/active/summary before planning to account for injuries
     - NEVER use /training/plans — that endpoint is REMOVED. All planning uses /daily-plans.
 
-    ### 3. EXECUTE — User logs activity
-    - User logs workouts via POST /workouts, meals via POST /meals
-    - Log sleep + water via POST /nutrition/daily-context (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)
+    ### 3. EXECUTE — User does workout in Fitbod
+    - User references the plan card in AB Brain while building workout in Fitbod
+    - User logs meals via POST /meals
+    - Log sleep + water via POST /nutrition/daily-context
     - Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)
 
-    ### 4. REVIEW — End-of-day coaching review
-    - GET /daily-plans/by-date/{date} — plan vs actual comparison + ring progress for the day
+    ### 4. REVIEW — Coach logs actual workout from Fitbod screenshots
+    - User sends Fitbod screenshots to coach
+    - Coach logs POST /workouts with structured exercises array + daily_plan_id
+    - Coach updates PUT /daily-plans/{id} with status (completed/partial), actual_exercises, completion_notes
+    - For bands: keep resistance labels as-is (Heavy, X-Heavy) — do NOT convert to pounds
+    - Recovery reads structured exercises for per-muscle tracking (pre-March 2026 data uses legacy mapping)
     - POST /training/coaching — save the coaching review with key_decisions, adjustments, injury_notes, next_steps
 
     ### 5. AMEND — Adjust plans based on progress
@@ -822,6 +829,156 @@ paths:
         '200':
           description: Full day view
 
+  # ─── Exercises & Gym Profiles ────────────────────────────
+  /exercises:
+    get:
+      operationId: listExercises
+      summary: List or search exercises from the library
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Search by name or muscle
+        - name: muscle
+          in: query
+          schema: { type: string }
+          description: Filter by primary muscle (e.g. chest, back, quadriceps)
+        - name: equipment
+          in: query
+          schema: { type: string }
+          description: Filter by required equipment (e.g. dumbbell, barbell, cable_machine)
+      responses:
+        '200':
+          description: Array of exercises
+    post:
+      operationId: createExercise
+      summary: Add exercise to library (use when coach needs an exercise not already in DB)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: Exact Fitbod name (e.g. "Dumbbell Bench Press")
+                muscle_primary:
+                  type: string
+                  description: Primary muscle group (chest, back, shoulders, biceps, triceps, quadriceps, hamstrings, glutes, calves, core, full_body, cardio)
+                muscle_secondary:
+                  type: array
+                  items: { type: string }
+                equipment:
+                  type: array
+                  items: { type: string }
+                  description: Required equipment IDs (e.g. ["dumbbell", "flat_bench"])
+                is_compound:
+                  type: boolean
+                fitbod_name:
+                  type: string
+                  description: Name as it appears in Fitbod (defaults to name)
+      responses:
+        '201':
+          description: Created exercise (upserts on name)
+
+  /exercises/available:
+    get:
+      operationId: getAvailableExercises
+      summary: Get exercises matching active gym profile equipment. Use this when planning workouts.
+      responses:
+        '200':
+          description: Array of exercises filtered to active profile
+
+  /exercises/import-fitbod:
+    post:
+      operationId: importFitbodCsv
+      summary: Import exercises from Fitbod CSV export
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csv_text]
+              properties:
+                csv_text:
+                  type: string
+                  description: Raw CSV text from Fitbod export
+      responses:
+        '200':
+          description: Import results (total, imported, already_existed)
+
+  /exercises/gym-profiles:
+    get:
+      operationId: listGymProfiles
+      summary: List all gym profiles
+      responses:
+        '200':
+          description: Array of gym profiles
+    post:
+      operationId: createGymProfile
+      summary: Create a gym profile (Home, Gym, Travel, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                equipment:
+                  type: array
+                  items: { type: string }
+                  description: Equipment IDs from /exercises/equipment catalog
+                is_active: { type: boolean }
+      responses:
+        '201':
+          description: Created profile
+
+  /exercises/gym-profiles/active:
+    get:
+      operationId: getActiveGymProfile
+      summary: Get the currently active gym profile (check this before planning workouts)
+      responses:
+        '200':
+          description: Active profile or null
+
+  /exercises/gym-profiles/{id}:
+    put:
+      operationId: updateGymProfile
+      summary: Update gym profile (set active, change equipment)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                equipment:
+                  type: array
+                  items: { type: string }
+                is_active: { type: boolean }
+      responses:
+        '200':
+          description: Updated profile
+
+  /exercises/equipment:
+    get:
+      operationId: getEquipmentCatalog
+      summary: Get full equipment catalog (42 items) for gym profile setup
+      responses:
+        '200':
+          description: Array of equipment items with id, label, category
+
   # ─── Gamification ───────────────────────────────────────
   /gamification:
     get:
@@ -1323,6 +1480,50 @@ components:
         tags:
           type: array
           items: { type: string }
+        planned_exercises:
+          type: array
+          description: "Structured exercise plan. Use exact Fitbod names. Groups: warmup, main, superset, circuit, finisher."
+          items:
+            type: object
+            properties:
+              name: { type: string, description: "Exact Fitbod exercise name" }
+              group: { type: string, enum: [warmup, main, superset, circuit, finisher] }
+              planned_sets: { type: integer }
+              planned_reps: { type: integer }
+              planned_weight: { type: string, description: "Weight or band label (e.g. '175 lb', 'X-Heavy')" }
+              muscle_primary: { type: string }
+              muscle_secondary: { type: array, items: { type: string } }
+              superset_with: { type: string, description: "Name of paired exercise for supersets" }
+              notes: { type: string }
+        actual_exercises:
+          type: array
+          description: "What was actually done (from Fitbod screenshots). Same schema as planned but with actual values."
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              status: { type: string, enum: [completed, partial, skipped] }
+              muscle_primary: { type: string }
+              sets:
+                type: array
+                description: "Set-level detail if available from Fitbod detail view"
+                items:
+                  type: object
+                  properties:
+                    reps: { type: integer }
+                    weight: { type: string }
+                    duration: { type: string }
+                    notes: { type: string }
+              highest_weight: { type: string }
+              volume: { type: string }
+              estimated_1rm: { type: string }
+              total_reps: { type: integer }
+              total_time: { type: string }
+              pr: { type: boolean }
+              notes: { type: string }
+        completion_notes:
+          type: string
+          description: "Coach's review after workout — what changed vs plan, PRs, modifications, injury impact"
         ai_source:
           type: string
           default: claude
