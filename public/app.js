@@ -5504,6 +5504,19 @@ async function showGymProfilePicker() {
           Create a profile to select your equipment
         </div>
       `}
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bg-tertiary)">
+        <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px">Import Fitbod Exercises</div>
+        <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:8px">
+          In Fitbod: Log tab → ⚙ → Export Workout Data → share the CSV file. Then upload here or paste the text.
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="file" id="fitbod-csv-file" accept=".csv,.txt" style="font-size:0.7rem;flex:1" onchange="importFitbodFile(this)">
+        </div>
+        <div style="margin-top:6px;text-align:center;font-size:0.65rem;color:var(--text-dim)">— or paste CSV text —</div>
+        <textarea id="fitbod-csv-paste" rows="3" placeholder="Paste Fitbod CSV text here..." style="width:100%;font-size:0.7rem;margin-top:4px;padding:6px"></textarea>
+        <button class="btn-submit btn-secondary" style="width:100%;margin-top:6px;font-size:0.72rem" onclick="importFitbodPaste()">Import from Paste</button>
+        <div id="fitbod-import-result" style="margin-top:6px;font-size:0.7rem"></div>
+      </div>
     `;
     openModal('Gym Profiles', html);
   } catch (e) { showToast(e.message); }
@@ -5537,6 +5550,33 @@ async function saveGymProfileEquipment(id) {
     closeModal();
     if (fitnessSubTab === 'today') loadFitnessToday();
   } catch (e) { showToast(e.message); }
+}
+
+async function importFitbodFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  await doFitbodImport(text);
+}
+
+async function importFitbodPaste() {
+  const text = document.getElementById('fitbod-csv-paste')?.value;
+  if (!text || !text.trim()) return showToast('Paste CSV text first');
+  await doFitbodImport(text);
+}
+
+async function doFitbodImport(csvText) {
+  const resultEl = document.getElementById('fitbod-import-result');
+  if (resultEl) resultEl.innerHTML = '<span style="color:var(--text-dim)">Importing...</span>';
+  try {
+    const result = await api('/exercises/import-fitbod', { method: 'POST', body: JSON.stringify({ csv_text: csvText }) });
+    const msg = `✓ Found ${result.total_unique} exercises: ${result.imported} new, ${result.already_existed} already in library`;
+    if (resultEl) resultEl.innerHTML = `<span style="color:#10b981">${msg}</span>`;
+    showToast(msg);
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">Error: ${e.message}</span>`;
+    showToast(e.message);
+  }
 }
 
 async function showTrainingPlanDetail(id) {
