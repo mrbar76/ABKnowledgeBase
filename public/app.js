@@ -3424,6 +3424,7 @@ async function loadFitnessToday() {
 
     // Plan vs Actual comparison (if plan exists and there's data)
     let comparisonHtml = '';
+    const hasCheckIn = !!(ctx.id && (ctx.sleep_hours != null || ctx.hydration_liters != null));
     if (plan && (workouts.length || meals.length || hasCheckIn)) {
       const maxEffort = Math.max(0, ...workouts.map(w => w.effort || 0));
       const totalCal = meals.reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
