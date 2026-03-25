@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base API",
-    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate \u2192 Plan \u2192 Execute \u2192 Review \u2192 Repeat)\n\n### 1. EVALUATE \u2014 Review past performance\n- `GET /daily-plans/by-date/{yesterday}` \u2014 see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` \u2014 full context (workouts, nutrition, body, injuries, daily plan)\n- `GET /recovery/score` \u2014 today's recovery readiness\n\n### 2. PLAN \u2014 Set daily plans\n- `POST /daily-plans` \u2014 create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` \u2014 create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n- NEVER use /training/plans \u2014 that endpoint is REMOVED. All planning uses /daily-plans.\n\n### 3. EXECUTE \u2014 User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`\n- Log sleep + water via `POST /nutrition/daily-context` (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)\n\n### 4. REVIEW \u2014 End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` \u2014 plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` \u2014 save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND \u2014 Adjust plans based on progress\n- `PUT /daily-plans/{id}` \u2014 amend today's or future plans\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score \u2014 actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).\n- **Recover** (indigo): Proportional average of sleep hours + sleep quality progress (each 0-100%).\n- Targets cascade: daily plan \u2192 gamification settings defaults.\n- `GET /gamification` \u2014 today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Weekly Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create 7 daily plans: `POST /daily-plans/week` \u2014 each day gets workout_type, targets, coaching_notes\n\n### Daily Context (Simplified)\n- Only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text)\n- No energy_rating, hunger_rating, recovery_rating, body_weight_lb, cravings, digestion, day_type \u2014 these are REMOVED\n- Weight goes in `POST /body-metrics`, not daily context\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
+    "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate \u2192 Plan \u2192 Execute \u2192 Review \u2192 Repeat)\n\n### 1. EVALUATE \u2014 Review past performance\n- `GET /daily-plans/by-date/{yesterday}` \u2014 see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` \u2014 full context (workouts, nutrition, body, injuries, daily plan)\n- `GET /recovery/score` \u2014 today's recovery readiness\n\n### 2. PLAN \u2014 Set daily plans\n- `POST /daily-plans` \u2014 create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` \u2014 create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n- NEVER use /training/plans \u2014 that endpoint is REMOVED. All planning uses /daily-plans.\n\n### 3. EXECUTE \u2014 User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`\n- Log sleep + water via `POST /nutrition/daily-context` (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)\n\n### 4. REVIEW \u2014 End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` \u2014 plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` \u2014 save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND \u2014 Adjust plans based on progress\n- `PUT /daily-plans/{id}` \u2014 amend today's or future plans\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score \u2014 actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).\n- **Recover** (indigo): Proportional average of sleep hours + sleep quality progress (each 0-100%).\n- Targets cascade: daily plan \u2192 gamification settings defaults.\n- `GET /gamification` \u2014 today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Weekly Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create 7 daily plans: `POST /daily-plans/week` \u2014 each day gets workout_type, targets, coaching_notes\n\n### Daily Context (Simplified)\n- Only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text)\n- No energy_rating, hunger_rating, recovery_rating, body_weight_lb, cravings, digestion, day_type \u2014 these are REMOVED\n- Weight goes in `POST /body-metrics`, not daily context\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Exercises (1060+ with mscore), Meals, Body Metrics, Daily Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
     "version": "1.1.0"
   },
   "servers": [
@@ -834,6 +834,127 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/exercises": {
+      "get": {
+        "operationId": "listExercises",
+        "summary": "Search the exercise catalog — 1060+ exercises with equipment, muscle groups, level, and muscle_strength_score (mscore). Use mscore to pick the most effective exercises for a given muscle group.",
+        "description": "Returns exercises sorted by muscle_strength_score (mscore) descending by default. Each exercise includes: name, level (beginner/intermediate/advanced), equipment needed, primary_muscle_groups, category, muscle_strength_score (0-100, higher=more effective), sets_logged (popularity), and description.\n\n**mscore ranges:** 90-100 = elite compound movements (primary lifts), 70-89 = strong accessories, 50-69 = moderate/isolation, below 50 = light/stabilizer.\n\n**sets_logged** = popularity across all Fitbod users. Higher = more commonly performed and validated.",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Full-text search across name, equipment, muscle groups, description" },
+          { "name": "level", "in": "query", "schema": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] }, "description": "Filter by difficulty level" },
+          { "name": "equipment", "in": "query", "schema": { "type": "string" }, "description": "Filter by equipment type (e.g. Barbell, Dumbbell, Cable, Body Weight, Kettlebell)" },
+          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "Filter by muscle category (e.g. chest, back, shoulders, legs, arms, core, lower_back)" },
+          { "name": "muscle_group", "in": "query", "schema": { "type": "string" }, "description": "Filter by primary muscle group name (partial match, e.g. 'chest', 'quadriceps', 'hamstrings')" },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["mscore_desc", "mscore_asc", "name", "sets_logged", "level"] }, "description": "Sort order (default: mscore descending)" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exercise catalog results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": { "type": "integer" },
+                    "count": { "type": "integer" },
+                    "exercises": { "type": "array", "items": { "$ref": "#/components/schemas/Exercise" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exercises/equipment": {
+      "get": {
+        "operationId": "listExerciseEquipment",
+        "summary": "Get all equipment types available in the exercise catalog with counts",
+        "responses": {
+          "200": {
+            "description": "Equipment list with exercise counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "equipment": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "equipment": { "type": "string" },
+                          "exercise_count": { "type": "integer" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exercises/categories": {
+      "get": {
+        "operationId": "listExerciseCategories",
+        "summary": "Get all muscle categories in the exercise catalog with counts",
+        "responses": {
+          "200": {
+            "description": "Category list with exercise counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "category": { "type": "string" },
+                          "exercise_count": { "type": "integer" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exercises/stats": {
+      "get": {
+        "operationId": "getExerciseStats",
+        "summary": "Get exercise catalog statistics — totals, breakdown by level/equipment/category, top exercises by mscore",
+        "responses": {
+          "200": {
+            "description": "Exercise stats",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/exercises/{id}": {
+      "get": {
+        "operationId": "getExercise",
+        "summary": "Get a single exercise by ID with full details including description and mscore",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exercise details",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exercise" } } }
           }
         }
       }
@@ -2034,6 +2155,23 @@
             "type": "string",
             "format": "date-time"
           }
+        }
+      },
+      "Exercise": {
+        "type": "object",
+        "description": "An exercise from the Fitbod catalog. muscle_strength_score (mscore) is a 0-100 score of how effectively this exercise builds strength in its target muscle group. sets_logged is total sets logged across all Fitbod users (popularity indicator).",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "description": "Exercise name (e.g. 'Barbell Bench Press', 'Pull Up', 'Romanian Deadlift')" },
+          "level": { "type": "string", "enum": ["beginner", "intermediate", "advanced"], "description": "Difficulty level" },
+          "equipment": { "type": "string", "description": "Equipment required (e.g. 'Barbell', 'Dumbbell', 'Cable', 'Body Weight', 'Kettlebell', 'Machine')" },
+          "primary_muscle_groups": { "type": "string", "description": "Primary muscles targeted (e.g. 'chest', 'quadriceps', 'hamstrings', 'lower-back')" },
+          "category": { "type": "string", "description": "Muscle category for grouping (e.g. 'chest', 'back', 'shoulders', 'legs', 'arms', 'core', 'lower_back')" },
+          "muscle_strength_score": { "type": "number", "description": "mscore: 0-100 effectiveness rating for building strength in target muscle. 100=most effective (e.g. Deadlift). Use this to prioritize exercise selection." },
+          "sets_logged": { "type": "integer", "description": "Total sets logged across all Fitbod users — higher means more commonly used and validated" },
+          "description": { "type": "string", "description": "Detailed description of the exercise, form cues, and benefits" },
+          "source": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "Workout": {

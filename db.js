@@ -210,6 +210,36 @@ async function initDB() {
       (coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'')) gin_trgm_ops
     )`);
 
+  // ===== EXERCISE CATALOG =====
+  await safeQuery('exercises table', `
+    CREATE TABLE IF NOT EXISTS exercises (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL UNIQUE,
+      level TEXT DEFAULT 'beginner',
+      equipment TEXT DEFAULT 'Body Weight',
+      primary_muscle_groups TEXT,
+      category TEXT,
+      muscle_strength_score NUMERIC(6,2) DEFAULT 0,
+      sets_logged INTEGER DEFAULT 0,
+      description TEXT,
+      secondary_muscle_groups TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      source TEXT DEFAULT 'fitbod',
+      search_vector TSVECTOR,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('exercises indexes', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
+    CREATE INDEX IF NOT EXISTS idx_exercises_equipment ON exercises(equipment);
+    CREATE INDEX IF NOT EXISTS idx_exercises_category ON exercises(category);
+    CREATE INDEX IF NOT EXISTS idx_exercises_level ON exercises(level);
+    CREATE INDEX IF NOT EXISTS idx_exercises_mscore ON exercises(muscle_strength_score DESC);
+    CREATE INDEX IF NOT EXISTS idx_exercises_search ON exercises USING gin(search_vector);
+    CREATE INDEX IF NOT EXISTS idx_exercises_trgm ON exercises USING gin(
+      (coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) gin_trgm_ops
+    )`);
+
   // ===== BODY METRICS =====
   await safeQuery('body_metrics table', `
     CREATE TABLE IF NOT EXISTS body_metrics (
@@ -774,6 +804,18 @@ async function initDB() {
     CREATE TRIGGER trg_coaching_sessions_search BEFORE INSERT OR UPDATE OF title, summary, injury_notes, next_steps, recovery_notes ON coaching_sessions
       FOR EACH ROW EXECUTE FUNCTION update_coaching_sessions_search();
 
+    CREATE OR REPLACE FUNCTION update_exercises_search() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.name,'') || ' ' || coalesce(NEW.equipment,'') || ' ' || coalesce(NEW.primary_muscle_groups,'') || ' ' || coalesce(NEW.category,'') || ' ' || coalesce(NEW.description,''));
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_exercises_search ON exercises;
+    CREATE TRIGGER trg_exercises_search BEFORE INSERT OR UPDATE OF name, equipment, primary_muscle_groups, category, description ON exercises
+      FOR EACH ROW EXECUTE FUNCTION update_exercises_search();
+
     CREATE OR REPLACE FUNCTION update_injuries_search() RETURNS TRIGGER AS $$
     BEGIN
       NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.body_area,'') || ' ' || coalesce(NEW.symptoms,'') || ' ' || coalesce(NEW.treatment,'') || ' ' || coalesce(NEW.notes,''));
@@ -858,6 +900,7 @@ async function initDB() {
   await safeQuery('backfill meals search', `UPDATE meals SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(meal_type,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill dc search', `UPDATE daily_context SET search_vector = to_tsvector('english', coalesce(notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill exercises search', `UPDATE exercises SET search_vector = to_tsvector('english', coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
 
   // ===== DATA MIGRATIONS =====

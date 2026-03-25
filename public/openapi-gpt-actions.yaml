@@ -202,6 +202,92 @@ paths:
           description: Workout not found
         '401':
           description: Unauthorized
+  /exercises:
+    get:
+      operationId: listExercises
+      summary: Search the exercise catalog — 1060+ exercises with equipment, muscle groups, level, and muscle_strength_score (mscore 0-100, higher=more effective for building strength)
+      description: |
+        Returns exercises sorted by muscle_strength_score (mscore) descending by default.
+        mscore 90-100 = elite compound movements (primary lifts), 70-89 = strong accessories, 50-69 = moderate/isolation, below 50 = light/stabilizer.
+        sets_logged = popularity across Fitbod users.
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Full-text search across name, equipment, muscle groups, description
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [beginner, intermediate, advanced]
+        - name: equipment
+          in: query
+          schema:
+            type: string
+          description: Filter by equipment (e.g. Barbell, Dumbbell, Cable, Body Weight, Kettlebell)
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by muscle category (e.g. chest, back, shoulders, legs, arms, core, lower_back)
+        - name: muscle_group
+          in: query
+          schema:
+            type: string
+          description: Filter by primary muscle group (partial match)
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [mscore_desc, mscore_asc, name, sets_logged, level]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Exercise catalog results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  count:
+                    type: integer
+                  exercises:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Exercise'
+  /exercises/equipment:
+    get:
+      operationId: listExerciseEquipment
+      summary: Get all equipment types in the exercise catalog with counts
+      responses:
+        '200':
+          description: Equipment list
+  /exercises/categories:
+    get:
+      operationId: listExerciseCategories
+      summary: Get all muscle categories in the exercise catalog with counts
+      responses:
+        '200':
+          description: Category list
+  /exercises/stats:
+    get:
+      operationId: getExerciseStats
+      summary: Get exercise catalog statistics — totals by level/equipment/category, top exercises by mscore
+      responses:
+        '200':
+          description: Exercise stats
   /body-metrics:
     get:
       operationId: getBodyMetrics
@@ -1933,6 +2019,36 @@ components:
         metadata:
           type: object
           description: Any additional data that doesn't fit other fields (e.g. Apple Watch metrics, Strava link)
+    Exercise:
+      type: object
+      description: "Exercise from Fitbod catalog. muscle_strength_score (mscore) is 0-100 effectiveness for building strength. sets_logged = popularity."
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Exercise name (e.g. Barbell Bench Press, Pull Up)
+        level:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        equipment:
+          type: string
+          description: Equipment needed (e.g. Barbell, Dumbbell, Cable, Body Weight)
+        primary_muscle_groups:
+          type: string
+          description: Primary muscles targeted
+        category:
+          type: string
+          description: Muscle category for grouping
+        muscle_strength_score:
+          type: number
+          description: "mscore: 0-100 effectiveness for strength building. 100=most effective."
+        sets_logged:
+          type: integer
+          description: Total sets logged across all Fitbod users (popularity)
+        description:
+          type: string
     Workout:
       type: object
       properties:
