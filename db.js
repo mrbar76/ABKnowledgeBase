@@ -510,6 +510,59 @@ async function initDB() {
   await safeQuery('workouts +cardio_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cardio_feedback TEXT`);
   await safeQuery('workouts +shoulder_feedback', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS shoulder_feedback TEXT`);
 
+  // -- workouts: add proper numeric columns alongside TEXT originals --
+  await safeQuery('workouts +duration_minutes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`);
+  await safeQuery('workouts +distance_value', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS distance_value NUMERIC(7,2)`);
+  await safeQuery('workouts +elevation_gain_ft', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS elevation_gain_ft INTEGER`);
+  await safeQuery('workouts +hr_avg', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hr_avg INTEGER`);
+  await safeQuery('workouts +hr_max', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hr_max INTEGER`);
+  await safeQuery('workouts +cadence', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cadence INTEGER`);
+  await safeQuery('workouts +cal_active', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cal_active INTEGER`);
+  await safeQuery('workouts +cal_total', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cal_total INTEGER`);
+
+  // Backfill numeric columns from TEXT fields (safe: only updates NULLs)
+  await safeQuery('backfill duration_minutes', `
+    UPDATE workouts SET duration_minutes = (
+      CASE
+        WHEN time_duration ~ '^\\d+:\\d+' THEN
+          SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
+        WHEN time_duration ~ '^[\\d.]+ *h' THEN
+          ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric * 60)::int
+        WHEN time_duration ~ '^[\\d.]+' THEN
+          ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric)::int
+        ELSE NULL
+      END
+    ) WHERE duration_minutes IS NULL AND time_duration IS NOT NULL AND time_duration != ''
+  `);
+  await safeQuery('backfill distance_value', `
+    UPDATE workouts SET distance_value = ROUND(REGEXP_REPLACE(distance, '[^\\d.]', '', 'g')::numeric, 2)
+    WHERE distance_value IS NULL AND distance IS NOT NULL AND distance ~ '[\\d.]'
+  `);
+  await safeQuery('backfill elevation_gain_ft', `
+    UPDATE workouts SET elevation_gain_ft = REGEXP_REPLACE(elevation_gain, '[^\\d]', '', 'g')::int
+    WHERE elevation_gain_ft IS NULL AND elevation_gain IS NOT NULL AND elevation_gain ~ '\\d'
+  `);
+  await safeQuery('backfill hr_avg', `
+    UPDATE workouts SET hr_avg = REGEXP_REPLACE(heart_rate_avg, '[^\\d]', '', 'g')::int
+    WHERE hr_avg IS NULL AND heart_rate_avg IS NOT NULL AND heart_rate_avg ~ '\\d'
+  `);
+  await safeQuery('backfill hr_max', `
+    UPDATE workouts SET hr_max = REGEXP_REPLACE(heart_rate_max, '[^\\d]', '', 'g')::int
+    WHERE hr_max IS NULL AND heart_rate_max IS NOT NULL AND heart_rate_max ~ '\\d'
+  `);
+  await safeQuery('backfill cadence', `
+    UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int
+    WHERE cadence IS NULL AND cadence_avg IS NOT NULL AND cadence_avg ~ '\\d'
+  `);
+  await safeQuery('backfill cal_active', `
+    UPDATE workouts SET cal_active = REGEXP_REPLACE(active_calories, '[^\\d]', '', 'g')::int
+    WHERE cal_active IS NULL AND active_calories IS NOT NULL AND active_calories ~ '\\d'
+  `);
+  await safeQuery('backfill cal_total', `
+    UPDATE workouts SET cal_total = REGEXP_REPLACE(total_calories, '[^\\d]', '', 'g')::int
+    WHERE cal_total IS NULL AND total_calories IS NOT NULL AND total_calories ~ '\\d'
+  `);
+
   // -- meals migrations --
   await safeQuery('meals +meal_date', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_date DATE NOT NULL DEFAULT CURRENT_DATE`);
   await safeQuery('meals +meal_time', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_time TIME`);
