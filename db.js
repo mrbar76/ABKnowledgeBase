@@ -574,6 +574,13 @@ async function initDB() {
   await safeQuery('exercises +created_at', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
   await safeQuery('exercises +updated_at', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
   await safeQuery('exercises name unique', `DO $$ BEGIN ALTER TABLE exercises ADD CONSTRAINT exercises_name_key UNIQUE (name); EXCEPTION WHEN duplicate_table THEN NULL; END $$`);
+  // Fix column types if they were created with wrong types in older schema
+  await safeQuery('exercises fix equipment type', `ALTER TABLE exercises ALTER COLUMN equipment TYPE TEXT USING equipment::TEXT`);
+  await safeQuery('exercises fix level type', `ALTER TABLE exercises ALTER COLUMN level TYPE TEXT USING level::TEXT`);
+  await safeQuery('exercises fix primary_muscle_groups type', `ALTER TABLE exercises ALTER COLUMN primary_muscle_groups TYPE TEXT USING primary_muscle_groups::TEXT`);
+  await safeQuery('exercises fix category type', `ALTER TABLE exercises ALTER COLUMN category TYPE TEXT USING category::TEXT`);
+  await safeQuery('exercises fix description type', `ALTER TABLE exercises ALTER COLUMN description TYPE TEXT USING description::TEXT`);
+  await safeQuery('exercises fix secondary_muscle_groups type', `ALTER TABLE exercises ALTER COLUMN secondary_muscle_groups TYPE TEXT USING secondary_muscle_groups::TEXT`);
 
   // -- gym_profiles migrations --
   await safeQuery('gym_profiles +name', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS name TEXT`);
