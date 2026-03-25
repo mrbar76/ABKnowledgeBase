@@ -1430,6 +1430,18 @@ PLAN-WORKOUT CONNECTION
 - Recovery scoring reads structured exercises for granular per-muscle tracking.
   Exercises before March 2026 use legacy workout_type mapping. New structured data gives better accuracy.
 
+LOGGING FROM FITBOD SCREENSHOTS
+When Avi sends Fitbod screenshots, extract exercises into the structured format:
+- Fitbod summary view: exercise name, highest weight, volume, estimated 1RM, total reps, PRs
+- Fitbod detail view: each set with reps × weight
+- Log whichever level of detail the screenshot shows. Both are valid.
+- For BANDS (resistance bands, loop bands): keep the label exactly as Fitbod shows (Light, Medium, Heavy, X-Heavy).
+  Do NOT convert to pounds — band resistance varies by stance, stretch, and brand. Treat labels as RPE.
+  Track progression by label: "Heavy → X-Heavy for same reps" = progress.
+- For TIMED exercises (plank, stretches): log duration per set, not reps.
+- Exercise names must match Fitbod naming exactly. If an exercise isn't in the library, add it via POST /exercises.
+- Mark PRs (trophy icon in Fitbod) in the exercise notes field.
+
 WORKOUT LOGGING
 Use \`POST /workouts\`. Required: \`workout_type\`.
 Include when relevant:
@@ -3150,21 +3162,100 @@ async function loadFitnessToday() {
     const dateLabel = sel.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     const isToday = fitnessTodayDate === today;
 
-    // Plan section
+    // Plan section (with structured exercises support)
     let planHtml = '';
     if (plan) {
       const statusColors = { planned: '#3b82f6', completed: '#10b981', partial: '#f59e0b', missed: '#ef4444', rest: '#8b5cf6', amended: '#6366f1' };
       const statusColor = statusColors[plan.status] || '#6b7280';
+      const statusIcons = { planned: '○', completed: '✓', partial: '~', missed: '✗', rest: '◇', amended: '◆' };
+      const statusIcon = statusIcons[plan.status] || '○';
+
+      // Build exercise list from planned_exercises or actual_exercises
+      const showActual = plan.actual_exercises && plan.actual_exercises.length > 0;
+      const exercises = showActual ? plan.actual_exercises : (plan.planned_exercises || []);
+      let exerciseHtml = '';
+      if (exercises.length > 0) {
+        let currentGroup = '';
+        exerciseHtml = exercises.map(ex => {
+          let groupHeader = '';
+          const group = (ex.group || 'main').toLowerCase();
+          if (group !== currentGroup) {
+            currentGroup = group;
+            const groupLabels = { warmup: 'WARMUP', main: 'MAIN', superset: 'SUPERSET', circuit: 'CIRCUIT', finisher: 'FINISHER' };
+            groupHeader = `<div style="font-size:0.6rem;font-weight:700;color:var(--text-dim);margin-top:8px;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">${groupLabels[group] || group.toUpperCase()}</div>`;
+          }
+
+          // Status icon for actual exercises
+          const exStatus = ex.status || (ex.completed === false ? 'skipped' : ex.completed === true ? 'completed' : '');
+          const exIcon = exStatus === 'completed' ? '<span style="color:#10b981">✓</span>' :
+                         exStatus === 'partial' ? '<span style="color:#f59e0b">~</span>' :
+                         exStatus === 'skipped' ? '<span style="color:#ef4444">✗</span>' :
+                         '<span style="color:var(--text-dim)">·</span>';
+
+          // Format sets info
+          let setsInfo = '';
+          if (ex.sets && Array.isArray(ex.sets)) {
+            // Set-level detail from Fitbod
+            const setStrs = ex.sets.map(s => {
+              if (s.duration) return s.duration;
+              return `${s.reps}${s.weight ? ' × ' + s.weight : ''}`;
+            });
+            // Collapse identical sets: "5×50, 5×50, 5×50" → "3×5 @ 50 lb"
+            const unique = [...new Set(setStrs)];
+            if (unique.length === 1) {
+              setsInfo = `${ex.sets.length}× ${unique[0]}`;
+            } else {
+              setsInfo = setStrs.join(' · ');
+            }
+          } else {
+            // Summary-level data
+            const parts = [];
+            if (ex.planned_sets && !showActual) parts.push(`${ex.planned_sets}×${ex.planned_reps || '?'}${ex.planned_weight ? ' @ ' + ex.planned_weight : ''}`);
+            else if (ex.actual_sets) parts.push(`${ex.actual_sets}×${ex.actual_reps || '?'}${ex.actual_weight ? ' @ ' + ex.actual_weight : ''}`);
+            else if (ex.total_reps) parts.push(`${ex.total_reps} reps`);
+            else if (ex.duration) parts.push(ex.duration);
+            else if (ex.total_time) parts.push(`${ex.sets || '?'}× ${ex.total_time}`);
+            if (ex.highest_weight) parts.push(ex.highest_weight);
+            if (ex.volume && ex.volume !== ex.highest_weight) parts.push(ex.volume + ' vol');
+            setsInfo = parts.join(' · ');
+          }
+
+          // PR indicator
+          const prBadge = ex.pr || ex.notes?.includes('PR') ? ' <span style="color:#eab308;font-size:0.6rem">🏆</span>' : '';
+
+          // Notes
+          const notesHtml = ex.notes && !ex.notes.includes('PR') ? `<div style="font-size:0.6rem;color:var(--text-dim);margin-left:20px;font-style:italic">${esc(ex.notes)}</div>` : '';
+
+          return groupHeader + `<div style="display:flex;align-items:baseline;gap:6px;font-size:0.75rem;padding:2px 0">
+            ${showActual ? exIcon : '<span style="color:var(--text-dim)">·</span>'}
+            <span style="flex:1;font-weight:500">${esc(ex.name)}${prBadge}</span>
+            <span style="color:var(--text-dim);font-size:0.68rem;white-space:nowrap">${setsInfo}</span>
+          </div>${notesHtml}`;
+        }).join('');
+      }
+
+      // Planned vs actual comparison line
+      let vsLine = '';
+      if (showActual && plan.planned_exercises && plan.planned_exercises.length > 0) {
+        const plannedCount = plan.planned_exercises.length;
+        const actualCount = plan.actual_exercises.filter(e => e.status !== 'skipped' && e.completed !== false).length;
+        vsLine = `<div style="font-size:0.65rem;color:var(--text-dim);margin-top:4px">${actualCount}/${plannedCount} exercises completed</div>`;
+      }
+
       planHtml = `
         <div class="card mb-md" style="border-left:3px solid ${statusColor}">
           <div class="card-title" style="display:flex;align-items:center;gap:8px">
-            Plan
-            <span class="badge-dynamic" style="background:${statusColor}22;color:${statusColor};font-size:0.65rem">${plan.status}</span>
+            <span>${plan.status === 'rest' ? "Rest Day" : "Today's Plan"}</span>
+            <span class="badge-dynamic" style="background:${statusColor}22;color:${statusColor};font-size:0.65rem">${statusIcon} ${plan.status}</span>
+            <span style="flex:1"></span>
+            <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 6px" onclick="showGymProfilePicker()">⚙</button>
           </div>
-          ${plan.workout_type ? `<div style="font-weight:600">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}</div>` : ''}
-          ${plan.target_effort ? `<div class="list-item-meta">Effort: ${plan.target_effort}/10${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
+          ${plan.title ? `<div style="font-weight:600;font-size:0.85rem">${esc(plan.title)}</div>` : ''}
+          ${plan.workout_type ? `<div style="font-size:0.75rem;color:var(--text-dim)">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}${plan.target_effort ? ' · effort ' + plan.target_effort : ''}${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
+          ${exerciseHtml ? `<div style="margin-top:8px">${exerciseHtml}</div>` : ''}
+          ${vsLine}
           ${plan.target_calories || plan.target_protein_g || plan.target_hydration_liters || plan.target_sleep_hours ? `
-            <div class="list-item-meta" style="margin-top:4px">
+            <div class="list-item-meta" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg-tertiary)">
               ${plan.target_calories ? 'Cal: ' + plan.target_calories + ' ' : ''}
               ${plan.target_protein_g ? 'P: ' + plan.target_protein_g + 'g ' : ''}
               ${plan.target_hydration_liters ? 'Water: ' + plan.target_hydration_liters + 'L ' : ''}
@@ -3172,6 +3263,7 @@ async function loadFitnessToday() {
             </div>
           ` : ''}
           ${plan.coaching_notes ? `<div class="transcript-summary mt-sm">${esc(plan.coaching_notes)}</div>` : ''}
+          ${plan.completion_notes ? `<div style="margin-top:6px;padding:6px 8px;background:${statusColor}11;border-radius:6px;font-size:0.72rem;color:var(--text-dim)"><strong style="color:${statusColor}">Coach:</strong> ${esc(plan.completion_notes)}</div>` : ''}
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             ${['completed','partial','missed'].map(s => `<button class="btn-submit btn-compact-sm ${plan.status === s ? '' : 'btn-secondary'}" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','${s}')">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
             <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="editDailyPlan('${plan.id}')">Edit</button>
@@ -3179,7 +3271,10 @@ async function loadFitnessToday() {
         </div>`;
     } else {
       planHtml = `<div class="card mb-md" style="border-left:3px solid #d1d5db">
-        <div class="card-title">No plan for ${dateLabel}</div>
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          No plan for ${dateLabel}
+          <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 6px" onclick="showGymProfilePicker()">⚙</button>
+        </div>
         <button class="btn-submit btn-compact-sm" onclick="showCreateDailyPlanForm('${fitnessTodayDate}')">+ Create Plan</button>
       </div>`;
     }
@@ -5343,6 +5438,97 @@ async function quickUpdatePlanStatus(id, status) {
     await api(`/daily-plans/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
     if (fitnessSubTab === 'today') loadFitnessToday();
     else loadUnifiedPlans();
+  } catch (e) { showToast(e.message); }
+}
+
+// ─── Gym Profile Picker ─────────────────────────────────────
+async function showGymProfilePicker() {
+  try {
+    const [profiles, catalog] = await Promise.all([
+      api('/exercises/gym-profiles'),
+      api('/exercises/equipment'),
+    ]);
+
+    // Group equipment by category
+    const categories = {};
+    for (const eq of catalog) {
+      if (!categories[eq.category]) categories[eq.category] = [];
+      categories[eq.category].push(eq);
+    }
+    const categoryLabels = { free_weights: 'Free Weights', machines: 'Machines', benches: 'Benches & Racks', racks: 'Racks', bodyweight: 'Bodyweight', accessories: 'Accessories', cardio: 'Cardio' };
+
+    const activeProfile = profiles.find(p => p.is_active);
+    const activeEquipment = new Set(activeProfile ? activeProfile.equipment : []);
+
+    // Profile tabs
+    const profileTabs = profiles.length ? profiles.map(p =>
+      `<button class="btn-submit btn-compact-sm ${p.is_active ? '' : 'btn-secondary'}" style="font-size:0.7rem" onclick="switchGymProfile('${p.id}')">${esc(p.name)}${p.is_active ? ' ●' : ''}</button>`
+    ).join(' ') : '<span style="font-size:0.75rem;color:var(--text-dim)">No profiles yet</span>';
+
+    // Equipment checkboxes
+    let equipHtml = '';
+    for (const [cat, items] of Object.entries(categories)) {
+      const label = categoryLabels[cat] || cat;
+      equipHtml += `<div style="margin-top:10px"><div style="font-size:0.68rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">${label}</div>`;
+      equipHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">`;
+      for (const eq of items) {
+        const checked = activeEquipment.has(eq.id) ? 'checked' : '';
+        equipHtml += `<label style="font-size:0.72rem;display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer">
+          <input type="checkbox" class="gym-equip-cb" value="${eq.id}" ${checked}> ${eq.label}
+        </label>`;
+      }
+      equipHtml += `</div></div>`;
+    }
+
+    const html = `
+      <div style="margin-bottom:12px">
+        <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px">Profiles</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          ${profileTabs}
+          <button class="btn-action btn-compact-sm" style="font-size:0.7rem" onclick="createGymProfile()">+ New</button>
+        </div>
+      </div>
+      ${activeProfile ? `
+        <div style="font-size:0.75rem;font-weight:600;margin-bottom:4px">Equipment — ${esc(activeProfile.name)}</div>
+        ${equipHtml}
+        <button class="btn-submit" style="width:100%;margin-top:12px" onclick="saveGymProfileEquipment('${activeProfile.id}')">Save Equipment</button>
+      ` : `
+        <div style="font-size:0.8rem;color:var(--text-dim);text-align:center;padding:20px 0">
+          Create a profile to select your equipment
+        </div>
+      `}
+    `;
+    openModal('Gym Profiles', html);
+  } catch (e) { showToast(e.message); }
+}
+
+async function switchGymProfile(id) {
+  try {
+    await api(`/exercises/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ is_active: true }) });
+    closeModal();
+    showGymProfilePicker();
+  } catch (e) { showToast(e.message); }
+}
+
+async function createGymProfile() {
+  const name = prompt('Profile name (e.g. Home, Gym, Travel):');
+  if (!name) return;
+  try {
+    await api('/exercises/gym-profiles', { method: 'POST', body: JSON.stringify({ name, is_active: true, equipment: ['bodyweight'] }) });
+    closeModal();
+    showGymProfilePicker();
+  } catch (e) { showToast(e.message); }
+}
+
+async function saveGymProfileEquipment(id) {
+  const checkboxes = document.querySelectorAll('.gym-equip-cb');
+  const equipment = [];
+  checkboxes.forEach(cb => { if (cb.checked) equipment.push(cb.value); });
+  try {
+    await api(`/exercises/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ equipment }) });
+    showToast('Equipment saved');
+    closeModal();
+    if (fitnessSubTab === 'today') loadFitnessToday();
   } catch (e) { showToast(e.message); }
 }
 
