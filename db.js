@@ -558,6 +558,31 @@ async function initDB() {
   await safeQuery('workouts +completion_status', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS completion_status TEXT DEFAULT 'logged'`);
   await safeQuery('workouts +plan_comparison_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_comparison_notes TEXT`);
 
+  // -- exercises migrations --
+  await safeQuery('exercises +name', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS name TEXT`);
+  await safeQuery('exercises +level', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'beginner'`);
+  await safeQuery('exercises +equipment', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS equipment TEXT DEFAULT 'Body Weight'`);
+  await safeQuery('exercises +primary_muscle_groups', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS primary_muscle_groups TEXT`);
+  await safeQuery('exercises +category', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS category TEXT`);
+  await safeQuery('exercises +muscle_strength_score', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS muscle_strength_score NUMERIC(6,2) DEFAULT 0`);
+  await safeQuery('exercises +sets_logged', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS sets_logged INTEGER DEFAULT 0`);
+  await safeQuery('exercises +description', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS description TEXT`);
+  await safeQuery('exercises +secondary_muscle_groups', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS secondary_muscle_groups TEXT`);
+  await safeQuery('exercises +tags', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('exercises +source', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'fitbod'`);
+  await safeQuery('exercises +search_vector', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+  await safeQuery('exercises +created_at', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+  await safeQuery('exercises +updated_at', `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+  await safeQuery('exercises name unique', `DO $$ BEGIN ALTER TABLE exercises ADD CONSTRAINT exercises_name_key UNIQUE (name); EXCEPTION WHEN duplicate_table THEN NULL; END $$`);
+
+  // -- gym_profiles migrations --
+  await safeQuery('gym_profiles +name', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS name TEXT`);
+  await safeQuery('gym_profiles +equipment', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS equipment JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('gym_profiles +is_primary', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS is_primary BOOLEAN DEFAULT false`);
+  await safeQuery('gym_profiles +notes', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await safeQuery('gym_profiles +created_at', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+  await safeQuery('gym_profiles +updated_at', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+
   // -- daily_plans migrations --
   await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
 
