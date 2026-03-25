@@ -71,6 +71,28 @@ function computeSleepScore(ctx) {
   return { score, detail: `${hrs}h, quality ${qual}/10` };
 }
 
+// Parse time_duration text into minutes: "45 min" → 45, "1:30:00" → 90, "90" → 90
+function parseDurationMin(val) {
+  if (val == null) return 45;
+  const s = String(val).trim();
+  if (!s) return 45;
+  // HH:MM or HH:MM:SS format
+  const timeMatch = s.match(/^(\d+):(\d+)(?::(\d+))?$/);
+  if (timeMatch) {
+    const hrs = parseInt(timeMatch[1], 10);
+    const mins = parseInt(timeMatch[2], 10);
+    return hrs * 60 + mins;
+  }
+  // Leading number with optional units: "45 min", "1.5 hours", "90"
+  const numMatch = s.match(/^(\d+(?:\.\d+)?)/);
+  if (numMatch) {
+    const num = parseFloat(numMatch[1]);
+    if (s.toLowerCase().includes('hour') || s.toLowerCase().includes('hr')) return Math.round(num * 60);
+    return Math.round(num); // assume minutes
+  }
+  return 45; // fallback
+}
+
 // TSB-based Training Load (TrainingPeaks model)
 // Session load = effort × duration (session-RPE method, validated in sports science)
 // CTL = 42-day exponentially weighted moving average of daily load ("fitness")
@@ -81,8 +103,8 @@ function computeTrainingLoadScore(allWorkouts, targetDate) {
   const dailyLoad = {};
   for (const w of allWorkouts) {
     const d = dateStr(w.workout_date);
-    const effort = Number(w.effort || 5);
-    const duration = Number(w.time_duration || 45); // default 45 min if not logged
+    const effort = Number(w.effort) || 5;
+    const duration = parseDurationMin(w.time_duration);
     const load = effort * duration;
     dailyLoad[d] = (dailyLoad[d] || 0) + load;
   }
