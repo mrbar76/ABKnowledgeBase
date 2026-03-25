@@ -211,9 +211,6 @@ async function initDB() {
     )`);
 
   // ===== EXERCISE CATALOG =====
-  // Force drop exercises table to fix column type issues (TEXT[] -> TEXT)
-  // Safe: no valid data exists since all imports failed with type errors
-  await safeQuery('exercises force drop', `DROP TABLE IF EXISTS exercises CASCADE`);
   await safeQuery('exercises table', `
     CREATE TABLE IF NOT EXISTS exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
