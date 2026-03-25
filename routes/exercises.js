@@ -117,50 +117,139 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ─── Bulk import from Fitbod CSV ────────────────────────────
-// Expects { csv_text: "Date,Exercise,Reps,Weight(kg),..." }
+// ─── Bulk import from Fitbod data (auto-detects format) ─────
+// Handles 4 formats:
+//   1. Exercise library: Exercise, Category, Primary_Muscle_Group, Secondary_Muscles, ...
+//   2. Fitbod exercise details: exercise_name, fitbod_url, description, primary_muscle_group, secondary_muscles, ...
+//   3. Workout export: Date, Exercise, Reps, Weight(kg), Duration(s), ...
+//   4. Tab-separated variants of any above
 router.post('/import-fitbod', async (req, res) => {
   try {
     const { csv_text } = req.body;
     if (!csv_text) return res.status(400).json({ error: 'csv_text is required' });
 
     const lines = csv_text.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) return res.status(400).json({ error: 'CSV must have header + data rows' });
+    if (lines.length < 2) return res.status(400).json({ error: 'Need header + data rows' });
 
-    // Parse header to find Exercise column
-    const header = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const exIdx = header.findIndex(h => h.toLowerCase() === 'exercise');
-    if (exIdx === -1) return res.status(400).json({ error: 'No "Exercise" column found in CSV header' });
+    // Detect delimiter (tab or comma)
+    const delim = lines[0].includes('\t') ? '\t' : ',';
+    const splitRow = (line) => {
+      if (delim === '\t') return line.split('\t').map(c => c.trim());
+      return (line.match(/(".*?"|[^,]+)/g) || []).map(c => c.replace(/"/g, '').trim());
+    };
 
-    // Extract unique exercise names
-    const exerciseNames = new Set();
-    for (let i = 1; i < lines.length; i++) {
-      // Simple CSV parse (handles basic quoting)
-      const cols = lines[i].match(/(".*?"|[^,]+)/g) || [];
-      const name = (cols[exIdx] || '').replace(/"/g, '').trim();
-      if (name) exerciseNames.add(name);
-    }
+    const header = splitRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
 
-    // Upsert each exercise
+    // Detect format by header columns
+    const colIdx = (names) => {
+      for (const n of names) {
+        const idx = header.indexOf(n);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const nameIdx = colIdx(['exercise', 'exercise_name']);
+    if (nameIdx === -1) return res.status(400).json({ error: 'No exercise name column found. Expected "Exercise" or "exercise_name".' });
+
+    const categoryIdx = colIdx(['category']);
+    const primaryIdx = colIdx(['primary_muscle_group']);
+    const secondaryIdx = colIdx(['secondary_muscles']);
+    const descIdx = colIdx(['description']);
+    const urlIdx = colIdx(['fitbod_url']);
+    const sourceIdx = colIdx(['muscle_source', 'muscle_mapping_basis']);
+
+    const hasMuscleCols = primaryIdx !== -1;
+    const format = hasMuscleCols ? 'exercise_library' : 'workout_export';
+
+    // Normalize muscle names to our schema
+    const normalizeMuscle = (m) => {
+      const s = (m || '').toLowerCase().trim();
+      const map = {
+        'abdominals': 'core', 'abs': 'core', 'obliques': 'core',
+        'quads': 'quadriceps', 'quadriceps': 'quadriceps',
+        'hamstrings': 'hamstrings', 'hamstrings/glutes': 'hamstrings',
+        'glutes': 'glutes', 'hip flexors': 'glutes',
+        'calves': 'calves',
+        'chest': 'chest', 'pecs': 'chest',
+        'back': 'back', 'lats': 'back', 'lower back': 'back', 'upper back': 'back', 'posterior chain': 'back', 'rhomboids': 'back', 'traps': 'back',
+        'shoulders': 'shoulders', 'front delts': 'shoulders', 'rear delts': 'shoulders', 'delts': 'shoulders', 'rotator cuff': 'shoulders',
+        'triceps': 'triceps',
+        'biceps': 'biceps', 'forearms': 'forearms',
+        'core': 'core',
+        'full body': 'full_body', 'total body': 'full_body',
+        'cardio': 'cardio',
+        'legs': 'quadriceps', 'lower body': 'quadriceps',
+      };
+      return map[s] || s || null;
+    };
+
+    const parseSecondary = (val) => {
+      if (!val) return [];
+      return val.split(/,\s*/).map(normalizeMuscle).filter(Boolean);
+    };
+
+    // Determine category → our category
+    const normalizeCategory = (cat) => {
+      const s = (cat || '').toLowerCase();
+      if (s.includes('core')) return 'core';
+      if (s.includes('cardio')) return 'cardio';
+      if (s.includes('stretch') || s.includes('flex') || s.includes('mobil')) return 'mobility';
+      return 'strength';
+    };
+
+    // Parse and upsert
     let imported = 0;
+    let updated = 0;
     let existing = 0;
-    for (const name of exerciseNames) {
+    const exercises = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = splitRow(lines[i]);
+      const name = (cols[nameIdx] || '').trim();
+      if (!name) continue;
+
+      const primary = hasMuscleCols ? normalizeMuscle(cols[primaryIdx]) : null;
+      const secondary = hasMuscleCols && secondaryIdx !== -1 ? parseSecondary(cols[secondaryIdx]) : [];
+      const category = categoryIdx !== -1 ? normalizeCategory(cols[categoryIdx]) : 'strength';
+      const description = descIdx !== -1 ? (cols[descIdx] || '').trim() : null;
+      const url = urlIdx !== -1 ? (cols[urlIdx] || '').replace(/_/g, '').trim() : null;
+
       const result = await query(
-        `INSERT INTO exercises (name, name_normalized, fitbod_name, source)
-         VALUES ($1, $2, $1, 'fitbod_import')
-         ON CONFLICT (name_normalized) DO NOTHING
-         RETURNING id`,
-        [name, name.toLowerCase().trim()]
+        `INSERT INTO exercises (name, name_normalized, muscle_primary, muscle_secondary, equipment, category, fitbod_name, source, notes, metadata)
+         VALUES ($1, $2, $3, $4, '{}', $5, $1, $6, $7, $8)
+         ON CONFLICT (name_normalized) DO UPDATE SET
+           muscle_primary = COALESCE(NULLIF(EXCLUDED.muscle_primary, ''), exercises.muscle_primary),
+           muscle_secondary = CASE WHEN array_length(EXCLUDED.muscle_secondary, 1) > 0 THEN EXCLUDED.muscle_secondary ELSE exercises.muscle_secondary END,
+           category = COALESCE(NULLIF(EXCLUDED.category, 'strength'), exercises.category),
+           notes = COALESCE(EXCLUDED.notes, exercises.notes),
+           metadata = exercises.metadata || EXCLUDED.metadata
+         RETURNING id, (xmax = 0) as is_insert`,
+        [
+          name,
+          name.toLowerCase().trim(),
+          primary,
+          secondary,
+          category,
+          format === 'exercise_library' ? 'fitbod_library' : 'fitbod_export',
+          description,
+          JSON.stringify(url ? { fitbod_url: url } : {}),
+        ]
       );
-      if (result.rows.length) imported++;
-      else existing++;
+      if (result.rows[0].is_insert) imported++;
+      else updated++;
+      exercises.push(name);
     }
+
+    existing = exercises.length - imported - updated;
 
     res.json({
-      total_unique: exerciseNames.size,
+      format,
+      total_rows: lines.length - 1,
+      total_unique: new Set(exercises).size,
       imported,
-      already_existed: existing,
-      exercises: [...exerciseNames].sort(),
+      updated,
+      exercises: [...new Set(exercises)].sort(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
