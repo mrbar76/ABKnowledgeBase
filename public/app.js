@@ -3158,40 +3158,62 @@ async function handleExerciseImportFile(input) {
 }
 
 function parseCSVToExercises(csvText) {
-  const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
-  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
-  const headers = parseCSVLine(lines[0]);
+  // Strip BOM
+  let text = csvText.replace(/^\uFEFF/, '');
+  // Parse all rows handling multi-line quoted fields
+  const rows = parseCSVRows(text);
+  if (rows.length < 2) throw new Error('CSV must have a header row and at least one data row');
+  const headers = rows[0].map(h => h.trim());
   const exercises = [];
-  for (let i = 1; i < lines.length; i++) {
-    const vals = parseCSVLine(lines[i]);
+  for (let i = 1; i < rows.length; i++) {
+    const vals = rows[i];
     if (vals.length < 2) continue;
+    // Skip rows where first cell (Name) is empty
+    if (!vals[0] || !vals[0].trim()) continue;
     const row = {};
     for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = vals[j] || '';
+      row[headers[j]] = (vals[j] || '').trim();
     }
     exercises.push(row);
   }
   return exercises;
 }
 
-function parseCSVLine(line) {
-  const result = [];
-  let current = '';
+function parseCSVRows(text) {
+  const rows = [];
+  let current = [];
+  let field = '';
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
     if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-      else if (ch === '"') { inQuotes = false; }
-      else { current += ch; }
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += ch;
+      }
     } else {
-      if (ch === '"') { inQuotes = true; }
-      else if (ch === ',') { result.push(current.trim()); current = ''; }
-      else { current += ch; }
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        current.push(field); field = '';
+      } else if (ch === '\r') {
+        // skip carriage return
+      } else if (ch === '\n') {
+        current.push(field); field = '';
+        rows.push(current); current = [];
+      } else {
+        field += ch;
+      }
     }
   }
-  result.push(current.trim());
-  return result;
+  // Last field/row
+  if (field || current.length) {
+    current.push(field);
+    rows.push(current);
+  }
+  return rows;
 }
 
 async function purgeExercises() {
