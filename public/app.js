@@ -1072,6 +1072,7 @@ const SPARTAN_PATHS = [
   '/training/plans','/training/plans/{id}','/training/coaching','/training/coaching/{id}',
   '/training/injuries','/training/injuries/{id}','/training/injuries/active/summary',
   '/training/day/{date}',
+  '/exercises','/exercises/equipment','/exercises/categories','/exercises/stats',
   '/gamification','/gamification/settings',
   '/intake','/search','/search/ai','/dashboard'
 ];
@@ -3004,7 +3005,6 @@ function loadFitness() {
     { key: 'history', label: 'History', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>' },
     { key: 'plans', label: 'Plans', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>' },
     { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
-    { key: 'exercises', label: 'Exercises', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -3018,230 +3018,101 @@ function loadFitness() {
   else if (fitnessSubTab === 'plans') loadUnifiedPlans();
   else if (fitnessSubTab === 'history') loadFitnessHistory();
   else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
-  else if (fitnessSubTab === 'exercises') loadExerciseCatalog();
 }
 
-// ─── Fitness > Exercises ──────────────────────────────────────
-let exerciseFilters = {};
-let exerciseSearchTimer;
-
-function debounceExerciseSearch(q) {
-  exerciseFilters._q = q;
-  clearTimeout(exerciseSearchTimer);
-  exerciseSearchTimer = setTimeout(() => loadExerciseCatalog(q), 300);
-}
-
-async function loadExerciseCatalog(searchQuery) {
-  const main = document.getElementById('fitness-content') || document.getElementById('main-content');
-  main.innerHTML = '<div class="loading">Loading exercises...</div>';
-  try {
-    const params = new URLSearchParams({ limit: '50' });
-    if (searchQuery) params.set('q', searchQuery);
-    for (const [k, v] of Object.entries(exerciseFilters)) {
-      if (k !== '_q' && v) params.set(k, v);
-    }
-    const data = await api('/exercises?' + params.toString());
-    const activeLevel = exerciseFilters.level || '';
-
-    const levelColors = { beginner: '#10b981', intermediate: '#f59e0b', advanced: '#ef4444' };
-
-    main.innerHTML = `
-      <div class="list-search-row" style="display:flex;gap:8px;margin-bottom:12px">
-        <input type="text" class="brain-search" placeholder="Search exercises..." value="${esc(searchQuery || '')}"
-          oninput="debounceExerciseSearch(this.value)" style="flex:1">
-        <button class="btn-submit btn-secondary btn-compact-sm" onclick="showExerciseImport()">Import</button>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="filter-btn ${!activeLevel ? 'active' : ''}" onclick="delete exerciseFilters.level;loadExerciseCatalog(exerciseFilters._q||'')">All</button>
-        ${['beginner','intermediate','advanced'].map(l =>
-          `<button class="filter-btn ${activeLevel === l ? 'active' : ''}" onclick="exerciseFilters.level='${activeLevel === l ? '' : l}';if(!exerciseFilters.level)delete exerciseFilters.level;loadExerciseCatalog(exerciseFilters._q||'')"
-            style="${activeLevel === l ? 'background:' + levelColors[l] + ';border-color:' + levelColors[l] + ';color:#fff' : ''}">${l}</button>`
-        ).join('')}
-      </div>
-      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">${data.total} exercise${data.total !== 1 ? 's' : ''}</div>
-      <div class="fade-in">
-        ${data.exercises.length ? data.exercises.map(ex => {
-          const mscore = ex.muscle_strength_score != null ? parseFloat(ex.muscle_strength_score) : 0;
-          const mscoreColor = mscore >= 90 ? '#ef4444' : mscore >= 70 ? '#f59e0b' : mscore >= 50 ? '#3b82f6' : '#6b7280';
-          return `<div class="card mb-sm" style="cursor:pointer" onclick="showExerciseDetail('${ex.id}')">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start">
-              <div style="flex:1">
-                <div style="font-weight:600;font-size:0.95rem">${esc(ex.name)}</div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-                  <span style="font-size:0.7rem;padding:2px 6px;border-radius:4px;background:${levelColors[ex.level] || '#6b7280'}22;color:${levelColors[ex.level] || '#6b7280'};border:1px solid ${levelColors[ex.level] || '#6b7280'}44">${esc(ex.level || 'unknown')}</span>
-                  <span style="font-size:0.7rem;padding:2px 6px;border-radius:4px;background:var(--bg-tertiary,#313244);color:var(--text-dim)">${esc(ex.equipment || 'Body Weight')}</span>
-                  ${ex.primary_muscle_groups ? `<span style="font-size:0.7rem;padding:2px 6px;border-radius:4px;background:var(--bg-tertiary,#313244);color:var(--text-dim)">${esc(ex.primary_muscle_groups)}</span>` : ''}
-                </div>
-              </div>
-              <div style="text-align:right;min-width:50px">
-                <div style="font-size:1.1rem;font-weight:700;color:${mscoreColor}">${mscore.toFixed(0)}</div>
-                <div style="font-size:0.6rem;color:var(--text-dim)">mscore</div>
-              </div>
-            </div>
-            ${ex.description ? `<div style="margin-top:6px;font-size:0.75rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(ex.description)}</div>` : ''}
-          </div>`;
-        }).join('') : '<div style="text-align:center;color:var(--text-dim);padding:40px">No exercises found</div>'}
-      </div>
-    `;
-  } catch (err) {
-    main.innerHTML = `<div style="text-align:center;color:#f38ba8;padding:40px">Error loading exercises: ${esc(err.message)}</div>`;
-  }
-}
-
-async function showExerciseDetail(id) {
-  try {
-    const ex = await api('/exercises/' + id);
-    const mscore = ex.muscle_strength_score != null ? parseFloat(ex.muscle_strength_score) : 0;
-    const mscoreColor = mscore >= 90 ? '#ef4444' : mscore >= 70 ? '#f59e0b' : mscore >= 50 ? '#3b82f6' : '#6b7280';
-    const levelColors = { beginner: '#10b981', intermediate: '#f59e0b', advanced: '#ef4444' };
-    const html = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span style="font-size:0.75rem;padding:3px 8px;border-radius:4px;background:${levelColors[ex.level] || '#6b7280'}22;color:${levelColors[ex.level] || '#6b7280'}">${esc(ex.level || 'unknown')}</span>
-          <span style="font-size:0.75rem;padding:3px 8px;border-radius:4px;background:var(--bg-tertiary,#313244);color:var(--text-dim)">${esc(ex.equipment || 'Body Weight')}</span>
-          ${ex.category ? `<span style="font-size:0.75rem;padding:3px 8px;border-radius:4px;background:var(--bg-tertiary,#313244);color:var(--text-dim)">${esc(ex.category)}</span>` : ''}
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:2rem;font-weight:700;color:${mscoreColor}">${mscore.toFixed(1)}</div>
-          <div style="font-size:0.7rem;color:var(--text-dim)">Muscle Strength Score</div>
-        </div>
-      </div>
-      ${ex.primary_muscle_groups ? `<div style="margin-bottom:8px"><strong>Primary Muscles:</strong> ${esc(ex.primary_muscle_groups)}</div>` : ''}
-      ${ex.description ? `<div style="margin-bottom:8px;color:var(--text-dim);font-size:0.85rem;line-height:1.5">${esc(ex.description)}</div>` : ''}
-      ${ex.sets_logged ? `<div style="font-size:0.8rem;color:var(--text-dim)">Sets logged (Fitbod community): <strong>${Number(ex.sets_logged).toLocaleString()}</strong></div>` : ''}
-    `;
-    openModal(ex.name, html);
-  } catch (err) {
-    openModal('Error', `<div style="color:#f38ba8">${esc(err.message)}</div>`);
-  }
-}
-
+// ─── Exercise Import (Settings menu) ─────────────────────────
 let _importExercises = [];
 
-function showExerciseImport() {
-  _importExercises = [];
-  const html = `
-    <div style="margin-bottom:12px;color:var(--text-dim);font-size:0.85rem">
-      Upload a JSON file containing exercise definitions from Fitbod or any source.<br>
-      Supports field names: name/Name, level/Level, equipment/Equipment, primary_muscle_groups/Primary Muscle Groups,
-      category/Category, muscle_strength_score/Muscle Strength Score, sets_logged/Sets Logged, description/Description.<br>
-      <strong>Existing exercises with the same name will be updated.</strong>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <label class="btn-submit" style="cursor:pointer;text-align:center;flex:1;padding:10px;margin:0">
-        Choose JSON File
-        <input type="file" accept=".json,application/json" onchange="handleExerciseFile(this)" style="display:none">
-      </label>
-      <button class="btn-submit btn-secondary" onclick="purgeExercises()" style="padding:10px;color:#f38ba8;border-color:#f38ba8">Purge All</button>
-    </div>
-    <textarea id="exercise-import-json-raw" placeholder='Paste JSON array here, e.g. [{"name":"Superman","level":"beginner","equipment":"Body Weight",...}]'
-      style="width:100%;min-height:120px;font-family:monospace;font-size:0.75rem;background:var(--bg-secondary,#1e1e2e);color:var(--text-primary,#cdd6f4);border:1px solid var(--border-color,#45475a);border-radius:8px;padding:10px;box-sizing:border-box;resize:vertical"></textarea>
-    <button class="btn-submit" onclick="parseExerciseImport()" style="width:100%;margin-top:8px;padding:10px">Preview Import</button>
-    <div id="exercise-import-preview" style="margin-top:12px"></div>
-    <div id="exercise-import-progress" style="margin-top:12px"></div>
-  `;
-  openModal('Import Exercises', html);
-}
-
-function handleExerciseFile(input) {
+async function handleExerciseImportFile(input) {
   const file = input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    document.getElementById('exercise-import-json-raw').value = e.target.result;
-    parseExerciseImport();
-  };
-  reader.readAsText(file);
-}
+  const btn = document.getElementById('exercise-import-btn');
+  const progress = document.getElementById('exercise-import-progress');
+  const result = document.getElementById('exercise-import-result');
 
-function parseExerciseImport() {
-  const raw = document.getElementById('exercise-import-json-raw').value.trim();
-  const preview = document.getElementById('exercise-import-preview');
-  if (!raw) { preview.innerHTML = '<div style="color:#f38ba8">No JSON provided</div>'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Reading file...';
+  result.style.display = 'none';
 
+  let exercises;
   try {
-    let parsed = JSON.parse(raw);
+    const text = await file.text();
+    let parsed = JSON.parse(text);
     if (!Array.isArray(parsed)) {
       if (parsed.exercises && Array.isArray(parsed.exercises)) parsed = parsed.exercises;
-      else { preview.innerHTML = '<div style="color:#f38ba8">JSON must be an array or have an "exercises" array</div>'; return; }
+      else throw new Error('Expected a JSON array or {exercises:[...]}');
     }
-    if (!parsed.length) { preview.innerHTML = '<div style="color:#f38ba8">Empty array</div>'; return; }
-
-    _importExercises = parsed;
-    const sample = parsed.slice(0, 5);
-    const equipList = [...new Set(parsed.map(e => e.equipment || e.Equipment || 'Body Weight'))];
-
-    preview.innerHTML = `
-      <div style="color:#a6e3a1;font-weight:600;margin-bottom:8px">${parsed.length} exercise${parsed.length !== 1 ? 's' : ''} found</div>
-      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Equipment types: ${equipList.slice(0, 10).join(', ')}${equipList.length > 10 ? ' (+' + (equipList.length - 10) + ' more)' : ''}</div>
-      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color,#45475a);border-radius:6px;padding:8px;font-size:0.75rem">
-        <table style="width:100%;border-collapse:collapse">
-          <tr style="border-bottom:1px solid var(--border-color,#45475a)">
-            <th style="text-align:left;padding:4px">#</th>
-            <th style="text-align:left;padding:4px">Name</th>
-            <th style="text-align:left;padding:4px">Equipment</th>
-            <th style="text-align:left;padding:4px">MScore</th>
-          </tr>
-          ${sample.map((e, i) => '<tr style="border-bottom:1px solid var(--border-color,#45475a)22"><td style="padding:4px">' + (i+1) + '</td><td style="padding:4px">' + esc(e.name || e.Name || '-') + '</td><td style="padding:4px">' + esc(e.equipment || e.Equipment || '-') + '</td><td style="padding:4px">' + (e.muscle_strength_score || e['Muscle Strength Score'] || '-') + '</td></tr>').join('')}
-          ${parsed.length > 5 ? '<tr><td colspan="4" style="padding:4px;color:var(--text-dim)">... and ' + (parsed.length - 5) + ' more</td></tr>' : ''}
-        </table>
-      </div>
-      <button class="btn-submit" onclick="executeExerciseImport()" style="width:100%;margin-top:12px;padding:12px;font-size:1rem">
-        Import ${parsed.length} Exercise${parsed.length !== 1 ? 's' : ''}
-      </button>
-    `;
-  } catch (e) {
-    preview.innerHTML = '<div style="color:#f38ba8">Invalid JSON: ' + esc(e.message) + '</div>';
+    exercises = parsed;
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Choose JSON File';
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Error reading file: ' + err.message;
+    input.value = '';
+    return;
   }
-}
 
-async function executeExerciseImport() {
-  if (!_importExercises.length) return;
-  const progress = document.getElementById('exercise-import-progress');
-  const total = _importExercises.length;
+  const total = exercises.length;
   const BATCH = 500;
-  let imported = 0, errors = 0, allResults = [];
+  let imported = 0, errors = 0;
 
-  const batches = [];
-  for (let i = 0; i < _importExercises.length; i += BATCH) {
-    batches.push(_importExercises.slice(i, i + BATCH));
-  }
-  progress.innerHTML = '<div style="color:var(--text-dim)">Importing... 0/' + total + '</div>';
+  progress.style.display = 'block';
+  btn.textContent = 'Importing...';
+  const bar = document.getElementById('exercise-import-bar');
+  const status = document.getElementById('exercise-import-status');
+  const count = document.getElementById('exercise-import-count');
 
-  for (let bi = 0; bi < batches.length; bi++) {
+  for (let i = 0; i < total; i += BATCH) {
+    const batch = exercises.slice(i, i + BATCH);
     try {
-      const data = await api('/exercises/bulk', {
+      const res = await api('/exercises/bulk', {
         method: 'POST',
-        body: JSON.stringify({ exercises: batches[bi] })
+        body: JSON.stringify({ exercises: batch })
       });
-      imported += data.imported || 0;
-      errors += data.errors || 0;
-      if (data.results) allResults.push(...data.results);
-    } catch (e) {
-      errors += batches[bi].length;
-      allResults.push({ error: e.message, batch: bi + 1 });
+      imported += res.imported || 0;
+      errors += res.errors || 0;
+    } catch (err) {
+      errors += batch.length;
     }
-    progress.innerHTML = '<div style="color:var(--text-dim)">Importing... ' + (imported + errors) + '/' + total + '</div>';
+    const done = Math.min(i + BATCH, total);
+    const pct = Math.round((done / total) * 100);
+    bar.style.width = pct + '%';
+    status.textContent = 'Importing... ' + done + ' of ' + total;
+    count.textContent = pct + '%';
   }
 
-  const errorItems = allResults.filter(r => r.error);
-  progress.innerHTML = '<div style="color:#a6e3a1;font-weight:600;font-size:1.1rem;margin-bottom:6px">' + imported + ' exercise' + (imported !== 1 ? 's' : '') + ' imported</div>'
-    + (errors ? '<div style="color:#f38ba8;margin-bottom:6px">' + errors + ' error' + (errors !== 1 ? 's' : '') + '</div>' : '')
-    + (errorItems.length ? '<div style="max-height:150px;overflow-y:auto;font-size:0.75rem;color:#f38ba8;background:var(--bg-secondary,#1e1e2e);padding:8px;border-radius:6px;margin-top:4px">' + errorItems.map(e => '<div>' + esc(e.name || 'batch ' + e.batch) + ': ' + esc(e.error) + '</div>').join('') + '</div>' : '')
-    + '<button class="btn-submit" onclick="closeModal();loadExerciseCatalog(\'\')" style="width:100%;margin-top:12px;padding:10px">Done</button>';
-  _importExercises = [];
+  progress.style.display = 'none';
+  btn.disabled = false;
+  btn.textContent = 'Choose JSON File';
+  input.value = '';
+
+  result.style.display = 'block';
+  result.style.color = errors > 0 ? 'var(--yellow)' : 'var(--green)';
+  result.textContent = 'Done: ' + imported + ' imported/updated, ' + errors + ' errors (' + total + ' total)';
+
+  if (imported > 0) showToast('Imported ' + imported + ' exercises', 'success');
 }
 
 async function purgeExercises() {
   if (!confirm('Purge ALL exercises from the catalog? This cannot be undone.')) return;
+  const btn = document.getElementById('exercise-purge-btn');
+  const result = document.getElementById('exercise-import-result');
+  btn.disabled = true;
+  btn.textContent = 'Purging...';
   try {
     const data = await api('/exercises/purge/all', { method: 'DELETE' });
-    alert('Purged ' + data.count + ' exercises');
-    closeModal();
-    loadExerciseCatalog('');
+    result.style.display = 'block';
+    result.style.color = 'var(--green)';
+    result.textContent = 'Purged ' + data.count + ' exercises';
+    showToast('Purged ' + data.count + ' exercises', 'success');
   } catch (err) {
-    alert('Purge failed: ' + err.message);
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Purge failed: ' + err.message;
   }
+  btn.disabled = false;
+  btn.textContent = 'Purge All';
 }
 
 // ─── Fitness > Today ──────────────────────────────────────────

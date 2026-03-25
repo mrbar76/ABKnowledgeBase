@@ -138,6 +138,23 @@
               </div>
               <div id="chatgpt-import-result" class="sm-result"></div>
             </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Exercise Catalog (Fitbod)</div>
+              <div class="sm-card-desc">Import 1060+ exercises with equipment, muscle groups &amp; mscore. Duplicates auto-updated.</div>
+              <input type="file" id="exercise-import-file" accept=".json" style="display:none" onchange="handleExerciseImportFile(this)">
+              <div class="sm-btn-row">
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('exercise-import-file').click()" id="exercise-import-btn" style="flex:1">Choose JSON File</button>
+                <button class="btn-action btn-action-danger" onclick="purgeExercises()" id="exercise-purge-btn" style="flex:0 0 auto;font-size:0.75rem">Purge All</button>
+              </div>
+              <div id="exercise-import-progress" style="display:none;margin-top:8px">
+                <div class="sm-progress-info">
+                  <span id="exercise-import-status">Importing...</span>
+                  <span id="exercise-import-count"></span>
+                </div>
+                <div class="sm-progress-bar"><div id="exercise-import-bar" class="sm-progress-fill"></div></div>
+              </div>
+              <div id="exercise-import-result" class="sm-result"></div>
+            </div>
           </div>
         </div>
 
