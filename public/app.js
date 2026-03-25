@@ -1391,6 +1391,27 @@ USE THESE ENDPOINT PATTERNS
 - Daily plans: \`GET /daily-plans?from=&to=\`, create with \`POST /daily-plans\`, \`POST /daily-plans/week\` for 7 days at once
 - Coaching sessions: list by date range, create after substantive reviews
 - Full day view when needed: \`GET /training/day/YYYY-MM-DD\`
+EXERCISE LIBRARY & GYM PROFILES
+- \`GET /exercises/available\` — exercises matching the active gym profile's equipment
+- \`GET /exercises?muscle=chest&equipment=dumbbell\` — filter by muscle/equipment
+- \`GET /exercises/gym-profiles/active\` — current gym profile + equipment list
+- \`POST /exercises/import-fitbod\` — import from Fitbod CSV export
+- \`POST /exercises/gym-profiles\` — create profile (name, equipment[], is_active)
+- \`PUT /exercises/gym-profiles/:id\` — update profile
+- \`GET /exercises/equipment\` — full equipment catalog for picker
+
+WORKOUT PLANNING (Fitbod-compatible)
+When planning workouts, ALWAYS:
+1. Check the active gym profile: \`GET /exercises/gym-profiles/active\`
+2. Only suggest exercises available for that profile's equipment: \`GET /exercises/available\`
+3. Use EXACT exercise names from the library (these match Fitbod naming so Avi can quickly find them)
+4. Structure workouts Fitbod-style:
+   - Warmup: 1-2 light sets of the first compound exercise
+   - Main exercises: 3-5 exercises, specify sets × reps @ weight guidance
+   - Supersets: pair exercises clearly as "SUPERSET: Exercise A + Exercise B"
+   - Carries/finishers: at the end
+5. In workout_notes, format as a clean exercise list Avi can reference while building in Fitbod
+
 WORKOUT LOGGING
 Use \`POST /workouts\`. Required: \`workout_type\`.
 Include when relevant:

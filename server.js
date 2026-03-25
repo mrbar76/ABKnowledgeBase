@@ -23,6 +23,7 @@ const outlookRoutes = require('./routes/outlook');
 const gamificationRoutes = require('./routes/gamification');
 const recoveryRoutes = require('./routes/recovery');
 const dailyPlanRoutes = require('./routes/daily-plans');
+const exerciseRoutes = require('./routes/exercises');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -157,6 +158,7 @@ app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/recovery', recoveryRoutes);
 app.use('/api/daily-plans', dailyPlanRoutes);
+app.use('/api/exercises', exerciseRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
