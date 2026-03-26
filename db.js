@@ -567,6 +567,22 @@ async function initDB() {
   await safeQuery('gym_profiles +notes', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS notes TEXT`);
   await safeQuery('gym_profiles +created_at', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
   await safeQuery('gym_profiles +updated_at', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+  // Migrate is_active → is_primary if fix branch created the table first
+  await safeQuery('gym_profiles migrate is_active→is_primary', `
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gym_profiles' AND column_name = 'is_active') THEN
+        UPDATE gym_profiles SET is_primary = is_active WHERE is_primary = false AND is_active = true;
+        ALTER TABLE gym_profiles DROP COLUMN is_active;
+      END IF;
+    END $$`);
+  // Migrate equipment TEXT[] → JSONB if fix branch created it as array
+  await safeQuery('gym_profiles migrate equipment type', `
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gym_profiles' AND column_name = 'equipment' AND udt_name = '_text') THEN
+        ALTER TABLE gym_profiles ALTER COLUMN equipment TYPE JSONB USING to_jsonb(equipment);
+        ALTER TABLE gym_profiles ALTER COLUMN equipment SET DEFAULT '[]'::jsonb;
+      END IF;
+    END $$`);
 
   // -- daily_plans migrations --
   await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
