@@ -106,27 +106,27 @@ function computeSleepScore(ctx) {
 // TSB = CTL - ATL ("form" / training stress balance)
 function computeTrainingLoadScore(allWorkouts, targetDate) {
   // Build daily load map from all available workouts
+  // Standard session-RPE method: load = effort × duration_minutes
+  // Typical ranges: easy 50-150, moderate 200-350, hard 350-500
   const dailyLoad = {};
   for (const w of allWorkouts) {
     const d = dateStr(w.workout_date);
     const effort = Number(w.effort) || 5;
     const wType = (w.workout_type || '').toLowerCase();
 
-    // Skip pure recovery/walk sessions (effort ≤ 3 AND recovery-type)
-    // These aren't training stress — they're recovery activities
+    // Skip recovery-type sessions at low effort — these aren't training stress
     const isRecovery = ['walk', 'recovery', 'stretch', 'yoga', 'rest'].includes(wType);
-    if (isRecovery && effort <= 3) continue;
+    if (isRecovery && effort <= 4) continue;
 
-    // Cap duration at 300 min (5 hrs) — catches bad parses
+    // Cap duration at 180 min (3 hrs) — catches bad parses and unrealistic values
     let duration = Number(w.duration_minutes) || 45;
-    if (duration > 300) duration = Math.min(Math.round(duration / 60), 300);
+    if (duration > 300) duration = Math.min(Math.round(duration / 60), 180);
+    if (duration > 180) duration = 180;
     if (duration < 1) duration = 45;
 
-    // Exponential effort scaling: effort^1.5 × duration
-    // E2 walk 60min = 2.83 × 60 = 170   (low impact)
-    // E5 moderate 45min = 11.2 × 45 = 503  (moderate)
-    // E9 race sim 30min = 27 × 30 = 810   (high impact)
-    const load = Math.pow(effort, 1.5) * duration;
+    // Session-RPE load: effort × duration (standard sports science method)
+    // E5 × 45min = 225 (moderate), E7 × 60min = 420 (hard), E9 × 50min = 450 (very hard)
+    const load = effort * duration;
     dailyLoad[d] = (dailyLoad[d] || 0) + load;
   }
 
@@ -152,22 +152,22 @@ function computeTrainingLoadScore(allWorkouts, targetDate) {
   const tsb = Math.round(ctl - atl);
 
   // Convert TSB to a 0-100 score
-  // With exponential effort scaling, typical TSB ranges are roughly -150 to +50
-  // TSB +40 or higher → 100 (peaked, fully fresh)
+  // With session-RPE loads, typical TSB ranges are roughly -80 to +30
+  // TSB +25 or higher → 100 (peaked, fully fresh)
   // TSB 0 → 70 (balanced)
-  // TSB -50 → 40 (heavy training block)
-  // TSB -100 or lower → 15 (danger zone / significant overreaching)
+  // TSB -40 → 40 (heavy training block)
+  // TSB -80 or lower → 15 (danger zone / significant overreaching)
   let score;
-  if (tsb >= 40) score = 100;
-  else if (tsb >= 0) score = 70 + Math.round((tsb / 40) * 30);         // 70-100
-  else if (tsb >= -100) score = 15 + Math.round(((tsb + 100) / 100) * 55); // 15-70
+  if (tsb >= 25) score = 100;
+  else if (tsb >= 0) score = 70 + Math.round((tsb / 25) * 30);         // 70-100
+  else if (tsb >= -80) score = 15 + Math.round(((tsb + 80) / 80) * 55); // 15-70
   else score = 15;
 
   score = clamp(score);
 
   // Descriptive label
   let tsbLabel;
-  if (tsb >= 20) tsbLabel = 'peaked';
+  if (tsb >= 15) tsbLabel = 'peaked';
   else if (tsb >= 0) tsbLabel = 'fresh';
   else if (tsb >= -30) tsbLabel = 'training';
   else if (tsb >= -80) tsbLabel = 'overreaching';

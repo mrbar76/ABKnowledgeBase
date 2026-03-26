@@ -7,11 +7,12 @@ All notable changes to the AB Brain platform are documented here.
 ## [1.3.1] — 2026-03-26
 
 ### Fixed
-- **TSB calculation completely overhauled** — values were unrealistically negative (-277 on a rest day)
-  - **Exponential effort scaling**: `effort^1.5 × duration` replaces linear `effort × duration`. A 30-min E9 race sim now produces 4.8× the load of a 60-min E2 walk (was only 2.25×).
+- **TSB calculation completely overhauled** — values were unrealistically negative (-336 on a rest day)
   - **Correct EWMA decay constants**: ATL uses `exp(-1/7) ≈ 0.867`, CTL uses `exp(-1/42) ≈ 0.976`. Previous values (`2/(N+1)`) caused massive spikes and slow decay.
-  - **Recovery sessions excluded**: walk/yoga/stretch/recovery at effort ≤3 no longer count as training stress.
-  - **TSB scoring rescaled**: now maps -100→+40 range (was -30→+25) to match realistic values.
+  - **Standard session-RPE load**: `effort × duration` (linear, per sports science). Initial attempt at `effort^1.5` produced loads too large (1350 for one session).
+  - **Recovery sessions excluded**: walk/yoga/stretch/recovery at effort ≤4 no longer count as training stress.
+  - **Duration capped at 180 min**: catches bad data (600-min "dog walks") and unrealistic parses.
+  - **TSB scoring rescaled**: maps -80→+25 range to 15→100 score. Typical values: fresh +10, training -20, overreaching -50.
 - **Gym profiles POST 503 error** — table had `equipment TEXT[]` (array) from wrong branch deployment. Migration now drops and recreates as `JSONB`. Also migrated `is_active` → `is_primary` column.
 - **Duplicate gym profile routes removed** — was in both `routes/exercises.js` and `routes/gym-profiles.js`. Now only in `gym-profiles.js` at `/api/gym-profiles`.
 - **Import-fitbod route fixed** — referenced non-existent columns (`name_normalized`, `muscle_primary`, `muscle_secondary`). Updated to use actual schema (`name`, `primary_muscle_groups`, `secondary_muscle_groups`).
