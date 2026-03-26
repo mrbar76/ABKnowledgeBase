@@ -262,7 +262,7 @@
               <div class="sm-collapse">
                 <div class="sm-doc-text">
                   <p><strong>Recovery Score</strong> — 0-100 composite: TSB training load (40%), muscle freshness (30%), nutrition (20%), sleep (10%). Uses EWMA (exponential weighted moving average) like TrainingPeaks.</p>
-                  <p><strong>TSB (Training Stress Balance)</strong> — CTL (42-day fitness) minus ATL (7-day fatigue). Positive = rested, negative = fatigued. Based on session-RPE (effort × duration).</p>
+                  <p><strong>TSB (Training Stress Balance)</strong> — CTL (42-day fitness) minus ATL (7-day fatigue). Positive = rested, negative = fatigued. Load = effort^1.5 × duration (exponential scaling). Recovery sessions (walks, yoga at effort ≤3) excluded.</p>
                   <p><strong>Muscle Freshness</strong> — Tracks per-muscle recovery windows. High-effort sessions (7+) need up to 1.5× longer recovery. Uses structured exercises when available, falls back to workout_type.</p>
                   <p><strong>Daily Plans</strong> — Coach creates plans with structured exercises (warmup/main/superset/circuit/finisher). After workout, actual exercises are logged for plan-vs-actual comparison.</p>
                   <p><strong>Gym Profiles</strong> — Equipment sets (Home/Gym/Travel). Coach filters exercises to match your available equipment. Supports 42 equipment categories.</p>
@@ -293,6 +293,21 @@
             </div>
 
             <!-- Version History -->
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.3.1 — Mar 26, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>TSB calculation overhauled</strong> — was showing -277 on rest days. Fixed: exponential effort scaling (effort^1.5 × duration), correct EWMA decay constants (exp(-1/N)), recovery sessions excluded from training stress.</p>
+                  <p><strong>Gym profiles POST fixed</strong> — equipment column was TEXT[] instead of JSONB from wrong branch deployment. Migration drops and recreates correctly.</p>
+                  <p><strong>Duplicate routes cleaned up</strong> — gym profiles removed from exercises.js, now only in gym-profiles.js.</p>
+                  <p><strong>Import-fitbod route fixed</strong> — updated to use actual column names after merge.</p>
+                  <p><strong>Documentation added to Settings</strong> — How It Works, Key Concepts, Architecture Decisions, and full version history.</p>
+                </div>
+              </div>
+            </div>
+
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.3.0 — Mar 25, 2026 <span class="sm-chevron">&#9654;</span>
@@ -381,7 +396,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.3.0</span>
+          AB Brain <span id="sm-version">v1.3.1</span>
         </div>
 
       </div>
