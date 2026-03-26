@@ -261,8 +261,8 @@
               </div>
               <div class="sm-collapse">
                 <div class="sm-doc-text">
-                  <p><strong>Recovery Score</strong> — 0-100 composite: TSB training load (40%), muscle freshness (30%), nutrition (20%), sleep (10%). Uses EWMA (exponential weighted moving average) like TrainingPeaks.</p>
-                  <p><strong>TSB (Training Stress Balance)</strong> — CTL (42-day fitness) minus ATL (7-day fatigue). Positive = rested, negative = fatigued. Load = effort^1.5 × duration (exponential scaling). Recovery sessions (walks, yoga at effort ≤3) excluded.</p>
+                  <p><strong>Recovery Score</strong> — 0-100 composite: sleep (30%), TSB training load (25%), muscle freshness (20%), injuries (10%), nutrition (10%), subjective (5%). Uses EWMA (exponential weighted moving average) like TrainingPeaks.</p>
+                  <p><strong>TSB (Training Stress Balance)</strong> — CTL (42-day fitness) minus ATL (7-day fatigue). Load = effort × duration (session-RPE). Labels: fresh (+10 to -10), optimal (-10 to -30), productive (-30 to -60), accumulated fatigue (-60 to -100), overreaching (-100 to -150), danger (&lt;-150). Recovery sessions (walks, yoga at effort ≤4) excluded.</p>
                   <p><strong>Muscle Freshness</strong> — Tracks per-muscle recovery windows. High-effort sessions (7+) need up to 1.5× longer recovery. Uses structured exercises when available, falls back to workout_type.</p>
                   <p><strong>Daily Plans</strong> — Coach creates plans with structured exercises (warmup/main/superset/circuit/finisher). After workout, actual exercises are logged for plan-vs-actual comparison.</p>
                   <p><strong>Gym Profiles</strong> — Equipment sets (Home/Gym/Travel). Coach filters exercises to match your available equipment. Supports 42 equipment categories.</p>

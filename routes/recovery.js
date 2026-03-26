@@ -151,26 +151,37 @@ function computeTrainingLoadScore(allWorkouts, targetDate) {
 
   const tsb = Math.round(ctl - atl);
 
-  // Convert TSB to a 0-100 score
-  // With session-RPE loads, typical TSB ranges are roughly -80 to +30
-  // TSB +25 or higher → 100 (peaked, fully fresh)
-  // TSB 0 → 70 (balanced)
-  // TSB -40 → 40 (heavy training block)
-  // TSB -80 or lower → 15 (danger zone / significant overreaching)
+  // Convert TSB to a 0-100 training load score
+  // Negative TSB = more recent fatigue than long-term fitness (normal during training)
+  // The "optimal" zone is slightly negative — it means you're training productively
+  // Only extreme negatives indicate real danger
+  //
+  // TSB > +10     → 60 (detraining — not enough stimulus)
+  // +10 to -10    → 90 (fresh — ready for quality sessions)
+  // -10 to -30    → 100 (optimal — productive training zone)
+  // -30 to -60    → 75 (productive — meaningful training block)
+  // -60 to -100   → 50 (accumulated fatigue — monitor closely)
+  // -100 to -150  → 30 (overreaching — need planned recovery)
+  // < -150        → 15 (danger — excessive overload)
   let score;
-  if (tsb >= 25) score = 100;
-  else if (tsb >= 0) score = 70 + Math.round((tsb / 25) * 30);         // 70-100
-  else if (tsb >= -80) score = 15 + Math.round(((tsb + 80) / 80) * 55); // 15-70
-  else score = 15;
+  if (tsb > 10) score = 60;                                                    // detraining
+  else if (tsb >= -10) score = 90;                                             // fresh
+  else if (tsb >= -30) score = 100;                                            // optimal
+  else if (tsb >= -60) score = 75 + Math.round(((tsb + 60) / 30) * 25);       // 75-100 (productive→optimal)
+  else if (tsb >= -100) score = 50 + Math.round(((tsb + 100) / 40) * 25);     // 50-75 (accumulated→productive)
+  else if (tsb >= -150) score = 30 + Math.round(((tsb + 150) / 50) * 20);     // 30-50 (overreaching)
+  else score = 15;                                                             // danger
 
   score = clamp(score);
 
   // Descriptive label
   let tsbLabel;
-  if (tsb >= 15) tsbLabel = 'peaked';
-  else if (tsb >= 0) tsbLabel = 'fresh';
-  else if (tsb >= -30) tsbLabel = 'training';
-  else if (tsb >= -80) tsbLabel = 'overreaching';
+  if (tsb > 10) tsbLabel = 'detraining';
+  else if (tsb >= -10) tsbLabel = 'fresh';
+  else if (tsb >= -30) tsbLabel = 'optimal';
+  else if (tsb >= -60) tsbLabel = 'productive';
+  else if (tsb >= -100) tsbLabel = 'accumulated fatigue';
+  else if (tsb >= -150) tsbLabel = 'overreaching';
   else tsbLabel = 'danger';
 
   return {
