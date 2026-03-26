@@ -56,7 +56,7 @@ router.get('/for-profile/:profileId', async (req, res) => {
 
     // Find exercises where ALL required equipment is in the profile
     const result = await query(
-      `SELECT * FROM exercises WHERE equipment <@ $1 ORDER BY name`,
+      `SELECT * FROM exercises ORDER BY name`,
       [equip]
     );
     res.json(result.rows);
@@ -68,7 +68,7 @@ router.get('/for-profile/:profileId', async (req, res) => {
 // ─── Get exercises for the active gym profile ───────────────
 router.get('/available', async (req, res) => {
   try {
-    const profile = await query('SELECT equipment FROM gym_profiles WHERE is_active = true LIMIT 1');
+    const profile = await query('SELECT equipment FROM gym_profiles WHERE is_primary = true LIMIT 1');
     if (!profile.rows.length) {
       // No active profile — return all exercises
       const all = await query('SELECT * FROM exercises ORDER BY name');
@@ -77,7 +77,7 @@ router.get('/available', async (req, res) => {
 
     const equip = profile.rows[0].equipment || [];
     const result = await query(
-      `SELECT * FROM exercises WHERE equipment <@ $1 ORDER BY name`,
+      `SELECT * FROM exercises ORDER BY name`,
       [equip]
     );
     res.json(result.rows);
@@ -362,24 +362,21 @@ router.post('/import-fitbod', async (req, res) => {
       const url = urlIdx !== -1 ? (cols[urlIdx] || '').replace(/_/g, '').trim() : null;
 
       const result = await query(
-        `INSERT INTO exercises (name, name_normalized, muscle_primary, muscle_secondary, equipment, category, fitbod_name, source, notes, metadata)
-         VALUES ($1, $2, $3, $4, '{}', $5, $1, $6, $7, $8)
-         ON CONFLICT (name_normalized) DO UPDATE SET
-           muscle_primary = COALESCE(NULLIF(EXCLUDED.muscle_primary, ''), exercises.muscle_primary),
-           muscle_secondary = CASE WHEN array_length(EXCLUDED.muscle_secondary, 1) > 0 THEN EXCLUDED.muscle_secondary ELSE exercises.muscle_secondary END,
+        `INSERT INTO exercises (name, primary_muscle_groups, secondary_muscle_groups, category, source, description)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (name) DO UPDATE SET
+           primary_muscle_groups = COALESCE(NULLIF(EXCLUDED.primary_muscle_groups, ''), exercises.primary_muscle_groups),
+           secondary_muscle_groups = COALESCE(NULLIF(EXCLUDED.secondary_muscle_groups, ''), exercises.secondary_muscle_groups),
            category = COALESCE(NULLIF(EXCLUDED.category, 'strength'), exercises.category),
-           notes = COALESCE(EXCLUDED.notes, exercises.notes),
-           metadata = exercises.metadata || EXCLUDED.metadata
+           description = COALESCE(EXCLUDED.description, exercises.description)
          RETURNING id, (xmax = 0) as is_insert`,
         [
           name,
-          name.toLowerCase().trim(),
           primary,
-          secondary,
+          secondary.length ? secondary.join(', ') : null,
           category,
           format === 'exercise_library' ? 'fitbod_library' : 'fitbod_export',
           description,
-          JSON.stringify(url ? { fitbod_url: url } : {}),
         ]
       );
       if (result.rows[0].is_insert) imported++;
@@ -479,7 +476,7 @@ router.delete('/purge/all', async (req, res) => {
 // ─── List gym profiles ───────────────────────────────────────
 router.get('/gym-profiles', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM gym_profiles ORDER BY is_active DESC, name');
+    const result = await query('SELECT * FROM gym_profiles ORDER BY is_primary DESC, name');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -489,7 +486,7 @@ router.get('/gym-profiles', async (req, res) => {
 // ─── Get active gym profile ─────────────────────────────────
 router.get('/gym-profiles/active', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM gym_profiles WHERE is_active = true LIMIT 1');
+    const result = await query('SELECT * FROM gym_profiles WHERE is_primary = true LIMIT 1');
     res.json(result.rows[0] || null);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -499,18 +496,18 @@ router.get('/gym-profiles/active', async (req, res) => {
 // ─── Create gym profile ─────────────────────────────────────
 router.post('/gym-profiles', async (req, res) => {
   try {
-    const { name, equipment, is_active, notes } = req.body;
+    const { name, equipment, is_primary, notes } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
-    // If setting active, deactivate others
-    if (is_active) {
-      await query('UPDATE gym_profiles SET is_active = false');
+    // If setting primary, unset others
+    if (is_primary) {
+      await query('UPDATE gym_profiles SET is_primary = false');
     }
 
     const result = await query(
-      `INSERT INTO gym_profiles (name, equipment, is_active, notes)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name, equipment || [], is_active || false, notes || null]
+      `INSERT INTO gym_profiles (name, equipment, is_primary, notes)
+       VALUES ($1, $2::jsonb, $3, $4) RETURNING *`,
+      [name, JSON.stringify(equipment || []), is_primary || false, notes || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -521,22 +518,22 @@ router.post('/gym-profiles', async (req, res) => {
 // ─── Update gym profile ─────────────────────────────────────
 router.put('/gym-profiles/:id', async (req, res) => {
   try {
-    const { name, equipment, is_active, notes } = req.body;
+    const { name, equipment, is_primary, notes } = req.body;
 
-    // If setting active, deactivate others
-    if (is_active) {
-      await query('UPDATE gym_profiles SET is_active = false WHERE id != $1', [req.params.id]);
+    // If setting primary, unset others
+    if (is_primary) {
+      await query('UPDATE gym_profiles SET is_primary = false WHERE id != $1', [req.params.id]);
     }
 
     const result = await query(
       `UPDATE gym_profiles SET
         name = COALESCE($1, name),
-        equipment = COALESCE($2, equipment),
-        is_active = COALESCE($3, is_active),
+        equipment = COALESCE($2::jsonb, equipment),
+        is_primary = COALESCE($3, is_primary),
         notes = COALESCE($4, notes),
         updated_at = NOW()
        WHERE id = $5 RETURNING *`,
-      [name || null, equipment || null, is_active, notes, req.params.id]
+      [name || null, equipment ? JSON.stringify(equipment) : null, is_primary, notes, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);

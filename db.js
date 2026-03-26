@@ -809,43 +809,8 @@ async function initDB() {
     WHERE w.workout_date = dp.plan_date AND w.daily_plan_id IS NULL
   `);
 
-  // ===== EXERCISES & GYM PROFILES =====
-
-  await safeQuery('exercises table', `
-    CREATE TABLE IF NOT EXISTS exercises (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT NOT NULL,
-      name_normalized TEXT NOT NULL,
-      muscle_primary TEXT,
-      muscle_secondary TEXT[],
-      equipment TEXT[],
-      category TEXT DEFAULT 'strength',
-      force_type TEXT,
-      is_compound BOOLEAN DEFAULT false,
-      is_warmup_eligible BOOLEAN DEFAULT true,
-      fitbod_name TEXT,
-      source TEXT DEFAULT 'seed',
-      notes TEXT,
-      metadata JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(name_normalized)
-    )`);
-  await safeQuery('exercises idx', `CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_primary)`);
-  await safeQuery('exercises equip idx', `CREATE INDEX IF NOT EXISTS idx_exercises_equipment ON exercises USING gin(equipment)`);
-
-  await safeQuery('gym_profiles table', `
-    CREATE TABLE IF NOT EXISTS gym_profiles (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT NOT NULL,
-      is_active BOOLEAN DEFAULT false,
-      equipment TEXT[] DEFAULT '{}',
-      notes TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-
-  // Seed Fitbod equipment categories (matches Fitbod's gym profile)
-  // Equipment list is used by gym profiles and exercise filtering
+  // ===== EQUIPMENT CATALOG =====
+  // exercises and gym_profiles tables already created above — only add equipment_catalog here
   await safeQuery('equipment_catalog table', `
     CREATE TABLE IF NOT EXISTS equipment_catalog (
       id TEXT PRIMARY KEY,
@@ -899,86 +864,7 @@ async function initDB() {
     ON CONFLICT (id) DO NOTHING
   `);
 
-  // Seed common Fitbod exercises (curated list with exact Fitbod naming)
-  await safeQuery('seed exercises', `
-    INSERT INTO exercises (name, name_normalized, muscle_primary, muscle_secondary, equipment, category, is_compound, fitbod_name, source) VALUES
-      -- CHEST (Upper Push)
-      ('Barbell Bench Press', 'barbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['barbell','flat_bench'], 'strength', true, 'Barbell Bench Press', 'fitbod'),
-      ('Dumbbell Bench Press', 'dumbbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['dumbbell','flat_bench'], 'strength', true, 'Dumbbell Bench Press', 'fitbod'),
-      ('Incline Barbell Bench Press', 'incline barbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['barbell','incline_bench'], 'strength', true, 'Incline Barbell Bench Press', 'fitbod'),
-      ('Incline Dumbbell Bench Press', 'incline dumbbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['dumbbell','incline_bench'], 'strength', true, 'Incline Dumbbell Bench Press', 'fitbod'),
-      ('Decline Barbell Bench Press', 'decline barbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['barbell','decline_bench'], 'strength', true, 'Decline Barbell Bench Press', 'fitbod'),
-      ('Dumbbell Fly', 'dumbbell fly', 'chest', ARRAY['shoulders'], ARRAY['dumbbell','flat_bench'], 'strength', false, 'Dumbbell Fly', 'fitbod'),
-      ('Incline Dumbbell Fly', 'incline dumbbell fly', 'chest', ARRAY['shoulders'], ARRAY['dumbbell','incline_bench'], 'strength', false, 'Incline Dumbbell Fly', 'fitbod'),
-      ('Cable Fly', 'cable fly', 'chest', ARRAY['shoulders'], ARRAY['cable_crossover'], 'strength', false, 'Cable Fly', 'fitbod'),
-      ('Machine Chest Press', 'machine chest press', 'chest', ARRAY['triceps','shoulders'], ARRAY['chest_press_machine'], 'strength', true, 'Machine Chest Press', 'fitbod'),
-      ('Push Up', 'push up', 'chest', ARRAY['triceps','shoulders','core'], ARRAY['bodyweight'], 'strength', true, 'Push Up', 'fitbod'),
-      -- BACK (Upper Pull)
-      ('Barbell Row', 'barbell row', 'back', ARRAY['biceps','shoulders'], ARRAY['barbell'], 'strength', true, 'Barbell Row', 'fitbod'),
-      ('Dumbbell Row', 'dumbbell row', 'back', ARRAY['biceps','shoulders'], ARRAY['dumbbell','flat_bench'], 'strength', true, 'Dumbbell Row', 'fitbod'),
-      ('Pull Up', 'pull up', 'back', ARRAY['biceps','shoulders'], ARRAY['pull_up_bar'], 'strength', true, 'Pull Up', 'fitbod'),
-      ('Chin Up', 'chin up', 'back', ARRAY['biceps'], ARRAY['pull_up_bar'], 'strength', true, 'Chin Up', 'fitbod'),
-      ('Lat Pulldown', 'lat pulldown', 'back', ARRAY['biceps','shoulders'], ARRAY['lat_pulldown'], 'strength', true, 'Lat Pulldown', 'fitbod'),
-      ('Seated Cable Row', 'seated cable row', 'back', ARRAY['biceps','shoulders'], ARRAY['cable_machine'], 'strength', true, 'Seated Cable Row', 'fitbod'),
-      ('T-Bar Row', 't-bar row', 'back', ARRAY['biceps','shoulders'], ARRAY['barbell'], 'strength', true, 'T-Bar Row', 'fitbod'),
-      ('Face Pull', 'face pull', 'back', ARRAY['shoulders'], ARRAY['cable_machine'], 'strength', false, 'Face Pull', 'fitbod'),
-      ('Barbell Deadlift', 'barbell deadlift', 'back', ARRAY['glutes','hamstrings','core'], ARRAY['barbell'], 'strength', true, 'Barbell Deadlift', 'fitbod'),
-      ('Dumbbell Shrug', 'dumbbell shrug', 'back', ARRAY['traps'], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Shrug', 'fitbod'),
-      -- SHOULDERS
-      ('Dumbbell Shoulder Press', 'dumbbell shoulder press', 'shoulders', ARRAY['triceps'], ARRAY['dumbbell'], 'strength', true, 'Dumbbell Shoulder Press', 'fitbod'),
-      ('Barbell Shoulder Press', 'barbell shoulder press', 'shoulders', ARRAY['triceps'], ARRAY['barbell'], 'strength', true, 'Barbell Shoulder Press', 'fitbod'),
-      ('Dumbbell Lateral Raise', 'dumbbell lateral raise', 'shoulders', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Lateral Raise', 'fitbod'),
-      ('Cable Lateral Raise', 'cable lateral raise', 'shoulders', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Cable Lateral Raise', 'fitbod'),
-      ('Dumbbell Front Raise', 'dumbbell front raise', 'shoulders', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Front Raise', 'fitbod'),
-      ('Dumbbell Rear Delt Fly', 'dumbbell rear delt fly', 'shoulders', ARRAY['back'], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Rear Delt Fly', 'fitbod'),
-      ('Arnold Press', 'arnold press', 'shoulders', ARRAY['triceps'], ARRAY['dumbbell'], 'strength', true, 'Arnold Press', 'fitbod'),
-      -- ARMS
-      ('Barbell Curl', 'barbell curl', 'biceps', ARRAY[]::text[], ARRAY['barbell'], 'strength', false, 'Barbell Curl', 'fitbod'),
-      ('Dumbbell Curl', 'dumbbell curl', 'biceps', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Curl', 'fitbod'),
-      ('Hammer Curl', 'hammer curl', 'biceps', ARRAY['forearms'], ARRAY['dumbbell'], 'strength', false, 'Hammer Curl', 'fitbod'),
-      ('Cable Curl', 'cable curl', 'biceps', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Cable Curl', 'fitbod'),
-      ('Preacher Curl', 'preacher curl', 'biceps', ARRAY[]::text[], ARRAY['dumbbell','preacher_curl_bench'], 'strength', false, 'Preacher Curl', 'fitbod'),
-      ('Tricep Pushdown', 'tricep pushdown', 'triceps', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Tricep Pushdown', 'fitbod'),
-      ('Tricep Overhead Extension', 'tricep overhead extension', 'triceps', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Tricep Overhead Extension', 'fitbod'),
-      ('Skull Crusher', 'skull crusher', 'triceps', ARRAY[]::text[], ARRAY['barbell','flat_bench'], 'strength', false, 'Skull Crusher', 'fitbod'),
-      ('Dip', 'dip', 'triceps', ARRAY['chest','shoulders'], ARRAY['dip_station'], 'strength', true, 'Dip', 'fitbod'),
-      ('Close Grip Bench Press', 'close grip bench press', 'triceps', ARRAY['chest','shoulders'], ARRAY['barbell','flat_bench'], 'strength', true, 'Close Grip Bench Press', 'fitbod'),
-      -- LEGS
-      ('Barbell Squat', 'barbell squat', 'quadriceps', ARRAY['glutes','hamstrings','core'], ARRAY['barbell','squat_rack'], 'strength', true, 'Barbell Squat', 'fitbod'),
-      ('Goblet Squat', 'goblet squat', 'quadriceps', ARRAY['glutes','core'], ARRAY['dumbbell'], 'strength', true, 'Goblet Squat', 'fitbod'),
-      ('Leg Press', 'leg press', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['leg_press'], 'strength', true, 'Leg Press', 'fitbod'),
-      ('Hack Squat', 'hack squat', 'quadriceps', ARRAY['glutes'], ARRAY['hack_squat'], 'strength', true, 'Hack Squat', 'fitbod'),
-      ('Leg Extension', 'leg extension', 'quadriceps', ARRAY[]::text[], ARRAY['leg_extension'], 'strength', false, 'Leg Extension', 'fitbod'),
-      ('Leg Curl', 'leg curl', 'hamstrings', ARRAY[]::text[], ARRAY['leg_curl'], 'strength', false, 'Leg Curl', 'fitbod'),
-      ('Romanian Deadlift', 'romanian deadlift', 'hamstrings', ARRAY['glutes','back'], ARRAY['barbell'], 'strength', true, 'Romanian Deadlift', 'fitbod'),
-      ('Dumbbell Romanian Deadlift', 'dumbbell romanian deadlift', 'hamstrings', ARRAY['glutes','back'], ARRAY['dumbbell'], 'strength', true, 'Dumbbell Romanian Deadlift', 'fitbod'),
-      ('Bulgarian Split Squat', 'bulgarian split squat', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['dumbbell'], 'strength', true, 'Bulgarian Split Squat', 'fitbod'),
-      ('Barbell Lunge', 'barbell lunge', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['barbell'], 'strength', true, 'Barbell Lunge', 'fitbod'),
-      ('Dumbbell Lunge', 'dumbbell lunge', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['dumbbell'], 'strength', true, 'Dumbbell Lunge', 'fitbod'),
-      ('Hip Thrust', 'hip thrust', 'glutes', ARRAY['hamstrings'], ARRAY['barbell','flat_bench'], 'strength', true, 'Hip Thrust', 'fitbod'),
-      ('Calf Raise', 'calf raise', 'calves', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Calf Raise', 'fitbod'),
-      ('Smith Machine Squat', 'smith machine squat', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['smith_machine'], 'strength', true, 'Smith Machine Squat', 'fitbod'),
-      -- CORE
-      ('Plank', 'plank', 'core', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Plank', 'fitbod'),
-      ('Hanging Leg Raise', 'hanging leg raise', 'core', ARRAY[]::text[], ARRAY['pull_up_bar'], 'strength', false, 'Hanging Leg Raise', 'fitbod'),
-      ('Cable Crunch', 'cable crunch', 'core', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Cable Crunch', 'fitbod'),
-      ('Ab Wheel Rollout', 'ab wheel rollout', 'core', ARRAY[]::text[], ARRAY['ab_wheel'], 'strength', false, 'Ab Wheel Rollout', 'fitbod'),
-      ('Russian Twist', 'russian twist', 'core', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Russian Twist', 'fitbod'),
-      ('Dead Bug', 'dead bug', 'core', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Dead Bug', 'fitbod'),
-      ('Mountain Climber', 'mountain climber', 'core', ARRAY['cardio'], ARRAY['bodyweight'], 'strength', false, 'Mountain Climber', 'fitbod'),
-      -- CARRIES & FUNCTIONAL (Spartan-specific)
-      ('Farmer Walk', 'farmer walk', 'forearms', ARRAY['core','traps','shoulders'], ARRAY['dumbbell'], 'strength', true, 'Farmer Walk', 'fitbod'),
-      ('Sandbag Carry', 'sandbag carry', 'core', ARRAY['shoulders','legs'], ARRAY['sandbag'], 'strength', true, 'Sandbag Carry', 'custom'),
-      ('Sled Push', 'sled push', 'quadriceps', ARRAY['glutes','core','cardio'], ARRAY['sled'], 'strength', true, 'Sled Push', 'custom'),
-      ('Sled Pull', 'sled pull', 'back', ARRAY['hamstrings','core'], ARRAY['sled'], 'strength', true, 'Sled Pull', 'custom'),
-      ('Battle Rope', 'battle rope', 'shoulders', ARRAY['core','cardio'], ARRAY['battle_ropes'], 'cardio', true, 'Battle Rope', 'fitbod'),
-      ('Box Jump', 'box jump', 'quadriceps', ARRAY['glutes','calves'], ARRAY['box_platform'], 'strength', true, 'Box Jump', 'fitbod'),
-      ('Burpee', 'burpee', 'full_body', ARRAY['cardio'], ARRAY['bodyweight'], 'cardio', true, 'Burpee', 'fitbod'),
-      ('Kettlebell Swing', 'kettlebell swing', 'glutes', ARRAY['hamstrings','core','shoulders'], ARRAY['kettlebell'], 'strength', true, 'Kettlebell Swing', 'fitbod'),
-      ('Kettlebell Goblet Squat', 'kettlebell goblet squat', 'quadriceps', ARRAY['glutes','core'], ARRAY['kettlebell'], 'strength', true, 'Kettlebell Goblet Squat', 'fitbod'),
-      ('Turkish Get Up', 'turkish get up', 'full_body', ARRAY['shoulders','core'], ARRAY['kettlebell'], 'strength', true, 'Turkish Get Up', 'fitbod')
-    ON CONFLICT (name_normalized) DO NOTHING
-  `);
+  // Seed exercises removed — 1069 exercises already imported via CSV
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
