@@ -2190,6 +2190,15 @@ html[data-theme="light"] .fab-btn { background: rgba(255,255,255,0.9); border-co
 }
 .sm-card-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
 .sm-card-desc { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 8px; line-height: 1.4; }
+/* Collapsible doc cards */
+.sm-collapse { display: none; }
+.sm-card.expanded .sm-collapse { display: block; }
+.sm-card.expanded .sm-chevron { transform: rotate(90deg); }
+.sm-chevron { font-size: 0.65rem; color: var(--text-dim); transition: transform 0.2s; display: inline-block; }
+.sm-doc-text { font-size: 0.75rem; line-height: 1.5; color: var(--text-dim); }
+.sm-doc-text p { margin: 0 0 8px; }
+.sm-doc-text p:last-child { margin-bottom: 0; }
+.sm-doc-text strong { color: var(--text); }
 .sm-btn-row { display: flex; gap: 6px; }
 .sm-btn-row .btn-action { flex: 1; }
 .sm-btn-full { width: 100%; margin-top: 4px; }

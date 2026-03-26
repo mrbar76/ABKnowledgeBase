@@ -234,6 +234,133 @@
           </div>
         </div>
 
+        <!-- ─── Documentation & Version History ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Documentation &amp; Version History</div>
+          <div class="sm-group">
+
+            <!-- How It Works -->
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                How AB Brain Works <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>AB Brain</strong> is your personal AI-powered knowledge base and fitness platform. It stores everything — workouts, meals, body metrics, conversations, knowledge, tasks — in a single PostgreSQL database with full-text search.</p>
+                  <p><strong>Architecture:</strong> Node.js + Express backend, vanilla JS frontend (PWA), PostgreSQL 16 with 14+ tables, deployed on Railway.</p>
+                  <p><strong>AI Integration:</strong> ChatGPT and Claude connect via OpenAPI schemas (Actions/Projects). The coach reads your data, plans workouts, logs meals, and tracks recovery — all through the API.</p>
+                  <p><strong>Data Flow:</strong> Bee wearable auto-syncs conversations. Fitbod CSVs import exercises. Outlook syncs flagged emails as tasks. Coach logs workouts/meals/plans via API. Everything is searchable.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key Concepts -->
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                Key Concepts &amp; Terms <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Recovery Score</strong> — 0-100 composite: TSB training load (40%), muscle freshness (30%), nutrition (20%), sleep (10%). Uses EWMA (exponential weighted moving average) like TrainingPeaks.</p>
+                  <p><strong>TSB (Training Stress Balance)</strong> — CTL (42-day fitness) minus ATL (7-day fatigue). Positive = rested, negative = fatigued. Based on session-RPE (effort × duration).</p>
+                  <p><strong>Muscle Freshness</strong> — Tracks per-muscle recovery windows. High-effort sessions (7+) need up to 1.5× longer recovery. Uses structured exercises when available, falls back to workout_type.</p>
+                  <p><strong>Daily Plans</strong> — Coach creates plans with structured exercises (warmup/main/superset/circuit/finisher). After workout, actual exercises are logged for plan-vs-actual comparison.</p>
+                  <p><strong>Gym Profiles</strong> — Equipment sets (Home/Gym/Travel). Coach filters exercises to match your available equipment. Supports 42 equipment categories.</p>
+                  <p><strong>Exercise Catalog</strong> — 1069 exercises imported from Fitbod with muscle groups, equipment, and categories. Used for exercise lookup and muscle recovery tracking.</p>
+                  <p><strong>Rings</strong> — Train (effort), Fuel (protein + calories + hydration), Recover (sleep + quality). Fill proportionally based on daily targets.</p>
+                  <p><strong>Schema Builder</strong> — Generates custom OpenAPI specs. ChatGPT limited to 30 endpoints; Claude unlimited. Presets: Spartan (minimal), Brain (knowledge), All (30), Claude (all).</p>
+                  <p><strong>Smart Intake</strong> — GPT-4o-mini auto-classifies raw text into knowledge, tasks, or transcripts.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Architecture Decisions -->
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                Architecture Decisions <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Vanilla JS (no framework)</strong> — Fast, no build step, full control. Single app.js + index.html. PWA-capable with service worker.</p>
+                  <p><strong>PostgreSQL over NoSQL</strong> — Relational integrity for linked data (plans→workouts→exercises). Full-text search with tsvector + trigram indexes. JSONB for flexible fields (tags, metadata, planned_exercises).</p>
+                  <p><strong>OpenAPI-first AI integration</strong> — ChatGPT/Claude read the same API. Multiple schema variants for different token budgets. Schema builder lets you pick exactly what the AI sees.</p>
+                  <p><strong>Effort × Duration for training load</strong> — Session-RPE is more practical than power-meter-based TSS. Works for strength, cardio, and hybrid workouts.</p>
+                  <p><strong>Equipment as JSONB (not TEXT[])</strong> — Gym profile equipment stored as JSON array for flexible querying and coach-friendly formatting.</p>
+                  <p><strong>Daily Plans over Training Plans</strong> — Per-day granularity is more flexible than week-long plans. Coach creates/adjusts daily based on recovery, schedule, and goals.</p>
+                  <p><strong>Fitbod exercise names kept exact</strong> — "Dumbbell Bench Press" not "DB Bench". Ensures screenshot logs match the catalog. Band resistance labels kept as-is (not converted to lbs).</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Version History -->
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.3.0 — Mar 25, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Recovery Score v2</strong> — TSB-based training load (TrainingPeaks model), effort-aware muscle freshness, blended nutrition scoring.</p>
+                  <p><strong>Exercise Library</strong> — 1069 Fitbod exercises imported via CSV with muscle groups and equipment. Smart import auto-detects 4 CSV formats.</p>
+                  <p><strong>Gym Profiles</strong> — Home/Gym/Travel equipment profiles with 42 equipment types. Coach filters exercises to match.</p>
+                  <p><strong>Plan-Workout Connection</strong> — Structured planned_exercises/actual_exercises JSONB. Plans linked to workouts via daily_plan_id FK.</p>
+                  <p><strong>Numeric Workout Fields</strong> — duration_minutes, distance_value, hr_avg, hr_max, cadence, calories. Auto-parsed from text, historical data backfilled.</p>
+                  <p><strong>Fixes:</strong> TSB NaN from text duration parsing, duration MM:SS vs HH:MM ambiguity, recovery score inflation during overload blocks.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.2.0 — Mar 24, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Version labeling</strong> across login, settings, health-check API, and package.json.</p>
+                  <p><strong>Claude schema files</strong> — claude-schema.yaml and claude-schema.json for Claude AI integration.</p>
+                  <p><strong>CHANGELOG.md</strong> — full version history added.</p>
+                  <p><strong>Fixes:</strong> Fitness Today crash (undefined hasCheckIn), Settings health-check wrong endpoint.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.1.0 — Mar 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Daily Plans</strong> — per-day granularity replacing training_plans. Weekly plan endpoint.</p>
+                  <p><strong>Achievement Rings</strong> — Train/Fuel/Recover with proportional fill.</p>
+                  <p><strong>Recovery System</strong> — sleep tracking, readiness score, muscle recovery model, trend charts.</p>
+                  <p><strong>Gamification</strong> — streaks, badges, smart goal suggestions, push notifications.</p>
+                  <p><strong>Coaching Sessions</strong> — end-of-day review with key decisions, adjustments, injury linkage.</p>
+                  <p><strong>Schema Builder</strong> — in-app UI to generate custom OpenAPI specs for ChatGPT Actions.</p>
+                  <p><strong>Outlook sync</strong> — flagged emails → tasks. <strong>ChatGPT import</strong> — bulk conversations.json.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.0.0 — Feb 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Core Platform Launch</strong> — Knowledge base, tasks/kanban, transcripts, conversations, workouts, body metrics, meals, daily context.</p>
+                  <p><strong>Smart Intake</strong> — GPT-4o-mini auto-classification of raw input.</p>
+                  <p><strong>Bee Wearable Sync</strong> — auto-import conversations, facts, todos, journals.</p>
+                  <p><strong>Full-Text Search</strong> — unified search across all tables with AI-optimized flat mode.</p>
+                  <p><strong>Mobile PWA</strong> — offline-capable, installable, dark-first Obsidian Cockpit theme.</p>
+                  <p><strong>OpenAPI Specs</strong> — 4 variants for ChatGPT Custom GPT Actions.</p>
+                  <p><strong>Stack:</strong> Node.js 20, Express 4.21, PostgreSQL 16, Railway deployment.</p>
+                </div>
+              </div>
+            </div>
+
+            <button class="btn-action btn-action-secondary sm-btn-full" onclick="window.open('/CHANGELOG.md','_blank')" style="margin-top:4px">View Full Changelog</button>
+          </div>
+        </div>
+
         <!-- ─── Advanced ─── -->
         <div class="sm-section">
           <div class="sm-section-title">Advanced</div>
@@ -254,7 +381,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.2.0</span>
+          AB Brain <span id="sm-version">v1.3.0</span>
         </div>
 
       </div>
