@@ -110,17 +110,32 @@ function computeTrainingLoadScore(allWorkouts, targetDate) {
   for (const w of allWorkouts) {
     const d = dateStr(w.workout_date);
     const effort = Number(w.effort) || 5;
-    // Cap duration at 300 min (5 hrs) — catches bad parses (e.g. seconds stored as minutes)
+    const wType = (w.workout_type || '').toLowerCase();
+
+    // Skip pure recovery/walk sessions (effort ≤ 3 AND recovery-type)
+    // These aren't training stress — they're recovery activities
+    const isRecovery = ['walk', 'recovery', 'stretch', 'yoga', 'rest'].includes(wType);
+    if (isRecovery && effort <= 3) continue;
+
+    // Cap duration at 300 min (5 hrs) — catches bad parses
     let duration = Number(w.duration_minutes) || 45;
-    if (duration > 300) duration = Math.min(Math.round(duration / 60), 300); // probably seconds, convert
+    if (duration > 300) duration = Math.min(Math.round(duration / 60), 300);
     if (duration < 1) duration = 45;
-    const load = effort * duration;
+
+    // Exponential effort scaling: effort^1.5 × duration
+    // E2 walk 60min = 2.83 × 60 = 170   (low impact)
+    // E5 moderate 45min = 11.2 × 45 = 503  (moderate)
+    // E9 race sim 30min = 27 × 30 = 810   (high impact)
+    const load = Math.pow(effort, 1.5) * duration;
     dailyLoad[d] = (dailyLoad[d] || 0) + load;
   }
 
   // Calculate EWMA for CTL (42-day) and ATL (7-day) up to targetDate
-  const ctlDecay = 2 / (42 + 1); // ~0.047
-  const atlDecay = 2 / (7 + 1);  // ~0.25
+  // Standard exponential decay: decay = exp(-1/N)
+  // ATL: exp(-1/7) ≈ 0.867 — 7-day time constant
+  // CTL: exp(-1/42) ≈ 0.976 — 42-day time constant
+  const ctlDecay = Math.exp(-1 / 42); // ~0.976
+  const atlDecay = Math.exp(-1 / 7);  // ~0.867
 
   let ctl = 0;
   let atl = 0;
@@ -130,31 +145,32 @@ function computeTrainingLoadScore(allWorkouts, targetDate) {
   for (let d = new Date(startDate); d <= new Date(targetDate + 'T12:00:00'); d.setDate(d.getDate() + 1)) {
     const ds = d.toISOString().slice(0, 10);
     const load = dailyLoad[ds] || 0;
-    ctl = ctl + ctlDecay * (load - ctl);
-    atl = atl + atlDecay * (load - atl);
+    ctl = ctl * ctlDecay + load * (1 - ctlDecay);
+    atl = atl * atlDecay + load * (1 - atlDecay);
   }
 
   const tsb = Math.round(ctl - atl);
 
   // Convert TSB to a 0-100 score
-  // TSB +25 or higher → 100 (peaked, fully fresh)
-  // TSB 0 → 65 (balanced)
-  // TSB -15 → 40 (heavy training block)
-  // TSB -30 or lower → 15 (danger zone)
+  // With exponential effort scaling, typical TSB ranges are roughly -150 to +50
+  // TSB +40 or higher → 100 (peaked, fully fresh)
+  // TSB 0 → 70 (balanced)
+  // TSB -50 → 40 (heavy training block)
+  // TSB -100 or lower → 15 (danger zone / significant overreaching)
   let score;
-  if (tsb >= 25) score = 100;
-  else if (tsb >= 0) score = 65 + Math.round((tsb / 25) * 35);       // 65-100
-  else if (tsb >= -30) score = 15 + Math.round(((tsb + 30) / 30) * 50); // 15-65
+  if (tsb >= 40) score = 100;
+  else if (tsb >= 0) score = 70 + Math.round((tsb / 40) * 30);         // 70-100
+  else if (tsb >= -100) score = 15 + Math.round(((tsb + 100) / 100) * 55); // 15-70
   else score = 15;
 
   score = clamp(score);
 
   // Descriptive label
   let tsbLabel;
-  if (tsb >= 15) tsbLabel = 'peaked';
+  if (tsb >= 20) tsbLabel = 'peaked';
   else if (tsb >= 0) tsbLabel = 'fresh';
-  else if (tsb >= -10) tsbLabel = 'training';
-  else if (tsb >= -30) tsbLabel = 'overreaching';
+  else if (tsb >= -30) tsbLabel = 'training';
+  else if (tsb >= -80) tsbLabel = 'overreaching';
   else tsbLabel = 'danger';
 
   return {
