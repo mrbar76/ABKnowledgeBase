@@ -575,12 +575,12 @@ async function initDB() {
         ALTER TABLE gym_profiles DROP COLUMN is_active;
       END IF;
     END $$`);
-  // Migrate equipment TEXT[] → JSONB if fix branch created it as array
-  await safeQuery('gym_profiles migrate equipment type', `
+  // Fix equipment TEXT[] → JSONB if fix branch created it as array
+  await safeQuery('gym_profiles fix equipment type', `
     DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gym_profiles' AND column_name = 'equipment' AND udt_name = '_text') THEN
-        ALTER TABLE gym_profiles ALTER COLUMN equipment TYPE JSONB USING to_jsonb(equipment);
-        ALTER TABLE gym_profiles ALTER COLUMN equipment SET DEFAULT '[]'::jsonb;
+        ALTER TABLE gym_profiles DROP COLUMN equipment;
+        ALTER TABLE gym_profiles ADD COLUMN equipment JSONB DEFAULT '[]'::jsonb;
       END IF;
     END $$`);
 

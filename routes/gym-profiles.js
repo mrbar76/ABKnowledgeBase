@@ -50,38 +50,18 @@ router.post('/', async (req, res) => {
     const { name, equipment, is_primary, notes } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
-    // Check actual columns to handle schema mismatch
-    const colCheck = await query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'gym_profiles'`);
-    const colNames = colCheck.rows.map(r => r.column_name);
-    const hasPrimary = colNames.includes('is_primary');
-    const hasActive = colNames.includes('is_active');
-    const primaryCol = hasPrimary ? 'is_primary' : hasActive ? 'is_active' : null;
-
-    // If setting as primary, unset others first
-    if ((is_primary) && primaryCol) {
-      await query(`UPDATE gym_profiles SET ${primaryCol} = false WHERE ${primaryCol} = true`);
+    if (is_primary) {
+      await query('UPDATE gym_profiles SET is_primary = false WHERE is_primary = true');
     }
 
-    const equipJson = JSON.stringify(equipment || []);
+    const result = await query(
+      `INSERT INTO gym_profiles (name, equipment, is_primary, notes)
+       VALUES ($1, $2::jsonb, $3, $4) RETURNING *`,
+      [name, JSON.stringify(equipment || []), is_primary || false, notes || null]
+    );
 
-    // Build INSERT dynamically based on actual columns
-    if (primaryCol) {
-      const result = await query(
-        `INSERT INTO gym_profiles (name, equipment, ${primaryCol}, notes)
-         VALUES ($1, $2::jsonb, $3, $4) RETURNING *`,
-        [name, equipJson, is_primary || false, notes || null]
-      );
-      await logActivity('create', 'gym_profile', result.rows[0].id, 'manual', `Gym profile: ${name}`);
-      res.status(201).json(result.rows[0]);
-    } else {
-      const result = await query(
-        `INSERT INTO gym_profiles (name, equipment, notes)
-         VALUES ($1, $2::jsonb, $3) RETURNING *`,
-        [name, equipJson, notes || null]
-      );
-      await logActivity('create', 'gym_profile', result.rows[0].id, 'manual', `Gym profile: ${name}`);
-      res.status(201).json(result.rows[0]);
-    }
+    await logActivity('create', 'gym_profile', result.rows[0].id, 'manual', `Gym profile: ${name}`);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('[gym-profiles POST] error:', err.message);
     res.status(500).json({ error: err.message });
