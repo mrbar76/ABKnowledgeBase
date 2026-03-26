@@ -571,6 +571,63 @@ async function initDB() {
   // -- daily_plans migrations --
   await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
 
+  // -- workouts: add proper numeric columns alongside TEXT originals --
+  await safeQuery('workouts +duration_minutes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`);
+  await safeQuery('workouts +distance_value', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS distance_value NUMERIC(7,2)`);
+  await safeQuery('workouts +elevation_gain_ft', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS elevation_gain_ft INTEGER`);
+  await safeQuery('workouts +hr_avg', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hr_avg INTEGER`);
+  await safeQuery('workouts +hr_max', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hr_max INTEGER`);
+  await safeQuery('workouts +cadence', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cadence INTEGER`);
+  await safeQuery('workouts +cal_active', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cal_active INTEGER`);
+  await safeQuery('workouts +cal_total', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cal_total INTEGER`);
+
+  // Backfill numeric columns from TEXT fields (safe: only updates NULLs)
+  await safeQuery('backfill duration_minutes v2', `
+    UPDATE workouts SET duration_minutes = (
+      CASE
+        WHEN time_duration ~ '^\\d+:\\d+:\\d+' THEN
+          SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
+        WHEN time_duration ~ '^\\d+:\\d+' AND SPLIT_PART(time_duration, ':', 1)::int <= 12 THEN
+          SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
+        WHEN time_duration ~ '^\\d+:\\d+' THEN
+          SPLIT_PART(time_duration, ':', 1)::int
+        WHEN time_duration ~ '^[\\d.]+ *h' THEN
+          ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric * 60)::int
+        WHEN time_duration ~ '^[\\d.]+' THEN
+          LEAST(ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric)::int, 300)
+        ELSE NULL
+      END
+    ) WHERE time_duration IS NOT NULL AND time_duration != ''
+  `);
+  await safeQuery('backfill distance_value', `
+    UPDATE workouts SET distance_value = ROUND(REGEXP_REPLACE(distance, '[^\\d.]', '', 'g')::numeric, 2)
+    WHERE distance_value IS NULL AND distance IS NOT NULL AND distance ~ '[\\d.]'
+  `);
+  await safeQuery('backfill elevation_gain_ft', `
+    UPDATE workouts SET elevation_gain_ft = REGEXP_REPLACE(elevation_gain, '[^\\d]', '', 'g')::int
+    WHERE elevation_gain_ft IS NULL AND elevation_gain IS NOT NULL AND elevation_gain ~ '\\d'
+  `);
+  await safeQuery('backfill hr_avg', `
+    UPDATE workouts SET hr_avg = REGEXP_REPLACE(heart_rate_avg, '[^\\d]', '', 'g')::int
+    WHERE hr_avg IS NULL AND heart_rate_avg IS NOT NULL AND heart_rate_avg ~ '\\d'
+  `);
+  await safeQuery('backfill hr_max', `
+    UPDATE workouts SET hr_max = REGEXP_REPLACE(heart_rate_max, '[^\\d]', '', 'g')::int
+    WHERE hr_max IS NULL AND heart_rate_max IS NOT NULL AND heart_rate_max ~ '\\d'
+  `);
+  await safeQuery('backfill cadence', `
+    UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int
+    WHERE cadence IS NULL AND cadence_avg IS NOT NULL AND cadence_avg ~ '\\d'
+  `);
+  await safeQuery('backfill cal_active', `
+    UPDATE workouts SET cal_active = REGEXP_REPLACE(active_calories, '[^\\d]', '', 'g')::int
+    WHERE cal_active IS NULL AND active_calories IS NOT NULL AND active_calories ~ '\\d'
+  `);
+  await safeQuery('backfill cal_total', `
+    UPDATE workouts SET cal_total = REGEXP_REPLACE(total_calories, '[^\\d]', '', 'g')::int
+    WHERE cal_total IS NULL AND total_calories IS NOT NULL AND total_calories ~ '\\d'
+  `);
+
   // -- meals migrations --
   await safeQuery('meals +meal_date', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_date DATE NOT NULL DEFAULT CURRENT_DATE`);
   await safeQuery('meals +meal_time', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_time TIME`);
@@ -735,6 +792,193 @@ async function initDB() {
   await safeQuery('daily_plans drop training_plan_id', `ALTER TABLE daily_plans DROP COLUMN IF EXISTS training_plan_id`);
   await safeQuery('coaching drop training_plan_id', `ALTER TABLE coaching_sessions DROP COLUMN IF EXISTS training_plan_id`);
   await safeQuery('drop training_plans', `DROP TABLE IF EXISTS training_plans CASCADE`);
+
+  // -- daily_plans: structured exercises and completion tracking --
+  await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('daily_plans +completion_notes', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
+  await safeQuery('daily_plans +actual_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS actual_exercises JSONB DEFAULT '[]'::jsonb`);
+
+  // -- workouts: link to daily plan --
+  await safeQuery('workouts +daily_plan_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS daily_plan_id UUID REFERENCES daily_plans(id) ON DELETE SET NULL`);
+  await safeQuery('workouts daily_plan idx', `CREATE INDEX IF NOT EXISTS idx_workouts_daily_plan ON workouts(daily_plan_id)`);
+
+  // Backfill: link workouts to plans by matching date
+  await safeQuery('backfill workout plan links', `
+    UPDATE workouts w SET daily_plan_id = dp.id
+    FROM daily_plans dp
+    WHERE w.workout_date = dp.plan_date AND w.daily_plan_id IS NULL
+  `);
+
+  // ===== EXERCISES & GYM PROFILES =====
+
+  await safeQuery('exercises table', `
+    CREATE TABLE IF NOT EXISTS exercises (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      name_normalized TEXT NOT NULL,
+      muscle_primary TEXT,
+      muscle_secondary TEXT[],
+      equipment TEXT[],
+      category TEXT DEFAULT 'strength',
+      force_type TEXT,
+      is_compound BOOLEAN DEFAULT false,
+      is_warmup_eligible BOOLEAN DEFAULT true,
+      fitbod_name TEXT,
+      source TEXT DEFAULT 'seed',
+      notes TEXT,
+      metadata JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(name_normalized)
+    )`);
+  await safeQuery('exercises idx', `CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_primary)`);
+  await safeQuery('exercises equip idx', `CREATE INDEX IF NOT EXISTS idx_exercises_equipment ON exercises USING gin(equipment)`);
+
+  await safeQuery('gym_profiles table', `
+    CREATE TABLE IF NOT EXISTS gym_profiles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      is_active BOOLEAN DEFAULT false,
+      equipment TEXT[] DEFAULT '{}',
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+
+  // Seed Fitbod equipment categories (matches Fitbod's gym profile)
+  // Equipment list is used by gym profiles and exercise filtering
+  await safeQuery('equipment_catalog table', `
+    CREATE TABLE IF NOT EXISTS equipment_catalog (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      category TEXT NOT NULL
+    )`);
+  await safeQuery('seed equipment_catalog', `
+    INSERT INTO equipment_catalog (id, label, category) VALUES
+      ('barbell', 'Barbell & Plates', 'free_weights'),
+      ('dumbbell', 'Dumbbells', 'free_weights'),
+      ('kettlebell', 'Kettlebells', 'free_weights'),
+      ('ez_curl_bar', 'EZ Curl Bar', 'free_weights'),
+      ('trap_bar', 'Trap/Hex Bar', 'free_weights'),
+      ('cable_machine', 'Cable Machine', 'machines'),
+      ('smith_machine', 'Smith Machine', 'machines'),
+      ('leg_press', 'Leg Press', 'machines'),
+      ('hack_squat', 'Hack Squat Machine', 'machines'),
+      ('leg_curl', 'Leg Curl Machine', 'machines'),
+      ('leg_extension', 'Leg Extension Machine', 'machines'),
+      ('chest_press_machine', 'Chest Press Machine', 'machines'),
+      ('shoulder_press_machine', 'Shoulder Press Machine', 'machines'),
+      ('lat_pulldown', 'Lat Pulldown Machine', 'machines'),
+      ('seated_row_machine', 'Seated Row Machine', 'machines'),
+      ('pec_deck', 'Pec Deck / Fly Machine', 'machines'),
+      ('cable_crossover', 'Cable Crossover', 'machines'),
+      ('assisted_pullup', 'Assisted Pull-Up Machine', 'machines'),
+      ('pull_up_bar', 'Pull-Up Bar', 'bodyweight'),
+      ('dip_station', 'Dip Station / Parallel Bars', 'bodyweight'),
+      ('roman_chair', 'Roman Chair / GHD', 'bodyweight'),
+      ('flat_bench', 'Flat Bench', 'benches'),
+      ('incline_bench', 'Incline Bench', 'benches'),
+      ('decline_bench', 'Decline Bench', 'benches'),
+      ('adjustable_bench', 'Adjustable Bench', 'benches'),
+      ('preacher_curl_bench', 'Preacher Curl Bench', 'benches'),
+      ('squat_rack', 'Squat Rack / Power Rack', 'racks'),
+      ('resistance_bands', 'Resistance Bands', 'accessories'),
+      ('trx', 'TRX / Suspension Trainer', 'accessories'),
+      ('ab_wheel', 'Ab Wheel', 'accessories'),
+      ('foam_roller', 'Foam Roller', 'accessories'),
+      ('medicine_ball', 'Medicine Ball', 'accessories'),
+      ('battle_ropes', 'Battle Ropes', 'accessories'),
+      ('box_platform', 'Plyo Box / Step Platform', 'accessories'),
+      ('sandbag', 'Sandbag', 'accessories'),
+      ('sled', 'Sled / Prowler', 'accessories'),
+      ('treadmill', 'Treadmill', 'cardio'),
+      ('rowing_machine', 'Rowing Machine', 'cardio'),
+      ('bike', 'Stationary Bike', 'cardio'),
+      ('elliptical', 'Elliptical', 'cardio'),
+      ('stairclimber', 'Stair Climber', 'cardio'),
+      ('bodyweight', 'Bodyweight (no equipment)', 'bodyweight')
+    ON CONFLICT (id) DO NOTHING
+  `);
+
+  // Seed common Fitbod exercises (curated list with exact Fitbod naming)
+  await safeQuery('seed exercises', `
+    INSERT INTO exercises (name, name_normalized, muscle_primary, muscle_secondary, equipment, category, is_compound, fitbod_name, source) VALUES
+      -- CHEST (Upper Push)
+      ('Barbell Bench Press', 'barbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['barbell','flat_bench'], 'strength', true, 'Barbell Bench Press', 'fitbod'),
+      ('Dumbbell Bench Press', 'dumbbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['dumbbell','flat_bench'], 'strength', true, 'Dumbbell Bench Press', 'fitbod'),
+      ('Incline Barbell Bench Press', 'incline barbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['barbell','incline_bench'], 'strength', true, 'Incline Barbell Bench Press', 'fitbod'),
+      ('Incline Dumbbell Bench Press', 'incline dumbbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['dumbbell','incline_bench'], 'strength', true, 'Incline Dumbbell Bench Press', 'fitbod'),
+      ('Decline Barbell Bench Press', 'decline barbell bench press', 'chest', ARRAY['triceps','shoulders'], ARRAY['barbell','decline_bench'], 'strength', true, 'Decline Barbell Bench Press', 'fitbod'),
+      ('Dumbbell Fly', 'dumbbell fly', 'chest', ARRAY['shoulders'], ARRAY['dumbbell','flat_bench'], 'strength', false, 'Dumbbell Fly', 'fitbod'),
+      ('Incline Dumbbell Fly', 'incline dumbbell fly', 'chest', ARRAY['shoulders'], ARRAY['dumbbell','incline_bench'], 'strength', false, 'Incline Dumbbell Fly', 'fitbod'),
+      ('Cable Fly', 'cable fly', 'chest', ARRAY['shoulders'], ARRAY['cable_crossover'], 'strength', false, 'Cable Fly', 'fitbod'),
+      ('Machine Chest Press', 'machine chest press', 'chest', ARRAY['triceps','shoulders'], ARRAY['chest_press_machine'], 'strength', true, 'Machine Chest Press', 'fitbod'),
+      ('Push Up', 'push up', 'chest', ARRAY['triceps','shoulders','core'], ARRAY['bodyweight'], 'strength', true, 'Push Up', 'fitbod'),
+      -- BACK (Upper Pull)
+      ('Barbell Row', 'barbell row', 'back', ARRAY['biceps','shoulders'], ARRAY['barbell'], 'strength', true, 'Barbell Row', 'fitbod'),
+      ('Dumbbell Row', 'dumbbell row', 'back', ARRAY['biceps','shoulders'], ARRAY['dumbbell','flat_bench'], 'strength', true, 'Dumbbell Row', 'fitbod'),
+      ('Pull Up', 'pull up', 'back', ARRAY['biceps','shoulders'], ARRAY['pull_up_bar'], 'strength', true, 'Pull Up', 'fitbod'),
+      ('Chin Up', 'chin up', 'back', ARRAY['biceps'], ARRAY['pull_up_bar'], 'strength', true, 'Chin Up', 'fitbod'),
+      ('Lat Pulldown', 'lat pulldown', 'back', ARRAY['biceps','shoulders'], ARRAY['lat_pulldown'], 'strength', true, 'Lat Pulldown', 'fitbod'),
+      ('Seated Cable Row', 'seated cable row', 'back', ARRAY['biceps','shoulders'], ARRAY['cable_machine'], 'strength', true, 'Seated Cable Row', 'fitbod'),
+      ('T-Bar Row', 't-bar row', 'back', ARRAY['biceps','shoulders'], ARRAY['barbell'], 'strength', true, 'T-Bar Row', 'fitbod'),
+      ('Face Pull', 'face pull', 'back', ARRAY['shoulders'], ARRAY['cable_machine'], 'strength', false, 'Face Pull', 'fitbod'),
+      ('Barbell Deadlift', 'barbell deadlift', 'back', ARRAY['glutes','hamstrings','core'], ARRAY['barbell'], 'strength', true, 'Barbell Deadlift', 'fitbod'),
+      ('Dumbbell Shrug', 'dumbbell shrug', 'back', ARRAY['traps'], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Shrug', 'fitbod'),
+      -- SHOULDERS
+      ('Dumbbell Shoulder Press', 'dumbbell shoulder press', 'shoulders', ARRAY['triceps'], ARRAY['dumbbell'], 'strength', true, 'Dumbbell Shoulder Press', 'fitbod'),
+      ('Barbell Shoulder Press', 'barbell shoulder press', 'shoulders', ARRAY['triceps'], ARRAY['barbell'], 'strength', true, 'Barbell Shoulder Press', 'fitbod'),
+      ('Dumbbell Lateral Raise', 'dumbbell lateral raise', 'shoulders', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Lateral Raise', 'fitbod'),
+      ('Cable Lateral Raise', 'cable lateral raise', 'shoulders', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Cable Lateral Raise', 'fitbod'),
+      ('Dumbbell Front Raise', 'dumbbell front raise', 'shoulders', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Front Raise', 'fitbod'),
+      ('Dumbbell Rear Delt Fly', 'dumbbell rear delt fly', 'shoulders', ARRAY['back'], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Rear Delt Fly', 'fitbod'),
+      ('Arnold Press', 'arnold press', 'shoulders', ARRAY['triceps'], ARRAY['dumbbell'], 'strength', true, 'Arnold Press', 'fitbod'),
+      -- ARMS
+      ('Barbell Curl', 'barbell curl', 'biceps', ARRAY[]::text[], ARRAY['barbell'], 'strength', false, 'Barbell Curl', 'fitbod'),
+      ('Dumbbell Curl', 'dumbbell curl', 'biceps', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Dumbbell Curl', 'fitbod'),
+      ('Hammer Curl', 'hammer curl', 'biceps', ARRAY['forearms'], ARRAY['dumbbell'], 'strength', false, 'Hammer Curl', 'fitbod'),
+      ('Cable Curl', 'cable curl', 'biceps', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Cable Curl', 'fitbod'),
+      ('Preacher Curl', 'preacher curl', 'biceps', ARRAY[]::text[], ARRAY['dumbbell','preacher_curl_bench'], 'strength', false, 'Preacher Curl', 'fitbod'),
+      ('Tricep Pushdown', 'tricep pushdown', 'triceps', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Tricep Pushdown', 'fitbod'),
+      ('Tricep Overhead Extension', 'tricep overhead extension', 'triceps', ARRAY[]::text[], ARRAY['dumbbell'], 'strength', false, 'Tricep Overhead Extension', 'fitbod'),
+      ('Skull Crusher', 'skull crusher', 'triceps', ARRAY[]::text[], ARRAY['barbell','flat_bench'], 'strength', false, 'Skull Crusher', 'fitbod'),
+      ('Dip', 'dip', 'triceps', ARRAY['chest','shoulders'], ARRAY['dip_station'], 'strength', true, 'Dip', 'fitbod'),
+      ('Close Grip Bench Press', 'close grip bench press', 'triceps', ARRAY['chest','shoulders'], ARRAY['barbell','flat_bench'], 'strength', true, 'Close Grip Bench Press', 'fitbod'),
+      -- LEGS
+      ('Barbell Squat', 'barbell squat', 'quadriceps', ARRAY['glutes','hamstrings','core'], ARRAY['barbell','squat_rack'], 'strength', true, 'Barbell Squat', 'fitbod'),
+      ('Goblet Squat', 'goblet squat', 'quadriceps', ARRAY['glutes','core'], ARRAY['dumbbell'], 'strength', true, 'Goblet Squat', 'fitbod'),
+      ('Leg Press', 'leg press', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['leg_press'], 'strength', true, 'Leg Press', 'fitbod'),
+      ('Hack Squat', 'hack squat', 'quadriceps', ARRAY['glutes'], ARRAY['hack_squat'], 'strength', true, 'Hack Squat', 'fitbod'),
+      ('Leg Extension', 'leg extension', 'quadriceps', ARRAY[]::text[], ARRAY['leg_extension'], 'strength', false, 'Leg Extension', 'fitbod'),
+      ('Leg Curl', 'leg curl', 'hamstrings', ARRAY[]::text[], ARRAY['leg_curl'], 'strength', false, 'Leg Curl', 'fitbod'),
+      ('Romanian Deadlift', 'romanian deadlift', 'hamstrings', ARRAY['glutes','back'], ARRAY['barbell'], 'strength', true, 'Romanian Deadlift', 'fitbod'),
+      ('Dumbbell Romanian Deadlift', 'dumbbell romanian deadlift', 'hamstrings', ARRAY['glutes','back'], ARRAY['dumbbell'], 'strength', true, 'Dumbbell Romanian Deadlift', 'fitbod'),
+      ('Bulgarian Split Squat', 'bulgarian split squat', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['dumbbell'], 'strength', true, 'Bulgarian Split Squat', 'fitbod'),
+      ('Barbell Lunge', 'barbell lunge', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['barbell'], 'strength', true, 'Barbell Lunge', 'fitbod'),
+      ('Dumbbell Lunge', 'dumbbell lunge', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['dumbbell'], 'strength', true, 'Dumbbell Lunge', 'fitbod'),
+      ('Hip Thrust', 'hip thrust', 'glutes', ARRAY['hamstrings'], ARRAY['barbell','flat_bench'], 'strength', true, 'Hip Thrust', 'fitbod'),
+      ('Calf Raise', 'calf raise', 'calves', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Calf Raise', 'fitbod'),
+      ('Smith Machine Squat', 'smith machine squat', 'quadriceps', ARRAY['glutes','hamstrings'], ARRAY['smith_machine'], 'strength', true, 'Smith Machine Squat', 'fitbod'),
+      -- CORE
+      ('Plank', 'plank', 'core', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Plank', 'fitbod'),
+      ('Hanging Leg Raise', 'hanging leg raise', 'core', ARRAY[]::text[], ARRAY['pull_up_bar'], 'strength', false, 'Hanging Leg Raise', 'fitbod'),
+      ('Cable Crunch', 'cable crunch', 'core', ARRAY[]::text[], ARRAY['cable_machine'], 'strength', false, 'Cable Crunch', 'fitbod'),
+      ('Ab Wheel Rollout', 'ab wheel rollout', 'core', ARRAY[]::text[], ARRAY['ab_wheel'], 'strength', false, 'Ab Wheel Rollout', 'fitbod'),
+      ('Russian Twist', 'russian twist', 'core', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Russian Twist', 'fitbod'),
+      ('Dead Bug', 'dead bug', 'core', ARRAY[]::text[], ARRAY['bodyweight'], 'strength', false, 'Dead Bug', 'fitbod'),
+      ('Mountain Climber', 'mountain climber', 'core', ARRAY['cardio'], ARRAY['bodyweight'], 'strength', false, 'Mountain Climber', 'fitbod'),
+      -- CARRIES & FUNCTIONAL (Spartan-specific)
+      ('Farmer Walk', 'farmer walk', 'forearms', ARRAY['core','traps','shoulders'], ARRAY['dumbbell'], 'strength', true, 'Farmer Walk', 'fitbod'),
+      ('Sandbag Carry', 'sandbag carry', 'core', ARRAY['shoulders','legs'], ARRAY['sandbag'], 'strength', true, 'Sandbag Carry', 'custom'),
+      ('Sled Push', 'sled push', 'quadriceps', ARRAY['glutes','core','cardio'], ARRAY['sled'], 'strength', true, 'Sled Push', 'custom'),
+      ('Sled Pull', 'sled pull', 'back', ARRAY['hamstrings','core'], ARRAY['sled'], 'strength', true, 'Sled Pull', 'custom'),
+      ('Battle Rope', 'battle rope', 'shoulders', ARRAY['core','cardio'], ARRAY['battle_ropes'], 'cardio', true, 'Battle Rope', 'fitbod'),
+      ('Box Jump', 'box jump', 'quadriceps', ARRAY['glutes','calves'], ARRAY['box_platform'], 'strength', true, 'Box Jump', 'fitbod'),
+      ('Burpee', 'burpee', 'full_body', ARRAY['cardio'], ARRAY['bodyweight'], 'cardio', true, 'Burpee', 'fitbod'),
+      ('Kettlebell Swing', 'kettlebell swing', 'glutes', ARRAY['hamstrings','core','shoulders'], ARRAY['kettlebell'], 'strength', true, 'Kettlebell Swing', 'fitbod'),
+      ('Kettlebell Goblet Squat', 'kettlebell goblet squat', 'quadriceps', ARRAY['glutes','core'], ARRAY['kettlebell'], 'strength', true, 'Kettlebell Goblet Squat', 'fitbod'),
+      ('Turkish Get Up', 'turkish get up', 'full_body', ARRAY['shoulders','core'], ARRAY['kettlebell'], 'strength', true, 'Turkish Get Up', 'fitbod')
+    ON CONFLICT (name_normalized) DO NOTHING
+  `);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `

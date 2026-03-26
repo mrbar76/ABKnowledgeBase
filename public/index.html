@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.2.0</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -169,10 +169,39 @@
           </div>
         </div>
 
-        <!-- ─── Custom GPTs ─── -->
+        <!-- ─── Fitness & Gym ─── -->
         <div class="sm-section">
-          <div class="sm-section-title">Custom GPTs</div>
+          <div class="sm-section-title">Fitness &amp; Gym</div>
           <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Fitbod Exercise Import</div>
+              <div class="sm-card-desc">Import your Fitbod exercise library or workout export CSV. Auto-detects format, maps muscles, skips duplicates.</div>
+              <input type="file" id="fitbod-import-file" accept=".csv,.txt,.tsv" style="display:none" onchange="handleFitbodImportFromSettings(this)" multiple>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('fitbod-import-file').click()">Choose CSV Files</button>
+              <div id="sm-fitbod-import-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Gym Profiles</div>
+              <div class="sm-card-desc">Set up equipment for Home, Gym, Travel. Coach uses this to plan workouts.</div>
+              <button class="btn-action sm-btn-full" onclick="closeSettingsMenu();showGymProfilePicker()">Manage Gym Profiles</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── AI Integrations ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">AI Integrations</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Claude Schema</div>
+              <div class="sm-card-desc">Full OpenAPI spec for Claude — all endpoints, no limits</div>
+              <div class="sm-btn-row">
+                <button class="btn-action sm-btn-full" onclick="copyClaudeSchema()" id="btn-copy-claude-schema">Copy JSON Schema</button>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="window.open('/claude-schema.json','_blank')">View JSON</button>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="window.open('/claude-schema.yaml','_blank')">View YAML</button>
+              </div>
+              <div id="sm-claude-schema-result" class="sm-result"></div>
+            </div>
             <div class="sm-card">
               <div class="sm-card-label">Knowledge Base GPT</div>
               <div class="sm-card-desc">Knowledge, tasks, transcripts, conversations, search</div>
@@ -221,6 +250,11 @@
             <button class="btn-action btn-action-danger sm-btn-full" id="btn-purge-settings" onclick="confirmPurgeFromMenu()">Purge All Data</button>
             <div id="purge-menu-result" class="sm-result"></div>
           </div>
+        </div>
+
+        <!-- ─── Version ─── -->
+        <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
+          AB Brain <span id="sm-version">v1.2.0</span>
         </div>
 
       </div>

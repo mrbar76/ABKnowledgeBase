@@ -770,7 +770,7 @@ router.post('/sync-conversations', async (req, res) => {
   if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
   const { start_date, end_date, force, cursor } = req.body;
   // Default: Dec 2025 to now
-  const endStr = end_date || new Date().toISOString().split('T')[0];
+  const endStr = end_date || req.getToday();
   const startStr = start_date || '2025-12-01';
 
   const result = { imported: 0, skipped: 0, errors: [], total_found: 0, cursor: null, done: false };

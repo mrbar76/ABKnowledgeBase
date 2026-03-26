@@ -3,7 +3,7 @@
   "info": {
     "title": "AB Brain - Knowledge Base API",
     "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## Daily Fitness Workflow (Evaluate \u2192 Plan \u2192 Execute \u2192 Review \u2192 Repeat)\n\n### 1. EVALUATE \u2014 Review past performance\n- `GET /daily-plans/by-date/{yesterday}` \u2014 see yesterday's plan vs actual + ring progress\n- `GET /training/day/{date}` \u2014 full context (workouts, nutrition, body, injuries, daily plan)\n- `GET /recovery/score` \u2014 today's recovery readiness\n\n### 2. PLAN \u2014 Set daily plans\n- `POST /daily-plans` \u2014 create today's plan (workout type, effort target, nutrition targets, sleep target)\n- `POST /daily-plans/week` \u2014 create 7 daily plans at once (start_date + array of 7 day objects)\n- Plans are always daily granularity. A weekly plan = 7 daily plans. Plans can be amended mid-week.\n- Check `GET /training/injuries/active/summary` before planning to account for injuries\n- NEVER use /training/plans \u2014 that endpoint is REMOVED. All planning uses /daily-plans.\n\n### 3. EXECUTE \u2014 User logs activity\n- User logs workouts via `POST /workouts`, meals via `POST /meals`\n- Log sleep + water via `POST /nutrition/daily-context` (fields: date, sleep_hours, sleep_quality, hydration_liters, notes)\n- Rings fill automatically: Train (effort vs target), Fuel (protein + calories + hydration), Recover (sleep hours + sleep quality)\n\n### 4. REVIEW \u2014 End-of-day coaching review\n- `GET /daily-plans/by-date/{date}` \u2014 plan vs actual comparison + ring progress for the day\n- `POST /training/coaching` \u2014 save the coaching review with key_decisions, adjustments, injury_notes, next_steps\n- Link coaching session to daily plan via daily_plan_id field\n\n### 5. AMEND \u2014 Adjust plans based on progress\n- `PUT /daily-plans/{id}` \u2014 amend today's or future plans\n\n### Rings (Achievement-Based Motivation)\n- **Train** (green): Weighted effort score \u2014 actual effort / target effort. Rest days auto-close.\n- **Fuel** (amber): Proportional average of protein, calories, hydration progress (each 0-100%).\n- **Recover** (indigo): Proportional average of sleep hours + sleep quality progress (each 0-100%).\n- Targets cascade: daily plan \u2192 gamification settings defaults.\n- `GET /gamification` \u2014 today's ring progress, streaks, badges, nudges with specific guidance.\n\n### For Weekly Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create 7 daily plans: `POST /daily-plans/week` \u2014 each day gets workout_type, targets, coaching_notes\n\n### Daily Context (Simplified)\n- Only 4 fields: sleep_hours, sleep_quality (1-10), hydration_liters, notes (free text)\n- No energy_rating, hunger_rating, recovery_rating, body_weight_lb, cravings, digestion, day_type \u2014 these are REMOVED\n- Weight goes in `POST /body-metrics`, not daily context\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Exercises (1060+ with mscore), Gym Profiles (equipment availability), Meals, Body Metrics, Daily Plans (with planned exercises), Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)",
-    "version": "1.1.0"
+    "version": "1.3.0"
   },
   "servers": [
     {
@@ -606,11 +606,19 @@
                   },
                   "heart_rate_avg": {
                     "type": "string",
-                    "description": "Average heart rate, e.g. '145 bpm'"
+                    "description": "Text HR (e.g. '145 bpm'). Server auto-parses to hr_avg."
+                  },
+                  "hr_avg": {
+                    "type": "integer",
+                    "description": "Average heart rate (numeric). Auto-computed from heart_rate_avg if not provided."
                   },
                   "heart_rate_max": {
                     "type": "string",
-                    "description": "Max heart rate, e.g. '180 bpm'"
+                    "description": "Text max HR (e.g. '180 bpm'). Server auto-parses to hr_max."
+                  },
+                  "hr_max": {
+                    "type": "integer",
+                    "description": "Max heart rate (numeric). Auto-computed from heart_rate_max if not provided."
                   },
                   "pace_avg": {
                     "type": "string",
@@ -618,15 +626,27 @@
                   },
                   "cadence_avg": {
                     "type": "string",
-                    "description": "Average cadence, e.g. '180 spm'"
+                    "description": "Text cadence (e.g. '180 spm'). Server auto-parses to cadence."
+                  },
+                  "cadence": {
+                    "type": "integer",
+                    "description": "Cadence (numeric). Auto-computed from cadence_avg if not provided."
                   },
                   "active_calories": {
                     "type": "string",
-                    "description": "Active calories burned, e.g. '450'"
+                    "description": "Text calories (e.g. '450'). Server auto-parses to cal_active."
+                  },
+                  "cal_active": {
+                    "type": "integer",
+                    "description": "Active calories (numeric). Auto-computed from active_calories if not provided."
                   },
                   "total_calories": {
                     "type": "string",
-                    "description": "Total calories burned, e.g. '620'"
+                    "description": "Text total calories (e.g. '620'). Server auto-parses to cal_total."
+                  },
+                  "cal_total": {
+                    "type": "integer",
+                    "description": "Total calories (numeric). Auto-computed from total_calories if not provided."
                   },
                   "splits": {
                     "type": "object",
@@ -786,11 +806,19 @@
                   },
                   "heart_rate_avg": {
                     "type": "string",
-                    "description": "Average heart rate, e.g. '145 bpm'"
+                    "description": "Text HR (e.g. '145 bpm'). Server auto-parses to hr_avg."
+                  },
+                  "hr_avg": {
+                    "type": "integer",
+                    "description": "Average heart rate (numeric). Auto-computed from heart_rate_avg if not provided."
                   },
                   "heart_rate_max": {
                     "type": "string",
-                    "description": "Max heart rate, e.g. '180 bpm'"
+                    "description": "Text max HR (e.g. '180 bpm'). Server auto-parses to hr_max."
+                  },
+                  "hr_max": {
+                    "type": "integer",
+                    "description": "Max heart rate (numeric). Auto-computed from heart_rate_max if not provided."
                   },
                   "pace_avg": {
                     "type": "string",
@@ -798,15 +826,27 @@
                   },
                   "cadence_avg": {
                     "type": "string",
-                    "description": "Average cadence, e.g. '180 spm'"
+                    "description": "Text cadence (e.g. '180 spm'). Server auto-parses to cadence."
+                  },
+                  "cadence": {
+                    "type": "integer",
+                    "description": "Cadence (numeric). Auto-computed from cadence_avg if not provided."
                   },
                   "active_calories": {
                     "type": "string",
-                    "description": "Active calories burned, e.g. '450'"
+                    "description": "Text calories (e.g. '450'). Server auto-parses to cal_active."
+                  },
+                  "cal_active": {
+                    "type": "integer",
+                    "description": "Active calories (numeric). Auto-computed from active_calories if not provided."
                   },
                   "total_calories": {
                     "type": "string",
-                    "description": "Total calories burned, e.g. '620'"
+                    "description": "Text total calories (e.g. '620'). Server auto-parses to cal_total."
+                  },
+                  "cal_total": {
+                    "type": "integer",
+                    "description": "Total calories (numeric). Auto-computed from total_calories if not provided."
                   },
                   "splits": {
                     "type": "object",

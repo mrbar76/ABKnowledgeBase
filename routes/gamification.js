@@ -438,7 +438,7 @@ router.get('/', async (req, res) => {
         dayDetails.push({ date: row.d, train_closed: tOk, fuel_closed: fOk, recover_closed: recOk });
       }
 
-      const dayOfWeek = new Date().getDay() || 7;
+      const dayOfWeek = new Date(req.getToday() + 'T12:00:00').getDay() || 7;
       weekly = {
         day_of_week: dayOfWeek,
         train: { days_closed: trainDays, target_days: 5 },

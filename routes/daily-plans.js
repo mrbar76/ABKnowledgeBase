@@ -6,13 +6,13 @@ const router = express.Router();
 const WRITABLE_FIELDS = [
   'plan_date', 'status', 'title', 'goal',
   'workout_type', 'workout_focus', 'target_effort', 'target_duration_min', 'workout_notes',
-  'planned_exercises',
+  'planned_exercises', 'actual_exercises', 'completion_notes',
   'target_calories', 'target_protein_g', 'target_carbs_g', 'target_fat_g', 'target_hydration_liters',
   'target_sleep_hours', 'recovery_notes',
   'coaching_notes', 'rationale', 'tags', 'ai_source', 'metadata',
 ];
 
-const JSONB_FIELDS = new Set(['planned_exercises', 'tags', 'metadata']);
+const JSONB_FIELDS = new Set(['planned_exercises', 'actual_exercises', 'tags', 'metadata']);
 
 // ══════════════════════════════════════════════════════════════════
 //  LIST / SEARCH DAILY PLANS

@@ -14,9 +14,41 @@ const WRITABLE_FIELDS = [
   'grip_feedback', 'legs_feedback', 'cardio_feedback', 'shoulder_feedback',
   'completion_status', 'plan_comparison_notes',
   'tags', 'source', 'ai_source', 'metadata',
+  'daily_plan_id',
+  'duration_minutes', 'distance_value', 'elevation_gain_ft',
+  'hr_avg', 'hr_max', 'cadence', 'cal_active', 'cal_total',
 ];
 
 const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata', 'splits']);
+
+// Parse text duration into minutes: "45 min" → 45, "1:30:00" → 90, "90" → 90
+function parseDurationMin(val) {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  const tm = s.match(/^(\d+):(\d+)/);
+  if (tm) return parseInt(tm[1], 10) * 60 + parseInt(tm[2], 10);
+  const nm = s.match(/^(\d+(?:\.\d+)?)/);
+  if (nm) {
+    const n = parseFloat(nm[1]);
+    return (s.toLowerCase().includes('hour') || s.toLowerCase().includes('hr')) ? Math.round(n * 60) : Math.round(n);
+  }
+  return null;
+}
+
+// Extract leading integer from text: "135 bpm" → 135, "850 ft" → 850
+function parseIntFrom(val) {
+  if (val == null) return null;
+  const m = String(val).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// Extract leading number (with decimals): "3.2 mi" → 3.2
+function parseNumFrom(val) {
+  if (val == null) return null;
+  const m = String(val).match(/(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : null;
+}
 
 // ─── List / Search Workouts ──────────────────────────────────
 router.get('/', async (req, res) => {
@@ -75,8 +107,9 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = req.body;
-    const title = b.title || `Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
+    const title = b.title || `Workout – ${b.workout_date || req.getToday()} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
 
+    const timeDur = b.time_duration || b.time || null;
     const result = await query(
       `INSERT INTO workouts (
         title, workout_date, workout_type, location, elevation, focus,
@@ -88,7 +121,9 @@ router.post('/', async (req, res) => {
         slowdown_notes, failure_first,
         grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
         completion_status, plan_comparison_notes,
-        tags, source, ai_source, metadata
+        tags, source, ai_source, metadata,
+        duration_minutes, distance_value, elevation_gain_ft,
+        hr_avg, hr_max, cadence, cal_active, cal_total
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10,
@@ -99,11 +134,13 @@ router.post('/', async (req, res) => {
         $24, $25,
         $26, $27, $28, $29,
         $30, $31,
-        $32, $33, $34, $35
+        $32, $33, $34, $35,
+        $36, $37, $38,
+        $39, $40, $41, $42, $43
       ) RETURNING *`,
       [
         title,
-        b.workout_date || new Date().toISOString().slice(0, 10),
+        b.workout_date || req.getToday(),
         b.workout_type || 'hybrid',
         b.location || null,
         b.elevation || null,
@@ -112,7 +149,7 @@ router.post('/', async (req, res) => {
         b.main_sets || null,
         b.carries || null,
         JSON.stringify(b.exercises || []),
-        b.time_duration || b.time || null,
+        timeDur,
         b.distance || null,
         b.elevation_gain || null,
         b.heart_rate_avg || null,
@@ -137,6 +174,14 @@ router.post('/', async (req, res) => {
         b.source || 'manual',
         b.ai_source || null,
         JSON.stringify(b.metadata || {}),
+        b.duration_minutes != null ? parseInt(b.duration_minutes, 10) : parseDurationMin(timeDur),
+        b.distance_value != null ? parseFloat(b.distance_value) : parseNumFrom(b.distance),
+        b.elevation_gain_ft != null ? parseInt(b.elevation_gain_ft, 10) : parseIntFrom(b.elevation_gain),
+        b.hr_avg != null ? parseInt(b.hr_avg, 10) : parseIntFrom(b.heart_rate_avg),
+        b.hr_max != null ? parseInt(b.hr_max, 10) : parseIntFrom(b.heart_rate_max),
+        b.cadence != null ? parseInt(b.cadence, 10) : parseIntFrom(b.cadence_avg),
+        b.cal_active != null ? parseInt(b.cal_active, 10) : parseIntFrom(b.active_calories),
+        b.cal_total != null ? parseInt(b.cal_total, 10) : parseIntFrom(b.total_calories),
       ]
     );
 
@@ -164,8 +209,9 @@ router.post('/bulk', async (req, res) => {
 
     for (const b of workouts) {
       try {
-        const title = b.title || `Workout – ${b.workout_date || new Date().toISOString().slice(0, 10)} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
+        const title = b.title || `Workout – ${b.workout_date || req.getToday()} – ${(b.workout_type || 'hybrid').toUpperCase()}`;
 
+        const timeDur = b.time_duration || b.time || null;
         const result = await query(
           `INSERT INTO workouts (
             title, workout_date, workout_type, location, elevation, focus,
@@ -177,7 +223,9 @@ router.post('/bulk', async (req, res) => {
             slowdown_notes, failure_first,
             grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
             completion_status, plan_comparison_notes,
-            tags, source, ai_source, metadata
+            tags, source, ai_source, metadata,
+            duration_minutes, distance_value, elevation_gain_ft,
+            hr_avg, hr_max, cadence, cal_active, cal_total
           ) VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9, $10,
@@ -188,11 +236,13 @@ router.post('/bulk', async (req, res) => {
             $24, $25,
             $26, $27, $28, $29,
             $30, $31,
-            $32, $33, $34, $35
+            $32, $33, $34, $35,
+            $36, $37, $38,
+            $39, $40, $41, $42, $43
           ) RETURNING id, title, workout_date, workout_type`,
           [
             title,
-            b.workout_date || new Date().toISOString().slice(0, 10),
+            b.workout_date || req.getToday(),
             b.workout_type || 'hybrid',
             b.location || null,
             b.elevation || null,
@@ -201,7 +251,7 @@ router.post('/bulk', async (req, res) => {
             b.main_sets || null,
             b.carries || null,
             JSON.stringify(b.exercises || []),
-            b.time_duration || b.time || null,
+            timeDur,
             b.distance || null,
             b.elevation_gain || null,
             b.heart_rate_avg || null,
@@ -226,6 +276,14 @@ router.post('/bulk', async (req, res) => {
             b.source || 'import',
             b.ai_source || null,
             JSON.stringify(b.metadata || {}),
+            b.duration_minutes != null ? parseInt(b.duration_minutes, 10) : parseDurationMin(timeDur),
+            b.distance_value != null ? parseFloat(b.distance_value) : parseNumFrom(b.distance),
+            b.elevation_gain_ft != null ? parseInt(b.elevation_gain_ft, 10) : parseIntFrom(b.elevation_gain),
+            b.hr_avg != null ? parseInt(b.hr_avg, 10) : parseIntFrom(b.heart_rate_avg),
+            b.hr_max != null ? parseInt(b.hr_max, 10) : parseIntFrom(b.heart_rate_max),
+            b.cadence != null ? parseInt(b.cadence, 10) : parseIntFrom(b.cadence_avg),
+            b.cal_active != null ? parseInt(b.cal_active, 10) : parseIntFrom(b.active_calories),
+            b.cal_total != null ? parseInt(b.cal_total, 10) : parseIntFrom(b.total_calories),
           ]
         );
 
@@ -264,6 +322,31 @@ router.put('/:id', async (req, res) => {
           fields.push(`${key} = $${i++}`);
           params.push(b[key]);
         }
+      }
+    }
+
+    // Auto-populate numeric columns from text fields
+    const numericMap = {
+      time_duration: ['duration_minutes', v => parseDurationMin(v)],
+      distance: ['distance_value', v => parseNumFrom(v)],
+      elevation_gain: ['elevation_gain_ft', v => parseIntFrom(v)],
+      heart_rate_avg: ['hr_avg', v => parseIntFrom(v)],
+      heart_rate_max: ['hr_max', v => parseIntFrom(v)],
+      cadence_avg: ['cadence', v => parseIntFrom(v)],
+      active_calories: ['cal_active', v => parseIntFrom(v)],
+      total_calories: ['cal_total', v => parseIntFrom(v)],
+    };
+    for (const [textKey, [numCol, parseFn]] of Object.entries(numericMap)) {
+      if (b[textKey] !== undefined && b[numCol] === undefined) {
+        fields.push(`${numCol} = $${i++}`);
+        params.push(parseFn(b[textKey]));
+      }
+    }
+    // Allow direct numeric field updates
+    for (const numCol of ['duration_minutes','distance_value','elevation_gain_ft','hr_avg','hr_max','cadence','cal_active','cal_total']) {
+      if (b[numCol] !== undefined) {
+        fields.push(`${numCol} = $${i++}`);
+        params.push(b[numCol] != null ? Number(b[numCol]) : null);
       }
     }
 

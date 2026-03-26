@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Knowledge Base",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "AB Brain \u2014 Avi's unified personal knowledge base for capturing knowledge, managing tasks and projects, reviewing Bee transcripts, and storing AI conversations."
   },
   "servers": [

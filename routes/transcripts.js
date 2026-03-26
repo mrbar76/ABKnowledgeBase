@@ -127,7 +127,7 @@ router.post('/', async (req, res) => {
     const { title, raw_text, summary, source, speaker_labels, duration_seconds, recorded_at, tags, metadata, bee_id, location } = req.body;
     if (!raw_text) return res.status(400).json({ error: 'raw_text is required' });
 
-    const autoTitle = title || `Transcript ${new Date(recorded_at || Date.now()).toLocaleDateString()}`;
+    const autoTitle = title || `Transcript ${recorded_at ? new Date(recorded_at).toLocaleDateString() : req.getToday()}`;
 
     const result = await query(
       `INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, location, tags, bee_id, metadata)
@@ -171,7 +171,7 @@ router.post('/bulk', async (req, res) => {
     const ids = [];
     for (const t of transcripts) {
       if (!t.raw_text) continue;
-      const autoTitle = t.title || `Transcript ${new Date(t.recorded_at || Date.now()).toLocaleDateString()}`;
+      const autoTitle = t.title || `Transcript ${t.recorded_at ? new Date(t.recorded_at).toLocaleDateString() : req.getToday()}`;
       const result = await query(
         `INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, tags, bee_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) RETURNING id`,

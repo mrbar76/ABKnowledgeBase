@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AB Brain - Spartan Training Platform",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "AB Brain \u2014 Avi Bar's unified personal knowledge base, training intelligence, and AI coaching platform.\n\n## How to Use This API\n\n### Before Coaching/Training Conversations\n1. Call `GET /training/injuries/active/summary` \u2014 check for contraindications FIRST\n2. Call `GET /training/day/{today}` \u2014 see today's full context (workouts, nutrition, body, injuries, active plan)\n3. Call `GET /training/plans?status=active` \u2014 understand the current training program\n\n### After Coaching Conversations\n1. Call `POST /training/coaching` \u2014 save the session summary with key_decisions, adjustments, injury_notes, and next_steps\n2. If a new injury was discussed: `POST /training/injuries` \u2014 log it with body_area, severity, modifications\n3. If the plan needs updating: `PUT /training/plans/{id}` \u2014 update phase, progression_notes, or constraints\n\n### For Training Plan Creation\n1. Review recent workouts: `GET /workouts?limit=20`\n2. Review body trends: `GET /body-metrics?limit=10`\n3. Check active injuries: `GET /training/injuries?status=active`\n4. Create plan: `POST /training/plans` \u2014 include goal, rationale (WHY), weekly_structure, constraints\n\n### For General Queries\n- `GET /search?q=term` \u2014 full-text search across ALL data types\n- `POST /search/ai` \u2014 AI-optimized search returning typed results\n- `GET /dashboard` \u2014 overview stats for all tables\n\n### For Motivation & Accountability\n- `GET /gamification` \u2014 rings (Train/Execute/Recover), streaks, badges, weekly progress, smart goal suggestions\n- `PUT /gamification/settings` \u2014 adjust ring goals based on user's current capacity\n- Use ring data to reinforce consistency: \"You've got a 12-day train streak going!\"\n- When suggesting goal changes, check the `suggestions` array \u2014 the system auto-recommends based on 7-day averages\n\n### Data Types Available\nKnowledge, Facts, Tasks, Projects, Transcripts, Conversations, Workouts, Meals, Body Metrics, Daily Nutrition Context, Training Plans, Coaching Sessions, Injuries, Gamification (Rings, Streaks, Badges)"
   },
   "servers": [
@@ -2255,11 +2255,23 @@
           "time_duration": {
             "type": "string"
           },
+          "duration_minutes": {
+            "type": "integer",
+            "description": "Duration in minutes. Auto-computed from time_duration."
+          },
           "distance": {
             "type": "string"
           },
+          "distance_value": {
+            "type": "number",
+            "description": "Distance as number. Auto-computed from distance."
+          },
           "elevation_gain": {
             "type": "string"
+          },
+          "elevation_gain_ft": {
+            "type": "integer",
+            "description": "Elevation gain in feet. Auto-computed from elevation_gain."
           },
           "effort": {
             "type": "integer"
@@ -2303,9 +2315,19 @@
             "description": "Average heart rate in bpm",
             "nullable": true
           },
+          "hr_avg": {
+            "type": "integer",
+            "description": "Average heart rate (numeric). Auto-computed from heart_rate_avg.",
+            "nullable": true
+          },
           "heart_rate_max": {
             "type": "integer",
             "description": "Max heart rate in bpm",
+            "nullable": true
+          },
+          "hr_max": {
+            "type": "integer",
+            "description": "Max heart rate (numeric). Auto-computed from heart_rate_max.",
             "nullable": true
           },
           "pace_avg": {
@@ -2318,14 +2340,29 @@
             "description": "Average cadence in steps/min",
             "nullable": true
           },
+          "cadence": {
+            "type": "integer",
+            "description": "Cadence (numeric). Auto-computed from cadence_avg.",
+            "nullable": true
+          },
           "active_calories": {
             "type": "integer",
             "description": "Active calories burned",
             "nullable": true
           },
+          "cal_active": {
+            "type": "integer",
+            "description": "Active calories (numeric). Auto-computed from active_calories.",
+            "nullable": true
+          },
           "total_calories": {
             "type": "integer",
             "description": "Total calories burned",
+            "nullable": true
+          },
+          "cal_total": {
+            "type": "integer",
+            "description": "Total calories (numeric). Auto-computed from total_calories.",
             "nullable": true
           },
           "splits": {

@@ -35,17 +35,50 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Timezone-aware "today" helper — uses client's X-Timezone header
+app.use((req, res, next) => {
+  const tz = req.headers['x-timezone'];
+  req.getToday = () => {
+    try {
+      if (tz) {
+        return new Date().toLocaleDateString('en-CA', { timeZone: tz }); // en-CA = YYYY-MM-DD
+      }
+    } catch (e) { /* invalid tz, fall through */ }
+    return new Date().toISOString().slice(0, 10);
+  };
+  req.getNow = () => {
+    try {
+      if (tz) {
+        const d = new Date();
+        return d.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T') + '.000Z';
+      }
+    } catch (e) { /* invalid tz, fall through */ }
+    return new Date().toISOString();
+  };
+  next();
+});
+
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Health check — BEFORE auth middleware
+const APP_VERSION = require('./package.json').version;
+
 app.get('/api/health-check', (req, res) => {
-  res.json({ status: 'ok', backend: 'postgresql', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', version: APP_VERSION, backend: 'postgresql', timestamp: new Date().toISOString() });
 });
 
 // OpenAPI spec — no auth
 app.get('/openapi.json', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'openapi-chatgpt.json'));
+});
+
+// Claude schema — no auth
+app.get('/claude-schema.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'claude-schema.json'));
+});
+app.get('/claude-schema.yaml', (req, res) => {
+  res.type('text/yaml').sendFile(path.join(__dirname, 'public', 'claude-schema.yaml'));
 });
 
 // Privacy policy

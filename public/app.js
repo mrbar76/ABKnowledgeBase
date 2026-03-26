@@ -99,7 +99,7 @@ function logout() { sessionStorage.removeItem('ab_api_key'); localStorage.remove
 // ─── API helper ───────────────────────────────────────────────
 async function api(path, opts = {}) {
   const key = getStoredKey();
-  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  const headers = { 'Content-Type': 'application/json', 'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone, ...opts.headers };
   if (key) headers['X-Api-Key'] = key;
   let res;
   try { res = await fetch(API + path, { ...opts, headers }); } catch (e) { throw new Error(`Network error: ${e.message}`); }
@@ -1408,66 +1408,88 @@ When the user shares GYM PHOTOS: identify all visible equipment, create a gym pr
 
 CORE WORKFLOW
 1. Evaluate: review recent training, recovery, injuries, adherence.
-2. Plan: create daily plans with specific exercises from the catalog.
-3. Execute: log workouts with structured exercise data (plan vs actual).
-4. Review: compare plan vs actual at set level, mark completion status, save coaching summary.
+2. Plan: create or adjust daily/weekly training targets.
+3. Execute: log workouts, meals, daily context.
+4. Review: compare plan vs actual, extract lesson, adjust next step, save coaching summary.
+USE THESE ENDPOINT PATTERNS
+- Workouts: list/search by filters, log with \`POST /workouts\`
+- Meals: \`GET /meals?date=...\` or range; log with \`POST /meals\`
+- Body metrics: \`GET /body-metrics?latest=true\` or range; log with \`POST /body-metrics\`
+- Daily context: \`GET/POST /nutrition/daily-context\`
+- Daily summary: \`GET /nutrition/daily-summary?date=...\`
+- Range nutrition review: \`GET /nutrition/daily-summary/range?since=...&before=...\`
+- Daily plans: \`GET /daily-plans?from=&to=\`, create with \`POST /daily-plans\`, \`POST /daily-plans/week\` for 7 days at once
+- Coaching sessions: list by date range, create after substantive reviews
+- Full day view when needed: \`GET /training/day/YYYY-MM-DD\`
+EXERCISE LIBRARY & GYM PROFILES
+- \`GET /exercises/available\` — exercises matching the active gym profile's equipment
+- \`GET /exercises?muscle=chest&equipment=dumbbell\` — filter by muscle/equipment
+- \`GET /exercises/gym-profiles/active\` — current gym profile + equipment list
+- \`POST /exercises/import-fitbod\` — import from Fitbod CSV export
+- \`POST /exercises/gym-profiles\` — create profile (name, equipment[], is_active)
+- \`PUT /exercises/gym-profiles/:id\` — update profile
+- \`GET /exercises/equipment\` — full equipment catalog for picker
 
-DAILY PLANS (with planned_exercises)
-Use \`POST /daily-plans\` for single day, \`POST /daily-plans/week\` for 7 days at once.
-NEVER use training plans (/training/plans). All planning goes through daily plans.
-Fields: title, goal, workout_type, workout_focus, target_effort (1-10), target_duration_min,
-planned_exercises (JSONB array), target_calories, target_protein_g, target_carbs_g, target_fat_g,
-target_hydration_liters, target_sleep_hours, workout_notes, coaching_notes, rationale, status (planned/rest).
-Always include title and goal.
+WORKOUT PLANNING (Fitbod-compatible)
+When planning workouts, ALWAYS:
+1. Check the active gym profile: \`GET /exercises/gym-profiles/active\`
+2. Only suggest exercises available for that profile's equipment: \`GET /exercises/available\`
+3. Use EXACT exercise names from the library (these match Fitbod naming so Avi can quickly find them)
+4. ALWAYS include specific weight targets for every exercise. Look up Avi's recent workout history to set appropriate weights.
+   Do NOT write "build to heavy" or "moderate-heavy" — give a number: "3x10 @ 50 lb" not "3x10, build to moderate-heavy".
+   If unsure, give a range: "3x10 @ 45-55 lb". For bodyweight exercises, say "bodyweight". For bands, say the band level.
+5. Save structured planned_exercises on the daily plan using \`PUT /daily-plans/:id\`:
+   \`planned_exercises\` is a JSONB array:
+   [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "175 lb",
+      "group": "main", "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
+      "superset_with": null, "notes": "" },
+    { "name": "Cable Fly", "sets": 3, "reps": 12, "weight": "30 lb",
+      "group": "superset", "superset_with": "Dumbbell Lateral Raise" }]
+   Valid groups: warmup, main, superset, circuit, finisher
+6. Also put a human-readable summary in workout_notes for Avi to reference in Fitbod.
+   Format each exercise as: "- Exercise Name: SETSxREPS @ WEIGHT" (e.g. "- Leg Press: 4x10 @ 180 lb")
+7. If an exercise isn't in the library, add it: \`POST /exercises\` with name, muscle_primary, equipment
 
-planned_exercises structure — make it easy to transcribe into Fitbod:
-\`[{
-  "name": "Barbell Squat",
-  "exercise_id": "uuid-from-catalog",
-  "sets": 4, "reps": 8, "weight_lb": 185,
-  "rest_sec": 120,
-  "notes": "ATG depth, pause at bottom",
-  "superset_group": null
-}]\`
-Format the plan output clearly: exercise name, sets x reps @ weight, rest time. Group supersets together.
+PLAN-WORKOUT CONNECTION
+- Plans and workouts are linked by date (plan_date = workout_date) and optionally by daily_plan_id
+- After Avi completes a workout (sends Fitbod screenshots), log the actual workout:
+  \`POST /workouts\` with \`daily_plan_id\` set to the plan's id, and structured \`exercises\` JSONB:
+  [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "180 lb",
+     "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
+     "completed": true, "notes": "PR" }]
+- Then update the plan: \`PUT /daily-plans/:id\` with:
+  - status: "completed" or "partial"
+  - actual_exercises: same structured array of what was actually done
+  - completion_notes: your review (what changed, what was skipped, why)
+- Recovery scoring reads structured exercises for granular per-muscle tracking.
+  Exercises before March 2026 use legacy workout_type mapping. New structured data gives better accuracy.
 
-WORKOUT LOGGING (with plan vs actual)
+LOGGING FROM FITBOD SCREENSHOTS
+When Avi sends Fitbod screenshots, extract exercises into the structured format:
+- Fitbod summary view: exercise name, highest weight, volume, estimated 1RM, total reps, PRs
+- Fitbod detail view: each set with reps × weight
+- Log whichever level of detail the screenshot shows. Both are valid.
+- For BANDS (resistance bands, loop bands): keep the label exactly as Fitbod shows (Light, Medium, Heavy, X-Heavy).
+  Do NOT convert to pounds — band resistance varies by stance, stretch, and brand. Treat labels as RPE.
+  Track progression by label: "Heavy → X-Heavy for same reps" = progress.
+- For TIMED exercises (plank, stretches): log duration per set, not reps.
+- Exercise names must match Fitbod naming exactly. If an exercise isn't in the library, add it via POST /exercises.
+- Mark PRs (trophy icon in Fitbod) in the exercise notes field.
+
+WORKOUT LOGGING
 Use \`POST /workouts\`. Required: \`workout_type\`.
-The exercises JSONB field now supports structured plan-vs-actual comparison:
-\`exercises: [{
-  "name": "Barbell Squat",
-  "exercise_id": "uuid",
-  "planned": {"sets": 4, "reps": 8, "weight_lb": 185},
-  "actual": [
-    {"set": 1, "reps": 8, "weight_lb": 185},
-    {"set": 2, "reps": 8, "weight_lb": 185},
-    {"set": 3, "reps": 6, "weight_lb": 185, "notes": "grip slipped"},
-    {"set": 4, "reps": 5, "weight_lb": 175, "notes": "dropped weight"}
-  ],
-  "status": "modified",
-  "notes": "Reduced weight last 2 sets due to grip fatigue"
-}]\`
-Also set: completion_status ("complete", "modified", "incomplete"), plan_comparison_notes (free text summary of deviations).
-
-PLAN VS ACTUAL WORKFLOW
-When Avi sends a post-workout update or screenshot:
-1. Fetch today's plan: \`GET /daily-plans/by-date/YYYY-MM-DD\`
-2. Compare each planned exercise with what was actually done at the set level.
-3. Note: weight changes, rep changes, exercise substitutions (with reason), skipped exercises.
-4. Log workout via \`POST /workouts\` with structured exercises array showing planned vs actual.
-5. Set completion_status: "complete" (all exercises done as planned), "modified" (changes made), "incomplete" (exercises skipped).
-6. Add plan_comparison_notes summarizing key deviations and coaching observations.
-7. Update daily plan status to "completed" or "partial" via \`PUT /daily-plans/{id}\`.
-Review endpoint: \`GET /daily-plans/{id}/review\` — returns plan + actual + comparison summary.
-
-Other workout fields (include when relevant):
-- focus, warmup, main_sets, carries
-- time_duration, distance, elevation_gain
+Include when relevant:
+- daily_plan_id — link to the plan this workout fulfills (if planned)
+- exercises — structured JSONB array (see schema above). Include muscle_primary for recovery tracking.
+- focus, warmup, main_sets, carries (legacy text fields, still supported)
+- time_duration (text, e.g. "45 min") or duration_minutes (integer) — server auto-parses text to numeric
+- distance (text) or distance_value (number), elevation_gain (text) or elevation_gain_ft (integer)
+- heart_rate_avg/hr_avg, heart_rate_max/hr_max, active_calories/cal_active, total_calories/cal_total — text or numeric
 - effort 1–10
 - slowdown_notes, failure_first
 - grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback, body_notes
 - adjustment
-- heart_rate_avg, heart_rate_max, active_calories, total_calories, pace_avg, cadence_avg, splits
+- pace_avg, cadence_avg, splits
 - lowercase tags
 Workout types: hill, strength, run, hybrid, recovery, ruck.
 
@@ -1530,6 +1552,27 @@ async function copyGptInstructions(type) {
   }
 }
 
+async function copyClaudeSchema() {
+  const btn = document.getElementById('btn-copy-claude-schema');
+  const resultEl = document.getElementById('sm-claude-schema-result');
+  try {
+    btn.textContent = 'Fetching...';
+    const res = await fetch('/claude-schema.json');
+    const text = await res.text();
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    resultEl.style.display = 'block';
+    resultEl.style.color = 'var(--accent)';
+    resultEl.textContent = 'Claude schema copied to clipboard.';
+    setTimeout(() => { btn.textContent = 'Copy JSON Schema'; }, 3000);
+  } catch (err) {
+    btn.textContent = 'Copy JSON Schema';
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#e74c3c';
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
 async function loadSettingsMenuInfo() {
   const bkEl = document.getElementById('sm-backend-val');
   const beeEl = document.getElementById('sm-bee-val');
@@ -1538,13 +1581,14 @@ async function loadSettingsMenuInfo() {
 
   // Health / backend
   try {
-    const key = getStoredKey();
-    const res = await fetch(API + '/health', { headers: key ? { 'X-Api-Key': key } : {} });
+    const res = await fetch(API + '/health-check');
     const data = await res.json().catch(() => ({}));
     if (bkEl) {
       bkEl.textContent = res.ok ? (data.backend || 'PostgreSQL') + ' — connected' : 'error';
       bkEl.style.color = res.ok ? 'var(--green)' : 'var(--red)';
     }
+    const verEl = document.getElementById('sm-version');
+    if (verEl && data.version) verEl.textContent = 'v' + data.version;
   } catch {
     if (bkEl) { bkEl.textContent = 'offline'; bkEl.style.color = 'var(--red)'; }
   }
@@ -3395,21 +3439,103 @@ async function loadFitnessToday() {
     const dateLabel = sel.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     const isToday = fitnessTodayDate === today;
 
-    // Plan section
+    // Plan section (with structured exercises support)
     let planHtml = '';
     if (plan) {
       const statusColors = { planned: '#3b82f6', completed: '#10b981', partial: '#f59e0b', missed: '#ef4444', rest: '#8b5cf6', amended: '#6366f1' };
       const statusColor = statusColors[plan.status] || '#6b7280';
+      const statusIcons = { planned: '○', completed: '✓', partial: '~', missed: '✗', rest: '◇', amended: '◆' };
+      const statusIcon = statusIcons[plan.status] || '○';
+
+      // Build exercise list from planned_exercises or actual_exercises
+      const showActual = plan.actual_exercises && plan.actual_exercises.length > 0;
+      const exercises = showActual ? plan.actual_exercises : (plan.planned_exercises || []);
+      let exerciseHtml = '';
+      if (exercises.length > 0) {
+        let currentGroup = '';
+        exerciseHtml = exercises.map(ex => {
+          let groupHeader = '';
+          const group = (ex.group || 'main').toLowerCase();
+          if (group !== currentGroup) {
+            currentGroup = group;
+            const groupLabels = { warmup: 'WARMUP', main: 'MAIN', superset: 'SUPERSET', circuit: 'CIRCUIT', finisher: 'FINISHER' };
+            groupHeader = `<div style="font-size:0.6rem;font-weight:700;color:var(--text-dim);margin-top:8px;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">${groupLabels[group] || group.toUpperCase()}</div>`;
+          }
+
+          // Status icon for actual exercises
+          const exStatus = ex.status || (ex.completed === false ? 'skipped' : ex.completed === true ? 'completed' : '');
+          const exIcon = exStatus === 'completed' ? '<span style="color:#10b981">✓</span>' :
+                         exStatus === 'partial' ? '<span style="color:#f59e0b">~</span>' :
+                         exStatus === 'skipped' ? '<span style="color:#ef4444">✗</span>' :
+                         '<span style="color:var(--text-dim)">·</span>';
+
+          // Format sets info
+          let setsInfo = '';
+          if (ex.sets && Array.isArray(ex.sets)) {
+            // Set-level detail from Fitbod
+            const setStrs = ex.sets.map(s => {
+              if (s.duration) return s.duration;
+              return `${s.reps}${s.weight ? ' × ' + s.weight : ''}`;
+            });
+            // Collapse identical sets: "5×50, 5×50, 5×50" → "3×5 @ 50 lb"
+            const unique = [...new Set(setStrs)];
+            if (unique.length === 1) {
+              setsInfo = `${ex.sets.length}× ${unique[0]}`;
+            } else {
+              setsInfo = setStrs.join(' · ');
+            }
+          } else {
+            // Summary-level data
+            const parts = [];
+            if (ex.planned_sets && !showActual) parts.push(`${ex.planned_sets}×${ex.planned_reps || '?'}${ex.planned_weight ? ' @ ' + ex.planned_weight : ''}`);
+            else if (ex.actual_sets) parts.push(`${ex.actual_sets}×${ex.actual_reps || '?'}${ex.actual_weight ? ' @ ' + ex.actual_weight : ''}`);
+            else if (ex.total_reps) parts.push(`${ex.total_reps} reps`);
+            else if (ex.duration) parts.push(ex.duration);
+            else if (ex.total_time) parts.push(`${ex.sets || '?'}× ${ex.total_time}`);
+            if (ex.highest_weight) parts.push(ex.highest_weight);
+            if (ex.volume && ex.volume !== ex.highest_weight) parts.push(ex.volume + ' vol');
+            setsInfo = parts.join(' · ');
+          }
+
+          // PR indicator
+          const prBadge = ex.pr || ex.notes?.includes('PR') ? ' <span style="color:#eab308;font-size:0.6rem">🏆</span>' : '';
+
+          // Notes
+          const notesHtml = ex.notes && !ex.notes.includes('PR') ? `<div style="font-size:0.6rem;color:var(--text-dim);margin-left:20px;font-style:italic">${esc(ex.notes)}</div>` : '';
+
+          return groupHeader + `<div style="display:flex;align-items:baseline;gap:6px;font-size:0.75rem;padding:2px 0">
+            ${showActual ? exIcon : '<span style="color:var(--text-dim)">·</span>'}
+            <span style="flex:1;font-weight:500">${esc(ex.name)}${prBadge}</span>
+            <span style="color:var(--text-dim);font-size:0.68rem;white-space:nowrap">${setsInfo}</span>
+          </div>${notesHtml}`;
+        }).join('');
+      }
+
+      // Planned vs actual comparison line
+      let vsLine = '';
+      if (showActual && plan.planned_exercises && plan.planned_exercises.length > 0) {
+        const plannedCount = plan.planned_exercises.length;
+        const actualCount = plan.actual_exercises.filter(e => e.status !== 'skipped' && e.completed !== false).length;
+        vsLine = `<div style="font-size:0.65rem;color:var(--text-dim);margin-top:4px">${actualCount}/${plannedCount} exercises completed</div>`;
+      }
+
       planHtml = `
         <div class="card mb-md" style="border-left:3px solid ${statusColor}">
           <div class="card-title" style="display:flex;align-items:center;gap:8px">
-            Plan
-            <span class="badge-dynamic" style="background:${statusColor}22;color:${statusColor};font-size:0.65rem">${plan.status}</span>
+            <span>${plan.status === 'rest' ? "Rest Day" : "Today's Plan"}</span>
+            <span class="badge-dynamic" style="background:${statusColor}22;color:${statusColor};font-size:0.65rem">${statusIcon} ${plan.status}</span>
+            <span style="flex:1"></span>
+            <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 6px" onclick="showGymProfilePicker()">⚙</button>
           </div>
-          ${plan.workout_type ? `<div style="font-weight:600">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}</div>` : ''}
-          ${plan.target_effort ? `<div class="list-item-meta">Effort: ${plan.target_effort}/10${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
+          ${plan.title ? `<div style="font-weight:600;font-size:0.85rem">${esc(plan.title)}</div>` : ''}
+          ${plan.workout_type ? `<div style="font-size:0.75rem;color:var(--text-dim)">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}${plan.target_effort ? ' · effort ' + plan.target_effort : ''}${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
+          ${exerciseHtml ? `<div style="margin-top:8px">${exerciseHtml}</div>` : ''}
+          ${!exerciseHtml && plan.workout_notes ? `
+            <div style="margin-top:8px;padding:8px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:0.75rem;line-height:1.6;white-space:pre-line;font-family:var(--font-mono, monospace)">${esc(plan.workout_notes)}</div>
+          ` : ''}
+          ${vsLine}
           ${plan.target_calories || plan.target_protein_g || plan.target_hydration_liters || plan.target_sleep_hours ? `
-            <div class="list-item-meta" style="margin-top:4px">
+            <div class="list-item-meta" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg-tertiary)">
               ${plan.target_calories ? 'Cal: ' + plan.target_calories + ' ' : ''}
               ${plan.target_protein_g ? 'P: ' + plan.target_protein_g + 'g ' : ''}
               ${plan.target_hydration_liters ? 'Water: ' + plan.target_hydration_liters + 'L ' : ''}
@@ -3417,6 +3543,7 @@ async function loadFitnessToday() {
             </div>
           ` : ''}
           ${plan.coaching_notes ? `<div class="transcript-summary mt-sm">${esc(plan.coaching_notes)}</div>` : ''}
+          ${plan.completion_notes ? `<div style="margin-top:6px;padding:6px 8px;background:${statusColor}11;border-radius:6px;font-size:0.72rem;color:var(--text-dim)"><strong style="color:${statusColor}">Coach:</strong> ${esc(plan.completion_notes)}</div>` : ''}
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             ${['completed','partial','missed'].map(s => `<button class="btn-submit btn-compact-sm ${plan.status === s ? '' : 'btn-secondary'}" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','${s}')">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
             <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="editDailyPlan('${plan.id}')">Edit</button>
@@ -3424,12 +3551,16 @@ async function loadFitnessToday() {
         </div>`;
     } else {
       planHtml = `<div class="card mb-md" style="border-left:3px solid #d1d5db">
-        <div class="card-title">No plan for ${dateLabel}</div>
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          No plan for ${dateLabel}
+          <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 6px" onclick="showGymProfilePicker()">⚙</button>
+        </div>
         <button class="btn-submit btn-compact-sm" onclick="showCreateDailyPlanForm('${fitnessTodayDate}')">+ Create Plan</button>
       </div>`;
     }
 
     // Sleep & Context section
+    const hasCheckIn = !!(ctx.id);
     let checkInHtml = '';
     if (ctx.id && (ctx.sleep_hours != null || ctx.sleep_quality != null)) {
       const sleepColor = ctx.sleep_hours >= 7 ? '#10b981' : ctx.sleep_hours >= 5.5 ? '#f59e0b' : '#ef4444';
@@ -3454,7 +3585,6 @@ async function loadFitnessToday() {
 
     // Plan vs Actual comparison (if plan exists and there's data)
     let comparisonHtml = '';
-    const hasCheckIn = !!(ctx.id && (ctx.sleep_hours != null || ctx.hydration_liters != null));
     if (plan && (workouts.length || meals.length || hasCheckIn)) {
       const maxEffort = Math.max(0, ...workouts.map(w => w.effort || 0));
       const totalCal = meals.reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
@@ -3544,7 +3674,24 @@ async function loadFitnessToday() {
         </svg>
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:${scoreColor}">${scoreDisplay}</div>
       </div>
-      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${score != null ? (recoveryData.label || '') + ' — ' + esc(recoveryData.recommendation || '') : 'Log sleep, workouts & meals to see your recovery score'}</div>`;
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">${score != null ? (recoveryData.label || '') + ' — ' + esc(recoveryData.recommendation || '') : 'Log sleep, workouts & meals to see your recovery score'}</div>
+      <details style="text-align:left;margin-top:8px"><summary style="font-size:0.68rem;color:var(--text-dim);cursor:pointer;opacity:0.7">What is this?</summary>
+        <div style="font-size:0.68rem;color:var(--text-dim);margin-top:6px;line-height:1.5;text-align:left">
+          <div style="margin-bottom:6px"><strong style="color:var(--text)">Your body's readiness to train</strong> — based on sleep, training stress balance (TSB), muscle recovery, injuries, nutrition, and how you feel.</div>
+          <div style="margin-bottom:4px"><strong style="color:#10b981">81–100 Peak</strong> — body can handle max effort</div>
+          <div style="margin-bottom:4px"><strong style="color:#f59e0b">61–80 Good</strong> — train normally</div>
+          <div style="margin-bottom:4px"><strong style="color:#f97316">31–60 Moderate</strong> — reduce intensity or rest</div>
+          <div style="margin-bottom:6px"><strong style="color:#ef4444">0–30 Low</strong> — active recovery only</div>
+          <div style="margin-bottom:2px;color:var(--text);font-weight:600;font-size:0.66rem">COMPONENTS</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — last night's hours + quality</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — TSB: compares 7-day fatigue to 42-day fitness (like TrainingPeaks). Heavy training blocks pull this down even if you slept well</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — hours since each group was worked, <em>scaled by effort</em>. High-effort sessions need longer recovery</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury severity impact</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — yesterday's fuel + today's intake. Capped at 85 if no meals logged today</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — sleep quality as readiness proxy. Defaults to 50 if not logged</div>
+          <div style="margin-top:6px;border-top:1px solid var(--bg-tertiary);padding-top:6px">During progressive overload, Training Load (TSB) drops — this is normal and means the score reflects accumulated training stress, not just last night's sleep.</div>
+        </div>
+      </details>`;
 
     // Component breakdown (collapsed by default)
     if (recoveryData.components && score != null) {
@@ -3557,10 +3704,13 @@ async function loadFitnessToday() {
             const c = comps[k];
             if (!c) return '';
             const cColor = c.score >= 81 ? '#10b981' : c.score >= 61 ? '#f59e0b' : c.score >= 31 ? '#f97316' : '#ef4444';
-            return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:0.72rem">
-              <span style="width:90px;color:var(--text-dim)">${compLabels[k]}</span>
-              <div style="flex:1;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden"><div style="height:100%;width:${c.score}%;background:${cColor};border-radius:3px"></div></div>
-              <span style="width:24px;text-align:right;font-weight:600;color:${cColor}">${c.score}</span>
+            return `<div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:6px;font-size:0.72rem">
+                <span style="width:90px;color:var(--text-dim)">${compLabels[k]}</span>
+                <div style="flex:1;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden"><div style="height:100%;width:${c.score}%;background:${cColor};border-radius:3px"></div></div>
+                <span style="width:24px;text-align:right;font-weight:600;color:${cColor}">${c.score}</span>
+              </div>
+              ${c.detail ? `<div style="font-size:0.62rem;color:var(--text-dim);opacity:0.7;margin-left:96px;margin-top:1px">${c.detail}</div>` : ''}
             </div>`;
           }).join('')}
         </div>
@@ -5099,7 +5249,7 @@ async function loadRecovery(date) {
     const today = recoveryDate;
     const [scoreData, trendData] = await Promise.all([
       api(`/recovery/score?date=${today}`),
-      api('/recovery/trend?days=7'),
+      api(`/recovery/trend?date=${today}&days=7`),
     ]);
 
     const s = scoreData;
@@ -5148,6 +5298,28 @@ async function loadRecovery(date) {
           <div class="recovery-score-label">${s.label}</div>
         </div>
       </div>
+
+      <!-- Explainer -->
+      <details class="card mb-md" style="padding:12px">
+        <summary style="font-size:0.75rem;color:var(--text-dim);cursor:pointer">What is the Recovery Score?</summary>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:8px;line-height:1.6">
+          <div style="margin-bottom:8px"><strong style="color:var(--text)">Your body's readiness to train</strong> — based on sleep, training stress balance (TSB), muscle recovery, injuries, nutrition, and how you feel.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:8px">
+            <div><strong style="color:#10b981">81–100 Peak</strong> — max effort</div>
+            <div><strong style="color:#f59e0b">61–80 Good</strong> — train normally</div>
+            <div><strong style="color:#f97316">31–60 Moderate</strong> — reduce or rest</div>
+            <div><strong style="color:#ef4444">0–30 Low</strong> — recovery only</div>
+          </div>
+          <div style="margin-bottom:2px;color:var(--text);font-weight:600;font-size:0.68rem">COMPONENTS</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Sleep (30%)</strong> — last night's hours + quality</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Training Load (25%)</strong> — TSB: compares 7-day fatigue to 42-day fitness. Heavy blocks pull this down even with good sleep</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Muscle Freshness (20%)</strong> — hours since each group was worked, <em>scaled by effort</em>. Hard sessions need longer recovery</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Injuries (10%)</strong> — active injury severity impact</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Nutrition (10%)</strong> — yesterday's fuel + today's intake. Capped at 85 if no meals logged today</div>
+          <div style="margin-bottom:4px"><strong style="color:var(--text)">Subjective (5%)</strong> — sleep quality as readiness proxy. Defaults to 50 if not logged</div>
+          <div style="margin-top:6px;border-top:1px solid var(--bg-tertiary);padding-top:6px">During progressive overload, Training Load (TSB) drops — this reflects accumulated training stress, not just last night's sleep. Watch the 7-day trend for overall direction.</div>
+        </div>
+      </details>
 
       <!-- Sleep Card -->
       <div class="card mb-md" style="padding:12px">
@@ -5547,6 +5719,157 @@ async function quickUpdatePlanStatus(id, status) {
     if (fitnessSubTab === 'today') loadFitnessToday();
     else loadUnifiedPlans();
   } catch (e) { showToast(e.message); }
+}
+
+// ─── Gym Profile Picker ─────────────────────────────────────
+async function showGymProfilePicker() {
+  try {
+    const [profiles, catalog] = await Promise.all([
+      api('/exercises/gym-profiles'),
+      api('/exercises/equipment'),
+    ]);
+
+    // Group equipment by category
+    const categories = {};
+    for (const eq of catalog) {
+      if (!categories[eq.category]) categories[eq.category] = [];
+      categories[eq.category].push(eq);
+    }
+    const categoryLabels = { free_weights: 'Free Weights', machines: 'Machines', benches: 'Benches & Racks', racks: 'Racks', bodyweight: 'Bodyweight', accessories: 'Accessories', cardio: 'Cardio' };
+
+    const activeProfile = profiles.find(p => p.is_active);
+    const activeEquipment = new Set(activeProfile ? activeProfile.equipment : []);
+
+    // Profile tabs
+    const profileTabs = profiles.length ? profiles.map(p =>
+      `<button class="btn-submit btn-compact-sm ${p.is_active ? '' : 'btn-secondary'}" style="font-size:0.7rem" onclick="switchGymProfile('${p.id}')">${esc(p.name)}${p.is_active ? ' ●' : ''}</button>`
+    ).join(' ') : '<span style="font-size:0.75rem;color:var(--text-dim)">No profiles yet</span>';
+
+    // Equipment checkboxes
+    let equipHtml = '';
+    for (const [cat, items] of Object.entries(categories)) {
+      const label = categoryLabels[cat] || cat;
+      equipHtml += `<div style="margin-top:10px"><div style="font-size:0.68rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">${label}</div>`;
+      equipHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">`;
+      for (const eq of items) {
+        const checked = activeEquipment.has(eq.id) ? 'checked' : '';
+        equipHtml += `<label style="font-size:0.72rem;display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer">
+          <input type="checkbox" class="gym-equip-cb" value="${eq.id}" ${checked}> ${eq.label}
+        </label>`;
+      }
+      equipHtml += `</div></div>`;
+    }
+
+    const html = `
+      <div style="margin-bottom:12px">
+        <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px">Profiles</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          ${profileTabs}
+          <button class="btn-action btn-compact-sm" style="font-size:0.7rem" onclick="createGymProfile()">+ New</button>
+        </div>
+      </div>
+      ${activeProfile ? `
+        <div style="font-size:0.75rem;font-weight:600;margin-bottom:4px">Equipment — ${esc(activeProfile.name)}</div>
+        ${equipHtml}
+        <button class="btn-submit" style="width:100%;margin-top:12px" onclick="saveGymProfileEquipment('${activeProfile.id}')">Save Equipment</button>
+      ` : `
+        <div style="font-size:0.8rem;color:var(--text-dim);text-align:center;padding:20px 0">
+          Create a profile to select your equipment
+        </div>
+      `}
+    `;
+    openModal('Gym Profiles', html);
+  } catch (e) { showToast(e.message); }
+}
+
+async function switchGymProfile(id) {
+  try {
+    await api(`/exercises/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ is_active: true }) });
+    closeModal();
+    showGymProfilePicker();
+  } catch (e) { showToast(e.message); }
+}
+
+async function createGymProfile() {
+  const name = prompt('Profile name (e.g. Home, Gym, Travel):');
+  if (!name) return;
+  try {
+    await api('/exercises/gym-profiles', { method: 'POST', body: JSON.stringify({ name, is_active: true, equipment: ['bodyweight'] }) });
+    closeModal();
+    showGymProfilePicker();
+  } catch (e) { showToast(e.message); }
+}
+
+async function saveGymProfileEquipment(id) {
+  const checkboxes = document.querySelectorAll('.gym-equip-cb');
+  const equipment = [];
+  checkboxes.forEach(cb => { if (cb.checked) equipment.push(cb.value); });
+  try {
+    await api(`/exercises/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ equipment }) });
+    showToast('Equipment saved');
+    closeModal();
+    if (fitnessSubTab === 'today') loadFitnessToday();
+  } catch (e) { showToast(e.message); }
+}
+
+// Settings menu import — handles multiple files
+async function handleFitbodImportFromSettings(input) {
+  const resultEl = document.getElementById('sm-fitbod-import-result');
+  const files = input.files;
+  if (!files.length) return;
+
+  let totalImported = 0, totalUpdated = 0, totalRows = 0;
+  resultEl.style.display = 'block';
+  resultEl.style.color = 'var(--text-dim)';
+  resultEl.textContent = `Importing ${files.length} file(s)...`;
+
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const result = await api('/exercises/import-fitbod', { method: 'POST', body: JSON.stringify({ csv_text: text }) });
+      totalImported += result.imported || 0;
+      totalUpdated += result.updated || 0;
+      totalRows += result.total_rows || 0;
+    } catch (e) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `Error in ${file.name}: ${e.message}`;
+      input.value = '';
+      return;
+    }
+  }
+
+  resultEl.style.color = 'var(--green)';
+  resultEl.textContent = `✓ ${totalRows} rows processed: ${totalImported} new exercises, ${totalUpdated} enriched`;
+  input.value = '';
+  showToast(`Imported ${totalImported} exercises, enriched ${totalUpdated}`);
+}
+
+// Gym profile modal import (legacy — kept for backward compat)
+async function importFitbodFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  await doFitbodImport(text);
+}
+
+async function importFitbodPaste() {
+  const text = document.getElementById('fitbod-csv-paste')?.value;
+  if (!text || !text.trim()) return showToast('Paste CSV text first');
+  await doFitbodImport(text);
+}
+
+async function doFitbodImport(csvText) {
+  const resultEl = document.getElementById('fitbod-import-result');
+  if (resultEl) resultEl.innerHTML = '<span style="color:var(--text-dim)">Importing...</span>';
+  try {
+    const result = await api('/exercises/import-fitbod', { method: 'POST', body: JSON.stringify({ csv_text: csvText }) });
+    const msg = `✓ Found ${result.total_unique} exercises: ${result.imported} new, ${result.already_existed} already in library`;
+    if (resultEl) resultEl.innerHTML = `<span style="color:#10b981">${msg}</span>`;
+    showToast(msg);
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">Error: ${e.message}</span>`;
+    showToast(e.message);
+  }
 }
 
 async function showTrainingPlanDetail(id) {
