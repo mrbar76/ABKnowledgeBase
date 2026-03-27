@@ -486,6 +486,8 @@ async function initDB() {
   await safeQuery('tasks +notes', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notes TEXT`);
   await safeQuery('tasks +tags', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('tasks +checklist', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('tasks +waiting_on', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
+  await safeQuery('tasks idx_waiting_on', `CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
 
   // -- task_comments table --
   await safeQuery('task_comments table', `

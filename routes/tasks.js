@@ -6,7 +6,7 @@ const PRIORITY_ORDER = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WH
 
 router.get('/', async (req, res) => {
   try {
-    const { status, priority, ai_agent, context, limit = 100 } = req.query;
+    const { status, priority, ai_agent, context, waiting_on, limit = 100 } = req.query;
     const params = [];
     const where = [];
     let i = 1;
@@ -15,6 +15,7 @@ router.get('/', async (req, res) => {
     if (priority) { where.push(`priority = $${i++}`); params.push(priority); }
     if (ai_agent) { where.push(`ai_agent = $${i++}`); params.push(ai_agent); }
     if (context) { where.push(`context = $${i++}`); params.push(context); }
+    if (waiting_on) { where.push(`waiting_on ILIKE $${i++}`); params.push(waiting_on); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(Number(limit));
@@ -45,7 +46,7 @@ router.get('/kanban', async (req, res) => {
        ${where} ORDER BY ${PRIORITY_ORDER}, created_at ASC`, params
     );
 
-    const kanban = { todo: [], in_progress: [], review: [], done: [] };
+    const kanban = { todo: [], in_progress: [], waiting_on: [], review: [], done: [] };
     for (const task of result.rows) {
       (kanban[task.status] || kanban.todo).push(task);
     }
@@ -83,17 +84,17 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, waiting_on } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
 
     const effectiveStatus = status || 'todo';
     const result = await query(
-      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, completed_at, waiting_on)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
       [title, description || null, effectiveStatus,
        priority || 'medium', ai_agent || null, next_steps || null, due_date || null,
        context || null, source_id || null, notes || null,
-       effectiveStatus === 'done' ? new Date() : null]
+       effectiveStatus === 'done' ? new Date() : null, waiting_on || null]
     );
 
     await logActivity('create', 'task', result.rows[0].id, ai_agent, `Created task: ${title}`);
@@ -105,7 +106,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { title, description, status, priority, ai_agent, next_steps, output_log, due_date, context, notes, tags, checklist } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, output_log, due_date, context, notes, tags, checklist, waiting_on } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
     let i = 1;
@@ -122,6 +123,12 @@ router.put('/:id', async (req, res) => {
     if (notes !== undefined) { sets.push(`notes = $${i++}`); params.push(notes); }
     if (tags !== undefined) { sets.push(`tags = $${i++}::jsonb`); params.push(JSON.stringify(tags)); }
     if (checklist !== undefined) { sets.push(`checklist = $${i++}::jsonb`); params.push(JSON.stringify(checklist)); }
+    if (waiting_on !== undefined) { sets.push(`waiting_on = $${i++}`); params.push(waiting_on || null); }
+
+    // Auto-clear waiting_on when moving away from waiting_on status
+    if (status !== undefined && status !== 'waiting_on' && waiting_on === undefined) {
+      sets.push('waiting_on = NULL');
+    }
 
     // Auto-manage completed_at on status transitions
     if (status !== undefined) {

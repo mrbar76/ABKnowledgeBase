@@ -1974,6 +1974,7 @@ async function loadTasksToday() {
     const overdue = [];
     const dueToday = [];
     const inProgress = [];
+    const waitingOn = [];
     const topPriority = [];
     const recentlyDone = [];
 
@@ -1981,10 +1982,14 @@ async function loadTasksToday() {
 
     for (const t of tasks) {
       if (t.status === 'done') {
-        // Show tasks completed today
         if (t.completed_at && new Date(t.completed_at).toDateString() === todayStr) {
           recentlyDone.push(t);
         }
+        continue;
+      }
+
+      if (t.status === 'waiting_on') {
+        waitingOn.push(t);
         continue;
       }
 
@@ -2009,6 +2014,13 @@ async function loadTasksToday() {
     inProgress.sort(byPriority);
     topPriority.sort(byPriority);
 
+    // Group waiting_on by person
+    const waitingByPerson = {};
+    for (const t of waitingOn) {
+      const person = (t.waiting_on || 'Unknown').trim();
+      (waitingByPerson[person] = waitingByPerson[person] || []).push(t);
+    }
+
     // Only show top 5 from the backlog
     const topBacklog = topPriority.slice(0, 5);
 
@@ -2030,6 +2042,7 @@ async function loadTasksToday() {
         const isOverdue = d < today && t.status !== 'done';
         return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
       })() : '';
+      const waitingBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
 
       const rescheduleRow = showReschedule ? `
         <div style="display:flex;gap:4px;margin-top:4px" onclick="event.stopPropagation()">
@@ -2047,7 +2060,7 @@ async function loadTasksToday() {
             <div class="list-item-meta">
               <span class="priority-badge priority-${t.priority}">${t.priority}</span>
               ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-              ${dueBadge}${checkProgress}${commentCount}
+              ${dueBadge}${waitingBadge}${checkProgress}${commentCount}
             </div>
             ${rescheduleRow}
           </div>
@@ -2092,6 +2105,18 @@ async function loadTasksToday() {
         </div>
       ` : ''}
 
+      ${waitingOn.length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:0.8rem;font-weight:600;color:#f97316;margin-bottom:6px">Waiting On Others (${waitingOn.length})</div>
+          ${Object.entries(waitingByPerson).map(([person, tasks]) => `
+            <div style="margin-bottom:8px">
+              <div style="font-size:0.72rem;font-weight:600;color:var(--text-dim);padding:4px 0">⏳ ${esc(person)} (${tasks.length})</div>
+              ${tasks.map(t => renderTodayCard(t, true, false)).join('')}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
       ${topBacklog.length ? `
         <div style="margin-bottom:16px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--text-dim);margin-bottom:6px">Up Next (top ${topBacklog.length})</div>
@@ -2126,8 +2151,8 @@ async function loadTasksList() {
     if (taskContextFilter) params.set('context', taskContextFilter);
     const data = await api('/tasks?' + params.toString());
 
-    const statusLabels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', done: 'Done' };
-    const statusColors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
+    const statusLabels = { todo: 'To Do', in_progress: 'In Progress', waiting_on: 'Waiting On', review: 'Review', done: 'Done' };
+    const statusColors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', waiting_on: '#f97316', review: 'var(--yellow)', done: 'var(--green)' };
     const priorityLabels = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
 
     main.innerHTML = tasksTabsHtml() + `
@@ -2195,6 +2220,7 @@ async function loadTasksList() {
           const cl = t.checklist || [];
           const checkProgress = cl.length ? `<span style="font-size:0.7rem;color:var(--text-dim)">${cl.filter(i=>i.done).length}/${cl.length}</span>` : '';
           const cmtCount = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
+          const waitBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
           return `
           <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px">
             <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
@@ -2205,7 +2231,7 @@ async function loadTasksList() {
                 ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
                 ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
                 <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
-                ${dueBadge}${checkProgress}${cmtCount}
+                ${dueBadge}${waitBadge}${checkProgress}${cmtCount}
               </div>
             </div>
           </div>`;
@@ -2268,9 +2294,9 @@ async function loadTasksKanban() {
   const main = document.getElementById('main-content');
   try {
     const data = await api('/tasks/kanban');
-    const cols = ['todo', 'in_progress', 'review', 'done'];
-    const labels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', done: 'Done' };
-    const colors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
+    const cols = ['todo', 'in_progress', 'waiting_on', 'review', 'done'];
+    const labels = { todo: 'To Do', in_progress: 'In Progress', waiting_on: 'Waiting On', review: 'Review', done: 'Done' };
+    const colors = { todo: 'var(--text-dim)', in_progress: 'var(--blue)', waiting_on: '#f97316', review: 'var(--yellow)', done: 'var(--green)' };
 
     main.innerHTML = tasksTabsHtml() + `
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -2294,6 +2320,7 @@ async function loadTasksKanban() {
                   ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
                   ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
                   ${t.due_date ? `<span style="font-size:0.65rem;color:var(--text-dim)">${new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}
+                  ${t.waiting_on ? `<span style="font-size:0.65rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : ''}
                 </div>
               </div>`).join('') || '<div class="empty-state" style="padding:12px">Empty</div>'}
           </div>
@@ -2488,7 +2515,7 @@ async function showTaskDetail(id) {
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <div style="flex:1" class="form-group"><label>Status</label>
           <select onchange="updateTask('${id}', 'status', this.value)">
-            ${['todo','in_progress','review','done'].map(s => `<option value="${s}" ${task.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+            ${['todo','in_progress','waiting_on','review','done'].map(s => `<option value="${s}" ${task.status===s?'selected':''}>${s === 'waiting_on' ? 'Waiting On' : s.replace('_',' ')}</option>`).join('')}
           </select>
         </div>
         <div style="flex:1" class="form-group"><label>Priority</label>
@@ -2515,6 +2542,11 @@ async function showTaskDetail(id) {
           </select>
         </div>
       </div>
+      ${task.status === 'waiting_on' || task.waiting_on ? `
+        <div class="form-group" style="margin-bottom:12px"><label>Waiting On (person)</label>
+          <input type="text" value="${esc(task.waiting_on || '')}" placeholder="e.g. Adin, Sarah..." onblur="updateTask('${id}', 'waiting_on', this.value||null)" style="width:100%;box-sizing:border-box;font-size:0.82rem">
+        </div>
+      ` : ''}
       ${task.completed_at ? `<div style="font-size:0.75rem;color:var(--accent);margin-bottom:8px">Completed: ${new Date(task.completed_at).toLocaleString()}</div>` : ''}
       ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from Outlook email</div>' : ''}
       <div class="form-group"><label>Description</label>
@@ -2559,9 +2591,23 @@ async function showTaskDetail(id) {
 
 async function updateTask(id, field, value) {
   try {
-    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) });
-    if (field === 'status') showToast(`Moved to ${value.replace('_',' ')}`, 'success', 2000);
-    loadTasks();
+    const body = { [field]: value };
+    // When moving to "waiting_on", prompt for who
+    if (field === 'status' && value === 'waiting_on') {
+      const person = prompt('Who are you waiting on?');
+      if (!person) return; // cancelled
+      body.waiting_on = person.trim();
+    }
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    if (field === 'status') showToast(`Moved to ${value === 'waiting_on' ? 'Waiting On' : value.replace('_',' ')}`, 'success', 2000);
+    // Refresh task detail if open
+    if (field === 'status' || field === 'waiting_on') {
+      const modal = document.querySelector('.modal-overlay');
+      if (modal) showTaskDetail(id);
+      else loadTasks();
+    } else {
+      loadTasks();
+    }
   } catch {}
 }
 
@@ -2731,6 +2777,16 @@ function showNewTaskModal() {
       <div class="form-group"><label>Context</label>
         <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
       </div>
+      <div style="flex:1" class="form-group"><label>Status</label>
+        <select id="new-task-status" onchange="document.getElementById('new-task-waiting-on-row').style.display=this.value==='waiting_on'?'block':'none'">
+          <option value="todo">To Do</option><option value="in_progress">In Progress</option><option value="waiting_on">Waiting On</option>
+        </select>
+      </div>
+      </div>
+      <div id="new-task-waiting-on-row" class="form-group" style="display:none">
+        <label>Waiting On (person)</label>
+        <input type="text" id="new-task-waiting-on" placeholder="e.g. Adin, Sarah...">
+      </div>
       <button type="submit" class="btn-submit">Create Task</button>
     </form>
   `);
@@ -2740,6 +2796,8 @@ async function createTask(e) {
   e.preventDefault();
   try {
     const dueEl = document.getElementById('new-task-due');
+    const statusEl = document.getElementById('new-task-status');
+    const waitingOnEl = document.getElementById('new-task-waiting-on');
     await api('/tasks', { method: 'POST', body: JSON.stringify({
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
@@ -2747,6 +2805,8 @@ async function createTask(e) {
       priority: document.getElementById('new-task-priority').value,
       due_date: dueEl ? dueEl.value || null : null,
       context: document.getElementById('new-task-context').value || null,
+      status: statusEl ? statusEl.value : 'todo',
+      waiting_on: waitingOnEl ? waitingOnEl.value || null : null,
     }) });
     closeModal();
     if (currentTab === 'tasks') loadTasks();
