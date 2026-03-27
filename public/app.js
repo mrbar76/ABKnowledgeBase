@@ -2015,11 +2015,11 @@ async function loadTasksToday() {
     const totalFocus = overdue.length + dueToday.length + inProgress.length;
 
     // Date helpers for reschedule
-    const todayISO = today.toISOString().slice(0, 10);
+    const todayISO = localDateStr(today);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowISO = tomorrow.toISOString().slice(0, 10);
+    const tomorrowISO = localDateStr(tomorrow);
     const nextMon = new Date(today); nextMon.setDate(nextMon.getDate() + ((8 - nextMon.getDay()) % 7 || 7));
-    const nextMonISO = nextMon.toISOString().slice(0, 10);
+    const nextMonISO = localDateStr(nextMon);
 
     function renderTodayCard(t, showDue, showReschedule) {
       const checklist = t.checklist || [];
@@ -2501,10 +2501,10 @@ async function showTaskDetail(id) {
         <div style="flex:1" class="form-group"><label>Due Date</label>
           <input type="date" value="${task.due_date ? task.due_date.slice(0,10) : ''}" onchange="updateTask('${id}', 'due_date', this.value||null)">
           <div style="display:flex;gap:4px;margin-top:4px">
-            <button class="btn-reschedule" onclick="rescheduleTask('${id}',new Date().toISOString().slice(0,10))">Today</button>
-            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+1);rescheduleTask('${id}',d.toISOString().slice(0,10))})()">Tmrw</button>
-            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+((8-d.getDay())%7||7));rescheduleTask('${id}',d.toISOString().slice(0,10))})()">Mon</button>
-            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+7);rescheduleTask('${id}',d.toISOString().slice(0,10))})()">+1wk</button>
+            <button class="btn-reschedule" onclick="rescheduleTask('${id}',localDateStr())">Today</button>
+            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+1);rescheduleTask('${id}',localDateStr(d))})()">Tmrw</button>
+            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+((8-d.getDay())%7||7));rescheduleTask('${id}',localDateStr(d))})()">Mon</button>
+            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+7);rescheduleTask('${id}',localDateStr(d))})()">+1wk</button>
           </div>
         </div>
         <div style="flex:1" class="form-group"><label>Context</label>
