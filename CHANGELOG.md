@@ -15,6 +15,9 @@ All notable changes to the AB Brain platform are documented here.
   - **Task History** — collapsible activity history in task detail modal showing all status transitions with timestamps.
   - **Notes field** — quick-capture notes field on tasks (separate from description). Available in both create and edit views.
   - **Tags** — JSONB tags column added to tasks (matching pattern from knowledge, workouts, meals). API-ready, UI in next phase.
+  - **Today Focus View** — ADHD-friendly daily task view as default tab. Shows: Overdue (red), Due Today (yellow), In Progress (blue), Up Next (top 5 from backlog), Completed Today (green). Quick-action Start/Done buttons on each card.
+  - **Smart Sort** — sort dropdown on list view: Priority, Due Date, Created, Updated, Status. Client-side sorting with secondary sort by priority.
+  - **Checklist & Comment Badges** — list view now shows checklist progress (e.g. "3/5") and comment count on task cards.
 
 ---
 

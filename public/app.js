@@ -1942,9 +1942,10 @@ function copyDebugRaw() {
 }
 
 // ─── Tasks (List / Kanban / Calendar) ────────────────────────
-let tasksSubTab = 'list';
+let tasksSubTab = 'today';
 function tasksTabsHtml() {
   return `<div class="brain-tabs">
+    <button class="brain-tab${tasksSubTab==='today'?' active':''}" onclick="tasksSubTab='today';loadTasks()">Today</button>
     <button class="brain-tab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
     <button class="brain-tab${tasksSubTab==='kanban'?' active':''}" onclick="tasksSubTab='kanban';loadTasks()">Kanban</button>
     <button class="brain-tab${tasksSubTab==='calendar'?' active':''}" onclick="tasksSubTab='calendar';loadTasks()">Calendar</button>
@@ -1954,15 +1955,146 @@ function tasksTabsHtml() {
 async function loadTasks() {
   const main = document.getElementById('main-content');
   main.innerHTML = tasksTabsHtml() + '<div class="loading">Loading...</div>';
+  if (tasksSubTab === 'today') return loadTasksToday();
   if (tasksSubTab === 'kanban') return loadTasksKanban();
   if (tasksSubTab === 'calendar') return loadTasksCalendar();
   return loadTasksList();
+}
+
+// ── Today Focus View ──
+async function loadTasksToday() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api('/tasks?limit=200');
+    const tasks = data.tasks || [];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const todayStr = today.toDateString();
+
+    // Categorize tasks
+    const overdue = [];
+    const dueToday = [];
+    const inProgress = [];
+    const topPriority = [];
+    const recentlyDone = [];
+
+    const priorityRank = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+    for (const t of tasks) {
+      if (t.status === 'done') {
+        // Show tasks completed today
+        if (t.completed_at && new Date(t.completed_at).toDateString() === todayStr) {
+          recentlyDone.push(t);
+        }
+        continue;
+      }
+
+      const due = t.due_date ? new Date(t.due_date) : null;
+      if (due) due.setHours(0,0,0,0);
+
+      if (due && due < today) {
+        overdue.push(t);
+      } else if (due && due.toDateString() === todayStr) {
+        dueToday.push(t);
+      } else if (t.status === 'in_progress') {
+        inProgress.push(t);
+      } else {
+        topPriority.push(t);
+      }
+    }
+
+    // Sort by priority
+    const byPriority = (a, b) => (priorityRank[a.priority] ?? 4) - (priorityRank[b.priority] ?? 4);
+    overdue.sort(byPriority);
+    dueToday.sort(byPriority);
+    inProgress.sort(byPriority);
+    topPriority.sort(byPriority);
+
+    // Only show top 5 from the backlog
+    const topBacklog = topPriority.slice(0, 5);
+
+    const totalFocus = overdue.length + dueToday.length + inProgress.length;
+
+    function renderTodayCard(t, showDue) {
+      const checklist = t.checklist || [];
+      const checkProgress = checklist.length ? ` <span style="font-size:0.7rem;color:var(--text-dim)">${checklist.filter(i=>i.done).length}/${checklist.length}</span>` : '';
+      const commentCount = t.comment_count ? ` <span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
+      const dueBadge = showDue && t.due_date ? (() => {
+        const d = new Date(t.due_date);
+        const isOverdue = d < today && t.status !== 'done';
+        return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
+      })() : '';
+
+      return `
+        <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+          <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div class="list-item-title" style="${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</div>
+            <div class="list-item-meta">
+              <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+              ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+              ${dueBadge}${checkProgress}${commentCount}
+            </div>
+          </div>
+          ${t.status !== 'done' && t.status !== 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();updateTask('${t.id}','status','in_progress')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0">Start</button>` : ''}
+          ${t.status === 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0;background:var(--green)">Done</button>` : ''}
+        </div>`;
+    }
+
+    main.innerHTML = tasksTabsHtml() + `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="font-size:1.1rem;font-weight:700">Focus Today</div>
+          <div style="font-size:0.75rem;color:var(--text-dim)">${totalFocus} task${totalFocus !== 1 ? 's' : ''} need attention${recentlyDone.length ? ` · ${recentlyDone.length} completed today` : ''}</div>
+        </div>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+      </div>
+
+      ${overdue.length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--red);margin-bottom:6px">Overdue (${overdue.length})</div>
+          ${overdue.map(t => renderTodayCard(t, true)).join('')}
+        </div>
+      ` : ''}
+
+      ${dueToday.length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--yellow);margin-bottom:6px">Due Today (${dueToday.length})</div>
+          ${dueToday.map(t => renderTodayCard(t, false)).join('')}
+        </div>
+      ` : ''}
+
+      ${inProgress.length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--blue);margin-bottom:6px">In Progress (${inProgress.length})</div>
+          ${inProgress.map(t => renderTodayCard(t, true)).join('')}
+        </div>
+      ` : ''}
+
+      ${topBacklog.length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--text-dim);margin-bottom:6px">Up Next (top ${topBacklog.length})</div>
+          ${topBacklog.map(t => renderTodayCard(t, true)).join('')}
+          ${topPriority.length > 5 ? `<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:6px">+${topPriority.length - 5} more in backlog</div>` : ''}
+        </div>
+      ` : ''}
+
+      ${!totalFocus && !topBacklog.length ? '<div class="empty-state">All clear — no tasks need attention today</div>' : ''}
+
+      ${recentlyDone.length ? `
+        <div style="margin-top:8px">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--green);margin-bottom:6px">Completed Today (${recentlyDone.length})</div>
+          ${recentlyDone.map(t => renderTodayCard(t, false)).join('')}
+        </div>
+      ` : ''}
+    `;
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
 // ── List View ──
 let taskListFilter = '';
 let taskPriorityFilter = '';
 let taskContextFilter = '';
+let taskSortBy = 'priority';
 async function loadTasksList() {
   const main = document.getElementById('main-content');
   try {
@@ -2002,10 +2134,34 @@ async function loadTasksList() {
               <span style="color:var(--green)">&#9679;</span> Personal
             </button>
           </div>
+          <div class="filter-row">
+            <span style="font-size:0.7rem;color:var(--text-dim)">Sort:</span>
+            <select onchange="taskSortBy=this.value;loadTasksList()" style="font-size:0.7rem;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px">
+              <option value="priority" ${taskSortBy==='priority'?'selected':''}>Priority</option>
+              <option value="due_date" ${taskSortBy==='due_date'?'selected':''}>Due Date</option>
+              <option value="created_at" ${taskSortBy==='created_at'?'selected':''}>Created</option>
+              <option value="updated_at" ${taskSortBy==='updated_at'?'selected':''}>Updated</option>
+              <option value="status" ${taskSortBy==='status'?'selected':''}>Status</option>
+            </select>
+          </div>
         </div>
         <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()" style="align-self:start">+ Task</button>
       </div>
       <div id="task-list">
+        ${(() => {
+          const pRank = { urgent: 0, high: 1, medium: 2, low: 3 };
+          const sRank = { in_progress: 0, todo: 1, review: 2, done: 3 };
+          if (taskSortBy === 'due_date') data.tasks.sort((a,b) => {
+            const ad = a.due_date ? new Date(a.due_date) : new Date('9999-12-31');
+            const bd = b.due_date ? new Date(b.due_date) : new Date('9999-12-31');
+            return ad - bd || (pRank[a.priority]??4) - (pRank[b.priority]??4);
+          });
+          else if (taskSortBy === 'created_at') data.tasks.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+          else if (taskSortBy === 'updated_at') data.tasks.sort((a,b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+          else if (taskSortBy === 'status') data.tasks.sort((a,b) => (sRank[a.status]??4) - (sRank[b.status]??4) || (pRank[a.priority]??4) - (pRank[b.priority]??4));
+          // default: priority — already sorted by server
+          return '';
+        })()}
         ${data.tasks.length ? data.tasks.map(t => {
           const dueBadge = t.due_date ? (() => {
             const d = new Date(t.due_date); const now = new Date(); now.setHours(0,0,0,0);
@@ -2014,6 +2170,9 @@ async function loadTasksList() {
             const label = isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : isToday ? 'var(--yellow)' : 'var(--text-dim)'}">${label}</span>`;
           })() : '';
+          const cl = t.checklist || [];
+          const checkProgress = cl.length ? `<span style="font-size:0.7rem;color:var(--text-dim)">${cl.filter(i=>i.done).length}/${cl.length}</span>` : '';
+          const cmtCount = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
           return `
           <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px">
             <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
@@ -2024,7 +2183,7 @@ async function loadTasksList() {
                 ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
                 ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
                 <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
-                ${dueBadge}
+                ${dueBadge}${checkProgress}${cmtCount}
               </div>
             </div>
           </div>`;
