@@ -2014,7 +2014,14 @@ async function loadTasksToday() {
 
     const totalFocus = overdue.length + dueToday.length + inProgress.length;
 
-    function renderTodayCard(t, showDue) {
+    // Date helpers for reschedule
+    const todayISO = today.toISOString().slice(0, 10);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowISO = tomorrow.toISOString().slice(0, 10);
+    const nextMon = new Date(today); nextMon.setDate(nextMon.getDate() + ((8 - nextMon.getDay()) % 7 || 7));
+    const nextMonISO = nextMon.toISOString().slice(0, 10);
+
+    function renderTodayCard(t, showDue, showReschedule) {
       const checklist = t.checklist || [];
       const checkProgress = checklist.length ? ` <span style="font-size:0.7rem;color:var(--text-dim)">${checklist.filter(i=>i.done).length}/${checklist.length}</span>` : '';
       const commentCount = t.comment_count ? ` <span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
@@ -2023,6 +2030,14 @@ async function loadTasksToday() {
         const isOverdue = d < today && t.status !== 'done';
         return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
       })() : '';
+
+      const rescheduleRow = showReschedule ? `
+        <div style="display:flex;gap:4px;margin-top:4px" onclick="event.stopPropagation()">
+          <button class="btn-reschedule" onclick="rescheduleTask('${t.id}','${todayISO}')">Today</button>
+          <button class="btn-reschedule" onclick="rescheduleTask('${t.id}','${tomorrowISO}')">Tmrw</button>
+          <button class="btn-reschedule" onclick="rescheduleTask('${t.id}','${nextMonISO}')">Mon</button>
+          <button class="btn-reschedule" onclick="pickRescheduleDate('${t.id}',this)">Pick…</button>
+        </div>` : '';
 
       return `
         <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
@@ -2034,6 +2049,7 @@ async function loadTasksToday() {
               ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
               ${dueBadge}${checkProgress}${commentCount}
             </div>
+            ${rescheduleRow}
           </div>
           ${t.status !== 'done' && t.status !== 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();updateTask('${t.id}','status','in_progress')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0">Start</button>` : ''}
           ${t.status === 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0;background:var(--green)">Done</button>` : ''}
@@ -2051,29 +2067,35 @@ async function loadTasksToday() {
 
       ${overdue.length ? `
         <div style="margin-bottom:16px">
-          <div style="font-size:0.8rem;font-weight:600;color:var(--red);margin-bottom:6px">Overdue (${overdue.length})</div>
-          ${overdue.map(t => renderTodayCard(t, true)).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-size:0.8rem;font-weight:600;color:var(--red)">Overdue (${overdue.length})</div>
+            <div style="display:flex;gap:4px">
+              <button class="btn-reschedule" onclick="rescheduleAllOverdue('${todayISO}')">All → Today</button>
+              <button class="btn-reschedule" onclick="rescheduleAllOverdue('${tomorrowISO}')">All → Tmrw</button>
+            </div>
+          </div>
+          ${overdue.map(t => renderTodayCard(t, true, true)).join('')}
         </div>
       ` : ''}
 
       ${dueToday.length ? `
         <div style="margin-bottom:16px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--yellow);margin-bottom:6px">Due Today (${dueToday.length})</div>
-          ${dueToday.map(t => renderTodayCard(t, false)).join('')}
+          ${dueToday.map(t => renderTodayCard(t, false, false)).join('')}
         </div>
       ` : ''}
 
       ${inProgress.length ? `
         <div style="margin-bottom:16px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--blue);margin-bottom:6px">In Progress (${inProgress.length})</div>
-          ${inProgress.map(t => renderTodayCard(t, true)).join('')}
+          ${inProgress.map(t => renderTodayCard(t, true, false)).join('')}
         </div>
       ` : ''}
 
       ${topBacklog.length ? `
         <div style="margin-bottom:16px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--text-dim);margin-bottom:6px">Up Next (top ${topBacklog.length})</div>
-          ${topBacklog.map(t => renderTodayCard(t, true)).join('')}
+          ${topBacklog.map(t => renderTodayCard(t, true, false)).join('')}
           ${topPriority.length > 5 ? `<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:6px">+${topPriority.length - 5} more in backlog</div>` : ''}
         </div>
       ` : ''}
@@ -2083,7 +2105,7 @@ async function loadTasksToday() {
       ${recentlyDone.length ? `
         <div style="margin-top:8px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--green);margin-bottom:6px">Completed Today (${recentlyDone.length})</div>
-          ${recentlyDone.map(t => renderTodayCard(t, false)).join('')}
+          ${recentlyDone.map(t => renderTodayCard(t, false, false)).join('')}
         </div>
       ` : ''}
     `;
@@ -2196,6 +2218,49 @@ async function loadTasksList() {
 async function quickToggleTask(id, currentStatus) {
   const newStatus = currentStatus === 'done' ? 'todo' : 'done';
   try { await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) }); loadTasks(); } catch {}
+}
+
+async function rescheduleTask(id, newDate) {
+  try {
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ due_date: newDate }) });
+    showToast(`Rescheduled to ${new Date(newDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, 'success', 2000);
+    loadTasks();
+  } catch {}
+}
+
+function pickRescheduleDate(id, btn) {
+  // Insert a date input next to the button
+  const existing = btn.parentElement.querySelector('.reschedule-picker');
+  if (existing) { existing.remove(); return; }
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.className = 'reschedule-picker';
+  input.style.cssText = 'font-size:0.7rem;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 4px;width:auto';
+  input.onchange = () => { if (input.value) rescheduleTask(id, input.value); };
+  btn.parentElement.appendChild(input);
+  input.focus();
+  input.showPicker?.();
+}
+
+async function rescheduleAllOverdue(newDate) {
+  try {
+    const data = await api('/tasks?limit=200');
+    const tasks = data.tasks || [];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const overdue = tasks.filter(t => {
+      if (t.status === 'done') return false;
+      const due = t.due_date ? new Date(t.due_date) : null;
+      if (due) due.setHours(0,0,0,0);
+      return due && due < today;
+    });
+    if (!overdue.length) return;
+    await Promise.all(overdue.map(t =>
+      api(`/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ due_date: newDate }) })
+    ));
+    const label = new Date(newDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    showToast(`${overdue.length} task${overdue.length > 1 ? 's' : ''} rescheduled to ${label}`, 'success', 2500);
+    loadTasks();
+  } catch {}
 }
 
 // ── Kanban View ──
@@ -2435,6 +2500,12 @@ async function showTaskDetail(id) {
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <div style="flex:1" class="form-group"><label>Due Date</label>
           <input type="date" value="${task.due_date ? task.due_date.slice(0,10) : ''}" onchange="updateTask('${id}', 'due_date', this.value||null)">
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <button class="btn-reschedule" onclick="rescheduleTask('${id}',new Date().toISOString().slice(0,10))">Today</button>
+            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+1);rescheduleTask('${id}',d.toISOString().slice(0,10))})()">Tmrw</button>
+            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+((8-d.getDay())%7||7));rescheduleTask('${id}',d.toISOString().slice(0,10))})()">Mon</button>
+            <button class="btn-reschedule" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+7);rescheduleTask('${id}',d.toISOString().slice(0,10))})()">+1wk</button>
+          </div>
         </div>
         <div style="flex:1" class="form-group"><label>Context</label>
           <select onchange="updateTask('${id}', 'context', this.value||null)">

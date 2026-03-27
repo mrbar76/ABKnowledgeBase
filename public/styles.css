@@ -536,6 +536,17 @@ body {
   border: 1px solid var(--red);
   color: var(--red);
 }
+.btn-reschedule {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-reschedule:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-action-danger:hover { background: rgba(239,68,68,0.25); }
 
 /* --- Empty states --- */
