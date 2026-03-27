@@ -1946,6 +1946,7 @@ let tasksSubTab = 'today';
 function tasksTabsHtml() {
   return `<div class="brain-tabs">
     <button class="brain-tab${tasksSubTab==='today'?' active':''}" onclick="tasksSubTab='today';loadTasks()">Today</button>
+    <button class="brain-tab${tasksSubTab==='waiting'?' active':''}" onclick="tasksSubTab='waiting';loadTasks()">Waiting</button>
     <button class="brain-tab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
     <button class="brain-tab${tasksSubTab==='kanban'?' active':''}" onclick="tasksSubTab='kanban';loadTasks()">Kanban</button>
     <button class="brain-tab${tasksSubTab==='calendar'?' active':''}" onclick="tasksSubTab='calendar';loadTasks()">Calendar</button>
@@ -1956,6 +1957,7 @@ async function loadTasks() {
   const main = document.getElementById('main-content');
   main.innerHTML = tasksTabsHtml() + '<div class="loading">Loading...</div>';
   if (tasksSubTab === 'today') return loadTasksToday();
+  if (tasksSubTab === 'waiting') return loadTasksWaiting();
   if (tasksSubTab === 'kanban') return loadTasksKanban();
   if (tasksSubTab === 'calendar') return loadTasksCalendar();
   return loadTasksList();
@@ -2106,14 +2108,12 @@ async function loadTasksToday() {
       ` : ''}
 
       ${waitingOn.length ? `
-        <div style="margin-bottom:16px">
-          <div style="font-size:0.8rem;font-weight:600;color:#f97316;margin-bottom:6px">Waiting On Others (${waitingOn.length})</div>
-          ${Object.entries(waitingByPerson).map(([person, tasks]) => `
-            <div style="margin-bottom:8px">
-              <div style="font-size:0.72rem;font-weight:600;color:var(--text-dim);padding:4px 0">⏳ ${esc(person)} (${tasks.length})</div>
-              ${tasks.map(t => renderTodayCard(t, true, false)).join('')}
-            </div>
-          `).join('')}
+        <div onclick="tasksSubTab='waiting';loadTasks()" style="margin-bottom:16px;padding:10px 14px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <span style="font-size:0.82rem;font-weight:600;color:#f97316">⏳ Waiting On Others</span>
+            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px">${waitingOn.length} task${waitingOn.length !== 1 ? 's' : ''} across ${Object.keys(waitingByPerson).length} ${Object.keys(waitingByPerson).length === 1 ? 'person' : 'people'}</span>
+          </div>
+          <span style="font-size:0.75rem;color:var(--text-dim)">View →</span>
         </div>
       ` : ''}
 
@@ -2135,6 +2135,95 @@ async function loadTasksToday() {
       ` : ''}
     `;
   } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+// ── Waiting View ──
+async function loadTasksWaiting() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api('/tasks?status=waiting_on&limit=200');
+    const tasks = data.tasks || [];
+
+    // Group by person
+    const byPerson = {};
+    for (const t of tasks) {
+      const person = (t.waiting_on || 'Unknown').trim();
+      (byPerson[person] = byPerson[person] || []).push(t);
+    }
+    const people = Object.keys(byPerson).sort();
+
+    main.innerHTML = tasksTabsHtml() + `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-size:1.1rem;font-weight:700">Waiting On Others</div>
+          <div style="font-size:0.75rem;color:var(--text-dim)">${tasks.length} task${tasks.length !== 1 ? 's' : ''} across ${people.length} ${people.length === 1 ? 'person' : 'people'}</div>
+        </div>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+      </div>
+
+      ${people.length ? people.map(person => {
+        const personTasks = byPerson[person];
+        const oldestWait = personTasks.reduce((oldest, t) => {
+          const u = new Date(t.updated_at || t.created_at);
+          return u < oldest ? u : oldest;
+        }, new Date());
+        const daysWaiting = Math.floor((Date.now() - oldestWait.getTime()) / 86400000);
+
+        return `
+          <div style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.15);border-radius:8px 8px 0 0">
+              <div>
+                <span style="font-size:0.9rem;font-weight:700;color:#f97316">⏳ ${esc(person)}</span>
+                <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px">${personTasks.length} task${personTasks.length !== 1 ? 's' : ''}</span>
+                ${daysWaiting > 0 ? `<span style="font-size:0.7rem;color:${daysWaiting > 7 ? 'var(--red)' : daysWaiting > 3 ? 'var(--yellow)' : 'var(--text-dim)'};margin-left:6px">${daysWaiting}d waiting</span>` : ''}
+              </div>
+              <button class="btn-reschedule" onclick="event.stopPropagation();moveAllFromPerson('${esc(person)}','todo')" title="Move all back to To Do">Unblock All</button>
+            </div>
+            <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+              ${personTasks.map(t => {
+                const dueBadge = t.due_date ? (() => {
+                  const d = new Date(t.due_date); const now = new Date(); now.setHours(0,0,0,0);
+                  const isOverdue = d < now;
+                  return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--text-dim)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
+                })() : '';
+                const cl = t.checklist || [];
+                const checkBadge = cl.length ? `<span style="font-size:0.7rem;color:var(--text-dim)">${cl.filter(x=>x.done).length}/${cl.length}</span>` : '';
+                const cmtBadge = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
+                const waitSince = new Date(t.updated_at || t.created_at);
+                const waitDays = Math.floor((Date.now() - waitSince.getTime()) / 86400000);
+
+                return `
+                  <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
+                    <div style="flex:1;min-width:0">
+                      <div class="list-item-title">${esc(t.title)}</div>
+                      <div class="list-item-meta">
+                        <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                        ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+                        ${dueBadge}${checkBadge}${cmtBadge}
+                        ${waitDays > 0 ? `<span style="font-size:0.68rem;color:${waitDays > 7 ? 'var(--red)' : waitDays > 3 ? 'var(--yellow)' : 'var(--text-dim)'}">${waitDays}d ago</span>` : '<span style="font-size:0.68rem;color:var(--text-dim)">today</span>'}
+                      </div>
+                    </div>
+                    <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','todo')" style="padding:3px 8px">Unblock</button>
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+      }).join('') : '<div class="empty-state">No tasks waiting on others — you\'re all clear</div>'}
+    `;
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function moveAllFromPerson(person, newStatus) {
+  try {
+    const data = await api('/tasks?status=waiting_on&limit=200');
+    const tasks = (data.tasks || []).filter(t => (t.waiting_on || '').trim() === person);
+    if (!tasks.length) return;
+    await Promise.all(tasks.map(t =>
+      api(`/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus, waiting_on: null }) })
+    ));
+    showToast(`${tasks.length} task${tasks.length > 1 ? 's' : ''} from ${person} unblocked`, 'success', 2500);
+    loadTasks();
+  } catch {}
 }
 
 // ── List View ──
