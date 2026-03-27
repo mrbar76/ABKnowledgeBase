@@ -482,6 +482,21 @@ async function initDB() {
   await safeQuery('tasks +source_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id TEXT`);
   await safeQuery('tasks idx_source_id', `CREATE INDEX IF NOT EXISTS idx_tasks_source_id ON tasks(source_id)`);
   await safeQuery('tasks idx_context', `CREATE INDEX IF NOT EXISTS idx_tasks_context ON tasks(context)`);
+  await safeQuery('tasks +completed_at', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`);
+  await safeQuery('tasks +notes', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await safeQuery('tasks +tags', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('tasks +checklist', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb`);
+
+  // -- task_comments table --
+  await safeQuery('task_comments table', `
+    CREATE TABLE IF NOT EXISTS task_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      author TEXT DEFAULT 'manual',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('task_comments idx', `CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id)`);
 
   // -- transcripts migrations --
   await safeQuery('transcripts +raw_text', `ALTER TABLE transcripts ADD COLUMN IF NOT EXISTS raw_text TEXT`);

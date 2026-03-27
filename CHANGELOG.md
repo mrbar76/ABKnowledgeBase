@@ -4,6 +4,20 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.4.0] — 2026-03-27
+
+### Added
+- **Task Management Overhaul** — fully editable tasks with comments, checklists, and history
+  - **Editable title, description, notes, next_steps** — all fields are now inline-editable in the task detail modal (blur to save)
+  - **Task Comments** — timestamped comments on any task with add/delete. New `task_comments` table with cascade delete. Comment count shown on task cards.
+  - **Checklist/Subtasks** — JSONB checklist items `[{id, text, done}]` with checkbox toggle, add/remove. Progress shown as "3/5" on task cards.
+  - **completed_at timestamp** — auto-set to `NOW()` when task moves to "done", cleared when re-opened. Displayed in task detail modal.
+  - **Task History** — collapsible activity history in task detail modal showing all status transitions with timestamps.
+  - **Notes field** — quick-capture notes field on tasks (separate from description). Available in both create and edit views.
+  - **Tags** — JSONB tags column added to tasks (matching pattern from knowledge, workouts, meals). API-ready, UI in next phase.
+
+---
+
 ## [1.3.1] — 2026-03-26
 
 ### Fixed

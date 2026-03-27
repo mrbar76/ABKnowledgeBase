@@ -2229,30 +2229,97 @@ function setTaskDueByCalendar(dateStr) {
 async function showTaskDetail(id) {
   try {
     const task = await api(`/tasks/${id}`);
-    openModal(task.title, `
-      <div class="form-group"><label>Status</label>
-        <select onchange="updateTask('${id}', 'status', this.value)">
-          ${['todo','in_progress','review','done'].map(s => `<option value="${s}" ${task.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
-        </select>
+    const history = task.history || [];
+    const comments = task.comments || [];
+    const checklist = task.checklist || [];
+
+    const checklistHtml = checklist.map((item, idx) => `
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+        <input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggleChecklistItem('${id}', ${idx}, this.checked)" style="margin:0">
+        <span style="font-size:0.82rem;${item.done ? 'text-decoration:line-through;color:var(--text-dim)' : ''}">${esc(item.text)}</span>
+        <button onclick="removeChecklistItem('${id}', ${idx})" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7rem">x</button>
       </div>
-      <div class="form-group"><label>Priority</label>
-        <select onchange="updateTask('${id}', 'priority', this.value)">
-          ${['low','medium','high','urgent'].map(p => `<option value="${p}" ${task.priority===p?'selected':''}>${p}</option>`).join('')}
-        </select>
+    `).join('');
+
+    const checklistProgress = checklist.length ? ` (${checklist.filter(i=>i.done).length}/${checklist.length})` : '';
+
+    const commentsHtml = comments.map(c => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
+        <div style="color:var(--text-dim);font-size:0.7rem;margin-bottom:2px">${c.author || 'manual'} &middot; ${new Date(c.created_at).toLocaleString()}</div>
+        <div style="white-space:pre-wrap">${esc(c.content)}</div>
+        <button onclick="deleteTaskComment('${id}','${c.id}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65rem;margin-top:2px">delete</button>
       </div>
-      <div class="form-group"><label>Due Date</label>
-        <input type="date" value="${task.due_date ? task.due_date.slice(0,10) : ''}" onchange="updateTask('${id}', 'due_date', this.value||null)">
+    `).join('');
+
+    const historyHtml = history.map(h => `
+      <div style="font-size:0.72rem;color:var(--text-dim);padding:2px 0">
+        ${new Date(h.created_at).toLocaleString()} — ${esc(h.details)}
       </div>
-      <div class="form-group"><label>Context</label>
-        <select onchange="updateTask('${id}', 'context', this.value||null)">
-          <option value="" ${!task.context?'selected':''}>None</option>
-          <option value="work" ${task.context==='work'?'selected':''}>Work</option>
-          <option value="personal" ${task.context==='personal'?'selected':''}>Personal</option>
-        </select>
+    `).join('');
+
+    openModal('Task Detail', `
+      <div class="form-group"><label>Title</label>
+        <input type="text" value="${esc(task.title)}" onblur="updateTask('${id}', 'title', this.value)" style="width:100%;box-sizing:border-box;font-size:0.9rem;font-weight:600">
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div style="flex:1" class="form-group"><label>Status</label>
+          <select onchange="updateTask('${id}', 'status', this.value)">
+            ${['todo','in_progress','review','done'].map(s => `<option value="${s}" ${task.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex:1" class="form-group"><label>Priority</label>
+          <select onchange="updateTask('${id}', 'priority', this.value)">
+            ${['low','medium','high','urgent'].map(p => `<option value="${p}" ${task.priority===p?'selected':''}>${p}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div style="flex:1" class="form-group"><label>Due Date</label>
+          <input type="date" value="${task.due_date ? task.due_date.slice(0,10) : ''}" onchange="updateTask('${id}', 'due_date', this.value||null)">
+        </div>
+        <div style="flex:1" class="form-group"><label>Context</label>
+          <select onchange="updateTask('${id}', 'context', this.value||null)">
+            <option value="" ${!task.context?'selected':''}>None</option>
+            <option value="work" ${task.context==='work'?'selected':''}>Work</option>
+            <option value="personal" ${task.context==='personal'?'selected':''}>Personal</option>
+          </select>
+        </div>
+      </div>
+      ${task.completed_at ? `<div style="font-size:0.75rem;color:var(--accent);margin-bottom:8px">Completed: ${new Date(task.completed_at).toLocaleString()}</div>` : ''}
       ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from Outlook email</div>' : ''}
-      ${task.description ? `<div class="form-group"><label>Description</label><div style="font-size:0.85rem;white-space:pre-wrap">${esc(task.description)}</div></div>` : ''}
-      ${task.next_steps ? `<div class="form-group"><label>Next Steps</label><div style="font-size:0.85rem">${esc(task.next_steps)}</div></div>` : ''}
+      <div class="form-group"><label>Description</label>
+        <textarea rows="3" onblur="updateTask('${id}', 'description', this.value)" style="width:100%;box-sizing:border-box;font-size:0.82rem">${esc(task.description || '')}</textarea>
+      </div>
+      <div class="form-group"><label>Notes</label>
+        <textarea rows="2" onblur="updateTask('${id}', 'notes', this.value)" placeholder="Quick notes..." style="width:100%;box-sizing:border-box;font-size:0.82rem">${esc(task.notes || '')}</textarea>
+      </div>
+      <div class="form-group"><label>Next Steps</label>
+        <textarea rows="2" onblur="updateTask('${id}', 'next_steps', this.value)" style="width:100%;box-sizing:border-box;font-size:0.82rem">${esc(task.next_steps || '')}</textarea>
+      </div>
+
+      <div class="form-group"><label>Checklist${checklistProgress}</label>
+        ${checklistHtml}
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <input type="text" id="new-checklist-item-${id}" placeholder="Add item..." style="flex:1;font-size:0.8rem;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)" onkeydown="if(event.key==='Enter'){addChecklistItem('${id}')}">
+          <button class="btn-action" onclick="addChecklistItem('${id}')" style="font-size:0.75rem;padding:4px 10px">Add</button>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:16px"><label>Comments (${comments.length})</label>
+        ${commentsHtml || '<div style="font-size:0.75rem;color:var(--text-dim)">No comments yet</div>'}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <input type="text" id="new-comment-${id}" placeholder="Add comment..." style="flex:1;font-size:0.8rem;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)" onkeydown="if(event.key==='Enter'){addTaskComment('${id}')}">
+          <button class="btn-action" onclick="addTaskComment('${id}')" style="font-size:0.75rem;padding:4px 10px">Post</button>
+        </div>
+      </div>
+
+      ${history.length ? `
+        <details style="margin-top:16px">
+          <summary style="font-size:0.78rem;font-weight:600;cursor:pointer;color:var(--text-dim)">History (${history.length})</summary>
+          <div style="margin-top:6px">${historyHtml}</div>
+        </details>
+      ` : ''}
+
       <div style="margin-top:16px;display:flex;gap:8px">
         <button class="btn-action btn-action-danger" onclick="deleteTask('${id}')" style="flex:1">Delete</button>
       </div>
@@ -2261,7 +2328,58 @@ async function showTaskDetail(id) {
 }
 
 async function updateTask(id, field, value) {
-  try { await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) }); loadTasks(); } catch {}
+  try {
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) });
+    if (field === 'status') showToast(`Moved to ${value.replace('_',' ')}`, 'success', 2000);
+    loadTasks();
+  } catch {}
+}
+
+async function addTaskComment(taskId) {
+  const input = document.getElementById(`new-comment-${taskId}`);
+  if (!input || !input.value.trim()) return;
+  try {
+    await api(`/tasks/${taskId}/comments`, { method: 'POST', body: JSON.stringify({ content: input.value.trim() }) });
+    showTaskDetail(taskId);
+  } catch (e) { showToast(e.message); }
+}
+
+async function deleteTaskComment(taskId, commentId) {
+  try {
+    await api(`/tasks/${taskId}/comments/${commentId}`, { method: 'DELETE' });
+    showTaskDetail(taskId);
+  } catch (e) { showToast(e.message); }
+}
+
+async function addChecklistItem(taskId) {
+  const input = document.getElementById(`new-checklist-item-${taskId}`);
+  if (!input || !input.value.trim()) return;
+  try {
+    const task = await api(`/tasks/${taskId}`);
+    const checklist = task.checklist || [];
+    checklist.push({ id: Date.now().toString(36), text: input.value.trim(), done: false });
+    await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ checklist }) });
+    showTaskDetail(taskId);
+  } catch (e) { showToast(e.message); }
+}
+
+async function toggleChecklistItem(taskId, idx, done) {
+  try {
+    const task = await api(`/tasks/${taskId}`);
+    const checklist = task.checklist || [];
+    if (checklist[idx]) checklist[idx].done = done;
+    await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ checklist }) });
+  } catch (e) { showToast(e.message); }
+}
+
+async function removeChecklistItem(taskId, idx) {
+  try {
+    const task = await api(`/tasks/${taskId}`);
+    const checklist = task.checklist || [];
+    checklist.splice(idx, 1);
+    await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ checklist }) });
+    showTaskDetail(taskId);
+  } catch (e) { showToast(e.message); }
 }
 
 // ─── Kanban Drag & Drop ──────────────────────────────────────
@@ -2373,9 +2491,12 @@ function showNewTaskModal() {
     <form onsubmit="createTask(event)">
       <div class="form-group"><label>Title</label><input type="text" id="new-task-title" required></div>
       <div class="form-group"><label>Description</label><textarea id="new-task-desc" rows="3"></textarea></div>
-      <div class="form-group"><label>Due Date</label><input type="date" id="new-task-due"></div>
-      <div class="form-group"><label>Priority</label>
-        <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+      <div class="form-group"><label>Notes</label><textarea id="new-task-notes" rows="2" placeholder="Quick notes..."></textarea></div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1" class="form-group"><label>Due Date</label><input type="date" id="new-task-due"></div>
+        <div style="flex:1" class="form-group"><label>Priority</label>
+          <select id="new-task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+        </div>
       </div>
       <div class="form-group"><label>Context</label>
         <select id="new-task-context"><option value="">Auto-detect</option><option value="work">Work</option><option value="personal">Personal</option></select>
@@ -2392,6 +2513,7 @@ async function createTask(e) {
     await api('/tasks', { method: 'POST', body: JSON.stringify({
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
+      notes: document.getElementById('new-task-notes')?.value || null,
       priority: document.getElementById('new-task-priority').value,
       due_date: dueEl ? dueEl.value || null : null,
       context: document.getElementById('new-task-context').value || null,
