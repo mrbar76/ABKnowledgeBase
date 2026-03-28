@@ -2016,11 +2016,14 @@ async function loadTasksToday() {
     inProgress.sort(byPriority);
     topPriority.sort(byPriority);
 
-    // Group waiting_on by person
+    // Group waiting_on by person (split comma-separated)
     const waitingByPerson = {};
     for (const t of waitingOn) {
-      const person = (t.waiting_on || 'Unknown').trim();
-      (waitingByPerson[person] = waitingByPerson[person] || []).push(t);
+      const names = (t.waiting_on || 'Unknown').split(',').map(s => s.trim()).filter(Boolean);
+      if (!names.length) names.push('Unknown');
+      for (const name of names) {
+        (waitingByPerson[name] = waitingByPerson[name] || []).push(t);
+      }
     }
 
     // Only show top 5 from the backlog
@@ -2144,11 +2147,14 @@ async function loadTasksWaiting() {
     const data = await api('/tasks?status=waiting_on&limit=200');
     const tasks = data.tasks || [];
 
-    // Group by person
+    // Group by person — split comma-separated names so task appears under each
     const byPerson = {};
     for (const t of tasks) {
-      const person = (t.waiting_on || 'Unknown').trim();
-      (byPerson[person] = byPerson[person] || []).push(t);
+      const names = (t.waiting_on || 'Unknown').split(',').map(s => s.trim()).filter(Boolean);
+      if (!names.length) names.push('Unknown');
+      for (const name of names) {
+        (byPerson[name] = byPerson[name] || []).push(t);
+      }
     }
     const people = Object.keys(byPerson).sort();
 
@@ -2177,7 +2183,10 @@ async function loadTasksWaiting() {
                 <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px">${personTasks.length} task${personTasks.length !== 1 ? 's' : ''}</span>
                 ${daysWaiting > 0 ? `<span style="font-size:0.7rem;color:${daysWaiting > 7 ? 'var(--red)' : daysWaiting > 3 ? 'var(--yellow)' : 'var(--text-dim)'};margin-left:6px">${daysWaiting}d waiting</span>` : ''}
               </div>
-              <button class="btn-reschedule" onclick="event.stopPropagation();moveAllFromPerson('${esc(person)}','todo')" title="Move all back to To Do">Unblock All</button>
+              <div style="display:flex;gap:4px">
+                <button class="btn-reschedule" onclick="event.stopPropagation();moveAllFromPerson('${esc(person)}','todo')" title="Move all back to To Do">Resume All</button>
+                <button class="btn-reschedule" onclick="event.stopPropagation();moveAllFromPerson('${esc(person)}','done')" title="Mark all complete" style="background:var(--green);color:#fff;border-color:var(--green)">Done All</button>
+              </div>
             </div>
             <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
               ${personTasks.map(t => {
@@ -2203,7 +2212,10 @@ async function loadTasksWaiting() {
                         ${waitDays > 0 ? `<span style="font-size:0.68rem;color:${waitDays > 7 ? 'var(--red)' : waitDays > 3 ? 'var(--yellow)' : 'var(--text-dim)'}">${waitDays}d ago</span>` : '<span style="font-size:0.68rem;color:var(--text-dim)">today</span>'}
                       </div>
                     </div>
-                    <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','todo')" style="padding:3px 8px">Unblock</button>
+                    <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+                      <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','todo')" style="padding:3px 8px">Resume</button>
+                      <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','done')" style="padding:3px 8px;background:var(--green);color:#fff;border-color:var(--green)">Done</button>
+                    </div>
                   </div>`;
               }).join('')}
             </div>
@@ -2221,7 +2233,7 @@ async function moveAllFromPerson(person, newStatus) {
     await Promise.all(tasks.map(t =>
       api(`/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus, waiting_on: null }) })
     ));
-    showToast(`${tasks.length} task${tasks.length > 1 ? 's' : ''} from ${person} unblocked`, 'success', 2500);
+    showToast(`${tasks.length} task${tasks.length > 1 ? 's' : ''} from ${person} resumed`, 'success', 2500);
     loadTasks();
   } catch {}
 }
@@ -2632,8 +2644,8 @@ async function showTaskDetail(id) {
         </div>
       </div>
       ${task.status === 'waiting_on' || task.waiting_on ? `
-        <div class="form-group" style="margin-bottom:12px"><label>Waiting On (person)</label>
-          <input type="text" value="${esc(task.waiting_on || '')}" placeholder="e.g. Adin, Sarah..." onblur="updateTask('${id}', 'waiting_on', this.value||null)" style="width:100%;box-sizing:border-box;font-size:0.82rem">
+        <div class="form-group" style="margin-bottom:12px"><label>Waiting On</label>
+          <input type="text" value="${esc(task.waiting_on || '')}" placeholder="e.g. Adin, Sarah (comma-separate multiple)" onblur="updateTask('${id}', 'waiting_on', this.value||null)" style="width:100%;box-sizing:border-box;font-size:0.82rem">
         </div>
       ` : ''}
       ${task.completed_at ? `<div style="font-size:0.75rem;color:var(--accent);margin-bottom:8px">Completed: ${new Date(task.completed_at).toLocaleString()}</div>` : ''}
@@ -2681,11 +2693,11 @@ async function showTaskDetail(id) {
 async function updateTask(id, field, value) {
   try {
     const body = { [field]: value };
-    // When moving to "waiting_on", prompt for who
+    // When moving to "waiting_on", prompt for who (comma-separated for multiple)
     if (field === 'status' && value === 'waiting_on') {
-      const person = prompt('Who are you waiting on?');
+      const person = prompt('Who are you waiting on? (separate multiple with commas)');
       if (!person) return; // cancelled
-      body.waiting_on = person.trim();
+      body.waiting_on = person.split(',').map(s => s.trim()).filter(Boolean).join(', ');
     }
     const resp = await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     if (field === 'status') showToast(`Moved to ${value === 'waiting_on' ? 'Waiting On' : value.replace('_',' ')}`, 'success', 2000);
@@ -2876,8 +2888,8 @@ function showNewTaskModal() {
       </div>
       </div>
       <div id="new-task-waiting-on-row" class="form-group" style="display:none">
-        <label>Waiting On (person)</label>
-        <input type="text" id="new-task-waiting-on" placeholder="e.g. Adin, Sarah...">
+        <label>Waiting On</label>
+        <input type="text" id="new-task-waiting-on" placeholder="e.g. Adin, Sarah (comma-separate multiple)">
       </div>
       <button type="submit" class="btn-submit">Create Task</button>
     </form>
