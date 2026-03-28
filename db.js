@@ -488,6 +488,10 @@ async function initDB() {
   await safeQuery('tasks +checklist', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('tasks +waiting_on', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
   await safeQuery('tasks idx_waiting_on', `CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
+  await safeQuery('tasks status_check +waiting_on', `
+    ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+    ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN ('todo','in_progress','waiting_on','review','done'))
+  `);
 
   // -- task_comments table --
   await safeQuery('task_comments table', `
