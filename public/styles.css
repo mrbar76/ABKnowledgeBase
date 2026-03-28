@@ -548,6 +548,29 @@ body {
 }
 .btn-reschedule:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-action-danger:hover { background: rgba(239,68,68,0.25); }
+.waiting-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(249,115,22,0.1);
+  border: 1px solid rgba(249,115,22,0.25);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #f97316;
+}
+.waiting-chip-name { white-space: nowrap; }
+.waiting-chip-x {
+  background: none;
+  border: none;
+  color: #f97316;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 2px;
+  opacity: 0.6;
+  line-height: 1;
+}
+.waiting-chip-x:hover { opacity: 1; color: var(--red); }
 
 /* --- Empty states --- */
 .empty-state {

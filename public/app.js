@@ -2141,83 +2141,76 @@ async function loadTasksToday() {
 }
 
 // ── Waiting View ──
+let waitingFilterPerson = '';
 async function loadTasksWaiting() {
   const main = document.getElementById('main-content');
   try {
     const data = await api('/tasks?status=waiting_on&limit=200');
     const tasks = data.tasks || [];
 
-    // Group by person — split comma-separated names so task appears under each
-    const byPerson = {};
+    // Collect all unique people across all tasks
+    const allPeople = new Set();
     for (const t of tasks) {
-      const names = (t.waiting_on || 'Unknown').split(',').map(s => s.trim()).filter(Boolean);
-      if (!names.length) names.push('Unknown');
-      for (const name of names) {
-        (byPerson[name] = byPerson[name] || []).push(t);
-      }
+      (t.waiting_on || '').split(',').map(s => s.trim()).filter(Boolean).forEach(n => allPeople.add(n));
     }
-    const people = Object.keys(byPerson).sort();
+    const people = [...allPeople].sort();
+
+    // Filter tasks by selected person
+    const filtered = waitingFilterPerson
+      ? tasks.filter(t => (t.waiting_on || '').split(',').map(s => s.trim()).includes(waitingFilterPerson))
+      : tasks;
 
     main.innerHTML = tasksTabsHtml() + `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div>
           <div style="font-size:1.1rem;font-weight:700">Waiting On Others</div>
-          <div style="font-size:0.75rem;color:var(--text-dim)">${tasks.length} task${tasks.length !== 1 ? 's' : ''} across ${people.length} ${people.length === 1 ? 'person' : 'people'}</div>
+          <div style="font-size:0.75rem;color:var(--text-dim)">${tasks.length} task${tasks.length !== 1 ? 's' : ''} · ${people.length} ${people.length === 1 ? 'person' : 'people'}</div>
         </div>
         <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
       </div>
 
-      ${people.length ? people.map(person => {
-        const personTasks = byPerson[person];
-        const oldestWait = personTasks.reduce((oldest, t) => {
-          const u = new Date(t.updated_at || t.created_at);
-          return u < oldest ? u : oldest;
-        }, new Date());
-        const daysWaiting = Math.floor((Date.now() - oldestWait.getTime()) / 86400000);
+      ${people.length > 1 ? `
+        <div class="filter-row" style="margin-bottom:12px">
+          <button class="filter-btn ${!waitingFilterPerson ? 'active' : ''}" onclick="waitingFilterPerson='';loadTasksWaiting()">All</button>
+          ${people.map(p => `<button class="filter-btn ${waitingFilterPerson === p ? 'active' : ''}" onclick="waitingFilterPerson='${esc(p)}';loadTasksWaiting()">${esc(p)} (${tasks.filter(t => (t.waiting_on||'').split(',').map(s=>s.trim()).includes(p)).length})</button>`).join('')}
+        </div>
+      ` : ''}
+
+      ${filtered.length ? filtered.map(t => {
+        const names = (t.waiting_on || '').split(',').map(s => s.trim()).filter(Boolean);
+        const dueBadge = t.due_date ? (() => {
+          const d = new Date(t.due_date); const now = new Date(); now.setHours(0,0,0,0);
+          const isOverdue = d < now;
+          return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--text-dim)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
+        })() : '';
+        const cl = t.checklist || [];
+        const checkBadge = cl.length ? `<span style="font-size:0.7rem;color:var(--text-dim)">${cl.filter(x=>x.done).length}/${cl.length}</span>` : '';
+        const cmtBadge = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
+        const waitSince = new Date(t.updated_at || t.created_at);
+        const waitDays = Math.floor((Date.now() - waitSince.getTime()) / 86400000);
 
         return `
-          <div style="margin-bottom:20px">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.15);border-radius:8px 8px 0 0">
-              <div>
-                <span style="font-size:0.9rem;font-weight:700;color:#f97316">⏳ ${esc(person)}</span>
-                <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px">${personTasks.length} task${personTasks.length !== 1 ? 's' : ''}</span>
-                ${daysWaiting > 0 ? `<span style="font-size:0.7rem;color:${daysWaiting > 7 ? 'var(--red)' : daysWaiting > 3 ? 'var(--yellow)' : 'var(--text-dim)'};margin-left:6px">${daysWaiting}d waiting</span>` : ''}
-              </div>
-              <div style="display:flex;gap:4px">
-                <button class="btn-reschedule" onclick="event.stopPropagation();moveAllFromPerson('${esc(person)}','todo')" title="Move all back to To Do">Resume All</button>
-                <button class="btn-reschedule" onclick="event.stopPropagation();moveAllFromPerson('${esc(person)}','done')" title="Mark all complete" style="background:var(--green);color:#fff;border-color:var(--green)">Done All</button>
+          <div class="list-item" onclick="showTaskDetail('${t.id}')" style="padding:12px 14px;margin-bottom:8px;border-radius:8px;border:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div class="list-item-title" style="font-size:0.88rem">${esc(t.title)}</div>
+              <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','todo')" style="padding:3px 8px">Resume</button>
+                <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','done')" style="padding:3px 8px;background:var(--green);color:#fff;border-color:var(--green)">Done</button>
               </div>
             </div>
-            <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
-              ${personTasks.map(t => {
-                const dueBadge = t.due_date ? (() => {
-                  const d = new Date(t.due_date); const now = new Date(); now.setHours(0,0,0,0);
-                  const isOverdue = d < now;
-                  return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--text-dim)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
-                })() : '';
-                const cl = t.checklist || [];
-                const checkBadge = cl.length ? `<span style="font-size:0.7rem;color:var(--text-dim)">${cl.filter(x=>x.done).length}/${cl.length}</span>` : '';
-                const cmtBadge = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
-                const waitSince = new Date(t.updated_at || t.created_at);
-                const waitDays = Math.floor((Date.now() - waitSince.getTime()) / 86400000);
-
-                return `
-                  <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
-                    <div style="flex:1;min-width:0">
-                      <div class="list-item-title">${esc(t.title)}</div>
-                      <div class="list-item-meta">
-                        <span class="priority-badge priority-${t.priority}">${t.priority}</span>
-                        ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-                        ${dueBadge}${checkBadge}${cmtBadge}
-                        ${waitDays > 0 ? `<span style="font-size:0.68rem;color:${waitDays > 7 ? 'var(--red)' : waitDays > 3 ? 'var(--yellow)' : 'var(--text-dim)'}">${waitDays}d ago</span>` : '<span style="font-size:0.68rem;color:var(--text-dim)">today</span>'}
-                      </div>
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-                      <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','todo')" style="padding:3px 8px">Resume</button>
-                      <button class="btn-reschedule" onclick="event.stopPropagation();updateTask('${t.id}','status','done')" style="padding:3px 8px;background:var(--green);color:#fff;border-color:var(--green)">Done</button>
-                    </div>
-                  </div>`;
-              }).join('')}
+            <div class="list-item-meta" style="margin-bottom:8px">
+              <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+              ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+              ${dueBadge}${checkBadge}${cmtBadge}
+              ${waitDays > 0 ? `<span style="font-size:0.68rem;color:${waitDays > 7 ? 'var(--red)' : waitDays > 3 ? 'var(--yellow)' : 'var(--text-dim)'}">${waitDays}d waiting</span>` : '<span style="font-size:0.68rem;color:var(--text-dim)">today</span>'}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" onclick="event.stopPropagation()">
+              ${names.map(name => `
+                <span class="waiting-chip">
+                  <span class="waiting-chip-name">⏳ ${esc(name)}</span>
+                  <button class="waiting-chip-x" onclick="removeWaitingPerson('${t.id}', '${esc(name)}')" title="Got response from ${esc(name)}">✕</button>
+                </span>
+              `).join('')}
             </div>
           </div>`;
       }).join('') : '<div class="empty-state">No tasks waiting on others — you\'re all clear</div>'}
@@ -2225,17 +2218,26 @@ async function loadTasksWaiting() {
   } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
-async function moveAllFromPerson(person, newStatus) {
+async function removeWaitingPerson(taskId, personToRemove) {
   try {
-    const data = await api('/tasks?status=waiting_on&limit=200');
-    const tasks = (data.tasks || []).filter(t => (t.waiting_on || '').trim() === person);
-    if (!tasks.length) return;
-    await Promise.all(tasks.map(t =>
-      api(`/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus, waiting_on: null }) })
-    ));
-    showToast(`${tasks.length} task${tasks.length > 1 ? 's' : ''} from ${person} resumed`, 'success', 2500);
+    const data = await api(`/tasks/${taskId}`);
+    const task = data;
+    const names = (task.waiting_on || '').split(',').map(s => s.trim()).filter(Boolean);
+    const remaining = names.filter(n => n !== personToRemove);
+
+    if (remaining.length === 0) {
+      // No one left waiting — move back to To Do
+      await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ status: 'todo', waiting_on: null }) });
+      showToast(`Got response from ${personToRemove} — task resumed`, 'success', 2500);
+    } else {
+      await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ waiting_on: remaining.join(', ') }) });
+      showToast(`${personToRemove} cleared — still waiting on ${remaining.join(', ')}`, 'success', 2500);
+    }
     loadTasks();
-  } catch {}
+  } catch (err) {
+    console.error('[removeWaitingPerson]', err);
+    showToast('Failed: ' + (err.message || 'unknown'), 'error', 3000);
+  }
 }
 
 // ── List View ──
