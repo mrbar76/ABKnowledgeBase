@@ -2687,7 +2687,7 @@ async function updateTask(id, field, value) {
       if (!person) return; // cancelled
       body.waiting_on = person.trim();
     }
-    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    const resp = await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     if (field === 'status') showToast(`Moved to ${value === 'waiting_on' ? 'Waiting On' : value.replace('_',' ')}`, 'success', 2000);
     // Refresh task detail if open
     if (field === 'status' || field === 'waiting_on') {
@@ -2697,7 +2697,10 @@ async function updateTask(id, field, value) {
     } else {
       loadTasks();
     }
-  } catch {}
+  } catch (err) {
+    console.error('[updateTask] error:', err);
+    showToast('Failed to update task: ' + (err.message || 'unknown error'), 'error', 3000);
+  }
 }
 
 async function addTaskComment(taskId) {

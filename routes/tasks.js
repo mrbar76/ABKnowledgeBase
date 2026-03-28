@@ -56,6 +56,19 @@ router.get('/kanban', async (req, res) => {
   }
 });
 
+router.get('/debug/status-check', async (req, res) => {
+  try {
+    const cols = await query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'waiting_on'`);
+    const statuses = await query(`SELECT status, waiting_on, COUNT(*) as count FROM tasks GROUP BY status, waiting_on ORDER BY status`);
+    const waitingTasks = await query(`SELECT id, title, status, waiting_on FROM tasks WHERE status = 'waiting_on' OR waiting_on IS NOT NULL LIMIT 20`);
+    res.json({
+      waiting_on_column_exists: cols.rows.length > 0,
+      status_summary: statuses.rows,
+      waiting_tasks: waitingTasks.rows
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const result = await query('SELECT * FROM tasks WHERE id = $1', [req.params.id]);
