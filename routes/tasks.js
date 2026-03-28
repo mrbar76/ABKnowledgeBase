@@ -6,6 +6,7 @@ const PRIORITY_ORDER = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WH
 
 router.get('/', async (req, res) => {
   try {
+    await ensureWaitingOnCol();
     const { status, priority, ai_agent, context, waiting_on, limit = 100 } = req.query;
     const params = [];
     const where = [];
@@ -117,8 +118,20 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Ensure waiting_on column exists (runs once, cached)
+let _waitingOnColChecked = false;
+async function ensureWaitingOnCol() {
+  if (_waitingOnColChecked) return;
+  try {
+    await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
+  } catch (e) { console.error('[tasks] waiting_on col check:', e.message); }
+  _waitingOnColChecked = true;
+}
+
 router.put('/:id', async (req, res) => {
   try {
+    await ensureWaitingOnCol();
     const { title, description, status, priority, ai_agent, next_steps, output_log, due_date, context, notes, tags, checklist, waiting_on } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
