@@ -7342,6 +7342,7 @@ let agentsSubTab = 'roster';
 function agentsTabsHtml() {
   return `<div class="brain-tabs">
     <button class="brain-tab${agentsSubTab==='roster'?' active':''}" onclick="agentsSubTab='roster';loadAgents()">Roster</button>
+    <button class="brain-tab${agentsSubTab==='work'?' active':''}" onclick="agentsSubTab='work';loadAgents()">Work</button>
     <button class="brain-tab${agentsSubTab==='org'?' active':''}" onclick="agentsSubTab='org';loadAgents()">Org Chart</button>
   </div>`;
 }
@@ -7349,6 +7350,7 @@ function agentsTabsHtml() {
 async function loadAgents() {
   const main = document.getElementById('main-content');
   main.innerHTML = agentsTabsHtml() + '<div class="loading">Loading agents...</div>';
+  if (agentsSubTab === 'work') return loadAgentsWork();
   if (agentsSubTab === 'org') return loadAgentsOrg();
   return loadAgentsRoster();
 }
@@ -7411,6 +7413,85 @@ async function loadAgentsRoster() {
         </div>`;
       }
       html += '</div>';
+    }
+
+    main.innerHTML = html;
+    renderIcons();
+  } catch (err) {
+    main.innerHTML = agentsTabsHtml() + `<div class="empty-state">${esc(err.message)}</div>`;
+  }
+}
+
+async function loadAgentsWork() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api('/agents/work/dashboard');
+    const agentGroups = data.agents || [];
+
+    let html = agentsTabsHtml();
+    html += `<h2 style="font-size:1rem;font-weight:700;margin-bottom:14px">Agent Work Board</h2>`;
+
+    const statusColors = { todo: '#a3a3a3', in_progress: '#3b82f6', review: '#a855f7', waiting_on: '#f97316', done: '#22c55e' };
+    const statusLabels = { todo: 'To Do', in_progress: 'In Progress', review: 'Review', waiting_on: 'Waiting', done: 'Done' };
+    const priorityColors = { urgent: '#ef4444', high: '#f97316', medium: '#eab308', low: '#a3a3a3' };
+
+    if (!agentGroups.length || agentGroups.every(g => g.tasks.length === 0)) {
+      html += `<div class="empty-state">
+        <p style="font-size:1rem;margin-bottom:6px">No work assigned yet</p>
+        <p style="color:var(--text-dim);font-size:0.82rem">Open a task and use the "Assigned Agent" dropdown to delegate work to your agents.</p>
+      </div>`;
+    } else {
+      for (const group of agentGroups) {
+        const a = group.agent;
+        const tasks = group.tasks;
+        if (!tasks.length) continue;
+
+        const active = tasks.filter(t => t.status !== 'done');
+        const done = tasks.filter(t => t.status === 'done');
+        const stuck = tasks.filter(t => t.status === 'waiting_on');
+        const inProgress = tasks.filter(t => t.status === 'in_progress');
+        const s = AGENT_STATUS_MAP[a.status] || AGENT_STATUS_MAP.idle;
+
+        html += `
+        <div class="agent-work-group">
+          <div class="agent-work-header" onclick="showAgentDetail('${a.id}')">
+            <span class="agent-work-avatar">${a.avatar_emoji || '🤖'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:0.88rem">${esc(a.name)}</div>
+              <div style="font-size:0.72rem;color:var(--text-dim)">
+                ${inProgress.length ? `<span style="color:#3b82f6">${inProgress.length} active</span> · ` : ''}${stuck.length ? `<span style="color:#f97316">${stuck.length} stuck</span> · ` : ''}${done.length} done · ${active.length} total open
+              </div>
+            </div>
+            <span class="agent-status-dot" style="background:${s.color}" title="${s.label}"></span>
+          </div>
+          <div class="agent-work-tasks">`;
+
+        // Show active tasks first, then last 3 completed
+        const showTasks = [...active, ...done.slice(0, 3)];
+        for (const t of showTasks) {
+          const col = statusColors[t.status] || '#a3a3a3';
+          const pCol = priorityColors[t.priority] || '#a3a3a3';
+          const isOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done';
+          html += `
+            <div class="agent-work-task ${t.status === 'done' ? 'agent-work-task-done' : ''}" onclick="showTaskDetail('${t.id}')">
+              <span class="agent-work-task-status" style="background:${col}" title="${statusLabels[t.status] || t.status}"></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.82rem;${t.status === 'done' ? 'text-decoration:line-through;color:var(--text-dim)' : ''}">${esc(t.title)}</div>
+                <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
+                  <span style="font-size:0.65rem;font-weight:600;color:${pCol}">${t.priority}</span>
+                  <span style="font-size:0.65rem;color:${col}">${statusLabels[t.status] || t.status}</span>
+                  ${t.waiting_on ? `<span style="font-size:0.65rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : ''}
+                  ${isOverdue ? `<span style="font-size:0.65rem;color:var(--red)">OVERDUE</span>` : ''}
+                  ${t.due_date && !isOverdue && t.status !== 'done' ? `<span style="font-size:0.65rem;color:var(--text-dim)">${new Date(t.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>` : ''}
+                </div>
+              </div>
+            </div>`;
+        }
+        if (done.length > 3) {
+          html += `<div style="font-size:0.72rem;color:var(--text-dim);padding:4px 8px;text-align:center">+${done.length - 3} more completed</div>`;
+        }
+        html += '</div></div>';
+      }
     }
 
     main.innerHTML = html;

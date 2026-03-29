@@ -111,6 +111,37 @@ router.post('/seed', async (req, res) => {
   }
 });
 
+// Work dashboard — all agent tasks grouped by agent
+router.get('/work/dashboard', async (req, res) => {
+  try {
+    const agents = await query(`
+      SELECT id, name, codename, avatar_emoji, status FROM agents WHERE status != 'retired' ORDER BY name
+    `);
+    const tasks = await query(`
+      SELECT t.id, t.title, t.status, t.priority, t.due_date, t.ai_agent, t.waiting_on, t.updated_at,
+        (SELECT COUNT(*) FROM task_comments tc WHERE tc.task_id = t.id)::int AS comment_count
+      FROM tasks t
+      WHERE t.ai_agent IS NOT NULL AND t.ai_agent != ''
+      ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'review' THEN 1 WHEN 'waiting_on' THEN 2 WHEN 'todo' THEN 3 WHEN 'done' THEN 4 END,
+        CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
+    `);
+
+    // Group tasks by agent codename
+    const byAgent = {};
+    for (const a of agents.rows) {
+      byAgent[a.codename || a.name] = { agent: a, tasks: [] };
+    }
+    for (const t of tasks.rows) {
+      if (byAgent[t.ai_agent]) byAgent[t.ai_agent].tasks.push(t);
+      else byAgent[t.ai_agent] = { agent: { name: t.ai_agent, codename: t.ai_agent, avatar_emoji: '🤖', status: 'unknown' }, tasks: [t] };
+    }
+
+    res.json({ agents: Object.values(byAgent), unassigned_count: tasks.rows.filter(t => !byAgent[t.ai_agent]).length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Org chart — hierarchical view (must be before /:id)
 router.get('/org/chart', async (req, res) => {
   try {
