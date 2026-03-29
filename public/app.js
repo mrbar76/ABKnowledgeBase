@@ -184,6 +184,7 @@ function switchTab(tab) {
   else if (tab === 'transcripts') { brainSubTab = 'transcripts'; loadBrain(); }
   else if (tab === 'badges') loadBadges();
   else if (tab === 'fitness') loadFitness();
+  else if (tab === 'agents') loadAgents();
 }
 
 // ─── Badges (Gamification) ─────────────────────────────────────
@@ -7322,6 +7323,320 @@ function fabAction(type) {
 document.addEventListener('click', e => {
   if (_fabOpen && !e.target.closest('.fab-container')) toggleFab();
 });
+
+// ─── Agents (Roster / Org Chart / Work Tracking) ─────────────
+
+let agentsSubTab = 'roster';
+
+function agentsTabsHtml() {
+  return `<div class="brain-tabs">
+    <button class="brain-tab${agentsSubTab==='roster'?' active':''}" onclick="agentsSubTab='roster';loadAgents()">Roster</button>
+    <button class="brain-tab${agentsSubTab==='org'?' active':''}" onclick="agentsSubTab='org';loadAgents()">Org Chart</button>
+  </div>`;
+}
+
+async function loadAgents() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = agentsTabsHtml() + '<div class="loading">Loading agents...</div>';
+  if (agentsSubTab === 'org') return loadAgentsOrg();
+  return loadAgentsRoster();
+}
+
+const AGENT_STATUS_MAP = {
+  active: { label: 'Active', color: '#22c55e' },
+  busy: { label: 'Busy', color: '#f97316' },
+  idle: { label: 'Idle', color: '#a3a3a3' },
+  offline: { label: 'Offline', color: '#64748b' },
+  retired: { label: 'Retired', color: '#94a3b8' }
+};
+
+async function loadAgentsRoster() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api('/agents');
+    const agents = data.agents || [];
+
+    let html = agentsTabsHtml();
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h2 style="font-size:1rem;font-weight:700;margin:0">Agent Roster <span style="font-weight:400;color:var(--text-dim)">${agents.length} agents</span></h2>
+      <button onclick="showNewAgentForm()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:0.75rem;font-weight:600;cursor:pointer">+ Hire Agent</button>
+    </div>`;
+
+    if (!agents.length) {
+      html += `<div class="empty-state">
+        <p style="font-size:1.2rem;margin-bottom:8px">No agents on the roster yet</p>
+        <p style="color:var(--text-dim)">Hire your first agent to get started. Jarvis recommends starting with a Backend Dev.</p>
+      </div>`;
+    } else {
+      html += '<div class="agent-roster">';
+      for (const a of agents) {
+        const s = AGENT_STATUS_MAP[a.status] || AGENT_STATUS_MAP.idle;
+        const activeTasks = a.active_tasks || 0;
+        const completedTasks = a.completed_tasks || 0;
+        const capabilities = Array.isArray(a.capabilities) ? a.capabilities : [];
+        html += `
+        <div class="agent-card" onclick="showAgentDetail('${a.id}')">
+          <div class="agent-card-header">
+            <div class="agent-avatar">${a.avatar_emoji || '🤖'}</div>
+            <div class="agent-card-info">
+              <div class="agent-name">${esc(a.name)}${a.codename ? ` <span class="agent-codename">${esc(a.codename)}</span>` : ''}</div>
+              <div class="agent-role">${esc(a.role)}</div>
+            </div>
+            <div class="agent-status-badge" style="background:${s.color}20;color:${s.color}">
+              <span class="agent-status-dot" style="background:${s.color}"></span>${s.label}
+            </div>
+          </div>
+          <div class="agent-card-stats">
+            <span title="Active tasks">${icon('list-todo', 14)} ${activeTasks} active</span>
+            <span title="Completed">${icon('check-circle', 14)} ${completedTasks} done</span>
+            ${a.model ? `<span title="Model">${icon('cpu', 14)} ${esc(a.model)}</span>` : ''}
+          </div>
+          ${capabilities.length ? `<div class="agent-capabilities">${capabilities.slice(0, 4).map(c => `<span class="agent-cap-pill">${esc(c)}</span>`).join('')}${capabilities.length > 4 ? `<span class="agent-cap-pill">+${capabilities.length - 4}</span>` : ''}</div>` : ''}
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    main.innerHTML = html;
+    renderIcons();
+  } catch (err) {
+    main.innerHTML = agentsTabsHtml() + `<div class="empty-state">${esc(err.message)}</div>`;
+  }
+}
+
+async function loadAgentsOrg() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api('/agents');
+    const agents = data.agents || [];
+
+    let html = agentsTabsHtml();
+    html += `<h2 style="font-size:1rem;font-weight:700;margin-bottom:16px">Organization Chart</h2>`;
+
+    if (!agents.length) {
+      html += `<div class="empty-state">No agents hired yet</div>`;
+    } else {
+      // Build org tree
+      const roots = agents.filter(a => !a.reports_to);
+      const children = (parentId) => agents.filter(a => a.reports_to === parentId);
+
+      function renderOrgNode(agent, depth = 0) {
+        const s = AGENT_STATUS_MAP[agent.status] || AGENT_STATUS_MAP.idle;
+        const kids = children(agent.id);
+        let nodeHtml = `
+        <div class="org-node" style="margin-left:${depth * 28}px" onclick="showAgentDetail('${agent.id}')">
+          <div class="org-node-avatar">${agent.avatar_emoji || '🤖'}</div>
+          <div class="org-node-info">
+            <div class="org-node-name">${esc(agent.name)}${agent.codename ? ` (${esc(agent.codename)})` : ''}</div>
+            <div class="org-node-role">${esc(agent.role)}</div>
+          </div>
+          <span class="agent-status-dot" style="background:${s.color}" title="${s.label}"></span>
+          ${(agent.active_tasks || 0) > 0 ? `<span class="org-task-count">${agent.active_tasks}</span>` : ''}
+        </div>`;
+        for (const kid of kids) {
+          nodeHtml += renderOrgNode(kid, depth + 1);
+        }
+        return nodeHtml;
+      }
+
+      html += '<div class="org-chart">';
+      // If no hierarchy, show flat
+      if (roots.length === agents.length) {
+        html += `<div style="color:var(--text-dim);font-size:0.78rem;margin-bottom:12px">No reporting structure set up yet. Set "reports to" on agent profiles to build the org chart.</div>`;
+      }
+      for (const root of roots) {
+        html += renderOrgNode(root, 0);
+      }
+      // Orphans (reports_to set but manager deleted)
+      const allIds = new Set(agents.map(a => a.id));
+      const orphans = agents.filter(a => a.reports_to && !allIds.has(a.reports_to));
+      for (const o of orphans) {
+        html += renderOrgNode(o, 0);
+      }
+      html += '</div>';
+    }
+
+    main.innerHTML = html;
+    renderIcons();
+  } catch (err) {
+    main.innerHTML = agentsTabsHtml() + `<div class="empty-state">${esc(err.message)}</div>`;
+  }
+}
+
+async function showAgentDetail(id) {
+  try {
+    const agent = await api(`/agents/${id}`);
+    const allAgents = (await api('/agents')).agents || [];
+    const s = AGENT_STATUS_MAP[agent.status] || AGENT_STATUS_MAP.idle;
+    const capabilities = Array.isArray(agent.capabilities) ? agent.capabilities : [];
+    const tools = Array.isArray(agent.tools) ? agent.tools : [];
+    const tasks = agent.tasks || [];
+    const activity = agent.activity || [];
+
+    let body = `
+    <div class="agent-detail">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div class="agent-avatar-lg">${agent.avatar_emoji || '🤖'}</div>
+        <div style="flex:1">
+          <div style="font-size:1.1rem;font-weight:700">${esc(agent.name)}${agent.codename ? ` <span class="agent-codename">${esc(agent.codename)}</span>` : ''}</div>
+          <div style="color:var(--text-dim);font-size:0.82rem">${esc(agent.role)}</div>
+          <div class="agent-status-badge" style="background:${s.color}20;color:${s.color};margin-top:4px;display:inline-flex">
+            <span class="agent-status-dot" style="background:${s.color}"></span>${s.label}
+          </div>
+        </div>
+      </div>
+
+      <!-- Editable fields -->
+      <div class="detail-section">
+        <label class="detail-label">Status</label>
+        <select onchange="updateAgent('${id}','status',this.value)" style="font-size:0.8rem;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px">
+          ${Object.entries(AGENT_STATUS_MAP).map(([k, v]) => `<option value="${k}" ${agent.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="detail-section">
+        <label class="detail-label">Reports to</label>
+        <select onchange="updateAgent('${id}','reports_to',this.value||null)" style="font-size:0.8rem;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px">
+          <option value="">None (top level)</option>
+          ${allAgents.filter(a => a.id !== id).map(a => `<option value="${a.id}" ${agent.reports_to === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      ${agent.model ? `<div class="detail-section"><label class="detail-label">Model</label><div style="font-size:0.8rem">${esc(agent.model)}</div></div>` : ''}
+
+      <div class="detail-section">
+        <label class="detail-label">Personality</label>
+        <textarea onblur="updateAgent('${id}','personality',this.value)" style="font-size:0.8rem;width:100%;min-height:50px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;resize:vertical">${esc(agent.personality || '')}</textarea>
+      </div>
+
+      <div class="detail-section">
+        <label class="detail-label">Notes</label>
+        <textarea onblur="updateAgent('${id}','notes',this.value)" style="font-size:0.8rem;width:100%;min-height:50px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;resize:vertical">${esc(agent.notes || '')}</textarea>
+      </div>
+
+      ${capabilities.length ? `<div class="detail-section"><label class="detail-label">Capabilities</label><div class="agent-capabilities">${capabilities.map(c => `<span class="agent-cap-pill">${esc(c)}</span>`).join('')}</div></div>` : ''}
+
+      ${tools.length ? `<div class="detail-section"><label class="detail-label">Tools</label><div class="agent-capabilities">${tools.map(t => `<span class="agent-cap-pill" style="background:color-mix(in srgb, var(--accent) 12%, transparent);color:var(--accent)">${esc(t)}</span>`).join('')}</div></div>` : ''}
+
+      <!-- Assigned Work -->
+      <div class="detail-section">
+        <label class="detail-label">Assigned Work (${tasks.length})</label>
+        ${tasks.length ? tasks.map(t => {
+          const statusColors = { todo: '#a3a3a3', in_progress: '#3b82f6', review: '#a855f7', waiting_on: '#f97316', done: '#22c55e' };
+          const col = statusColors[t.status] || '#a3a3a3';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="closeModal();showTaskDetail('${t.id}')">
+            <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
+            <span style="font-size:0.8rem;flex:1">${esc(t.title)}</span>
+            <span style="font-size:0.7rem;color:var(--text-dim)">${t.status.replace('_', ' ')}</span>
+          </div>`;
+        }).join('') : '<div style="font-size:0.8rem;color:var(--text-dim)">No tasks assigned</div>'}
+      </div>
+
+      <!-- Activity -->
+      ${activity.length ? `<div class="detail-section">
+        <label class="detail-label">Recent Activity</label>
+        ${activity.slice(0, 10).map(a => `<div style="font-size:0.75rem;color:var(--text-dim);padding:3px 0">${esc(a.details || a.action)} <span style="opacity:0.6">${new Date(a.created_at).toLocaleDateString()}</span></div>`).join('')}
+      </div>` : ''}
+
+      <!-- Danger zone -->
+      <div style="margin-top:20px;padding-top:12px;border-top:1px solid var(--border)">
+        <button onclick="if(confirm('Retire ${esc(agent.name)}?')){deleteAgent('${id}')}" style="background:none;color:var(--color-danger);border:1px solid var(--color-danger);border-radius:6px;padding:6px 14px;font-size:0.75rem;cursor:pointer">Retire Agent</button>
+      </div>
+    </div>`;
+
+    openModal(agent.name, body);
+    renderIcons();
+  } catch (err) {
+    showToast('Failed to load agent: ' + err.message);
+  }
+}
+
+async function updateAgent(id, field, value) {
+  try {
+    await api(`/agents/${id}`, { method: 'PUT', body: JSON.stringify({ [field]: value }) });
+    showToast('Agent updated', 'success', 1500);
+  } catch (err) {
+    showToast('Update failed: ' + err.message);
+  }
+}
+
+async function deleteAgent(id) {
+  try {
+    await api(`/agents/${id}`, { method: 'DELETE' });
+    closeModal();
+    showToast('Agent retired', 'success', 2000);
+    loadAgents();
+  } catch (err) {
+    showToast('Delete failed: ' + err.message);
+  }
+}
+
+function showNewAgentForm() {
+  const body = `
+  <div>
+    <div class="detail-section">
+      <label class="detail-label">Name *</label>
+      <input id="new-agent-name" placeholder="e.g. Cascade" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Codename</label>
+      <input id="new-agent-codename" placeholder="e.g. cascade" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Role *</label>
+      <input id="new-agent-role" placeholder="e.g. HR & Recruitment Lead" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Avatar Emoji</label>
+      <input id="new-agent-emoji" value="🤖" style="font-size:1.2rem;width:60px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center">
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Personality</label>
+      <textarea id="new-agent-personality" placeholder="Brief personality description..." rows="2" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;resize:vertical"></textarea>
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Model</label>
+      <input id="new-agent-model" placeholder="e.g. claude-opus-4-6" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Capabilities (comma-separated)</label>
+      <input id="new-agent-caps" placeholder="e.g. code review, testing, deployment" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+    </div>
+    <div class="detail-section">
+      <label class="detail-label">Tools (comma-separated)</label>
+      <input id="new-agent-tools" placeholder="e.g. GitHub, Dropbox, AB Brain API" style="font-size:0.85rem;width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+    </div>
+    <button onclick="createAgent()" style="margin-top:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:0.85rem;font-weight:600;cursor:pointer;width:100%">Hire Agent</button>
+  </div>`;
+  openModal('Hire New Agent', body);
+}
+
+async function createAgent() {
+  const name = document.getElementById('new-agent-name')?.value?.trim();
+  const role = document.getElementById('new-agent-role')?.value?.trim();
+  if (!name || !role) { showToast('Name and role are required'); return; }
+
+  const capsStr = document.getElementById('new-agent-caps')?.value || '';
+  const toolsStr = document.getElementById('new-agent-tools')?.value || '';
+
+  try {
+    await api('/agents', { method: 'POST', body: JSON.stringify({
+      name,
+      codename: document.getElementById('new-agent-codename')?.value?.trim() || null,
+      role,
+      avatar_emoji: document.getElementById('new-agent-emoji')?.value?.trim() || '🤖',
+      personality: document.getElementById('new-agent-personality')?.value?.trim() || null,
+      model: document.getElementById('new-agent-model')?.value?.trim() || null,
+      capabilities: capsStr ? capsStr.split(',').map(s => s.trim()).filter(Boolean) : [],
+      tools: toolsStr ? toolsStr.split(',').map(s => s.trim()).filter(Boolean) : [],
+    })});
+    closeModal();
+    showToast('Agent hired!', 'success', 2000);
+    loadAgents();
+  } catch (err) {
+    showToast('Failed to hire agent: ' + err.message);
+  }
+}
 
 // ─── Init ─────────────────────────────────────────────────────
 (async function init() {

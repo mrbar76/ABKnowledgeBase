@@ -25,6 +25,7 @@ const recoveryRoutes = require('./routes/recovery');
 const dailyPlanRoutes = require('./routes/daily-plans');
 const exerciseRoutes = require('./routes/exercises');
 const gymProfileRoutes = require('./routes/gym-profiles');
+const agentRoutes = require('./routes/agents');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -104,7 +105,7 @@ const purgeState = { running: false, progress: null, result: null };
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_context', 'coaching_sessions', 'injuries', 'daily_plans', 'exercises', 'gym_profiles'];
+    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_context', 'coaching_sessions', 'injuries', 'daily_plans', 'exercises', 'gym_profiles', 'agents'];
     const requested = req.body.databases || allowed;
     const targets = requested.filter(d => allowed.includes(d));
     if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
@@ -161,6 +162,7 @@ app.use('/api/recovery', recoveryRoutes);
 app.use('/api/daily-plans', dailyPlanRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/gym-profiles', gymProfileRoutes);
+app.use('/api/agents', agentRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
