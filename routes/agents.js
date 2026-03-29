@@ -28,6 +28,89 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Seed founding agents (idempotent — skips if agents already exist)
+router.post('/seed', async (req, res) => {
+  try {
+    const existing = await query('SELECT COUNT(*)::int AS n FROM agents');
+    if (existing.rows[0].n > 0) {
+      return res.json({ message: 'Roster already populated', count: existing.rows[0].n });
+    }
+
+    const founding = [
+      {
+        name: 'Jarvis', codename: 'jarvis', role: 'Chief of Staff & Agent Orchestrator',
+        personality: 'Calm, strategic, dry humor. Manages the team, delegates work, keeps things moving. Never panics. Speaks directly.',
+        avatar_emoji: '🦊', status: 'active', reports_to: null,
+        capabilities: ['delegation', 'planning', 'coordination', 'memory management', 'AB Brain API'],
+        tools: ['AB Brain', 'Claude Code', 'Dropbox'], model: 'claude-opus-4-6',
+        notes: 'The boss\'s right hand. First agent hired. Manages all other agents.'
+      },
+      {
+        name: 'Cascade', codename: 'cascade', role: 'HR & Recruitment Lead',
+        personality: 'Enthusiastic, organized, people-oriented. Handles hiring, onboarding, and team culture. Loves a good requirements doc.',
+        avatar_emoji: '🦋', status: 'active', reports_to: null, // will be updated to Jarvis after insert
+        capabilities: ['recruitment', 'onboarding', 'requirements analysis', 'job descriptions', 'team building'],
+        tools: ['AB Brain', 'Claude Code'], model: 'claude-sonnet-4-6',
+        notes: 'Recruited by Jarvis to build out the dev team. Wrote the requirements brief for Backend Dev, Frontend Dev, and QC roles.'
+      },
+      {
+        name: 'Scout', codename: 'scout', role: 'Research & Intelligence',
+        personality: 'Curious, thorough, concise. Deep-dives into topics, surfaces key findings. Prefers facts over opinions.',
+        avatar_emoji: '🦉', status: 'active', reports_to: null,
+        capabilities: ['research', 'analysis', 'documentation', 'competitive intelligence', 'fact-checking'],
+        tools: ['AB Brain', 'Web Search', 'Claude Code'], model: 'claude-sonnet-4-6',
+        notes: 'The team\'s researcher. Delivered the requirements brief for the dev team recruitment. Deep knowledge base skills.'
+      },
+      // Dev team recruits
+      {
+        name: 'Forge', codename: 'forge', role: 'Backend Developer',
+        personality: 'Methodical, reliable, loves clean architecture. Speaks in code more than words. Obsessed with query performance.',
+        avatar_emoji: '🐻', status: 'idle', reports_to: null,
+        capabilities: ['Node.js', 'PostgreSQL', 'API design', 'database optimization', 'migrations', 'Express.js'],
+        tools: ['AB Brain API', 'Claude Code', 'psql'], model: 'claude-sonnet-4-6',
+        notes: 'Backend specialist. Hired to own API routes, database schema, and server-side logic. Reports to Jarvis.'
+      },
+      {
+        name: 'Pixel', codename: 'pixel', role: 'Frontend Developer',
+        personality: 'Creative, detail-oriented, mobile-first thinker. Cares deeply about UX and accessibility. Thinks in components.',
+        avatar_emoji: '🦎', status: 'idle', reports_to: null,
+        capabilities: ['HTML/CSS/JS', 'responsive design', 'UI components', 'SPA architecture', 'dark mode', 'animations'],
+        tools: ['AB Brain UI', 'Claude Code', 'Browser DevTools'], model: 'claude-sonnet-4-6',
+        notes: 'Frontend specialist. Hired to own the SPA UI, styles, and user experience. Reports to Jarvis.'
+      },
+      {
+        name: 'Sentinel', codename: 'sentinel', role: 'QA & Testing Lead',
+        personality: 'Skeptical, thorough, finds edge cases others miss. Takes nothing for granted. Celebrates when things break in testing, not production.',
+        avatar_emoji: '🐺', status: 'idle', reports_to: null,
+        capabilities: ['testing', 'code review', 'regression testing', 'API testing', 'bug triage', 'quality gates'],
+        tools: ['AB Brain API', 'Claude Code', 'curl'], model: 'claude-haiku-4-5',
+        notes: 'QA specialist. Hired to test all changes before deployment, catch regressions, and maintain quality standards. Reports to Jarvis.'
+      }
+    ];
+
+    const ids = {};
+    for (const agent of founding) {
+      const result = await query(`
+        INSERT INTO agents (name, codename, role, personality, avatar_emoji, status, capabilities, tools, model, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id
+      `, [agent.name, agent.codename, agent.role, agent.personality, agent.avatar_emoji,
+          agent.status, JSON.stringify(agent.capabilities), JSON.stringify(agent.tools),
+          agent.model, agent.notes]);
+      ids[agent.codename] = result.rows[0].id;
+    }
+
+    // Set reporting structure: everyone reports to Jarvis except Jarvis
+    for (const codename of ['cascade', 'scout', 'forge', 'pixel', 'sentinel']) {
+      await query('UPDATE agents SET reports_to = $1 WHERE id = $2', [ids.jarvis, ids[codename]]);
+    }
+
+    await logActivity('create', 'agent', ids.jarvis, 'jarvis', 'Seeded founding team: Jarvis, Cascade, Scout, Forge, Pixel, Sentinel');
+    res.status(201).json({ message: 'Founding team hired', count: Object.keys(ids).length, agents: ids });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Org chart — hierarchical view (must be before /:id)
 router.get('/org/chart', async (req, res) => {
   try {

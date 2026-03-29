@@ -16,6 +16,9 @@ All notable changes to the AB Brain platform are documented here.
   - **Hire Agent form** — create new agents with name, codename, role, emoji avatar, personality, model, capabilities, and tools
   - **Task integration** — agents linked to tasks via `ai_agent` field (codename). Agent detail shows all assigned work with status colors.
   - **Activity tracking** — agent create/update/delete actions logged to activity_log
+  - **Founding team auto-seed** — on first visit, roster auto-populates with 6 agents: Jarvis (Chief of Staff), Cascade (HR), Scout (Research), Forge (Backend Dev), Pixel (Frontend Dev), Sentinel (QA Lead). All report to Jarvis.
+  - **Agent assignment on tasks** — dropdown in task detail modal to assign any agent. Agent codename shown on task cards in Today and List views.
+  - **Seed API endpoint** — `POST /api/agents/seed` creates founding team idempotently (skips if roster already populated)
 
 ---
 

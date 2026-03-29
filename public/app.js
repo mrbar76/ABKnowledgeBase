@@ -2049,6 +2049,7 @@ async function loadTasksToday() {
         return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
       })() : '';
       const waitingBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
+      const agentBadge = t.ai_agent ? `<span style="font-size:0.7rem;color:var(--accent)">🤖${esc(t.ai_agent)}</span>` : '';
 
       const rescheduleRow = showReschedule ? `
         <div style="display:flex;gap:4px;margin-top:4px" onclick="event.stopPropagation()">
@@ -2066,7 +2067,7 @@ async function loadTasksToday() {
             <div class="list-item-meta">
               <span class="priority-badge priority-${t.priority}">${t.priority}</span>
               ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-              ${dueBadge}${waitingBadge}${checkProgress}${commentCount}
+              ${dueBadge}${waitingBadge}${agentBadge}${checkProgress}${commentCount}
             </div>
             ${rescheduleRow}
           </div>
@@ -2333,7 +2334,7 @@ async function loadTasksList() {
               <div class="list-item-meta">
                 <span class="priority-badge priority-${t.priority}">${t.priority}</span>
                 ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-                ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
+                ${t.ai_agent ? `<span style="font-size:0.7rem;color:var(--accent)">🤖${esc(t.ai_agent)}</span>` : ''}
                 <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
                 ${dueBadge}${waitBadge}${checkProgress}${cmtCount}
               </div>
@@ -2583,7 +2584,11 @@ function setTaskDueByCalendar(dateStr) {
 // ── Shared Task Detail / Edit ──
 async function showTaskDetail(id) {
   try {
-    const task = await api(`/tasks/${id}`);
+    const [task, agentsData] = await Promise.all([
+      api(`/tasks/${id}`),
+      api('/agents').catch(() => ({ agents: [] }))
+    ]);
+    const allAgents = agentsData.agents || [];
     const history = task.history || [];
     const comments = task.comments || [];
     const checklist = task.checklist || [];
@@ -2645,6 +2650,12 @@ async function showTaskDetail(id) {
             <option value="personal" ${task.context==='personal'?'selected':''}>Personal</option>
           </select>
         </div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label>Assigned Agent</label>
+        <select onchange="updateTask('${id}', 'ai_agent', this.value||null)">
+          <option value="" ${!task.ai_agent?'selected':''}>Unassigned</option>
+          ${allAgents.filter(a => a.status !== 'retired').map(a => `<option value="${esc(a.codename || a.name)}" ${task.ai_agent === (a.codename || a.name) ? 'selected' : ''}>${a.avatar_emoji || '🤖'} ${esc(a.name)}${a.codename ? ' (' + esc(a.codename) + ')' : ''}</option>`).join('')}
+        </select>
       </div>
       ${task.status === 'waiting_on' || task.waiting_on ? `
         <div class="form-group" style="margin-bottom:12px"><label>Waiting On</label>
@@ -7363,6 +7374,11 @@ async function loadAgentsRoster() {
     </div>`;
 
     if (!agents.length) {
+      // Auto-seed founding team on first visit
+      try {
+        await api('/agents/seed', { method: 'POST' });
+        return loadAgentsRoster(); // reload with seeded data
+      } catch (e) { /* seed failed, show empty state */ }
       html += `<div class="empty-state">
         <p style="font-size:1.2rem;margin-bottom:8px">No agents on the roster yet</p>
         <p style="color:var(--text-dim)">Hire your first agent to get started. Jarvis recommends starting with a Backend Dev.</p>
