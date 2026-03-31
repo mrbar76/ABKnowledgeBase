@@ -2032,6 +2032,50 @@ async function loadTasksToday() {
 
     const totalFocus = overdue.length + dueToday.length + inProgress.length;
 
+    // ── Top 3 Focus scoring ──
+    const allOpen = [...overdue, ...dueToday, ...inProgress, ...topPriority];
+    function scoreFocusTask(t) {
+      let score = 0;
+      // Priority score
+      const pScores = { urgent: 40, high: 30, medium: 20, low: 10 };
+      score += pScores[t.priority] || 10;
+      // Due urgency
+      const due = t.due_date ? new Date(t.due_date) : null;
+      if (due) { due.setHours(0,0,0,0); }
+      if (due && due < today) score += 50;
+      else if (due && due.toDateString() === todayStr) score += 30;
+      else if (due && due < new Date(today.getTime() + 7*86400000)) score += 15;
+      else score += 5;
+      // Staleness (updated_at)
+      if (t.updated_at) {
+        const daysSinceUpdate = Math.floor((today - new Date(t.updated_at)) / 86400000);
+        if (daysSinceUpdate > 14) score += 15;
+        else if (daysSinceUpdate > 7) score += 10;
+      }
+      // Waiting too long (for waiting_on tasks that leaked into open)
+      if (t.waiting_on && t.updated_at) {
+        const dWait = Math.floor((today - new Date(t.updated_at)) / 86400000);
+        if (dWait > 5) score += 10;
+        else if (dWait > 3) score += 5;
+      }
+      return score;
+    }
+    const focusTop3 = allOpen.map(t => ({ ...t, _focusScore: scoreFocusTask(t) }))
+      .sort((a, b) => b._focusScore - a._focusScore)
+      .slice(0, 3);
+
+    // ── Stale tasks (todo or in_progress, updated >7 days ago) ──
+    const allForStale = [...overdue, ...dueToday, ...inProgress, ...topPriority];
+    const staleTasks = allForStale.filter(t => {
+      if (t.status !== 'todo' && t.status !== 'in_progress') return false;
+      if (!t.updated_at) return false;
+      const daysSince = Math.floor((today - new Date(t.updated_at)) / 86400000);
+      return daysSince >= 7;
+    }).map(t => {
+      const daysSince = Math.floor((today - new Date(t.updated_at)) / 86400000);
+      return { ...t, _staleDays: daysSince };
+    }).sort((a, b) => b._staleDays - a._staleDays);
+
     // Date helpers for reschedule
     const todayISO = localDateStr(today);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -2085,6 +2129,29 @@ async function loadTasksToday() {
         <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
       </div>
 
+      ${focusTop3.length ? `
+        <div class="focus-section">
+          <div class="focus-section-header">Top 3 Focus</div>
+          ${focusTop3.map((t, i) => `
+            <div class="focus-card" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <span class="focus-rank">${i + 1}</span>
+              <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
+              <div style="flex:1;min-width:0">
+                <div class="list-item-title">${esc(t.title)}</div>
+                <div class="list-item-meta">
+                  <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                  ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+                  ${t.due_date ? (() => { const d = new Date(t.due_date); const isOv = d < today && t.status !== 'done'; return `<span style="font-size:0.7rem;color:${isOv ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`; })() : ''}
+                  <span class="focus-score">score ${t._focusScore}</span>
+                </div>
+              </div>
+              ${t.status !== 'done' && t.status !== 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();updateTask('${t.id}','status','in_progress')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0">Start</button>` : ''}
+              ${t.status === 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0;background:var(--green)">Done</button>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
       ${overdue.length ? `
         <div style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -2109,6 +2176,28 @@ async function loadTasksToday() {
         <div style="margin-bottom:16px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--blue);margin-bottom:6px">In Progress (${inProgress.length})</div>
           ${inProgress.map(t => renderTodayCard(t, true, false)).join('')}
+        </div>
+      ` : ''}
+
+      ${staleTasks.length ? `
+        <div class="stale-section">
+          <div class="stale-section-header">Stale — needs attention (${staleTasks.length})</div>
+          ${staleTasks.map(t => `
+            <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+              <div style="flex:1;min-width:0">
+                <div class="list-item-title">${esc(t.title)}</div>
+                <div class="list-item-meta">
+                  <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                  <span class="stale-badge">${t._staleDays}d stale</span>
+                  <span style="font-size:0.68rem;color:var(--text-dim)">last updated ${t._staleDays} day${t._staleDays !== 1 ? 's' : ''} ago</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:4px;flex-shrink:0" onclick="event.stopPropagation()">
+                <button class="btn-stale-action" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+7);rescheduleTask('${t.id}',localDateStr(d))})()">Snooze 1w</button>
+                <button class="btn-stale-action stale-archive" onclick="if(confirm('Archive this task?'))updateTask('${t.id}','status','done')">Archive</button>
+              </div>
+            </div>
+          `).join('')}
         </div>
       ` : ''}
 

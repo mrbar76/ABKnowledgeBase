@@ -3698,6 +3698,58 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
 .agent-detail .detail-section { margin-bottom: 14px; }
 .agent-detail .detail-label { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; display: block; }
 
+/* ═══ Top 3 Focus Cards ═══ */
+.focus-section { margin-bottom: 18px; }
+.focus-section-header {
+  font-size: 0.85rem; font-weight: 700; margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--accent), #7c3aed);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.focus-card {
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.12);
+  background: var(--surface-2);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  transition: box-shadow 0.15s;
+}
+.focus-card:hover {
+  box-shadow: 0 0 20px var(--accent-glow), 0 4px 12px rgba(0,0,0,0.18);
+}
+.focus-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 0.7rem; font-weight: 700; flex-shrink: 0;
+}
+.focus-score {
+  font-size: 0.65rem; color: var(--text-dim); margin-left: 6px;
+}
+
+/* ═══ Stale Tasks Section ═══ */
+.stale-section { margin-bottom: 16px; }
+.stale-section-header {
+  font-size: 0.8rem; font-weight: 600; color: #f59e0b; margin-bottom: 6px;
+}
+.stale-badge {
+  display: inline-block;
+  font-size: 0.65rem; font-weight: 600;
+  padding: 1px 7px; border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+.btn-stale-action {
+  font-size: 0.68rem; padding: 2px 8px;
+  border-radius: 4px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-dim);
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-stale-action:hover { border-color: var(--accent); color: var(--text); }
+.btn-stale-action.stale-archive { border-color: rgba(245, 158, 11, 0.3); color: #f59e0b; }
+.btn-stale-action.stale-archive:hover { background: rgba(245, 158, 11, 0.1); }
+
 /* ═══ Responsive ═══ */
 @media (min-width: 768px) {
   .rings-container { width: 200px; height: 200px; }
