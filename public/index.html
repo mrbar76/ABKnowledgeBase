@@ -295,6 +295,20 @@
             <!-- Version History -->
             <div class="sm-card expanded">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.6.0 — Mar 31, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Morning Briefing API</strong> — <code>GET /api/briefing</code> returns a complete markdown morning briefing. Call from Claude Projects, Claude Code, or ChatGPT. Includes smart-ranked Top 3 Focus, overdue/due today/in progress, stale alerts, recovery, rings/streaks, yesterday recap, and today's plan.</p>
+                  <p><strong>Smart Task Ranking</strong> — tasks scored by priority + due urgency + staleness + waiting duration. Top 3 shown as "Focus" items.</p>
+                  <p><strong>Today View: Top 3 Focus</strong> — new highlighted section at top of Today view with your 3 most important tasks.</p>
+                  <p><strong>Today View: Stale Tasks</strong> — tasks untouched 7+ days flagged with "Snooze 1w" and "Archive" actions.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.5.0 — Mar 29, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -431,7 +445,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.5.0</span>
+          AB Brain <span id="sm-version">v1.6.0</span>
         </div>
 
       </div>
