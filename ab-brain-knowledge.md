@@ -8,11 +8,7 @@
 
 ## Known Bugs
 
-### `GET /api/exercises/available` — DO NOT CALL
-- **Status:** Broken (SQL binding error: "bind message supplies 1 parameters, but prepared statement requires 0")
-- **Workaround:**
-  1. `GET /api/gym-profiles/primary` → get the equipment list from the response
-  2. `GET /api/exercises?equipment=<type>` for each equipment type → filter results to exercises matching your equipment
+_None currently._
 
 ---
 

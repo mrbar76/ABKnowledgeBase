@@ -18,6 +18,9 @@ All notable changes to the AB Brain platform are documented here.
 - **Today View: Top 3 Focus** — new section at the top of Today view showing the 3 highest-scored tasks with highlighted cards, priority badges, and score indicators
 - **Today View: Stale Tasks** — new section showing tasks untouched 7+ days with "Snooze 1w" and "Archive" quick actions
 
+### Fixed
+- **`GET /api/exercises/available` SQL binding error** — query passed equipment array as parameter but had no `$1` placeholder. Fixed with `WHERE equipment = ANY($1::text[]) OR equipment IS NULL`. Same fix applied to `GET /api/exercises/for-profile/:profileId`.
+
 ---
 
 ## [1.5.0] — 2026-03-29
