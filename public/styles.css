@@ -3594,6 +3594,162 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   animation: badge-pop 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ═══ Agents ═══ */
+
+.agent-roster { display: flex; flex-direction: column; gap: 10px; }
+
+.agent-card {
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.agent-card:hover { border-color: var(--accent); box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+
+.agent-card-header { display: flex; align-items: center; gap: 12px; }
+
+.agent-avatar {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--surface-2); display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; flex-shrink: 0;
+}
+.agent-avatar-lg {
+  width: 60px; height: 60px; border-radius: 14px;
+  background: var(--surface-2); display: flex; align-items: center; justify-content: center;
+  font-size: 2rem; flex-shrink: 0;
+}
+
+.agent-card-info { flex: 1; min-width: 0; }
+.agent-name { font-size: 0.9rem; font-weight: 700; }
+.agent-codename { font-weight: 400; color: var(--text-dim); font-size: 0.78rem; }
+.agent-role { font-size: 0.78rem; color: var(--text-dim); margin-top: 1px; }
+
+.agent-status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.7rem; font-weight: 600; padding: 3px 10px;
+  border-radius: 20px; flex-shrink: 0;
+}
+.agent-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+
+.agent-card-stats {
+  display: flex; gap: 14px; margin-top: 10px; font-size: 0.75rem; color: var(--text-dim);
+}
+.agent-card-stats span { display: flex; align-items: center; gap: 4px; }
+
+.agent-capabilities { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.agent-cap-pill {
+  font-size: 0.68rem; padding: 2px 8px; border-radius: 12px;
+  background: var(--surface-2); color: var(--text-dim);
+}
+
+/* Org chart */
+.org-chart { display: flex; flex-direction: column; gap: 2px; }
+.org-node {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.org-node:hover { border-color: var(--accent); }
+.org-node-avatar {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--surface-2); display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; flex-shrink: 0;
+}
+.org-node-info { flex: 1; min-width: 0; }
+.org-node-name { font-size: 0.82rem; font-weight: 600; }
+.org-node-role { font-size: 0.72rem; color: var(--text-dim); }
+.org-task-count {
+  background: var(--accent); color: #fff; font-size: 0.65rem; font-weight: 700;
+  width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+}
+
+/* Agent work board */
+.agent-work-group {
+  background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: 12px;
+  margin-bottom: 10px; overflow: hidden;
+}
+.agent-work-header {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  cursor: pointer; border-bottom: 1px solid var(--border);
+}
+.agent-work-header:hover { background: var(--surface-2); }
+.agent-work-avatar {
+  width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;
+}
+.agent-work-tasks { padding: 2px 0; }
+.agent-work-task {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+  cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  transition: background 0.1s;
+}
+.agent-work-task:hover { background: var(--surface-2); }
+.agent-work-task:last-child { border-bottom: none; }
+.agent-work-task-done { opacity: 0.6; }
+.agent-work-task-status {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* Agent detail */
+.agent-detail .detail-section { margin-bottom: 14px; }
+.agent-detail .detail-label { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; display: block; }
+
+/* ═══ Top 3 Focus Cards ═══ */
+.focus-section { margin-bottom: 18px; }
+.focus-section-header {
+  font-size: 0.85rem; font-weight: 700; margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--accent), #7c3aed);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.focus-card {
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.12);
+  background: var(--surface-2);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  transition: box-shadow 0.15s;
+}
+.focus-card:hover {
+  box-shadow: 0 0 20px var(--accent-glow), 0 4px 12px rgba(0,0,0,0.18);
+}
+.focus-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 0.7rem; font-weight: 700; flex-shrink: 0;
+}
+.focus-score {
+  font-size: 0.65rem; color: var(--text-dim); margin-left: 6px;
+}
+
+/* ═══ Stale Tasks Section ═══ */
+.stale-section { margin-bottom: 16px; }
+.stale-section-header {
+  font-size: 0.8rem; font-weight: 600; color: #f59e0b; margin-bottom: 6px;
+}
+.stale-badge {
+  display: inline-block;
+  font-size: 0.65rem; font-weight: 600;
+  padding: 1px 7px; border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+.btn-stale-action {
+  font-size: 0.68rem; padding: 2px 8px;
+  border-radius: 4px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-dim);
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-stale-action:hover { border-color: var(--accent); color: var(--text); }
+.btn-stale-action.stale-archive { border-color: rgba(245, 158, 11, 0.3); color: #f59e0b; }
+.btn-stale-action.stale-archive:hover { background: rgba(245, 158, 11, 0.1); }
+
 /* ═══ Responsive ═══ */
 @media (min-width: 768px) {
   .rings-container { width: 200px; height: 200px; }

@@ -2313,6 +2313,35 @@
         }
       }
     },
+    "/briefing": {
+      "get": {
+        "operationId": "getMorningBriefing",
+        "summary": "Get a full morning briefing as markdown — smart-ranked top 3 focus tasks, overdue, due today, in progress, waiting on others, stale tasks, yesterday recap (completed tasks, workout, nutrition), recovery and readiness, ring streaks, and today's plan",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date for briefing (defaults to today)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Markdown morning briefing",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/recovery/score": {
       "get": {
         "operationId": "getRecoveryScore",

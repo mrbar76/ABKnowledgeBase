@@ -4,6 +4,40 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.6.0] — 2026-03-31
+
+### Added
+- **Morning Briefing Endpoint** — `GET /api/briefing` returns a complete markdown morning briefing with smart task ranking, recovery readiness, rings/streaks, yesterday's activity, stale alerts, and today's plan. Designed for Claude Projects, Claude Code, and ChatGPT to call on-demand.
+  - **Smart Task Ranking** — scores each task by priority (urgent=40, high=30, medium=20, low=10) + due urgency (overdue=50, today=30, this week=15) + staleness (>14d=+15, >7d=+10) + waiting duration (>5d=+10, >3d=+5). Top 3 Focus shown first.
+  - **Stale Task Detection** — flags tasks untouched for 7+ days in briefing output
+  - **Recovery Summary** — sleep, recovery score, injury status, workout fatigue
+  - **Rings & Streaks** — train/execute/recover streak counts
+  - **Yesterday Recap** — completed tasks, workout, nutrition totals
+  - **Today's Plan** — daily plan if set, including workout/nutrition targets
+  - Added to `claude-schema.json` and `openapi-chatgpt.json` for Custom GPT integration
+- **Today View: Top 3 Focus** — new section at the top of Today view showing the 3 highest-scored tasks with highlighted cards, priority badges, and score indicators
+- **Today View: Stale Tasks** — new section showing tasks untouched 7+ days with "Snooze 1w" and "Archive" quick actions
+
+---
+
+## [1.5.0] — 2026-03-29
+
+### Added
+- **Agents Section** — new top-level tab for managing AI agents (Jarvis orchestrator system)
+  - **Agents table** — PostgreSQL table with name, codename, role, personality, avatar_emoji, status (active/busy/idle/offline/retired), reports_to hierarchy, capabilities, tools, model, hired_date, metadata
+  - **Full CRUD API** — `GET/POST/PUT/DELETE /api/agents`, plus `GET /api/agents/:id` with assigned tasks and activity history
+  - **Roster view** — card-based roster showing all agents with status badges, active/completed task counts, capabilities pills, and model info
+  - **Org Chart view** — hierarchical tree view showing reporting structure with indented nodes, status dots, and active task counts
+  - **Agent detail modal** — full profile with editable status, reports-to dropdown, personality, notes, assigned work list (linked to tasks), and recent activity log
+  - **Hire Agent form** — create new agents with name, codename, role, emoji avatar, personality, model, capabilities, and tools
+  - **Task integration** — agents linked to tasks via `ai_agent` field (codename). Agent detail shows all assigned work with status colors.
+  - **Activity tracking** — agent create/update/delete actions logged to activity_log
+  - **Founding team auto-seed** — on first visit, roster auto-populates with 6 agents: Jarvis (Chief of Staff), Cascade (HR), Scout (Research), Forge (Backend Dev), Pixel (Frontend Dev), Sentinel (QA Lead). All report to Jarvis.
+  - **Agent assignment on tasks** — dropdown in task detail modal to assign any agent. Agent codename shown on task cards in Today and List views.
+  - **Seed API endpoint** — `POST /api/agents/seed` creates founding team idempotently (skips if roster already populated)
+
+---
+
 ## [1.4.0] — 2026-03-27
 
 ### Added
