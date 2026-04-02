@@ -3717,6 +3717,24 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   border-color: var(--accent);
 }
 
+/* ═══ Bulk Operations ═══ */
+.bulk-action-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 10px 14px; margin-bottom: 10px;
+  background: var(--surface-2); border: 1.5px solid var(--accent);
+  border-radius: 10px; position: sticky; top: 0; z-index: 10;
+}
+.bulk-btn {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text); font-size: 0.72rem;
+  font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.bulk-btn:hover { border-color: var(--accent); color: var(--accent); }
+.bulk-btn-done { border-color: rgba(16,185,129,0.3); color: var(--green); }
+.bulk-btn-done:hover { background: rgba(16,185,129,0.1); }
+.bulk-btn-danger { border-color: rgba(239,68,68,0.3); color: var(--red); }
+.bulk-btn-danger:hover { background: rgba(239,68,68,0.1); }
+
 /* ═══ Weekly Review ═══ */
 .review-header { margin-bottom: 16px; }
 .review-stats-grid {

@@ -2293,6 +2293,54 @@ let taskListFilter = '';
 let taskPriorityFilter = '';
 let taskContextFilter = '';
 let taskSortBy = 'priority';
+let bulkSelectMode = false;
+let bulkSelectedIds = new Set();
+
+function toggleBulkSelect(id, checkbox) {
+  if (checkbox.checked) bulkSelectedIds.add(id);
+  else bulkSelectedIds.delete(id);
+  const countEl = document.getElementById('bulk-count');
+  if (countEl) countEl.textContent = bulkSelectedIds.size;
+  const bar = document.getElementById('bulk-action-bar');
+  if (bar) bar.style.display = bulkSelectedIds.size > 0 ? 'flex' : 'none';
+}
+
+function toggleBulkSelectAll() {
+  const checkboxes = document.querySelectorAll('.bulk-checkbox');
+  const allChecked = [...checkboxes].every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    const id = cb.dataset.taskId;
+    if (!allChecked) bulkSelectedIds.add(id); else bulkSelectedIds.delete(id);
+  });
+  const countEl = document.getElementById('bulk-count');
+  if (countEl) countEl.textContent = bulkSelectedIds.size;
+  const bar = document.getElementById('bulk-action-bar');
+  if (bar) bar.style.display = bulkSelectedIds.size > 0 ? 'flex' : 'none';
+}
+
+async function executeBulkAction(action, value) {
+  if (!bulkSelectedIds.size) return;
+  const ids = [...bulkSelectedIds];
+
+  if (action === 'delete' && !confirm(`Delete ${ids.length} task${ids.length > 1 ? 's' : ''}?`)) return;
+  if (action === 'reschedule') {
+    value = prompt('New due date (YYYY-MM-DD):');
+    if (!value) return;
+  }
+  if (action === 'set_priority') {
+    value = prompt('Priority (low, medium, high, urgent):');
+    if (!value || !['low','medium','high','urgent'].includes(value)) { showToast('Invalid priority'); return; }
+  }
+
+  try {
+    const resp = await api('/tasks/bulk', { method: 'POST', body: JSON.stringify({ task_ids: ids, action, value }) });
+    showToast(resp.message, 'success', 2500);
+    bulkSelectedIds.clear();
+    loadTasks();
+  } catch (err) { showToast(err.message); }
+}
+
 async function loadTasksList() {
   const main = document.getElementById('main-content');
   try {
@@ -2343,8 +2391,25 @@ async function loadTasksList() {
             </select>
           </div>
         </div>
-        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()" style="align-self:start">+ Task</button>
+        <div style="display:flex;gap:6px;align-self:start">
+          <button class="btn-action btn-compact-sm ${bulkSelectMode ? 'active' : ''}" onclick="bulkSelectMode=!bulkSelectMode;bulkSelectedIds.clear();loadTasksList()" style="font-size:0.7rem">${bulkSelectMode ? 'Cancel' : 'Select'}</button>
+          <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+        </div>
       </div>
+      ${bulkSelectMode ? `
+        <div id="bulk-action-bar" class="bulk-action-bar" style="display:none">
+          <span style="font-size:0.78rem;font-weight:600"><span id="bulk-count">0</span> selected</span>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="bulk-btn bulk-btn-done" onclick="executeBulkAction('mark_done')">Done</button>
+            <button class="bulk-btn" onclick="executeBulkAction('reschedule')">Reschedule</button>
+            <button class="bulk-btn" onclick="executeBulkAction('set_priority')">Priority</button>
+            <button class="bulk-btn bulk-btn-danger" onclick="executeBulkAction('delete')">Delete</button>
+          </div>
+        </div>
+        <div style="margin-bottom:6px">
+          <button class="btn-reschedule" onclick="toggleBulkSelectAll()" style="font-size:0.7rem">Select All</button>
+        </div>
+      ` : ''}
       <div id="task-list">
         ${(() => {
           const pRank = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -2373,8 +2438,11 @@ async function loadTasksList() {
           const cmtCount = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
           const waitBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
           return `
-          <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px">
-            <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
+          <div class="list-item" onclick="${bulkSelectMode ? `(()=>{const cb=document.querySelector('.bulk-checkbox[data-task-id=\\'${t.id}\\']');cb.checked=!cb.checked;toggleBulkSelect('${t.id}',cb)})()` : `showTaskDetail('${t.id}')`}" style="display:flex;align-items:center;gap:10px">
+            ${bulkSelectMode
+              ? `<input type="checkbox" class="bulk-checkbox" data-task-id="${t.id}" ${bulkSelectedIds.has(t.id)?'checked':''} onclick="event.stopPropagation();toggleBulkSelect('${t.id}',this)" style="cursor:pointer;flex-shrink:0;width:18px;height:18px">`
+              : `<input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">`
+            }
             <div style="flex:1;min-width:0">
               <div class="list-item-title" style="${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</div>
               <div class="list-item-meta">
