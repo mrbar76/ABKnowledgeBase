@@ -4081,15 +4081,87 @@ function openGlobalSearch() { document.getElementById('search-overlay').classLis
 function closeGlobalSearch() { document.getElementById('search-overlay').classList.remove('open'); }
 
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); }
+  // Skip shortcuts when typing in inputs/textareas
+  const tag = e.target.tagName;
+  const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+  // Ctrl/Cmd shortcuts (work even in inputs)
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); return; }
   if ((e.ctrlKey||e.metaKey) && e.key==='n') {
     e.preventDefault();
     const qa = document.getElementById('quick-add-input');
     if (qa) { qa.focus(); qa.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     else { switchTab('tasks'); setTimeout(() => { const q = document.getElementById('quick-add-input'); if (q) q.focus(); }, 400); }
+    return;
   }
-  if (e.key==='Escape' && document.getElementById('search-overlay').classList.contains('open')) closeGlobalSearch();
+  if (e.key==='Escape') {
+    if (document.getElementById('search-overlay').classList.contains('open')) { closeGlobalSearch(); return; }
+    if (document.querySelector('.modal-overlay')) { closeModal(); return; }
+    if (bulkSelectMode) { bulkSelectMode = false; bulkSelectedIds.clear(); loadTasksList(); return; }
+  }
+
+  // Non-input shortcuts
+  if (isInput) return;
+
+  // J/K navigation — move highlight through .list-item elements
+  if (e.key === 'j' || e.key === 'k') {
+    e.preventDefault();
+    const items = [...document.querySelectorAll('#main-content .list-item, #main-content .focus-card')];
+    if (!items.length) return;
+    const current = document.querySelector('.list-item-focused');
+    let idx = current ? items.indexOf(current) : -1;
+    if (e.key === 'j') idx = Math.min(idx + 1, items.length - 1);
+    else idx = Math.max(idx - 1, 0);
+    items.forEach(el => el.classList.remove('list-item-focused'));
+    items[idx].classList.add('list-item-focused');
+    items[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+
+  // Enter — open focused item
+  if (e.key === 'Enter') {
+    const focused = document.querySelector('.list-item-focused');
+    if (focused) { e.preventDefault(); focused.click(); return; }
+  }
+
+  // D — mark focused task done
+  if (e.key === 'd') {
+    const focused = document.querySelector('.list-item-focused');
+    if (focused) {
+      const checkbox = focused.querySelector('input[type="checkbox"]');
+      if (checkbox) { checkbox.click(); return; }
+    }
+  }
+
+  // N — open new task modal
+  if (e.key === 'n') { showNewTaskModal(); return; }
+
+  // ? — show keyboard shortcuts help
+  if (e.key === '?') { showKeyboardShortcuts(); return; }
+
+  // 1-5 — switch task sub-tabs
+  if (currentTab === 'tasks') {
+    const tabMap = { '1': 'today', '2': 'waiting', '3': 'list', '4': 'kanban', '5': 'calendar', '6': 'review' };
+    if (tabMap[e.key]) { tasksSubTab = tabMap[e.key]; loadTasks(); return; }
+  }
 });
+
+function showKeyboardShortcuts() {
+  openModal('Keyboard Shortcuts', `
+    <div class="shortcuts-list">
+      <div class="shortcut-row"><kbd>Ctrl+K</kbd><span>Search</span></div>
+      <div class="shortcut-row"><kbd>Ctrl+N</kbd><span>Quick add task</span></div>
+      <div class="shortcut-row"><kbd>N</kbd><span>New task (full form)</span></div>
+      <div class="shortcut-row"><kbd>J / K</kbd><span>Navigate down / up</span></div>
+      <div class="shortcut-row"><kbd>Enter</kbd><span>Open focused item</span></div>
+      <div class="shortcut-row"><kbd>D</kbd><span>Toggle done on focused task</span></div>
+      <div class="shortcut-row"><kbd>Esc</kbd><span>Close modal / search / bulk mode</span></div>
+      <div class="shortcut-row"><kbd>1-6</kbd><span>Switch task sub-tabs (Today, Waiting, List, Kanban, Calendar, Review)</span></div>
+      <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+    </div>
+  `);
+}
+
 // Quick-add Enter key handler (delegated)
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'quick-add-input') { e.preventDefault(); submitQuickAdd(); }
