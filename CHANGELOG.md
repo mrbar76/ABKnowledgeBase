@@ -18,6 +18,9 @@ All notable changes to the AB Brain platform are documented here.
 - **Today View: Top 3 Focus** — new section at the top of Today view showing the 3 highest-scored tasks with highlighted cards, priority badges, and score indicators
 - **Today View: Stale Tasks** — new section showing tasks untouched 7+ days with "Snooze 1w" and "Archive" quick actions
 
+### Removed
+- **Server-side Outlook email sync** — flagged-email-to-task polling, cron, and Power Automate webhook endpoints removed. Replaced by Claude's Outlook MCP tools (email search, calendar search) which handle this on demand.
+
 ### Fixed
 - **`GET /api/exercises/available` SQL binding error** — query passed equipment array as parameter but had no `$1` placeholder. Fixed with `WHERE equipment = ANY($1::text[]) OR equipment IS NULL`. Same fix applied to `GET /api/exercises/for-profile/:profileId`.
 

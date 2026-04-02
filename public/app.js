@@ -1618,26 +1618,6 @@ async function loadSettingsMenuInfo() {
     if (oaEl) { oaEl.textContent = 'Error'; oaEl.style.color = 'var(--red)'; }
   }
 
-  // Outlook status
-  const outlookEl = document.getElementById('sm-outlook-val');
-  if (outlookEl) {
-    try {
-      const olData = await api('/outlook/status');
-      if (olData.configured && !olData.error) {
-        outlookEl.textContent = `${olData.connected_as} (${olData.outlook_tasks} tasks)`;
-        outlookEl.style.color = 'var(--green)';
-      } else if (olData.configured) {
-        outlookEl.textContent = 'Auth error';
-        outlookEl.style.color = 'var(--red)';
-      } else {
-        outlookEl.textContent = 'Not configured';
-        outlookEl.style.color = 'var(--text-dim)';
-      }
-    } catch {
-      outlookEl.textContent = 'Not configured';
-      outlookEl.style.color = 'var(--text-dim)';
-    }
-  }
 }
 
 async function triggerBeeSyncFromMenu(mode) {
@@ -1727,35 +1707,6 @@ async function triggerBeeSyncFromMenu(mode) {
   if (btnFull) btnFull.disabled = false;
   loadSettingsMenuInfo();
   // Refresh dashboard if visible
-  if (currentTab === 'home') loadDashboardStats();
-}
-
-async function triggerOutlookSync() {
-  const btn = document.getElementById('sm-btn-outlook-sync');
-  const resultEl = document.getElementById('sm-outlook-result');
-  if (!resultEl) return;
-
-  if (btn) btn.disabled = true;
-  resultEl.style.display = 'block';
-  resultEl.style.color = 'var(--text-dim)';
-  resultEl.textContent = 'Syncing flagged emails...';
-
-  try {
-    const data = await api('/outlook/sync', { method: 'POST', body: JSON.stringify({}) });
-    const parts = [];
-    if (data.created) parts.push(`${data.created} created`);
-    if (data.completed) parts.push(`${data.completed} completed`);
-    if (data.skipped) parts.push(`${data.skipped} skipped`);
-    resultEl.style.color = data.errors > 0 ? 'var(--yellow)' : 'var(--green)';
-    resultEl.textContent = parts.length ? parts.join(', ') : 'No new flagged emails';
-    if (data.errors > 0) resultEl.textContent += ` (${data.errors} errors)`;
-  } catch (err) {
-    resultEl.style.color = 'var(--red)';
-    resultEl.textContent = err.message.includes('not configured') ? 'Outlook not configured' : `Sync failed: ${err.message}`;
-  }
-
-  if (btn) btn.disabled = false;
-  if (currentTab === 'tasks') loadTasks();
   if (currentTab === 'home') loadDashboardStats();
 }
 
@@ -2752,7 +2703,7 @@ async function showTaskDetail(id) {
         </div>
       ` : ''}
       ${task.completed_at ? `<div style="font-size:0.75rem;color:var(--accent);margin-bottom:8px">Completed: ${new Date(task.completed_at).toLocaleString()}</div>` : ''}
-      ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from Outlook email</div>' : ''}
+      ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from external source</div>' : ''}
       <div class="form-group"><label>Description</label>
         <textarea rows="3" onblur="updateTask('${id}', 'description', this.value)" style="width:100%;box-sizing:border-box;font-size:0.82rem">${esc(task.description || '')}</textarea>
       </div>

@@ -91,7 +91,6 @@
             <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
             <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">&mdash;</div></div>
             <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">&mdash;</div></div>
-            <div class="settings-row"><div class="settings-row-label">Outlook</div><div class="settings-row-value" id="sm-outlook-val">&mdash;</div></div>
             <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">&mdash;</div></div>
           </div>
         </div>
@@ -117,12 +116,6 @@
               </div>
               <button class="btn-action btn-action-secondary sm-btn-full" onclick="syncConversationsByDate()" id="sm-btn-sync-convos">Sync Date Range</button>
               <div id="sm-conv-sync-result" class="sm-result"></div>
-            </div>
-            <div class="sm-card">
-              <div class="sm-card-label">Outlook Email</div>
-              <div class="sm-card-desc">Sync flagged emails as tasks. Unflagged = done.</div>
-              <button class="btn-action sm-btn-full" onclick="triggerOutlookSync()" id="sm-btn-outlook-sync">Sync Flagged Emails</button>
-              <div id="sm-outlook-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
               <div class="sm-card-label">ChatGPT Import</div>
@@ -249,7 +242,7 @@
                   <p><strong>AB Brain</strong> is your personal AI-powered knowledge base and fitness platform. It stores everything — workouts, meals, body metrics, conversations, knowledge, tasks — in a single PostgreSQL database with full-text search.</p>
                   <p><strong>Architecture:</strong> Node.js + Express backend, vanilla JS frontend (PWA), PostgreSQL 16 with 14+ tables, deployed on Railway.</p>
                   <p><strong>AI Integration:</strong> ChatGPT and Claude connect via OpenAPI schemas (Actions/Projects). The coach reads your data, plans workouts, logs meals, and tracks recovery — all through the API.</p>
-                  <p><strong>Data Flow:</strong> Bee wearable auto-syncs conversations. Fitbod CSVs import exercises. Outlook syncs flagged emails as tasks. Coach logs workouts/meals/plans via API. Everything is searchable.</p>
+                  <p><strong>Data Flow:</strong> Bee wearable auto-syncs conversations. Fitbod CSVs import exercises. Coach logs workouts/meals/plans via API. Everything is searchable.</p>
                 </div>
               </div>
             </div>
@@ -399,7 +392,7 @@
                   <p><strong>Gamification</strong> — streaks, badges, smart goal suggestions, push notifications.</p>
                   <p><strong>Coaching Sessions</strong> — end-of-day review with key decisions, adjustments, injury linkage.</p>
                   <p><strong>Schema Builder</strong> — in-app UI to generate custom OpenAPI specs for ChatGPT Actions.</p>
-                  <p><strong>Outlook sync</strong> — flagged emails → tasks. <strong>ChatGPT import</strong> — bulk conversations.json.</p>
+                  <p><strong>ChatGPT import</strong> — bulk conversations.json.</p>
                 </div>
               </div>
             </div>
