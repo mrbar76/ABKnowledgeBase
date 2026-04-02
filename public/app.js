@@ -2044,6 +2044,7 @@ async function loadTasksToday() {
       })() : '';
       const waitingBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
       const agentBadge = t.ai_agent ? `<span style="font-size:0.7rem;color:var(--accent)">🤖${esc(t.ai_agent)}</span>` : '';
+      const recurBadge = (t.recurrence_rule || t.recurring_parent_id) ? '<span class="recurring-badge">↻</span>' : '';
 
       const rescheduleRow = showReschedule ? `
         <div style="display:flex;gap:4px;margin-top:4px" onclick="event.stopPropagation()">
@@ -2061,7 +2062,7 @@ async function loadTasksToday() {
             <div class="list-item-meta">
               <span class="priority-badge priority-${t.priority}">${t.priority}</span>
               ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-              ${dueBadge}${waitingBadge}${agentBadge}${checkProgress}${commentCount}
+              ${dueBadge}${waitingBadge}${agentBadge}${recurBadge}${checkProgress}${commentCount}
             </div>
             ${rescheduleRow}
           </div>
@@ -2071,12 +2072,16 @@ async function loadTasksToday() {
     }
 
     main.innerHTML = tasksTabsHtml() + `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
           <div style="font-size:1.1rem;font-weight:700">Focus Today</div>
           <div style="font-size:0.75rem;color:var(--text-dim)">${totalFocus} task${totalFocus !== 1 ? 's' : ''} need attention${recentlyDone.length ? ` · ${recentlyDone.length} completed today` : ''}</div>
         </div>
-        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Full</button>
+      </div>
+      <div class="quick-add-bar" id="quick-add-bar">
+        <input type="text" id="quick-add-input" class="quick-add-input" placeholder="Quick add: 'Buy milk tomorrow high' or 'Weekly review friday'" autocomplete="off">
+        <button class="quick-add-btn" onclick="submitQuickAdd()">Add</button>
       </div>
 
       ${focusTop3.length ? `
@@ -2726,6 +2731,25 @@ async function showTaskDetail(id) {
         </details>
       ` : ''}
 
+      ${task.recurrence_rule ? (() => {
+        const rule = typeof task.recurrence_rule === 'string' ? JSON.parse(task.recurrence_rule) : task.recurrence_rule;
+        const desc = describeRecurrence(rule);
+        return `
+          <div class="recurrence-info" style="margin-top:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div><span class="recurring-badge" style="margin-right:6px">↻</span><span style="font-size:0.82rem;font-weight:600">Recurring: ${esc(desc)}</span></div>
+              <button class="btn-action btn-action-danger" onclick="removeRecurrence('${id}')" style="font-size:0.7rem;padding:3px 8px">Stop</button>
+            </div>
+            ${rule.end_date ? `<div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px">Until ${rule.end_date}</div>` : ''}
+          </div>`;
+      })() : ''}
+      ${task.recurring_parent_id ? `
+        <div style="margin-top:12px;font-size:0.75rem;color:var(--text-dim)">
+          <span class="recurring-badge" style="margin-right:4px">↻</span> Instance of a recurring task
+          <button class="btn-action" onclick="showTaskDetail('${task.recurring_parent_id}')" style="font-size:0.7rem;padding:2px 8px;margin-left:8px">View parent</button>
+        </div>
+      ` : ''}
+
       <div style="margin-top:16px;display:flex;gap:8px">
         <button class="btn-action btn-action-danger" onclick="deleteTask('${id}')" style="flex:1">Delete</button>
       </div>
@@ -2934,6 +2958,46 @@ function showNewTaskModal() {
         <label>Waiting On</label>
         <input type="text" id="new-task-waiting-on" placeholder="e.g. Adin, Sarah (comma-separate multiple)">
       </div>
+      <div class="recurrence-section">
+        <label class="recurrence-toggle">
+          <input type="checkbox" id="new-task-recurring" onchange="document.getElementById('recurrence-options').style.display=this.checked?'block':'none'">
+          <span>Recurring task</span>
+        </label>
+        <div id="recurrence-options" style="display:none;margin-top:8px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <div style="flex:1" class="form-group">
+              <label>Frequency</label>
+              <select id="new-task-rec-type" onchange="document.getElementById('rec-dow-row').style.display=this.value==='weekly'?'block':'none'">
+                <option value="daily">Daily</option>
+                <option value="weekly" selected>Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div style="flex:1" class="form-group">
+              <label>Every</label>
+              <select id="new-task-rec-interval">
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+              </select>
+            </div>
+          </div>
+          <div id="rec-dow-row" class="form-group">
+            <label>Days of week</label>
+            <div class="dow-picker">
+              <label class="dow-chip"><input type="checkbox" value="0"><span>Su</span></label>
+              <label class="dow-chip"><input type="checkbox" value="1" checked><span>Mo</span></label>
+              <label class="dow-chip"><input type="checkbox" value="2"><span>Tu</span></label>
+              <label class="dow-chip"><input type="checkbox" value="3" checked><span>We</span></label>
+              <label class="dow-chip"><input type="checkbox" value="4"><span>Th</span></label>
+              <label class="dow-chip"><input type="checkbox" value="5" checked><span>Fr</span></label>
+              <label class="dow-chip"><input type="checkbox" value="6"><span>Sa</span></label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>End date (optional)</label>
+            <input type="date" id="new-task-rec-end">
+          </div>
+        </div>
+      </div>
       <button type="submit" class="btn-submit">Create Task</button>
     </form>
   `);
@@ -2945,6 +3009,21 @@ async function createTask(e) {
     const dueEl = document.getElementById('new-task-due');
     const statusEl = document.getElementById('new-task-status');
     const waitingOnEl = document.getElementById('new-task-waiting-on');
+    const isRecurring = document.getElementById('new-task-recurring')?.checked;
+
+    let recurrence_rule = null;
+    if (isRecurring) {
+      const recType = document.getElementById('new-task-rec-type').value;
+      const recInterval = parseInt(document.getElementById('new-task-rec-interval').value) || 1;
+      const recEnd = document.getElementById('new-task-rec-end')?.value || null;
+      recurrence_rule = { type: recType, interval: recInterval };
+      if (recType === 'weekly') {
+        const dow = [...document.querySelectorAll('.dow-picker input:checked')].map(cb => parseInt(cb.value));
+        recurrence_rule.days_of_week = dow.length ? dow : [new Date().getDay()];
+      }
+      if (recEnd) recurrence_rule.end_date = recEnd;
+    }
+
     await api('/tasks', { method: 'POST', body: JSON.stringify({
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
@@ -2954,8 +3033,128 @@ async function createTask(e) {
       context: document.getElementById('new-task-context').value || null,
       status: statusEl ? statusEl.value : 'todo',
       waiting_on: waitingOnEl ? waitingOnEl.value || null : null,
+      recurrence_rule,
     }) });
     closeModal();
+    if (currentTab === 'tasks') loadTasks();
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Recurring Task Helpers ───────────────────────────────────
+function describeRecurrence(rule) {
+  if (!rule) return '';
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const interval = rule.interval || 1;
+  if (rule.type === 'daily') return interval === 1 ? 'Every day' : `Every ${interval} days`;
+  if (rule.type === 'weekly') {
+    const days = (rule.days_of_week || []).map(d => dayNames[d]).join(', ');
+    return interval === 1 ? `Weekly on ${days}` : `Every ${interval} weeks on ${days}`;
+  }
+  if (rule.type === 'monthly') return interval === 1 ? 'Monthly' : `Every ${interval} months`;
+  return rule.type;
+}
+
+async function removeRecurrence(id) {
+  if (!confirm('Stop recurring? Future instances will be deleted.')) return;
+  try {
+    await api(`/tasks/${id}/future-instances`, { method: 'DELETE' });
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ recurrence_rule: null }) });
+    showToast('Recurrence removed');
+    showTaskDetail(id);
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Quick Add ────────────────────────────────────────────────
+function parseQuickAdd(text) {
+  const result = { title: text, priority: 'medium', due_date: null, context: null, recurrence_rule: null };
+
+  // Parse priority: "high", "urgent", "low" at end or prefixed with !
+  const prioMatch = text.match(/\b(urgent|high|low)\b/i);
+  if (prioMatch) {
+    result.priority = prioMatch[1].toLowerCase();
+    result.title = result.title.replace(prioMatch[0], '').trim();
+  }
+  if (text.includes('!!')) { result.priority = 'urgent'; result.title = result.title.replace('!!', '').trim(); }
+  else if (text.includes('!')) { result.priority = 'high'; result.title = result.title.replace(/(?<!=)!(?!=)/, '').trim(); }
+
+  // Parse context: #work or #personal
+  const ctxMatch = result.title.match(/#(work|personal)\b/i);
+  if (ctxMatch) { result.context = ctxMatch[1].toLowerCase(); result.title = result.title.replace(ctxMatch[0], '').trim(); }
+
+  // Parse due date keywords
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const dayAbbr = ['sun','mon','tue','wed','thu','fri','sat'];
+
+  if (/\btoday\b/i.test(result.title)) {
+    result.due_date = localDateStr(today);
+    result.title = result.title.replace(/\btoday\b/i, '').trim();
+  } else if (/\btomorrow\b|\btmrw\b/i.test(result.title)) {
+    const d = new Date(today); d.setDate(d.getDate() + 1);
+    result.due_date = localDateStr(d);
+    result.title = result.title.replace(/\btomorrow\b|\btmrw\b/i, '').trim();
+  } else {
+    // Check for day names: "friday", "mon", etc.
+    for (let i = 0; i < 7; i++) {
+      const re = new RegExp(`\\b(${dayNames[i]}|${dayAbbr[i]})\\b`, 'i');
+      if (re.test(result.title)) {
+        const d = new Date(today);
+        const diff = (i - d.getDay() + 7) % 7 || 7;
+        d.setDate(d.getDate() + diff);
+        result.due_date = localDateStr(d);
+        result.title = result.title.replace(re, '').trim();
+        break;
+      }
+    }
+  }
+
+  // Parse recurrence: "every day", "every week", "every monday", "every month"
+  const everyMatch = result.title.match(/\bevery\s+(day|daily|week|weekly|month|monthly|(?:mon|tue|wed|thu|fri|sat|sun)\w*(?:\s*,\s*(?:mon|tue|wed|thu|fri|sat|sun)\w*)*)\b/i);
+  if (everyMatch) {
+    const recStr = everyMatch[1].toLowerCase();
+    if (recStr === 'day' || recStr === 'daily') {
+      result.recurrence_rule = { type: 'daily', interval: 1 };
+    } else if (recStr === 'week' || recStr === 'weekly') {
+      result.recurrence_rule = { type: 'weekly', interval: 1, days_of_week: [result.due_date ? new Date(result.due_date).getDay() : today.getDay()] };
+    } else if (recStr === 'month' || recStr === 'monthly') {
+      result.recurrence_rule = { type: 'monthly', interval: 1 };
+    } else {
+      // Parse day names: "every mon, wed, fri"
+      const days = recStr.split(/\s*,\s*/).map(d => dayAbbr.findIndex(a => d.startsWith(a))).filter(d => d >= 0);
+      if (days.length) {
+        result.recurrence_rule = { type: 'weekly', interval: 1, days_of_week: days };
+        if (!result.due_date) {
+          // Set due to next occurrence
+          const d = new Date(today);
+          for (let j = 1; j <= 7; j++) {
+            const dd = new Date(today); dd.setDate(dd.getDate() + j);
+            if (days.includes(dd.getDay())) { result.due_date = localDateStr(dd); break; }
+          }
+        }
+      }
+    }
+    result.title = result.title.replace(everyMatch[0], '').trim();
+    if (!result.due_date) result.due_date = localDateStr(today);
+  }
+
+  // Clean up extra spaces
+  result.title = result.title.replace(/\s{2,}/g, ' ').trim();
+  return result;
+}
+
+async function submitQuickAdd() {
+  const input = document.getElementById('quick-add-input');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  const parsed = parseQuickAdd(text);
+  if (!parsed.title) return;
+
+  try {
+    await api('/tasks', { method: 'POST', body: JSON.stringify(parsed) });
+    input.value = '';
+    showToast(`Task added: ${parsed.title}`);
     if (currentTab === 'tasks') loadTasks();
   } catch (err) { showToast(err.message); }
 }
@@ -3604,7 +3803,17 @@ function closeGlobalSearch() { document.getElementById('search-overlay').classLi
 
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='n') {
+    e.preventDefault();
+    const qa = document.getElementById('quick-add-input');
+    if (qa) { qa.focus(); qa.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    else { switchTab('tasks'); setTimeout(() => { const q = document.getElementById('quick-add-input'); if (q) q.focus(); }, 400); }
+  }
   if (e.key==='Escape' && document.getElementById('search-overlay').classList.contains('open')) closeGlobalSearch();
+});
+// Quick-add Enter key handler (delegated)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'quick-add-input') { e.preventDefault(); submitQuickAdd(); }
 });
 document.getElementById('global-search-input').addEventListener('input', e => {
   clearTimeout(searchDebounceTimer); const q=e.target.value.trim(); if(!q){document.getElementById('search-results').innerHTML='';return;} if(q.length<2)return;

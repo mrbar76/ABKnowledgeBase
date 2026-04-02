@@ -488,6 +488,10 @@ async function initDB() {
   await safeQuery('tasks +checklist', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('tasks +waiting_on', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
   await safeQuery('tasks idx_waiting_on', `CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
+  // -- recurring tasks migrations --
+  await safeQuery('tasks +recurrence_rule', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_rule JSONB`);
+  await safeQuery('tasks +recurring_parent_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_parent_id UUID REFERENCES tasks(id) ON DELETE SET NULL`);
+  await safeQuery('tasks idx_recurring_parent', `CREATE INDEX IF NOT EXISTS idx_tasks_recurring_parent_id ON tasks(recurring_parent_id)`);
   await safeQuery('tasks status_check +waiting_on', `
     ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
     ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN ('todo','in_progress','waiting_on','review','done'))

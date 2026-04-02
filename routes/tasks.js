@@ -98,21 +98,29 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, waiting_on } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, waiting_on, recurrence_rule } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
 
     const effectiveStatus = status || 'todo';
     const result = await query(
-      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, completed_at, waiting_on)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, completed_at, waiting_on, recurrence_rule)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
       [title, description || null, effectiveStatus,
        priority || 'medium', ai_agent || null, next_steps || null, due_date || null,
        context || null, source_id || null, notes || null,
-       effectiveStatus === 'done' ? new Date() : null, waiting_on || null]
+       effectiveStatus === 'done' ? new Date() : null, waiting_on || null,
+       recurrence_rule ? JSON.stringify(recurrence_rule) : null]
     );
 
-    await logActivity('create', 'task', result.rows[0].id, ai_agent, `Created task: ${title}`);
-    res.status(201).json({ id: result.rows[0].id, message: 'Task created' });
+    const taskId = result.rows[0].id;
+
+    // If recurring, generate upcoming instances
+    if (recurrence_rule && due_date) {
+      await generateRecurringInstances(taskId, title, description, priority, context, notes, recurrence_rule, due_date);
+    }
+
+    await logActivity('create', 'task', taskId, ai_agent, `Created task: ${title}${recurrence_rule ? ' (recurring)' : ''}`);
+    res.status(201).json({ id: taskId, message: 'Task created' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -152,6 +160,10 @@ router.put('/:id', async (req, res) => {
     if (tags !== undefined) { sets.push(`tags = $${i++}::jsonb`); params.push(JSON.stringify(tags)); }
     if (checklist !== undefined) { sets.push(`checklist = $${i++}::jsonb`); params.push(JSON.stringify(checklist)); }
     if (waiting_on !== undefined) { sets.push(`waiting_on = $${i++}`); params.push(waiting_on || null); }
+    if (req.body.recurrence_rule !== undefined) {
+      sets.push(`recurrence_rule = $${i++}::jsonb`);
+      params.push(req.body.recurrence_rule ? JSON.stringify(req.body.recurrence_rule) : null);
+    }
 
     // Auto-clear waiting_on when moving away from waiting_on status
     if (status !== undefined && status !== 'waiting_on' && waiting_on === undefined) {
@@ -236,4 +248,165 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ─── Recurring Tasks ─────────────────────────────────────────
+
+/**
+ * Generate upcoming instances for a recurring task.
+ * Generates up to 30 days ahead (or until end_date).
+ * recurrence_rule: { type: "daily"|"weekly"|"monthly", interval: 1, days_of_week: [0-6], end_date: "YYYY-MM-DD" }
+ */
+async function generateRecurringInstances(parentId, title, description, priority, context, notes, rule, startDate) {
+  const HORIZON_DAYS = 30;
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const horizon = new Date(start);
+  horizon.setDate(horizon.getDate() + HORIZON_DAYS);
+  const endDate = rule.end_date ? new Date(rule.end_date) : horizon;
+  const limit = endDate < horizon ? endDate : horizon;
+
+  // Find already-generated instance dates for this parent
+  const existing = await query(
+    `SELECT due_date FROM tasks WHERE recurring_parent_id = $1 AND due_date IS NOT NULL`,
+    [parentId]
+  );
+  const existingDates = new Set(existing.rows.map(r => r.due_date?.toISOString?.()?.slice(0, 10) || r.due_date));
+
+  const dates = computeRecurrenceDates(rule, start, limit);
+
+  let created = 0;
+  for (const d of dates) {
+    const ds = toDateStr(d);
+    if (ds === toDateStr(start)) continue; // skip the original date
+    if (existingDates.has(ds)) continue;
+    await query(
+      `INSERT INTO tasks (title, description, status, priority, context, notes, due_date, recurring_parent_id)
+       VALUES ($1, $2, 'todo', $3, $4, $5, $6, $7)`,
+      [title, description || null, priority || 'medium', context || null, notes || null, ds, parentId]
+    );
+    created++;
+  }
+  return created;
+}
+
+function toDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function computeRecurrenceDates(rule, start, limit) {
+  const dates = [];
+  const interval = rule.interval || 1;
+  let current = new Date(start);
+
+  if (rule.type === 'daily') {
+    while (current <= limit) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + interval);
+    }
+  } else if (rule.type === 'weekly') {
+    const dow = rule.days_of_week || [start.getDay()];
+    while (current <= limit) {
+      if (dow.includes(current.getDay())) {
+        dates.push(new Date(current));
+      }
+      current.setDate(current.getDate() + 1);
+      // Skip ahead by (interval-1) weeks after completing a week cycle
+      if (current.getDay() === start.getDay() && interval > 1) {
+        current.setDate(current.getDate() + 7 * (interval - 1));
+      }
+    }
+  } else if (rule.type === 'monthly') {
+    const dayOfMonth = rule.day_of_month || start.getDate();
+    while (current <= limit) {
+      const candidate = new Date(current.getFullYear(), current.getMonth(), Math.min(dayOfMonth, daysInMonth(current.getFullYear(), current.getMonth())));
+      if (candidate >= start && candidate <= limit) {
+        dates.push(candidate);
+      }
+      current.setMonth(current.getMonth() + interval);
+    }
+  }
+  return dates;
+}
+
+function daysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+// Get all instances for a recurring parent
+router.get('/:id/instances', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT t.*, (SELECT COUNT(*) FROM task_comments tc WHERE tc.task_id = t.id)::int AS comment_count
+       FROM tasks t WHERE t.recurring_parent_id = $1 ORDER BY t.due_date ASC`,
+      [req.params.id]
+    );
+    res.json({ count: result.rows.length, instances: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete all future instances of a recurring task
+router.delete('/:id/future-instances', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await query(
+      `DELETE FROM tasks WHERE recurring_parent_id = $1 AND due_date >= $2 AND status != 'done' RETURNING id`,
+      [req.params.id, today]
+    );
+    res.json({ deleted: result.rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update recurrence rule on a parent task (and regenerate)
+router.put('/:id/recurrence', async (req, res) => {
+  try {
+    const { recurrence_rule } = req.body;
+    const taskResult = await query('SELECT * FROM tasks WHERE id = $1', [req.params.id]);
+    if (!taskResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const task = taskResult.rows[0];
+
+    // Update the rule
+    await query('UPDATE tasks SET recurrence_rule = $1, updated_at = NOW() WHERE id = $2',
+      [recurrence_rule ? JSON.stringify(recurrence_rule) : null, req.params.id]);
+
+    // Delete future undone instances and regenerate
+    const today = new Date().toISOString().slice(0, 10);
+    await query(`DELETE FROM tasks WHERE recurring_parent_id = $1 AND due_date >= $2 AND status != 'done'`, [req.params.id, today]);
+
+    let created = 0;
+    if (recurrence_rule && task.due_date) {
+      const startFrom = task.due_date < today ? today : task.due_date;
+      created = await generateRecurringInstances(req.params.id, task.title, task.description, task.priority, task.context, task.notes, recurrence_rule, startFrom);
+    }
+
+    await logActivity('update', 'task', req.params.id, null, `Recurrence updated: ${recurrence_rule ? recurrence_rule.type : 'removed'}`);
+    res.json({ message: 'Recurrence updated', instances_created: created });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Extend recurring instances (called by cron to keep 30-day horizon)
+async function extendAllRecurring() {
+  try {
+    const parents = await query(`SELECT * FROM tasks WHERE recurrence_rule IS NOT NULL AND status != 'done'`);
+    let total = 0;
+    for (const task of parents.rows) {
+      const rule = typeof task.recurrence_rule === 'string' ? JSON.parse(task.recurrence_rule) : task.recurrence_rule;
+      if (!rule || !task.due_date) continue;
+      const today = new Date().toISOString().slice(0, 10);
+      const startFrom = task.due_date < today ? today : toDateStr(new Date(task.due_date));
+      const created = await generateRecurringInstances(task.id, task.title, task.description, task.priority, task.context, task.notes, rule, startFrom);
+      total += created;
+    }
+    return total;
+  } catch (err) {
+    console.error('[recurring] Extension failed:', err.message);
+    return 0;
+  }
+}
+
 module.exports = router;
+module.exports.extendAllRecurring = extendAllRecurring;

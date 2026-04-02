@@ -324,6 +324,21 @@ async function start() {
   setTimeout(checkNotifications, 5000); // first check 5s after boot
   console.log('[push] Notification scheduler active');
 
+  // ─── Cron: extend recurring task instances (daily) ────────────
+  const { extendAllRecurring } = require('./routes/tasks');
+  async function runRecurringExtension() {
+    try {
+      const created = await extendAllRecurring();
+      if (created > 0) console.log(`[recurring] Extended ${created} recurring task instances`);
+    } catch (err) {
+      console.error(`[recurring] Extension failed: ${err.message}`);
+    }
+  }
+  // Run once at boot (after 15s) and then every 6 hours
+  setTimeout(runRecurringExtension, 15000);
+  setInterval(runRecurringExtension, 6 * 60 * 60 * 1000);
+  console.log('[recurring] Recurring task scheduler active (every 6h)');
+
   // Initialize sync sources
   syncStatus.initSource('bee', { label: 'Bee Wearable', cron_enabled: !!process.env.BEE_API_TOKEN });
   syncStatus.initSource('chatgpt', { label: 'ChatGPT Import' });
