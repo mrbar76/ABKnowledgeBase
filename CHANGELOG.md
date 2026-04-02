@@ -19,7 +19,8 @@ All notable changes to the AB Brain platform are documented here.
 - **Today View: Stale Tasks** — new section showing tasks untouched 7+ days with "Snooze 1w" and "Archive" quick actions
 
 ### Removed
-- **Server-side Outlook email sync** — flagged-email-to-task polling, cron, and Power Automate webhook endpoints removed. Replaced by Claude's Outlook MCP tools (email search, calendar search) which handle this on demand.
+- **Server-side Outlook email sync** — replaced by Claude's Outlook MCP tools
+- **Agent system (Jarvis)** — roster, org chart, work board, agent CRUD, auto-seed. Removed as Claude Code handles delegation natively. The `ai_agent` field on tasks remains for source tracking.
 
 ### Fixed
 - **`GET /api/exercises/available` SQL binding error** — query passed equipment array as parameter but had no `$1` placeholder. Fixed with `WHERE equipment = ANY($1::text[]) OR equipment IS NULL`. Same fix applied to `GET /api/exercises/for-profile/:profileId`.
@@ -28,19 +29,8 @@ All notable changes to the AB Brain platform are documented here.
 
 ## [1.5.0] — 2026-03-29
 
-### Added
-- **Agents Section** — new top-level tab for managing AI agents (Jarvis orchestrator system)
-  - **Agents table** — PostgreSQL table with name, codename, role, personality, avatar_emoji, status (active/busy/idle/offline/retired), reports_to hierarchy, capabilities, tools, model, hired_date, metadata
-  - **Full CRUD API** — `GET/POST/PUT/DELETE /api/agents`, plus `GET /api/agents/:id` with assigned tasks and activity history
-  - **Roster view** — card-based roster showing all agents with status badges, active/completed task counts, capabilities pills, and model info
-  - **Org Chart view** — hierarchical tree view showing reporting structure with indented nodes, status dots, and active task counts
-  - **Agent detail modal** — full profile with editable status, reports-to dropdown, personality, notes, assigned work list (linked to tasks), and recent activity log
-  - **Hire Agent form** — create new agents with name, codename, role, emoji avatar, personality, model, capabilities, and tools
-  - **Task integration** — agents linked to tasks via `ai_agent` field (codename). Agent detail shows all assigned work with status colors.
-  - **Activity tracking** — agent create/update/delete actions logged to activity_log
-  - **Founding team auto-seed** — on first visit, roster auto-populates with 6 agents: Jarvis (Chief of Staff), Cascade (HR), Scout (Research), Forge (Backend Dev), Pixel (Frontend Dev), Sentinel (QA Lead). All report to Jarvis.
-  - **Agent assignment on tasks** — dropdown in task detail modal to assign any agent. Agent codename shown on task cards in Today and List views.
-  - **Seed API endpoint** — `POST /api/agents/seed` creates founding team idempotently (skips if roster already populated)
+### Deprecated
+- **Agents Section** — removed in v1.6.0. Agent personas (Jarvis, Cascade, Scout, Forge, Pixel, Sentinel) added management overhead without execution value. Claude Code handles task delegation natively.
 
 ---
 

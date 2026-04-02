@@ -1101,33 +1101,6 @@ async function initDB() {
   await safeQuery('backfill exercises search', `UPDATE exercises SET search_vector = to_tsvector('english', coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
 
-  // ===== AI AGENTS =====
-  await safeQuery('agents table', `
-    CREATE TABLE IF NOT EXISTS agents (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT NOT NULL,
-      codename TEXT,
-      role TEXT NOT NULL,
-      personality TEXT,
-      avatar_url TEXT,
-      avatar_emoji TEXT DEFAULT '🤖',
-      status TEXT DEFAULT 'active' CHECK(status IN ('active','idle','busy','offline','retired')),
-      reports_to UUID REFERENCES agents(id) ON DELETE SET NULL,
-      capabilities JSONB DEFAULT '[]'::jsonb,
-      tools JSONB DEFAULT '[]'::jsonb,
-      model TEXT,
-      hired_date DATE DEFAULT CURRENT_DATE,
-      last_active_at TIMESTAMPTZ,
-      total_tasks_completed INTEGER DEFAULT 0,
-      notes TEXT,
-      metadata JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-  await safeQuery('agents indexes', `
-    CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
-    CREATE INDEX IF NOT EXISTS idx_agents_reports_to ON agents(reports_to);
-    CREATE INDEX IF NOT EXISTS idx_agents_codename ON agents(codename)`);
 
   // ===== DATA MIGRATIONS =====
   // Migrate facts into knowledge (one-time, safe with ON CONFLICT)

@@ -91,18 +91,6 @@ _None currently._
 | POST | `/api/training/coaching` | Create coaching session |
 | GET/POST/PUT/DELETE | `/api/training/injuries/*` | Injury tracking CRUD |
 
-### Agents (Jarvis System)
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/agents` | List all agents. Filter: `?status=` |
-| GET | `/api/agents/:id` | Agent detail with assigned tasks and activity |
-| POST | `/api/agents` | Create agent |
-| PUT | `/api/agents/:id` | Update agent |
-| DELETE | `/api/agents/:id` | Delete agent |
-| POST | `/api/agents/seed` | Seed founding team (idempotent) |
-| GET | `/api/agents/org/chart` | Org chart hierarchy |
-| GET | `/api/agents/work/dashboard` | Work board grouped by agent |
-
 ### Conversations & Transcripts
 | Method | Path | Description |
 |--------|------|-------------|
@@ -152,21 +140,6 @@ Used in the morning briefing and Today view to surface the 3 most important task
 | | waiting >3 days | +5 |
 
 Tasks are sorted by total score descending. Top 3 shown as "Focus" items.
-
----
-
-## Agent Roster (Jarvis System)
-
-| Codename | Name | Role | Emoji |
-|----------|------|------|-------|
-| Jarvis | Jarvis | Chief of Staff | 🦊 |
-| Cascade | Cascade | HR & Culture | 🦋 |
-| Scout | Scout | Research & Recon | 🦉 |
-| Forge | Forge | Backend Dev | 🐻 |
-| Pixel | Pixel | Frontend Dev | 🦎 |
-| Sentinel | Sentinel | QA Lead | 🐺 |
-
-All agents report to Jarvis. Agents are assigned to tasks via the `ai_agent` field (codename).
 
 ---
 

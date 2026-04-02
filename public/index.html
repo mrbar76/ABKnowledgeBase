@@ -306,12 +306,7 @@
               </div>
               <div class="sm-collapse">
                 <div class="sm-doc-text">
-                  <p><strong>Agents Section</strong> — new top-level tab for managing AI agents (Jarvis orchestrator system).</p>
-                  <p><strong>Agent Roster</strong> — card-based view with status badges (active/busy/idle/offline/retired), task counts, capabilities, and model info.</p>
-                  <p><strong>Org Chart</strong> — hierarchical tree view showing reporting structure. Set "reports to" on agent profiles to build hierarchy.</p>
-                  <p><strong>Agent Profiles</strong> — detail modal with editable fields: status, reports-to, personality, notes, capabilities, tools. Shows assigned work and activity history.</p>
-                  <p><strong>Hire Agents</strong> — create form with name, codename, role, emoji avatar, personality, model, capabilities, and tools.</p>
-                  <p><strong>Task Integration</strong> — agents linked to tasks via codename. Agent detail shows all assigned work with live status.</p>
+                  <p><strong>Agents Section</strong> — deprecated and removed in v1.6.0. Agent personas added management overhead without execution value. Claude Code handles delegation natively.</p>
                 </div>
               </div>
             </div>
@@ -500,14 +495,12 @@
       </svg>
       <span>Fitness</span>
     </button>
-    <button class="tab-btn" data-tab="agents" onclick="switchTab('agents')">
+    <button class="tab-btn" data-tab="badges" onclick="switchTab('badges')">
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-        <path d="M16 3.13a4 4 0 010 7.75"/>
+        <circle cx="12" cy="8" r="7"/>
+        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>
       </svg>
-      <span>Agents</span>
+      <span>Badges</span>
     </button>
   </nav>
 
