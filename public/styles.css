@@ -3717,6 +3717,58 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   border-color: var(--accent);
 }
 
+/* ═══ Task Context Panel ═══ */
+.context-panel {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; background: var(--surface-2);
+}
+.ctx-group { margin-bottom: 10px; }
+.ctx-group:last-child { margin-bottom: 0; }
+.ctx-group-title {
+  font-size: 0.72rem; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.ctx-item {
+  padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface);
+  margin-bottom: 6px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.ctx-item:hover { border-color: var(--accent); }
+.ctx-item:last-child { margin-bottom: 0; }
+.ctx-item-header {
+  display: flex; align-items: center; gap: 6px;
+}
+.ctx-item-title {
+  flex: 1; min-width: 0; font-size: 0.8rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ctx-item-snippet {
+  font-size: 0.72rem; color: var(--text-dim);
+  margin-top: 4px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ctx-item-meta {
+  display: flex; gap: 8px; margin-top: 4px;
+  font-size: 0.65rem; color: var(--text-muted);
+}
+.ctx-relevance {
+  font-size: 0.62rem; font-weight: 700;
+  color: var(--accent); background: rgba(99,102,241,0.1);
+  padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+}
+.ctx-pin-btn {
+  flex-shrink: 0; width: 24px; height: 24px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface-2); color: var(--text-dim);
+  font-size: 0.68rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.ctx-pin-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ctx-pin-btn.ctx-pinned { background: rgba(99,102,241,0.1); border-color: var(--accent); }
+
 /* ═══ Bulk Operations ═══ */
 .bulk-action-bar {
   display: flex; align-items: center; justify-content: space-between;

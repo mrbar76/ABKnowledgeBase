@@ -2968,6 +2968,16 @@ async function showTaskDetail(id) {
         </div>
       </div>
 
+      <div class="context-panel" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:0.82rem;font-weight:700">Related Context</label>
+          <button class="btn-action" onclick="loadTaskContext('${id}')" style="font-size:0.68rem;padding:3px 8px" id="ctx-refresh-btn">Find related</button>
+        </div>
+        <div id="task-context-panel">
+          <div style="font-size:0.75rem;color:var(--text-dim)">Click "Find related" to discover transcripts, knowledge, and conversations connected to this task.</div>
+        </div>
+      </div>
+
       <div class="form-group" style="margin-top:16px"><label>Comments (${comments.length})</label>
         ${commentsHtml || '<div style="font-size:0.75rem;color:var(--text-dim)">No comments yet</div>'}
         <div style="display:flex;gap:6px;margin-top:8px">
@@ -3289,6 +3299,103 @@ async function createTask(e) {
     }) });
     closeModal();
     if (currentTab === 'tasks') loadTasks();
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Task Context (Related Items) ─────────────────────────────
+async function loadTaskContext(taskId) {
+  const panel = document.getElementById('task-context-panel');
+  if (!panel) return;
+  panel.innerHTML = '<div class="loading" style="font-size:0.75rem;padding:8px">Searching for related context...</div>';
+
+  try {
+    const data = await api(`/tasks/${taskId}/context`);
+    const { auto, linked } = data;
+    const hasAuto = (auto.knowledge?.length || 0) + (auto.transcripts?.length || 0) + (auto.conversations?.length || 0) > 0;
+    const hasLinked = linked?.length > 0;
+
+    if (!hasAuto && !hasLinked) {
+      panel.innerHTML = '<div style="font-size:0.75rem;color:var(--text-dim);padding:8px">No related context found. Add more detail to the task title or description to improve matching.</div>';
+      return;
+    }
+
+    let html = '';
+
+    // Manually linked items first
+    if (hasLinked) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">📌 Pinned</div>`;
+      html += linked.map(item => renderContextItem(item.type, item, taskId, true)).join('');
+      html += `</div>`;
+    }
+
+    // Auto-discovered
+    if (auto.transcripts?.length) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">🎙 Transcripts</div>`;
+      html += auto.transcripts.map(t => renderContextItem('transcript', t, taskId, false)).join('');
+      html += `</div>`;
+    }
+    if (auto.knowledge?.length) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">🧠 Knowledge</div>`;
+      html += auto.knowledge.map(k => renderContextItem('knowledge', k, taskId, false)).join('');
+      html += `</div>`;
+    }
+    if (auto.conversations?.length) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">💬 Conversations</div>`;
+      html += auto.conversations.map(c => renderContextItem('conversation', c, taskId, false)).join('');
+      html += `</div>`;
+    }
+
+    panel.innerHTML = html;
+  } catch (err) {
+    panel.innerHTML = `<div style="font-size:0.75rem;color:var(--red);padding:8px">${esc(err.message)}</div>`;
+  }
+}
+
+function renderContextItem(type, item, taskId, isLinked) {
+  const typeIcons = { transcript: '🎙', knowledge: '🧠', conversation: '💬' };
+  const icon = typeIcons[type] || '📄';
+  const date = item.recorded_at || item.created_at;
+  const dateStr = date ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const snippet = item.snippet ? esc(item.snippet).slice(0, 120) + (item.snippet.length > 120 ? '...' : '') : '';
+  const relevance = item.relevance ? `<span class="ctx-relevance">${Math.round(item.relevance * 100)}%</span>` : '';
+
+  // Detail viewer function based on type
+  const viewFn = type === 'transcript' ? 'showTranscriptDetail' : type === 'knowledge' ? 'showKnowledgeDetail' : 'showConversationDetail';
+
+  const pinBtn = isLinked
+    ? `<button class="ctx-pin-btn ctx-pinned" onclick="event.stopPropagation();unlinkFromTask('${taskId}','${type}','${item.id}')" title="Unpin">📌</button>`
+    : `<button class="ctx-pin-btn" onclick="event.stopPropagation();linkToTask('${taskId}','${type}','${item.id}')" title="Pin to task">+</button>`;
+
+  return `
+    <div class="ctx-item" onclick="${viewFn}('${item.id}')">
+      <div class="ctx-item-header">
+        <span class="ctx-item-title">${esc(item.title || 'Untitled')}</span>
+        ${relevance}
+        ${pinBtn}
+      </div>
+      ${snippet ? `<div class="ctx-item-snippet">${snippet}</div>` : ''}
+      <div class="ctx-item-meta">
+        ${item.source || item.ai_source ? `<span>${esc(item.source || item.ai_source)}</span>` : ''}
+        ${dateStr ? `<span>${dateStr}</span>` : ''}
+        ${item.duration_seconds ? `<span>${Math.round(item.duration_seconds / 60)}min</span>` : ''}
+        ${item.location ? `<span>${esc(item.location)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+async function linkToTask(taskId, type, itemId) {
+  try {
+    await api(`/tasks/${taskId}/link`, { method: 'POST', body: JSON.stringify({ type, item_id: itemId }) });
+    showToast('Pinned to task', 'success', 1500);
+    loadTaskContext(taskId);
+  } catch (err) { showToast(err.message); }
+}
+
+async function unlinkFromTask(taskId, type, itemId) {
+  try {
+    await api(`/tasks/${taskId}/link`, { method: 'DELETE', body: JSON.stringify({ type, item_id: itemId }) });
+    showToast('Unpinned', 'success', 1500);
+    loadTaskContext(taskId);
   } catch (err) { showToast(err.message); }
 }
 

@@ -277,6 +277,10 @@ router.put('/:id', async (req, res) => {
       sets.push(`reminder_at = $${i++}`);
       params.push(req.body.reminder_at || null);
     }
+    if (req.body.linked_items !== undefined) {
+      sets.push(`linked_items = $${i++}::jsonb`);
+      params.push(JSON.stringify(req.body.linked_items));
+    }
 
     // Auto-clear waiting_on when moving away from waiting_on status
     if (status !== undefined && status !== 'waiting_on' && waiting_on === undefined) {
@@ -356,6 +360,121 @@ router.delete('/:id', async (req, res) => {
     const result = await query('DELETE FROM tasks WHERE id = $1 RETURNING id', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Task deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Task Context (Related Items) ────────────────────────────
+
+// Auto-discover related context + return manually linked items
+router.get('/:id/context', async (req, res) => {
+  try {
+    const taskResult = await query('SELECT id, title, description, notes, linked_items FROM tasks WHERE id = $1', [req.params.id]);
+    if (!taskResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const task = taskResult.rows[0];
+
+    // Build search terms from title + description + notes
+    const searchTerms = [task.title, task.description, task.notes].filter(Boolean).join(' ');
+    // Extract meaningful keywords (skip short/common words)
+    const words = searchTerms.split(/\s+/).filter(w => w.length > 3);
+    const searchQuery = words.slice(0, 12).join(' '); // cap at 12 words for performance
+
+    // Search across all context sources in parallel using FTS
+    const [knowledge, transcripts, conversations] = await Promise.all([
+      query(`
+        SELECT id, title, category, ai_source, tags, created_at,
+          LEFT(content, 200) AS snippet,
+          CASE WHEN search_vector @@ plainto_tsquery('english', $1)
+            THEN ts_rank(search_vector, plainto_tsquery('english', $1)) ELSE 0.01 END AS relevance
+        FROM knowledge
+        WHERE search_vector @@ plainto_tsquery('english', $1)
+          OR (coalesce(title,'') || ' ' || coalesce(content,'')) ILIKE '%' || $2 || '%'
+        ORDER BY relevance DESC, created_at DESC LIMIT 5
+      `, [searchQuery, words[0] || '']),
+      query(`
+        SELECT id, title, source, recorded_at, duration_seconds, location, tags, created_at,
+          LEFT(summary, 200) AS snippet,
+          CASE WHEN search_vector @@ plainto_tsquery('english', $1)
+            THEN ts_rank(search_vector, plainto_tsquery('english', $1)) ELSE 0.01 END AS relevance
+        FROM transcripts
+        WHERE search_vector @@ plainto_tsquery('english', $1)
+          OR (coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) ILIKE '%' || $2 || '%'
+        ORDER BY relevance DESC, created_at DESC LIMIT 5
+      `, [searchQuery, words[0] || '']),
+      query(`
+        SELECT id, title, ai_source, message_count, tags, created_at,
+          LEFT(summary, 200) AS snippet,
+          CASE WHEN search_vector @@ plainto_tsquery('english', $1)
+            THEN ts_rank(search_vector, plainto_tsquery('english', $1)) ELSE 0.01 END AS relevance
+        FROM conversations
+        WHERE search_vector @@ plainto_tsquery('english', $1)
+          OR (coalesce(title,'') || ' ' || coalesce(summary,'')) ILIKE '%' || $2 || '%'
+        ORDER BY relevance DESC, created_at DESC LIMIT 5
+      `, [searchQuery, words[0] || '']),
+    ]);
+
+    // Fetch manually linked items
+    const linkedItems = task.linked_items || [];
+    const linked = [];
+    for (const item of linkedItems) {
+      try {
+        const table = { knowledge: 'knowledge', transcript: 'transcripts', conversation: 'conversations' }[item.type];
+        if (!table) continue;
+        const r = await query(`SELECT id, title, created_at FROM ${table} WHERE id = $1`, [item.id]);
+        if (r.rows.length) linked.push({ ...r.rows[0], type: item.type, manual: true });
+      } catch { /* skip broken links */ }
+    }
+
+    res.json({
+      auto: {
+        knowledge: knowledge.rows,
+        transcripts: transcripts.rows,
+        conversations: conversations.rows,
+      },
+      linked,
+      search_query: searchQuery,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Link an item to a task
+router.post('/:id/link', async (req, res) => {
+  try {
+    const { type, item_id } = req.body;
+    if (!type || !item_id) return res.status(400).json({ error: 'type and item_id required' });
+    if (!['knowledge', 'transcript', 'conversation'].includes(type)) return res.status(400).json({ error: 'Invalid type' });
+
+    const taskResult = await query('SELECT linked_items FROM tasks WHERE id = $1', [req.params.id]);
+    if (!taskResult.rows.length) return res.status(404).json({ error: 'Not found' });
+
+    const linked = taskResult.rows[0].linked_items || [];
+    // Don't duplicate
+    if (linked.some(l => l.type === type && l.id === item_id)) {
+      return res.json({ message: 'Already linked' });
+    }
+
+    linked.push({ type, id: item_id, linked_at: new Date().toISOString() });
+    await query('UPDATE tasks SET linked_items = $1::jsonb, updated_at = NOW() WHERE id = $2', [JSON.stringify(linked), req.params.id]);
+    await logActivity('link', 'task', req.params.id, null, `Linked ${type}: ${item_id}`);
+    res.json({ message: 'Linked', linked_items: linked });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unlink an item from a task
+router.delete('/:id/link', async (req, res) => {
+  try {
+    const { type, item_id } = req.body;
+    const taskResult = await query('SELECT linked_items FROM tasks WHERE id = $1', [req.params.id]);
+    if (!taskResult.rows.length) return res.status(404).json({ error: 'Not found' });
+
+    const linked = (taskResult.rows[0].linked_items || []).filter(l => !(l.type === type && l.id === item_id));
+    await query('UPDATE tasks SET linked_items = $1::jsonb, updated_at = NOW() WHERE id = $2', [JSON.stringify(linked), req.params.id]);
+    res.json({ message: 'Unlinked', linked_items: linked });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
