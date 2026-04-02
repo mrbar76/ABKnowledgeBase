@@ -1901,6 +1901,7 @@ function tasksTabsHtml() {
     <button class="brain-tab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
     <button class="brain-tab${tasksSubTab==='kanban'?' active':''}" onclick="tasksSubTab='kanban';loadTasks()">Kanban</button>
     <button class="brain-tab${tasksSubTab==='calendar'?' active':''}" onclick="tasksSubTab='calendar';loadTasks()">Calendar</button>
+    <button class="brain-tab${tasksSubTab==='review'?' active':''}" onclick="tasksSubTab='review';loadTasks()">Review</button>
   </div>`;
 }
 
@@ -1911,6 +1912,7 @@ async function loadTasks() {
   if (tasksSubTab === 'waiting') return loadTasksWaiting();
   if (tasksSubTab === 'kanban') return loadTasksKanban();
   if (tasksSubTab === 'calendar') return loadTasksCalendar();
+  if (tasksSubTab === 'review') return loadTasksWeeklyReview();
   return loadTasksList();
 }
 
@@ -2623,6 +2625,172 @@ function setTaskDueByCalendar(dateStr) {
       <button type="submit" class="btn-submit">Create Task</button>
     </form>
   `);
+}
+
+// ── Weekly Review ──
+let reviewWeeksAgo = 0;
+async function loadTasksWeeklyReview() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api(`/tasks/weekly-review?weeks_ago=${reviewWeeksAgo}`);
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    // Velocity indicator
+    const velSign = data.velocity_change > 0 ? '+' : '';
+    const velColor = data.velocity_change > 0 ? 'var(--green)' : data.velocity_change < 0 ? 'var(--red)' : 'var(--text-dim)';
+    const velLabel = data.velocity_change === 0 ? 'same as last week' : `${velSign}${data.velocity_change} vs last week`;
+
+    // Build daily bar chart (CSS-only)
+    const maxDaily = Math.max(...data.by_day.map(d => Math.max(d.completed, d.created)), 1);
+
+    const dailyBars = data.by_day.map(d => {
+      const dayLabel = dayNames[new Date(d.date).getDay()];
+      const completedPct = (d.completed / maxDaily) * 100;
+      const createdPct = (d.created / maxDaily) * 100;
+      return `
+        <div class="review-day">
+          <div class="review-day-bars">
+            <div class="review-bar review-bar-completed" style="height:${completedPct}%">${d.completed || ''}</div>
+            <div class="review-bar review-bar-created" style="height:${createdPct}%">${d.created || ''}</div>
+          </div>
+          <div class="review-day-label">${dayLabel}</div>
+        </div>`;
+    }).join('');
+
+    // Priority breakdown
+    const prioColors = { urgent: 'var(--red)', high: '#f97316', medium: 'var(--yellow)', low: 'var(--text-dim)' };
+    const prioTotal = data.by_priority.reduce((s, p) => s + p.count, 0) || 1;
+    const prioBars = data.by_priority.map(p => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:0.75rem;width:50px;text-transform:capitalize;color:${prioColors[p.priority] || 'var(--text-dim)'}">${p.priority}</span>
+        <div style="flex:1;height:14px;background:var(--surface-2);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${(p.count/prioTotal)*100}%;background:${prioColors[p.priority]};border-radius:4px;transition:width 0.3s"></div>
+        </div>
+        <span style="font-size:0.72rem;color:var(--text-dim);width:20px;text-align:right">${p.count}</span>
+      </div>
+    `).join('');
+
+    // Context breakdown
+    const ctxColors = { work: 'var(--blue)', personal: 'var(--green)', unset: 'var(--text-dim)' };
+    const ctxBadges = data.by_context.map(c =>
+      `<span class="review-ctx-badge" style="background:${ctxColors[c.context] || 'var(--text-dim)'}20;color:${ctxColors[c.context] || 'var(--text-dim)');border:1px solid ${ctxColors[c.context] || 'var(--text-dim)'}30">${c.context}: ${c.count}</span>`
+    ).join('');
+
+    // Completed task list
+    const completedList = data.completed.tasks.slice(0, 20).map(t => `
+      <div class="list-item" onclick="showTaskDetail('${t.id}')" style="padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <span style="color:var(--green);flex-shrink:0">✓</span>
+        <div style="flex:1;min-width:0">
+          <div class="list-item-title" style="text-decoration:line-through;color:var(--text-dim)">${esc(t.title)}</div>
+          <div class="list-item-meta">
+            <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+            ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+            ${t.is_recurring ? '<span class="recurring-badge">↻</span>' : ''}
+            <span style="font-size:0.68rem;color:var(--text-dim)">${new Date(t.completed_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Created task list
+    const createdList = data.created.tasks.slice(0, 10).map(t => `
+      <div class="list-item" onclick="showTaskDetail('${t.id}')" style="padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <span style="color:var(--accent);flex-shrink:0">+</span>
+        <div style="flex:1;min-width:0">
+          <div class="list-item-title">${esc(t.title)}</div>
+          <div class="list-item-meta">
+            <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+            ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+            <span style="font-size:0.68rem;color:var(--text-dim)">${t.status}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    const weekLabel = reviewWeeksAgo === 0 ? 'This Week' : reviewWeeksAgo === 1 ? 'Last Week' : `${reviewWeeksAgo} Weeks Ago`;
+    const dateRange = `${new Date(data.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(data.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+    main.innerHTML = tasksTabsHtml() + `
+      <div class="review-header">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn-action btn-compact-sm" onclick="reviewWeeksAgo++;loadTasks()" style="font-size:0.75rem">← Prev</button>
+          <div>
+            <div style="font-size:1.1rem;font-weight:700">${weekLabel}</div>
+            <div style="font-size:0.75rem;color:var(--text-dim)">${dateRange}</div>
+          </div>
+          ${reviewWeeksAgo > 0 ? `<button class="btn-action btn-compact-sm" onclick="reviewWeeksAgo--;loadTasks()" style="font-size:0.75rem">Next →</button>` : ''}
+        </div>
+      </div>
+
+      <div class="review-stats-grid">
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:var(--green)">${data.completed.count}</div>
+          <div class="review-stat-label">Completed</div>
+          <div class="review-stat-sub" style="color:${velColor}">${velLabel}</div>
+        </div>
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:var(--accent)">${data.created.count}</div>
+          <div class="review-stat-label">Created</div>
+        </div>
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:var(--yellow)">${data.completion_streak}</div>
+          <div class="review-stat-label">Day Streak</div>
+        </div>
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:${data.carry_over_count > 5 ? 'var(--red)' : 'var(--text-dim)'}">${data.carry_over_count}</div>
+          <div class="review-stat-label">Carry-over</div>
+        </div>
+      </div>
+
+      <div class="review-section">
+        <div class="review-section-title">Daily Activity</div>
+        <div class="review-chart">
+          ${dailyBars}
+        </div>
+        <div style="display:flex;gap:12px;justify-content:center;margin-top:8px">
+          <span style="font-size:0.68rem;color:var(--green)">■ Completed</span>
+          <span style="font-size:0.68rem;color:var(--accent)">■ Created</span>
+        </div>
+      </div>
+
+      ${data.by_priority.length ? `
+        <div class="review-section">
+          <div class="review-section-title">Completed by Priority</div>
+          ${prioBars}
+        </div>
+      ` : ''}
+
+      ${data.by_context.length ? `
+        <div class="review-section">
+          <div class="review-section-title">Completed by Context</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${ctxBadges}</div>
+        </div>
+      ` : ''}
+
+      ${data.completed.count ? `
+        <div class="review-section">
+          <div class="review-section-title">Completed Tasks (${data.completed.count})</div>
+          ${completedList}
+          ${data.completed.count > 20 ? `<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:8px">+${data.completed.count - 20} more</div>` : ''}
+        </div>
+      ` : '<div class="empty-state">No tasks completed this week</div>'}
+
+      ${data.created.count ? `
+        <details class="review-section">
+          <summary class="review-section-title" style="cursor:pointer">Created Tasks (${data.created.count})</summary>
+          <div style="margin-top:8px">${createdList}</div>
+          ${data.created.count > 10 ? `<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:8px">+${data.created.count - 10} more</div>` : ''}
+        </details>
+      ` : ''}
+
+      ${data.overdue_count && reviewWeeksAgo === 0 ? `
+        <div class="review-section" style="border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.04)">
+          <div style="font-size:0.82rem;font-weight:600;color:var(--red)">${data.overdue_count} overdue task${data.overdue_count !== 1 ? 's' : ''} need attention</div>
+          <button class="btn-action" onclick="tasksSubTab='today';loadTasks()" style="margin-top:8px;font-size:0.75rem">Go to Today →</button>
+        </div>
+      ` : ''}
+    `;
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
 // ── Shared Task Detail / Edit ──

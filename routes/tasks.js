@@ -57,6 +57,115 @@ router.get('/kanban', async (req, res) => {
   }
 });
 
+// ─── Weekly Review ───────────────────────────────────────────
+router.get('/weekly-review', async (req, res) => {
+  try {
+    // Support offset: ?weeks_ago=0 (this week), 1 (last week), etc.
+    const weeksAgo = parseInt(req.query.weeks_ago) || 0;
+
+    const [completed, created, byDay, byPriority, byContext, overdue, streakR, carryOver] = await Promise.all([
+      // Tasks completed this week
+      query(`
+        SELECT id, title, priority, context, completed_at, due_date, recurrence_rule IS NOT NULL OR recurring_parent_id IS NOT NULL AS is_recurring
+        FROM tasks
+        WHERE status = 'done'
+          AND completed_at >= date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)
+          AND completed_at < date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval) + interval '7 days'
+        ORDER BY completed_at ASC
+      `, [weeksAgo]),
+      // Tasks created this week
+      query(`
+        SELECT id, title, priority, context, status, due_date
+        FROM tasks
+        WHERE created_at >= date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)
+          AND created_at < date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval) + interval '7 days'
+        ORDER BY created_at ASC
+      `, [weeksAgo]),
+      // Completions by day of week
+      query(`
+        WITH week_start AS (SELECT date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)::date AS ws)
+        SELECT d::date AS date,
+          (SELECT COUNT(*)::int FROM tasks WHERE status = 'done' AND completed_at::date = d) AS completed,
+          (SELECT COUNT(*)::int FROM tasks WHERE created_at::date = d) AS created
+        FROM week_start, generate_series(ws, ws + 6, '1 day') d
+        ORDER BY d
+      `, [weeksAgo]),
+      // Completed by priority
+      query(`
+        SELECT priority, COUNT(*)::int AS count
+        FROM tasks
+        WHERE status = 'done'
+          AND completed_at >= date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)
+          AND completed_at < date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval) + interval '7 days'
+        GROUP BY priority ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
+      `, [weeksAgo]),
+      // Completed by context
+      query(`
+        SELECT COALESCE(context, 'unset') AS context, COUNT(*)::int AS count
+        FROM tasks
+        WHERE status = 'done'
+          AND completed_at >= date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)
+          AND completed_at < date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval) + interval '7 days'
+        GROUP BY context
+      `, [weeksAgo]),
+      // Currently overdue (only relevant for current week)
+      query(`
+        SELECT COUNT(*)::int AS count FROM tasks
+        WHERE status NOT IN ('done') AND due_date < CURRENT_DATE
+      `),
+      // Completion streak: consecutive days with at least 1 completion
+      query(`
+        WITH dates AS (
+          SELECT DISTINCT completed_at::date AS d FROM tasks WHERE status = 'done' AND completed_at IS NOT NULL ORDER BY d DESC
+        ),
+        grouped AS (
+          SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d))::int AS grp FROM dates
+        )
+        SELECT COUNT(*)::int AS streak FROM grouped WHERE grp = (SELECT grp FROM grouped ORDER BY d DESC LIMIT 1)
+      `),
+      // Carry-over: tasks that were open at week start and still open at week end
+      query(`
+        SELECT COUNT(*)::int AS count FROM tasks
+        WHERE status NOT IN ('done')
+          AND created_at < date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)
+      `, [weeksAgo]),
+    ]);
+
+    // Previous week comparison
+    const prevWeeksAgo = weeksAgo + 1;
+    const prevCompleted = await query(`
+      SELECT COUNT(*)::int AS count FROM tasks
+      WHERE status = 'done'
+        AND completed_at >= date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval)
+        AND completed_at < date_trunc('week', CURRENT_DATE - ($1 || ' weeks')::interval) + interval '7 days'
+    `, [prevWeeksAgo]);
+
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() - (weeksAgo * 7));
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    res.json({
+      week_start: weekStart.toISOString().slice(0, 10),
+      week_end: weekEnd.toISOString().slice(0, 10),
+      weeks_ago: weeksAgo,
+      completed: { count: completed.rows.length, tasks: completed.rows },
+      created: { count: created.rows.length, tasks: created.rows },
+      by_day: byDay.rows,
+      by_priority: byPriority.rows,
+      by_context: byContext.rows,
+      overdue_count: overdue.rows[0]?.count || 0,
+      completion_streak: streakR.rows[0]?.streak || 0,
+      carry_over_count: carryOver.rows[0]?.count || 0,
+      prev_week_completed: prevCompleted.rows[0]?.count || 0,
+      velocity_change: completed.rows.length - (prevCompleted.rows[0]?.count || 0),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/debug/status-check', async (req, res) => {
   try {
     const cols = await query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'waiting_on'`);
