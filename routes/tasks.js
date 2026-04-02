@@ -273,6 +273,10 @@ router.put('/:id', async (req, res) => {
       sets.push(`recurrence_rule = $${i++}::jsonb`);
       params.push(req.body.recurrence_rule ? JSON.stringify(req.body.recurrence_rule) : null);
     }
+    if (req.body.reminder_at !== undefined) {
+      sets.push(`reminder_at = $${i++}`);
+      params.push(req.body.reminder_at || null);
+    }
 
     // Auto-clear waiting_on when moving away from waiting_on status
     if (status !== undefined && status !== 'waiting_on' && waiting_on === undefined) {
@@ -352,6 +356,68 @@ router.delete('/:id', async (req, res) => {
     const result = await query('DELETE FROM tasks WHERE id = $1 RETURNING id', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Task deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Bulk Operations ─────────────────────────────────────────
+router.post('/bulk', async (req, res) => {
+  try {
+    const { task_ids, action, value } = req.body;
+    if (!task_ids?.length) return res.status(400).json({ error: 'task_ids required' });
+    if (!action) return res.status(400).json({ error: 'action required' });
+
+    let affected = 0;
+    const placeholders = task_ids.map((_, idx) => `$${idx + 1}`).join(',');
+
+    if (action === 'mark_done') {
+      const result = await query(
+        `UPDATE tasks SET status = 'done', completed_at = NOW(), updated_at = NOW() WHERE id IN (${placeholders}) AND status != 'done' RETURNING id`,
+        task_ids
+      );
+      affected = result.rows.length;
+      for (const row of result.rows) {
+        await logActivity('update', 'task', row.id, null, 'Bulk: marked done');
+      }
+    } else if (action === 'mark_todo') {
+      const result = await query(
+        `UPDATE tasks SET status = 'todo', completed_at = NULL, updated_at = NOW() WHERE id IN (${placeholders}) RETURNING id`,
+        task_ids
+      );
+      affected = result.rows.length;
+    } else if (action === 'reschedule' && value) {
+      const result = await query(
+        `UPDATE tasks SET due_date = $${task_ids.length + 1}, updated_at = NOW() WHERE id IN (${placeholders}) RETURNING id`,
+        [...task_ids, value]
+      );
+      affected = result.rows.length;
+    } else if (action === 'set_priority' && value) {
+      const result = await query(
+        `UPDATE tasks SET priority = $${task_ids.length + 1}, updated_at = NOW() WHERE id IN (${placeholders}) RETURNING id`,
+        [...task_ids, value]
+      );
+      affected = result.rows.length;
+    } else if (action === 'set_context' && value !== undefined) {
+      const result = await query(
+        `UPDATE tasks SET context = $${task_ids.length + 1}, updated_at = NOW() WHERE id IN (${placeholders}) RETURNING id`,
+        [...task_ids, value || null]
+      );
+      affected = result.rows.length;
+    } else if (action === 'delete') {
+      const result = await query(
+        `DELETE FROM tasks WHERE id IN (${placeholders}) RETURNING id`,
+        task_ids
+      );
+      affected = result.rows.length;
+      for (const row of result.rows) {
+        await logActivity('delete', 'task', row.id, null, 'Bulk: deleted');
+      }
+    } else {
+      return res.status(400).json({ error: 'Unknown action: ' + action });
+    }
+
+    res.json({ message: `Bulk ${action}: ${affected} tasks affected`, affected });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

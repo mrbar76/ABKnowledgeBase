@@ -317,6 +317,54 @@ async function start() {
     } catch (err) {
       // Silently skip if DB not ready
     }
+
+    // ─── Task Reminders ─────────────────────────────────────────
+    try {
+      const webpush = require('web-push');
+      const { rows: [settings] } = await query(`SELECT * FROM gamification_settings WHERE id = 1`);
+      if (!settings?.push_subscription || !settings.vapid_public_key) return;
+
+      // Find tasks with reminder_at in the past that haven't been sent yet
+      const { rows: dueTasks } = await query(`
+        SELECT id, title, priority, due_date FROM tasks
+        WHERE reminder_at IS NOT NULL
+          AND reminder_at <= NOW()
+          AND status NOT IN ('done')
+        LIMIT 10
+      `);
+
+      if (dueTasks.length) {
+        webpush.setVapidDetails('mailto:avi@abbrain.app', settings.vapid_public_key, settings.vapid_private_key);
+      }
+
+      for (const task of dueTasks) {
+        const sentKey = `reminder-${task.id}`;
+        if (notifState.lastSent[sentKey]) continue;
+
+        try {
+          const prioLabel = task.priority === 'urgent' ? '🔴 ' : task.priority === 'high' ? '🟠 ' : '';
+          await webpush.sendNotification(settings.push_subscription, JSON.stringify({
+            title: `${prioLabel}Task Reminder`,
+            body: task.title,
+            icon: '/icons/brand/icon-app-180.png',
+            badge: '/icons/brand/icon-app-64.png',
+            url: '/',
+          }));
+          notifState.lastSent[sentKey] = true;
+          // Clear the reminder so it doesn't fire again
+          await query('UPDATE tasks SET reminder_at = NULL WHERE id = $1', [task.id]);
+          console.log(`[push] Task reminder sent: ${task.title}`);
+        } catch (pushErr) {
+          if (pushErr.statusCode === 410) {
+            await query(`UPDATE gamification_settings SET push_subscription = NULL WHERE id = 1`);
+            break;
+          }
+          console.error(`[push] Task reminder failed: ${pushErr.message}`);
+        }
+      }
+    } catch (err) {
+      // Silently skip
+    }
   }
 
   // Check every 60 seconds

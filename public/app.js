@@ -2673,7 +2673,7 @@ async function loadTasksWeeklyReview() {
     // Context breakdown
     const ctxColors = { work: 'var(--blue)', personal: 'var(--green)', unset: 'var(--text-dim)' };
     const ctxBadges = data.by_context.map(c =>
-      `<span class="review-ctx-badge" style="background:${ctxColors[c.context] || 'var(--text-dim)'}20;color:${ctxColors[c.context] || 'var(--text-dim)');border:1px solid ${ctxColors[c.context] || 'var(--text-dim)'}30">${c.context}: ${c.count}</span>`
+      `<span class="review-ctx-badge" style="background:${ctxColors[c.context] || 'var(--text-dim)'}20;color:${ctxColors[c.context] || 'var(--text-dim)'};border:1px solid ${ctxColors[c.context] || 'var(--text-dim)'}30">${c.context}: ${c.count}</span>`
     ).join('');
 
     // Completed task list
@@ -2858,6 +2858,22 @@ async function showTaskDetail(id) {
             <option value="personal" ${task.context==='personal'?'selected':''}>Personal</option>
           </select>
         </div>
+      </div>
+      <div class="reminder-section" style="margin-bottom:12px">
+        <label style="font-size:0.78rem;font-weight:600;display:block;margin-bottom:6px">Reminder</label>
+        ${task.reminder_at ? `
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:0.8rem;color:var(--accent)">🔔 ${new Date(task.reminder_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', null)">Clear</button>
+          </div>
+        ` : `
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'in1h')">In 1h</button>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'in3h')">In 3h</button>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'tomorrow9am')">Tmrw 9am</button>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'custom')">Pick...</button>
+          </div>
+        `}
       </div>
       ${task.status === 'waiting_on' || task.waiting_on ? `
         <div class="form-group" style="margin-bottom:12px"><label>Waiting On</label>
@@ -3205,6 +3221,33 @@ async function createTask(e) {
     }) });
     closeModal();
     if (currentTab === 'tasks') loadTasks();
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Task Reminder Helpers ────────────────────────────────────
+async function setTaskReminder(id, preset) {
+  let reminderAt = null;
+  if (preset === 'in1h') {
+    reminderAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  } else if (preset === 'in3h') {
+    reminderAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+  } else if (preset === 'tomorrow9am') {
+    const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+    reminderAt = d.toISOString();
+  } else if (preset === 'custom') {
+    const input = prompt('Reminder date/time (YYYY-MM-DD HH:MM):');
+    if (!input) return;
+    const parsed = new Date(input.includes('T') ? input : input.replace(' ', 'T'));
+    if (isNaN(parsed)) { showToast('Invalid date format'); return; }
+    reminderAt = parsed.toISOString();
+  } else {
+    reminderAt = null; // clear
+  }
+
+  try {
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ reminder_at: reminderAt }) });
+    showToast(reminderAt ? `Reminder set for ${new Date(reminderAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Reminder cleared', 'success', 2000);
+    showTaskDetail(id);
   } catch (err) { showToast(err.message); }
 }
 
