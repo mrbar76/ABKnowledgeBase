@@ -4,6 +4,36 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.6.0] — 2026-03-31
+
+### Added
+- **Morning Briefing Endpoint** — `GET /api/briefing` returns a complete markdown morning briefing with smart task ranking, recovery readiness, rings/streaks, yesterday's activity, stale alerts, and today's plan. Designed for Claude Projects, Claude Code, and ChatGPT to call on-demand.
+  - **Smart Task Ranking** — scores each task by priority (urgent=40, high=30, medium=20, low=10) + due urgency (overdue=50, today=30, this week=15) + staleness (>14d=+15, >7d=+10) + waiting duration (>5d=+10, >3d=+5). Top 3 Focus shown first.
+  - **Stale Task Detection** — flags tasks untouched for 7+ days in briefing output
+  - **Recovery Summary** — sleep, recovery score, injury status, workout fatigue
+  - **Rings & Streaks** — train/execute/recover streak counts
+  - **Yesterday Recap** — completed tasks, workout, nutrition totals
+  - **Today's Plan** — daily plan if set, including workout/nutrition targets
+  - Added to `claude-schema.json` and `openapi-chatgpt.json` for Custom GPT integration
+- **Today View: Top 3 Focus** — new section at the top of Today view showing the 3 highest-scored tasks with highlighted cards, priority badges, and score indicators
+- **Today View: Stale Tasks** — new section showing tasks untouched 7+ days with "Snooze 1w" and "Archive" quick actions
+
+### Removed
+- **Server-side Outlook email sync** — replaced by Claude's Outlook MCP tools
+- **Agent system (Jarvis)** — roster, org chart, work board, agent CRUD, auto-seed. Removed as Claude Code handles delegation natively. The `ai_agent` field on tasks remains for source tracking.
+
+### Fixed
+- **`GET /api/exercises/available` SQL binding error** — query passed equipment array as parameter but had no `$1` placeholder. Fixed with `WHERE equipment = ANY($1::text[]) OR equipment IS NULL`. Same fix applied to `GET /api/exercises/for-profile/:profileId`.
+
+---
+
+## [1.5.0] — 2026-03-29
+
+### Deprecated
+- **Agents Section** — removed in v1.6.0. Agent personas (Jarvis, Cascade, Scout, Forge, Pixel, Sentinel) added management overhead without execution value. Claude Code handles task delegation natively.
+
+---
+
 ## [1.4.0] — 2026-03-27
 
 ### Added

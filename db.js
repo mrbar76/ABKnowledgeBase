@@ -488,6 +488,13 @@ async function initDB() {
   await safeQuery('tasks +checklist', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('tasks +waiting_on', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
   await safeQuery('tasks idx_waiting_on', `CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
+  // -- recurring tasks migrations --
+  await safeQuery('tasks +recurrence_rule', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_rule JSONB`);
+  await safeQuery('tasks +recurring_parent_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_parent_id UUID REFERENCES tasks(id) ON DELETE SET NULL`);
+  await safeQuery('tasks idx_recurring_parent', `CREATE INDEX IF NOT EXISTS idx_tasks_recurring_parent_id ON tasks(recurring_parent_id)`);
+  await safeQuery('tasks +reminder_at', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_at TIMESTAMPTZ`);
+  await safeQuery('tasks idx_reminder_at', `CREATE INDEX IF NOT EXISTS idx_tasks_reminder_at ON tasks(reminder_at) WHERE reminder_at IS NOT NULL`);
+  await safeQuery('tasks +linked_items', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS linked_items JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('tasks status_check +waiting_on', `
     ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
     ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN ('todo','in_progress','waiting_on','review','done'))
@@ -1100,6 +1107,7 @@ async function initDB() {
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill exercises search', `UPDATE exercises SET search_vector = to_tsvector('english', coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
+
 
   // ===== DATA MIGRATIONS =====
   // Migrate facts into knowledge (one-time, safe with ON CONFLICT)

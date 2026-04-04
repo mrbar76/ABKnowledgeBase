@@ -1617,26 +1617,6 @@ async function loadSettingsMenuInfo() {
     if (oaEl) { oaEl.textContent = 'Error'; oaEl.style.color = 'var(--red)'; }
   }
 
-  // Outlook status
-  const outlookEl = document.getElementById('sm-outlook-val');
-  if (outlookEl) {
-    try {
-      const olData = await api('/outlook/status');
-      if (olData.configured && !olData.error) {
-        outlookEl.textContent = `${olData.connected_as} (${olData.outlook_tasks} tasks)`;
-        outlookEl.style.color = 'var(--green)';
-      } else if (olData.configured) {
-        outlookEl.textContent = 'Auth error';
-        outlookEl.style.color = 'var(--red)';
-      } else {
-        outlookEl.textContent = 'Not configured';
-        outlookEl.style.color = 'var(--text-dim)';
-      }
-    } catch {
-      outlookEl.textContent = 'Not configured';
-      outlookEl.style.color = 'var(--text-dim)';
-    }
-  }
 }
 
 async function triggerBeeSyncFromMenu(mode) {
@@ -1726,35 +1706,6 @@ async function triggerBeeSyncFromMenu(mode) {
   if (btnFull) btnFull.disabled = false;
   loadSettingsMenuInfo();
   // Refresh dashboard if visible
-  if (currentTab === 'home') loadDashboardStats();
-}
-
-async function triggerOutlookSync() {
-  const btn = document.getElementById('sm-btn-outlook-sync');
-  const resultEl = document.getElementById('sm-outlook-result');
-  if (!resultEl) return;
-
-  if (btn) btn.disabled = true;
-  resultEl.style.display = 'block';
-  resultEl.style.color = 'var(--text-dim)';
-  resultEl.textContent = 'Syncing flagged emails...';
-
-  try {
-    const data = await api('/outlook/sync', { method: 'POST', body: JSON.stringify({}) });
-    const parts = [];
-    if (data.created) parts.push(`${data.created} created`);
-    if (data.completed) parts.push(`${data.completed} completed`);
-    if (data.skipped) parts.push(`${data.skipped} skipped`);
-    resultEl.style.color = data.errors > 0 ? 'var(--yellow)' : 'var(--green)';
-    resultEl.textContent = parts.length ? parts.join(', ') : 'No new flagged emails';
-    if (data.errors > 0) resultEl.textContent += ` (${data.errors} errors)`;
-  } catch (err) {
-    resultEl.style.color = 'var(--red)';
-    resultEl.textContent = err.message.includes('not configured') ? 'Outlook not configured' : `Sync failed: ${err.message}`;
-  }
-
-  if (btn) btn.disabled = false;
-  if (currentTab === 'tasks') loadTasks();
   if (currentTab === 'home') loadDashboardStats();
 }
 
@@ -1950,6 +1901,7 @@ function tasksTabsHtml() {
     <button class="brain-tab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
     <button class="brain-tab${tasksSubTab==='kanban'?' active':''}" onclick="tasksSubTab='kanban';loadTasks()">Kanban</button>
     <button class="brain-tab${tasksSubTab==='calendar'?' active':''}" onclick="tasksSubTab='calendar';loadTasks()">Calendar</button>
+    <button class="brain-tab${tasksSubTab==='review'?' active':''}" onclick="tasksSubTab='review';loadTasks()">Review</button>
   </div>`;
 }
 
@@ -1960,6 +1912,7 @@ async function loadTasks() {
   if (tasksSubTab === 'waiting') return loadTasksWaiting();
   if (tasksSubTab === 'kanban') return loadTasksKanban();
   if (tasksSubTab === 'calendar') return loadTasksCalendar();
+  if (tasksSubTab === 'review') return loadTasksWeeklyReview();
   return loadTasksList();
 }
 
@@ -2031,6 +1984,50 @@ async function loadTasksToday() {
 
     const totalFocus = overdue.length + dueToday.length + inProgress.length;
 
+    // ── Top 3 Focus scoring ──
+    const allOpen = [...overdue, ...dueToday, ...inProgress, ...topPriority];
+    function scoreFocusTask(t) {
+      let score = 0;
+      // Priority score
+      const pScores = { urgent: 40, high: 30, medium: 20, low: 10 };
+      score += pScores[t.priority] || 10;
+      // Due urgency
+      const due = t.due_date ? new Date(t.due_date) : null;
+      if (due) { due.setHours(0,0,0,0); }
+      if (due && due < today) score += 50;
+      else if (due && due.toDateString() === todayStr) score += 30;
+      else if (due && due < new Date(today.getTime() + 7*86400000)) score += 15;
+      else score += 5;
+      // Staleness (updated_at)
+      if (t.updated_at) {
+        const daysSinceUpdate = Math.floor((today - new Date(t.updated_at)) / 86400000);
+        if (daysSinceUpdate > 14) score += 15;
+        else if (daysSinceUpdate > 7) score += 10;
+      }
+      // Waiting too long (for waiting_on tasks that leaked into open)
+      if (t.waiting_on && t.updated_at) {
+        const dWait = Math.floor((today - new Date(t.updated_at)) / 86400000);
+        if (dWait > 5) score += 10;
+        else if (dWait > 3) score += 5;
+      }
+      return score;
+    }
+    const focusTop3 = allOpen.map(t => ({ ...t, _focusScore: scoreFocusTask(t) }))
+      .sort((a, b) => b._focusScore - a._focusScore)
+      .slice(0, 3);
+
+    // ── Stale tasks (todo or in_progress, updated >7 days ago) ──
+    const allForStale = [...overdue, ...dueToday, ...inProgress, ...topPriority];
+    const staleTasks = allForStale.filter(t => {
+      if (t.status !== 'todo' && t.status !== 'in_progress') return false;
+      if (!t.updated_at) return false;
+      const daysSince = Math.floor((today - new Date(t.updated_at)) / 86400000);
+      return daysSince >= 7;
+    }).map(t => {
+      const daysSince = Math.floor((today - new Date(t.updated_at)) / 86400000);
+      return { ...t, _staleDays: daysSince };
+    }).sort((a, b) => b._staleDays - a._staleDays);
+
     // Date helpers for reschedule
     const todayISO = localDateStr(today);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -2048,6 +2045,8 @@ async function loadTasksToday() {
         return `<span style="font-size:0.7rem;color:${isOverdue ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`;
       })() : '';
       const waitingBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
+      const agentBadge = t.ai_agent ? `<span style="font-size:0.7rem;color:var(--accent)">🤖${esc(t.ai_agent)}</span>` : '';
+      const recurBadge = (t.recurrence_rule || t.recurring_parent_id) ? '<span class="recurring-badge">↻</span>' : '';
 
       const rescheduleRow = showReschedule ? `
         <div style="display:flex;gap:4px;margin-top:4px" onclick="event.stopPropagation()">
@@ -2065,7 +2064,7 @@ async function loadTasksToday() {
             <div class="list-item-meta">
               <span class="priority-badge priority-${t.priority}">${t.priority}</span>
               ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-              ${dueBadge}${waitingBadge}${checkProgress}${commentCount}
+              ${dueBadge}${waitingBadge}${agentBadge}${recurBadge}${checkProgress}${commentCount}
             </div>
             ${rescheduleRow}
           </div>
@@ -2075,13 +2074,40 @@ async function loadTasksToday() {
     }
 
     main.innerHTML = tasksTabsHtml() + `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
           <div style="font-size:1.1rem;font-weight:700">Focus Today</div>
           <div style="font-size:0.75rem;color:var(--text-dim)">${totalFocus} task${totalFocus !== 1 ? 's' : ''} need attention${recentlyDone.length ? ` · ${recentlyDone.length} completed today` : ''}</div>
         </div>
-        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Full</button>
       </div>
+      <div class="quick-add-bar" id="quick-add-bar">
+        <input type="text" id="quick-add-input" class="quick-add-input" placeholder="Quick add: 'Buy milk tomorrow high' or 'Weekly review friday'" autocomplete="off">
+        <button class="quick-add-btn" onclick="submitQuickAdd()">Add</button>
+      </div>
+
+      ${focusTop3.length ? `
+        <div class="focus-section">
+          <div class="focus-section-header">Top 3 Focus</div>
+          ${focusTop3.map((t, i) => `
+            <div class="focus-card" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <span class="focus-rank">${i + 1}</span>
+              <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
+              <div style="flex:1;min-width:0">
+                <div class="list-item-title">${esc(t.title)}</div>
+                <div class="list-item-meta">
+                  <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                  ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+                  ${t.due_date ? (() => { const d = new Date(t.due_date); const isOv = d < today && t.status !== 'done'; return `<span style="font-size:0.7rem;color:${isOv ? 'var(--red)' : 'var(--yellow)'}">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`; })() : ''}
+                  <span class="focus-score">score ${t._focusScore}</span>
+                </div>
+              </div>
+              ${t.status !== 'done' && t.status !== 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();updateTask('${t.id}','status','in_progress')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0">Start</button>` : ''}
+              ${t.status === 'in_progress' ? `<button class="btn-action" onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="font-size:0.7rem;padding:3px 8px;flex-shrink:0;background:var(--green)">Done</button>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
 
       ${overdue.length ? `
         <div style="margin-bottom:16px">
@@ -2107,6 +2133,28 @@ async function loadTasksToday() {
         <div style="margin-bottom:16px">
           <div style="font-size:0.8rem;font-weight:600;color:var(--blue);margin-bottom:6px">In Progress (${inProgress.length})</div>
           ${inProgress.map(t => renderTodayCard(t, true, false)).join('')}
+        </div>
+      ` : ''}
+
+      ${staleTasks.length ? `
+        <div class="stale-section">
+          <div class="stale-section-header">Stale — needs attention (${staleTasks.length})</div>
+          ${staleTasks.map(t => `
+            <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+              <div style="flex:1;min-width:0">
+                <div class="list-item-title">${esc(t.title)}</div>
+                <div class="list-item-meta">
+                  <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+                  <span class="stale-badge">${t._staleDays}d stale</span>
+                  <span style="font-size:0.68rem;color:var(--text-dim)">last updated ${t._staleDays} day${t._staleDays !== 1 ? 's' : ''} ago</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:4px;flex-shrink:0" onclick="event.stopPropagation()">
+                <button class="btn-stale-action" onclick="(()=>{const d=new Date();d.setDate(d.getDate()+7);rescheduleTask('${t.id}',localDateStr(d))})()">Snooze 1w</button>
+                <button class="btn-stale-action stale-archive" onclick="if(confirm('Archive this task?'))updateTask('${t.id}','status','done')">Archive</button>
+              </div>
+            </div>
+          `).join('')}
         </div>
       ` : ''}
 
@@ -2245,6 +2293,54 @@ let taskListFilter = '';
 let taskPriorityFilter = '';
 let taskContextFilter = '';
 let taskSortBy = 'priority';
+let bulkSelectMode = false;
+let bulkSelectedIds = new Set();
+
+function toggleBulkSelect(id, checkbox) {
+  if (checkbox.checked) bulkSelectedIds.add(id);
+  else bulkSelectedIds.delete(id);
+  const countEl = document.getElementById('bulk-count');
+  if (countEl) countEl.textContent = bulkSelectedIds.size;
+  const bar = document.getElementById('bulk-action-bar');
+  if (bar) bar.style.display = bulkSelectedIds.size > 0 ? 'flex' : 'none';
+}
+
+function toggleBulkSelectAll() {
+  const checkboxes = document.querySelectorAll('.bulk-checkbox');
+  const allChecked = [...checkboxes].every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    const id = cb.dataset.taskId;
+    if (!allChecked) bulkSelectedIds.add(id); else bulkSelectedIds.delete(id);
+  });
+  const countEl = document.getElementById('bulk-count');
+  if (countEl) countEl.textContent = bulkSelectedIds.size;
+  const bar = document.getElementById('bulk-action-bar');
+  if (bar) bar.style.display = bulkSelectedIds.size > 0 ? 'flex' : 'none';
+}
+
+async function executeBulkAction(action, value) {
+  if (!bulkSelectedIds.size) return;
+  const ids = [...bulkSelectedIds];
+
+  if (action === 'delete' && !confirm(`Delete ${ids.length} task${ids.length > 1 ? 's' : ''}?`)) return;
+  if (action === 'reschedule') {
+    value = prompt('New due date (YYYY-MM-DD):');
+    if (!value) return;
+  }
+  if (action === 'set_priority') {
+    value = prompt('Priority (low, medium, high, urgent):');
+    if (!value || !['low','medium','high','urgent'].includes(value)) { showToast('Invalid priority'); return; }
+  }
+
+  try {
+    const resp = await api('/tasks/bulk', { method: 'POST', body: JSON.stringify({ task_ids: ids, action, value }) });
+    showToast(resp.message, 'success', 2500);
+    bulkSelectedIds.clear();
+    loadTasks();
+  } catch (err) { showToast(err.message); }
+}
+
 async function loadTasksList() {
   const main = document.getElementById('main-content');
   try {
@@ -2295,8 +2391,25 @@ async function loadTasksList() {
             </select>
           </div>
         </div>
-        <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()" style="align-self:start">+ Task</button>
+        <div style="display:flex;gap:6px;align-self:start">
+          <button class="btn-action btn-compact-sm ${bulkSelectMode ? 'active' : ''}" onclick="bulkSelectMode=!bulkSelectMode;bulkSelectedIds.clear();loadTasksList()" style="font-size:0.7rem">${bulkSelectMode ? 'Cancel' : 'Select'}</button>
+          <button class="btn-action btn-compact-sm" onclick="showNewTaskModal()">+ Task</button>
+        </div>
       </div>
+      ${bulkSelectMode ? `
+        <div id="bulk-action-bar" class="bulk-action-bar" style="display:none">
+          <span style="font-size:0.78rem;font-weight:600"><span id="bulk-count">0</span> selected</span>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="bulk-btn bulk-btn-done" onclick="executeBulkAction('mark_done')">Done</button>
+            <button class="bulk-btn" onclick="executeBulkAction('reschedule')">Reschedule</button>
+            <button class="bulk-btn" onclick="executeBulkAction('set_priority')">Priority</button>
+            <button class="bulk-btn bulk-btn-danger" onclick="executeBulkAction('delete')">Delete</button>
+          </div>
+        </div>
+        <div style="margin-bottom:6px">
+          <button class="btn-reschedule" onclick="toggleBulkSelectAll()" style="font-size:0.7rem">Select All</button>
+        </div>
+      ` : ''}
       <div id="task-list">
         ${(() => {
           const pRank = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -2325,14 +2438,17 @@ async function loadTasksList() {
           const cmtCount = t.comment_count ? `<span style="font-size:0.7rem;color:var(--text-dim)">💬${t.comment_count}</span>` : '';
           const waitBadge = t.waiting_on ? `<span style="font-size:0.7rem;color:#f97316">⏳${esc(t.waiting_on)}</span>` : '';
           return `
-          <div class="list-item" onclick="showTaskDetail('${t.id}')" style="display:flex;align-items:center;gap:10px">
-            <input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">
+          <div class="list-item" onclick="${bulkSelectMode ? `(()=>{const cb=document.querySelector('.bulk-checkbox[data-task-id=\\'${t.id}\\']');cb.checked=!cb.checked;toggleBulkSelect('${t.id}',cb)})()` : `showTaskDetail('${t.id}')`}" style="display:flex;align-items:center;gap:10px">
+            ${bulkSelectMode
+              ? `<input type="checkbox" class="bulk-checkbox" data-task-id="${t.id}" ${bulkSelectedIds.has(t.id)?'checked':''} onclick="event.stopPropagation();toggleBulkSelect('${t.id}',this)" style="cursor:pointer;flex-shrink:0;width:18px;height:18px">`
+              : `<input type="checkbox" ${t.status==='done'?'checked':''} onclick="event.stopPropagation();quickToggleTask('${t.id}','${t.status}')" style="cursor:pointer;flex-shrink:0">`
+            }
             <div style="flex:1;min-width:0">
               <div class="list-item-title" style="${t.status==='done'?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(t.title)}</div>
               <div class="list-item-meta">
                 <span class="priority-badge priority-${t.priority}">${t.priority}</span>
                 ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
-                ${t.ai_agent ? `<span class="k-source-badge source-${t.ai_agent}">${t.ai_agent}</span>` : ''}
+                ${t.ai_agent ? `<span style="font-size:0.7rem;color:var(--accent)">🤖${esc(t.ai_agent)}</span>` : ''}
                 <span style="color:${statusColors[t.status]}">${statusLabels[t.status]}</span>
                 ${dueBadge}${waitBadge}${checkProgress}${cmtCount}
               </div>
@@ -2579,6 +2695,172 @@ function setTaskDueByCalendar(dateStr) {
   `);
 }
 
+// ── Weekly Review ──
+let reviewWeeksAgo = 0;
+async function loadTasksWeeklyReview() {
+  const main = document.getElementById('main-content');
+  try {
+    const data = await api(`/tasks/weekly-review?weeks_ago=${reviewWeeksAgo}`);
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    // Velocity indicator
+    const velSign = data.velocity_change > 0 ? '+' : '';
+    const velColor = data.velocity_change > 0 ? 'var(--green)' : data.velocity_change < 0 ? 'var(--red)' : 'var(--text-dim)';
+    const velLabel = data.velocity_change === 0 ? 'same as last week' : `${velSign}${data.velocity_change} vs last week`;
+
+    // Build daily bar chart (CSS-only)
+    const maxDaily = Math.max(...data.by_day.map(d => Math.max(d.completed, d.created)), 1);
+
+    const dailyBars = data.by_day.map(d => {
+      const dayLabel = dayNames[new Date(d.date).getDay()];
+      const completedPct = (d.completed / maxDaily) * 100;
+      const createdPct = (d.created / maxDaily) * 100;
+      return `
+        <div class="review-day">
+          <div class="review-day-bars">
+            <div class="review-bar review-bar-completed" style="height:${completedPct}%">${d.completed || ''}</div>
+            <div class="review-bar review-bar-created" style="height:${createdPct}%">${d.created || ''}</div>
+          </div>
+          <div class="review-day-label">${dayLabel}</div>
+        </div>`;
+    }).join('');
+
+    // Priority breakdown
+    const prioColors = { urgent: 'var(--red)', high: '#f97316', medium: 'var(--yellow)', low: 'var(--text-dim)' };
+    const prioTotal = data.by_priority.reduce((s, p) => s + p.count, 0) || 1;
+    const prioBars = data.by_priority.map(p => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:0.75rem;width:50px;text-transform:capitalize;color:${prioColors[p.priority] || 'var(--text-dim)'}">${p.priority}</span>
+        <div style="flex:1;height:14px;background:var(--surface-2);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${(p.count/prioTotal)*100}%;background:${prioColors[p.priority]};border-radius:4px;transition:width 0.3s"></div>
+        </div>
+        <span style="font-size:0.72rem;color:var(--text-dim);width:20px;text-align:right">${p.count}</span>
+      </div>
+    `).join('');
+
+    // Context breakdown
+    const ctxColors = { work: 'var(--blue)', personal: 'var(--green)', unset: 'var(--text-dim)' };
+    const ctxBadges = data.by_context.map(c =>
+      `<span class="review-ctx-badge" style="background:${ctxColors[c.context] || 'var(--text-dim)'}20;color:${ctxColors[c.context] || 'var(--text-dim)'};border:1px solid ${ctxColors[c.context] || 'var(--text-dim)'}30">${c.context}: ${c.count}</span>`
+    ).join('');
+
+    // Completed task list
+    const completedList = data.completed.tasks.slice(0, 20).map(t => `
+      <div class="list-item" onclick="showTaskDetail('${t.id}')" style="padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <span style="color:var(--green);flex-shrink:0">✓</span>
+        <div style="flex:1;min-width:0">
+          <div class="list-item-title" style="text-decoration:line-through;color:var(--text-dim)">${esc(t.title)}</div>
+          <div class="list-item-meta">
+            <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+            ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+            ${t.is_recurring ? '<span class="recurring-badge">↻</span>' : ''}
+            <span style="font-size:0.68rem;color:var(--text-dim)">${new Date(t.completed_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Created task list
+    const createdList = data.created.tasks.slice(0, 10).map(t => `
+      <div class="list-item" onclick="showTaskDetail('${t.id}')" style="padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <span style="color:var(--accent);flex-shrink:0">+</span>
+        <div style="flex:1;min-width:0">
+          <div class="list-item-title">${esc(t.title)}</div>
+          <div class="list-item-meta">
+            <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+            ${t.context ? `<span class="context-badge context-${t.context}">${t.context}</span>` : ''}
+            <span style="font-size:0.68rem;color:var(--text-dim)">${t.status}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    const weekLabel = reviewWeeksAgo === 0 ? 'This Week' : reviewWeeksAgo === 1 ? 'Last Week' : `${reviewWeeksAgo} Weeks Ago`;
+    const dateRange = `${new Date(data.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(data.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+    main.innerHTML = tasksTabsHtml() + `
+      <div class="review-header">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn-action btn-compact-sm" onclick="reviewWeeksAgo++;loadTasks()" style="font-size:0.75rem">← Prev</button>
+          <div>
+            <div style="font-size:1.1rem;font-weight:700">${weekLabel}</div>
+            <div style="font-size:0.75rem;color:var(--text-dim)">${dateRange}</div>
+          </div>
+          ${reviewWeeksAgo > 0 ? `<button class="btn-action btn-compact-sm" onclick="reviewWeeksAgo--;loadTasks()" style="font-size:0.75rem">Next →</button>` : ''}
+        </div>
+      </div>
+
+      <div class="review-stats-grid">
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:var(--green)">${data.completed.count}</div>
+          <div class="review-stat-label">Completed</div>
+          <div class="review-stat-sub" style="color:${velColor}">${velLabel}</div>
+        </div>
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:var(--accent)">${data.created.count}</div>
+          <div class="review-stat-label">Created</div>
+        </div>
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:var(--yellow)">${data.completion_streak}</div>
+          <div class="review-stat-label">Day Streak</div>
+        </div>
+        <div class="review-stat-card">
+          <div class="review-stat-value" style="color:${data.carry_over_count > 5 ? 'var(--red)' : 'var(--text-dim)'}">${data.carry_over_count}</div>
+          <div class="review-stat-label">Carry-over</div>
+        </div>
+      </div>
+
+      <div class="review-section">
+        <div class="review-section-title">Daily Activity</div>
+        <div class="review-chart">
+          ${dailyBars}
+        </div>
+        <div style="display:flex;gap:12px;justify-content:center;margin-top:8px">
+          <span style="font-size:0.68rem;color:var(--green)">■ Completed</span>
+          <span style="font-size:0.68rem;color:var(--accent)">■ Created</span>
+        </div>
+      </div>
+
+      ${data.by_priority.length ? `
+        <div class="review-section">
+          <div class="review-section-title">Completed by Priority</div>
+          ${prioBars}
+        </div>
+      ` : ''}
+
+      ${data.by_context.length ? `
+        <div class="review-section">
+          <div class="review-section-title">Completed by Context</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${ctxBadges}</div>
+        </div>
+      ` : ''}
+
+      ${data.completed.count ? `
+        <div class="review-section">
+          <div class="review-section-title">Completed Tasks (${data.completed.count})</div>
+          ${completedList}
+          ${data.completed.count > 20 ? `<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:8px">+${data.completed.count - 20} more</div>` : ''}
+        </div>
+      ` : '<div class="empty-state">No tasks completed this week</div>'}
+
+      ${data.created.count ? `
+        <details class="review-section">
+          <summary class="review-section-title" style="cursor:pointer">Created Tasks (${data.created.count})</summary>
+          <div style="margin-top:8px">${createdList}</div>
+          ${data.created.count > 10 ? `<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:8px">+${data.created.count - 10} more</div>` : ''}
+        </details>
+      ` : ''}
+
+      ${data.overdue_count && reviewWeeksAgo === 0 ? `
+        <div class="review-section" style="border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.04)">
+          <div style="font-size:0.82rem;font-weight:600;color:var(--red)">${data.overdue_count} overdue task${data.overdue_count !== 1 ? 's' : ''} need attention</div>
+          <button class="btn-action" onclick="tasksSubTab='today';loadTasks()" style="margin-top:8px;font-size:0.75rem">Go to Today →</button>
+        </div>
+      ` : ''}
+    `;
+  } catch (e) { main.innerHTML = tasksTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
 // ── Shared Task Detail / Edit ──
 async function showTaskDetail(id) {
   try {
@@ -2645,13 +2927,29 @@ async function showTaskDetail(id) {
           </select>
         </div>
       </div>
+      <div class="reminder-section" style="margin-bottom:12px">
+        <label style="font-size:0.78rem;font-weight:600;display:block;margin-bottom:6px">Reminder</label>
+        ${task.reminder_at ? `
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:0.8rem;color:var(--accent)">🔔 ${new Date(task.reminder_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', null)">Clear</button>
+          </div>
+        ` : `
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'in1h')">In 1h</button>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'in3h')">In 3h</button>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'tomorrow9am')">Tmrw 9am</button>
+            <button class="btn-reschedule" onclick="setTaskReminder('${id}', 'custom')">Pick...</button>
+          </div>
+        `}
+      </div>
       ${task.status === 'waiting_on' || task.waiting_on ? `
         <div class="form-group" style="margin-bottom:12px"><label>Waiting On</label>
           <input type="text" value="${esc(task.waiting_on || '')}" placeholder="e.g. Adin, Sarah (comma-separate multiple)" onblur="updateTask('${id}', 'waiting_on', this.value||null)" style="width:100%;box-sizing:border-box;font-size:0.82rem">
         </div>
       ` : ''}
       ${task.completed_at ? `<div style="font-size:0.75rem;color:var(--accent);margin-bottom:8px">Completed: ${new Date(task.completed_at).toLocaleString()}</div>` : ''}
-      ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from Outlook email</div>' : ''}
+      ${task.source_id ? '<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px">Created from external source</div>' : ''}
       <div class="form-group"><label>Description</label>
         <textarea rows="3" onblur="updateTask('${id}', 'description', this.value)" style="width:100%;box-sizing:border-box;font-size:0.82rem">${esc(task.description || '')}</textarea>
       </div>
@@ -2670,6 +2968,16 @@ async function showTaskDetail(id) {
         </div>
       </div>
 
+      <div class="context-panel" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:0.82rem;font-weight:700">Related Context</label>
+          <button class="btn-action" onclick="loadTaskContext('${id}')" style="font-size:0.68rem;padding:3px 8px" id="ctx-refresh-btn">Find related</button>
+        </div>
+        <div id="task-context-panel">
+          <div style="font-size:0.75rem;color:var(--text-dim)">Click "Find related" to discover transcripts, knowledge, and conversations connected to this task.</div>
+        </div>
+      </div>
+
       <div class="form-group" style="margin-top:16px"><label>Comments (${comments.length})</label>
         ${commentsHtml || '<div style="font-size:0.75rem;color:var(--text-dim)">No comments yet</div>'}
         <div style="display:flex;gap:6px;margin-top:8px">
@@ -2683,6 +2991,25 @@ async function showTaskDetail(id) {
           <summary style="font-size:0.78rem;font-weight:600;cursor:pointer;color:var(--text-dim)">History (${history.length})</summary>
           <div style="margin-top:6px">${historyHtml}</div>
         </details>
+      ` : ''}
+
+      ${task.recurrence_rule ? (() => {
+        const rule = typeof task.recurrence_rule === 'string' ? JSON.parse(task.recurrence_rule) : task.recurrence_rule;
+        const desc = describeRecurrence(rule);
+        return `
+          <div class="recurrence-info" style="margin-top:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div><span class="recurring-badge" style="margin-right:6px">↻</span><span style="font-size:0.82rem;font-weight:600">Recurring: ${esc(desc)}</span></div>
+              <button class="btn-action btn-action-danger" onclick="removeRecurrence('${id}')" style="font-size:0.7rem;padding:3px 8px">Stop</button>
+            </div>
+            ${rule.end_date ? `<div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px">Until ${rule.end_date}</div>` : ''}
+          </div>`;
+      })() : ''}
+      ${task.recurring_parent_id ? `
+        <div style="margin-top:12px;font-size:0.75rem;color:var(--text-dim)">
+          <span class="recurring-badge" style="margin-right:4px">↻</span> Instance of a recurring task
+          <button class="btn-action" onclick="showTaskDetail('${task.recurring_parent_id}')" style="font-size:0.7rem;padding:2px 8px;margin-left:8px">View parent</button>
+        </div>
       ` : ''}
 
       <div style="margin-top:16px;display:flex;gap:8px">
@@ -2893,6 +3220,46 @@ function showNewTaskModal() {
         <label>Waiting On</label>
         <input type="text" id="new-task-waiting-on" placeholder="e.g. Adin, Sarah (comma-separate multiple)">
       </div>
+      <div class="recurrence-section">
+        <label class="recurrence-toggle">
+          <input type="checkbox" id="new-task-recurring" onchange="document.getElementById('recurrence-options').style.display=this.checked?'block':'none'">
+          <span>Recurring task</span>
+        </label>
+        <div id="recurrence-options" style="display:none;margin-top:8px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <div style="flex:1" class="form-group">
+              <label>Frequency</label>
+              <select id="new-task-rec-type" onchange="document.getElementById('rec-dow-row').style.display=this.value==='weekly'?'block':'none'">
+                <option value="daily">Daily</option>
+                <option value="weekly" selected>Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div style="flex:1" class="form-group">
+              <label>Every</label>
+              <select id="new-task-rec-interval">
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+              </select>
+            </div>
+          </div>
+          <div id="rec-dow-row" class="form-group">
+            <label>Days of week</label>
+            <div class="dow-picker">
+              <label class="dow-chip"><input type="checkbox" value="0"><span>Su</span></label>
+              <label class="dow-chip"><input type="checkbox" value="1" checked><span>Mo</span></label>
+              <label class="dow-chip"><input type="checkbox" value="2"><span>Tu</span></label>
+              <label class="dow-chip"><input type="checkbox" value="3" checked><span>We</span></label>
+              <label class="dow-chip"><input type="checkbox" value="4"><span>Th</span></label>
+              <label class="dow-chip"><input type="checkbox" value="5" checked><span>Fr</span></label>
+              <label class="dow-chip"><input type="checkbox" value="6"><span>Sa</span></label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>End date (optional)</label>
+            <input type="date" id="new-task-rec-end">
+          </div>
+        </div>
+      </div>
       <button type="submit" class="btn-submit">Create Task</button>
     </form>
   `);
@@ -2904,6 +3271,21 @@ async function createTask(e) {
     const dueEl = document.getElementById('new-task-due');
     const statusEl = document.getElementById('new-task-status');
     const waitingOnEl = document.getElementById('new-task-waiting-on');
+    const isRecurring = document.getElementById('new-task-recurring')?.checked;
+
+    let recurrence_rule = null;
+    if (isRecurring) {
+      const recType = document.getElementById('new-task-rec-type').value;
+      const recInterval = parseInt(document.getElementById('new-task-rec-interval').value) || 1;
+      const recEnd = document.getElementById('new-task-rec-end')?.value || null;
+      recurrence_rule = { type: recType, interval: recInterval };
+      if (recType === 'weekly') {
+        const dow = [...document.querySelectorAll('.dow-picker input:checked')].map(cb => parseInt(cb.value));
+        recurrence_rule.days_of_week = dow.length ? dow : [new Date().getDay()];
+      }
+      if (recEnd) recurrence_rule.end_date = recEnd;
+    }
+
     await api('/tasks', { method: 'POST', body: JSON.stringify({
       title: document.getElementById('new-task-title').value,
       description: document.getElementById('new-task-desc').value,
@@ -2913,8 +3295,252 @@ async function createTask(e) {
       context: document.getElementById('new-task-context').value || null,
       status: statusEl ? statusEl.value : 'todo',
       waiting_on: waitingOnEl ? waitingOnEl.value || null : null,
+      recurrence_rule,
     }) });
     closeModal();
+    if (currentTab === 'tasks') loadTasks();
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Task Context (Related Items) ─────────────────────────────
+async function loadTaskContext(taskId) {
+  const panel = document.getElementById('task-context-panel');
+  if (!panel) return;
+  panel.innerHTML = '<div class="loading" style="font-size:0.75rem;padding:8px">Searching for related context...</div>';
+
+  try {
+    const data = await api(`/tasks/${taskId}/context`);
+    const { auto, linked } = data;
+    const hasAuto = (auto.knowledge?.length || 0) + (auto.transcripts?.length || 0) + (auto.conversations?.length || 0) > 0;
+    const hasLinked = linked?.length > 0;
+
+    if (!hasAuto && !hasLinked) {
+      panel.innerHTML = '<div style="font-size:0.75rem;color:var(--text-dim);padding:8px">No related context found. Add more detail to the task title or description to improve matching.</div>';
+      return;
+    }
+
+    let html = '';
+
+    // Manually linked items first
+    if (hasLinked) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">📌 Pinned</div>`;
+      html += linked.map(item => renderContextItem(item.type, item, taskId, true)).join('');
+      html += `</div>`;
+    }
+
+    // Auto-discovered
+    if (auto.transcripts?.length) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">🎙 Transcripts</div>`;
+      html += auto.transcripts.map(t => renderContextItem('transcript', t, taskId, false)).join('');
+      html += `</div>`;
+    }
+    if (auto.knowledge?.length) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">🧠 Knowledge</div>`;
+      html += auto.knowledge.map(k => renderContextItem('knowledge', k, taskId, false)).join('');
+      html += `</div>`;
+    }
+    if (auto.conversations?.length) {
+      html += `<div class="ctx-group"><div class="ctx-group-title">💬 Conversations</div>`;
+      html += auto.conversations.map(c => renderContextItem('conversation', c, taskId, false)).join('');
+      html += `</div>`;
+    }
+
+    panel.innerHTML = html;
+  } catch (err) {
+    panel.innerHTML = `<div style="font-size:0.75rem;color:var(--red);padding:8px">${esc(err.message)}</div>`;
+  }
+}
+
+function renderContextItem(type, item, taskId, isLinked) {
+  const typeIcons = { transcript: '🎙', knowledge: '🧠', conversation: '💬' };
+  const icon = typeIcons[type] || '📄';
+  const date = item.recorded_at || item.created_at;
+  const dateStr = date ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const snippet = item.snippet ? esc(item.snippet).slice(0, 120) + (item.snippet.length > 120 ? '...' : '') : '';
+  const relevance = item.relevance ? `<span class="ctx-relevance">${Math.round(item.relevance * 100)}%</span>` : '';
+
+  // Detail viewer function based on type
+  const viewFn = type === 'transcript' ? 'showTranscriptDetail' : type === 'knowledge' ? 'showKnowledgeDetail' : 'showConversationDetail';
+
+  const pinBtn = isLinked
+    ? `<button class="ctx-pin-btn ctx-pinned" onclick="event.stopPropagation();unlinkFromTask('${taskId}','${type}','${item.id}')" title="Unpin">📌</button>`
+    : `<button class="ctx-pin-btn" onclick="event.stopPropagation();linkToTask('${taskId}','${type}','${item.id}')" title="Pin to task">+</button>`;
+
+  return `
+    <div class="ctx-item" onclick="${viewFn}('${item.id}')">
+      <div class="ctx-item-header">
+        <span class="ctx-item-title">${esc(item.title || 'Untitled')}</span>
+        ${relevance}
+        ${pinBtn}
+      </div>
+      ${snippet ? `<div class="ctx-item-snippet">${snippet}</div>` : ''}
+      <div class="ctx-item-meta">
+        ${item.source || item.ai_source ? `<span>${esc(item.source || item.ai_source)}</span>` : ''}
+        ${dateStr ? `<span>${dateStr}</span>` : ''}
+        ${item.duration_seconds ? `<span>${Math.round(item.duration_seconds / 60)}min</span>` : ''}
+        ${item.location ? `<span>${esc(item.location)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+async function linkToTask(taskId, type, itemId) {
+  try {
+    await api(`/tasks/${taskId}/link`, { method: 'POST', body: JSON.stringify({ type, item_id: itemId }) });
+    showToast('Pinned to task', 'success', 1500);
+    loadTaskContext(taskId);
+  } catch (err) { showToast(err.message); }
+}
+
+async function unlinkFromTask(taskId, type, itemId) {
+  try {
+    await api(`/tasks/${taskId}/link`, { method: 'DELETE', body: JSON.stringify({ type, item_id: itemId }) });
+    showToast('Unpinned', 'success', 1500);
+    loadTaskContext(taskId);
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Task Reminder Helpers ────────────────────────────────────
+async function setTaskReminder(id, preset) {
+  let reminderAt = null;
+  if (preset === 'in1h') {
+    reminderAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  } else if (preset === 'in3h') {
+    reminderAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+  } else if (preset === 'tomorrow9am') {
+    const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+    reminderAt = d.toISOString();
+  } else if (preset === 'custom') {
+    const input = prompt('Reminder date/time (YYYY-MM-DD HH:MM):');
+    if (!input) return;
+    const parsed = new Date(input.includes('T') ? input : input.replace(' ', 'T'));
+    if (isNaN(parsed)) { showToast('Invalid date format'); return; }
+    reminderAt = parsed.toISOString();
+  } else {
+    reminderAt = null; // clear
+  }
+
+  try {
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ reminder_at: reminderAt }) });
+    showToast(reminderAt ? `Reminder set for ${new Date(reminderAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Reminder cleared', 'success', 2000);
+    showTaskDetail(id);
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Recurring Task Helpers ───────────────────────────────────
+function describeRecurrence(rule) {
+  if (!rule) return '';
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const interval = rule.interval || 1;
+  if (rule.type === 'daily') return interval === 1 ? 'Every day' : `Every ${interval} days`;
+  if (rule.type === 'weekly') {
+    const days = (rule.days_of_week || []).map(d => dayNames[d]).join(', ');
+    return interval === 1 ? `Weekly on ${days}` : `Every ${interval} weeks on ${days}`;
+  }
+  if (rule.type === 'monthly') return interval === 1 ? 'Monthly' : `Every ${interval} months`;
+  return rule.type;
+}
+
+async function removeRecurrence(id) {
+  if (!confirm('Stop recurring? Future instances will be deleted.')) return;
+  try {
+    await api(`/tasks/${id}/future-instances`, { method: 'DELETE' });
+    await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ recurrence_rule: null }) });
+    showToast('Recurrence removed');
+    showTaskDetail(id);
+  } catch (err) { showToast(err.message); }
+}
+
+// ─── Quick Add ────────────────────────────────────────────────
+function parseQuickAdd(text) {
+  const result = { title: text, priority: 'medium', due_date: null, context: null, recurrence_rule: null };
+
+  // Parse priority: "high", "urgent", "low" at end or prefixed with !
+  const prioMatch = text.match(/\b(urgent|high|low)\b/i);
+  if (prioMatch) {
+    result.priority = prioMatch[1].toLowerCase();
+    result.title = result.title.replace(prioMatch[0], '').trim();
+  }
+  if (text.includes('!!')) { result.priority = 'urgent'; result.title = result.title.replace('!!', '').trim(); }
+  else if (text.includes('!')) { result.priority = 'high'; result.title = result.title.replace(/(?<!=)!(?!=)/, '').trim(); }
+
+  // Parse context: #work or #personal
+  const ctxMatch = result.title.match(/#(work|personal)\b/i);
+  if (ctxMatch) { result.context = ctxMatch[1].toLowerCase(); result.title = result.title.replace(ctxMatch[0], '').trim(); }
+
+  // Parse due date keywords
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const dayAbbr = ['sun','mon','tue','wed','thu','fri','sat'];
+
+  if (/\btoday\b/i.test(result.title)) {
+    result.due_date = localDateStr(today);
+    result.title = result.title.replace(/\btoday\b/i, '').trim();
+  } else if (/\btomorrow\b|\btmrw\b/i.test(result.title)) {
+    const d = new Date(today); d.setDate(d.getDate() + 1);
+    result.due_date = localDateStr(d);
+    result.title = result.title.replace(/\btomorrow\b|\btmrw\b/i, '').trim();
+  } else {
+    // Check for day names: "friday", "mon", etc.
+    for (let i = 0; i < 7; i++) {
+      const re = new RegExp(`\\b(${dayNames[i]}|${dayAbbr[i]})\\b`, 'i');
+      if (re.test(result.title)) {
+        const d = new Date(today);
+        const diff = (i - d.getDay() + 7) % 7 || 7;
+        d.setDate(d.getDate() + diff);
+        result.due_date = localDateStr(d);
+        result.title = result.title.replace(re, '').trim();
+        break;
+      }
+    }
+  }
+
+  // Parse recurrence: "every day", "every week", "every monday", "every month"
+  const everyMatch = result.title.match(/\bevery\s+(day|daily|week|weekly|month|monthly|(?:mon|tue|wed|thu|fri|sat|sun)\w*(?:\s*,\s*(?:mon|tue|wed|thu|fri|sat|sun)\w*)*)\b/i);
+  if (everyMatch) {
+    const recStr = everyMatch[1].toLowerCase();
+    if (recStr === 'day' || recStr === 'daily') {
+      result.recurrence_rule = { type: 'daily', interval: 1 };
+    } else if (recStr === 'week' || recStr === 'weekly') {
+      result.recurrence_rule = { type: 'weekly', interval: 1, days_of_week: [result.due_date ? new Date(result.due_date).getDay() : today.getDay()] };
+    } else if (recStr === 'month' || recStr === 'monthly') {
+      result.recurrence_rule = { type: 'monthly', interval: 1 };
+    } else {
+      // Parse day names: "every mon, wed, fri"
+      const days = recStr.split(/\s*,\s*/).map(d => dayAbbr.findIndex(a => d.startsWith(a))).filter(d => d >= 0);
+      if (days.length) {
+        result.recurrence_rule = { type: 'weekly', interval: 1, days_of_week: days };
+        if (!result.due_date) {
+          // Set due to next occurrence
+          const d = new Date(today);
+          for (let j = 1; j <= 7; j++) {
+            const dd = new Date(today); dd.setDate(dd.getDate() + j);
+            if (days.includes(dd.getDay())) { result.due_date = localDateStr(dd); break; }
+          }
+        }
+      }
+    }
+    result.title = result.title.replace(everyMatch[0], '').trim();
+    if (!result.due_date) result.due_date = localDateStr(today);
+  }
+
+  // Clean up extra spaces
+  result.title = result.title.replace(/\s{2,}/g, ' ').trim();
+  return result;
+}
+
+async function submitQuickAdd() {
+  const input = document.getElementById('quick-add-input');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  const parsed = parseQuickAdd(text);
+  if (!parsed.title) return;
+
+  try {
+    await api('/tasks', { method: 'POST', body: JSON.stringify(parsed) });
+    input.value = '';
+    showToast(`Task added: ${parsed.title}`);
     if (currentTab === 'tasks') loadTasks();
   } catch (err) { showToast(err.message); }
 }
@@ -3562,8 +4188,90 @@ function openGlobalSearch() { document.getElementById('search-overlay').classLis
 function closeGlobalSearch() { document.getElementById('search-overlay').classList.remove('open'); }
 
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); }
-  if (e.key==='Escape' && document.getElementById('search-overlay').classList.contains('open')) closeGlobalSearch();
+  // Skip shortcuts when typing in inputs/textareas
+  const tag = e.target.tagName;
+  const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+  // Ctrl/Cmd shortcuts (work even in inputs)
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); return; }
+  if ((e.ctrlKey||e.metaKey) && e.key==='n') {
+    e.preventDefault();
+    const qa = document.getElementById('quick-add-input');
+    if (qa) { qa.focus(); qa.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    else { switchTab('tasks'); setTimeout(() => { const q = document.getElementById('quick-add-input'); if (q) q.focus(); }, 400); }
+    return;
+  }
+  if (e.key==='Escape') {
+    if (document.getElementById('search-overlay').classList.contains('open')) { closeGlobalSearch(); return; }
+    if (document.querySelector('.modal-overlay')) { closeModal(); return; }
+    if (bulkSelectMode) { bulkSelectMode = false; bulkSelectedIds.clear(); loadTasksList(); return; }
+  }
+
+  // Non-input shortcuts
+  if (isInput) return;
+
+  // J/K navigation — move highlight through .list-item elements
+  if (e.key === 'j' || e.key === 'k') {
+    e.preventDefault();
+    const items = [...document.querySelectorAll('#main-content .list-item, #main-content .focus-card')];
+    if (!items.length) return;
+    const current = document.querySelector('.list-item-focused');
+    let idx = current ? items.indexOf(current) : -1;
+    if (e.key === 'j') idx = Math.min(idx + 1, items.length - 1);
+    else idx = Math.max(idx - 1, 0);
+    items.forEach(el => el.classList.remove('list-item-focused'));
+    items[idx].classList.add('list-item-focused');
+    items[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+
+  // Enter — open focused item
+  if (e.key === 'Enter') {
+    const focused = document.querySelector('.list-item-focused');
+    if (focused) { e.preventDefault(); focused.click(); return; }
+  }
+
+  // D — mark focused task done
+  if (e.key === 'd') {
+    const focused = document.querySelector('.list-item-focused');
+    if (focused) {
+      const checkbox = focused.querySelector('input[type="checkbox"]');
+      if (checkbox) { checkbox.click(); return; }
+    }
+  }
+
+  // N — open new task modal
+  if (e.key === 'n') { showNewTaskModal(); return; }
+
+  // ? — show keyboard shortcuts help
+  if (e.key === '?') { showKeyboardShortcuts(); return; }
+
+  // 1-5 — switch task sub-tabs
+  if (currentTab === 'tasks') {
+    const tabMap = { '1': 'today', '2': 'waiting', '3': 'list', '4': 'kanban', '5': 'calendar', '6': 'review' };
+    if (tabMap[e.key]) { tasksSubTab = tabMap[e.key]; loadTasks(); return; }
+  }
+});
+
+function showKeyboardShortcuts() {
+  openModal('Keyboard Shortcuts', `
+    <div class="shortcuts-list">
+      <div class="shortcut-row"><kbd>Ctrl+K</kbd><span>Search</span></div>
+      <div class="shortcut-row"><kbd>Ctrl+N</kbd><span>Quick add task</span></div>
+      <div class="shortcut-row"><kbd>N</kbd><span>New task (full form)</span></div>
+      <div class="shortcut-row"><kbd>J / K</kbd><span>Navigate down / up</span></div>
+      <div class="shortcut-row"><kbd>Enter</kbd><span>Open focused item</span></div>
+      <div class="shortcut-row"><kbd>D</kbd><span>Toggle done on focused task</span></div>
+      <div class="shortcut-row"><kbd>Esc</kbd><span>Close modal / search / bulk mode</span></div>
+      <div class="shortcut-row"><kbd>1-6</kbd><span>Switch task sub-tabs (Today, Waiting, List, Kanban, Calendar, Review)</span></div>
+      <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+    </div>
+  `);
+}
+
+// Quick-add Enter key handler (delegated)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'quick-add-input') { e.preventDefault(); submitQuickAdd(); }
 });
 document.getElementById('global-search-input').addEventListener('input', e => {
   clearTimeout(searchDebounceTimer); const q=e.target.value.trim(); if(!q){document.getElementById('search-results').innerHTML='';return;} if(q.length<2)return;

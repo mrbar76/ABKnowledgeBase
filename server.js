@@ -19,12 +19,12 @@ const bodyMetricsRoutes = require('./routes/body-metrics');
 const mealsRoutes = require('./routes/meals');
 const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
-const outlookRoutes = require('./routes/outlook');
 const gamificationRoutes = require('./routes/gamification');
 const recoveryRoutes = require('./routes/recovery');
 const dailyPlanRoutes = require('./routes/daily-plans');
 const exerciseRoutes = require('./routes/exercises');
 const gymProfileRoutes = require('./routes/gym-profiles');
+const briefingRoutes = require('./routes/briefing');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -155,12 +155,12 @@ app.use('/api/meals', mealsRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/daily-context', nutritionRoutes); // alias: /api/daily-context → nutrition router (daily-context endpoints)
 app.use('/api/training', trainingRoutes);
-app.use('/api/outlook', outlookRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/recovery', recoveryRoutes);
 app.use('/api/daily-plans', dailyPlanRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/gym-profiles', gymProfileRoutes);
+app.use('/api/briefing', briefingRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
@@ -317,6 +317,54 @@ async function start() {
     } catch (err) {
       // Silently skip if DB not ready
     }
+
+    // ─── Task Reminders ─────────────────────────────────────────
+    try {
+      const webpush = require('web-push');
+      const { rows: [settings] } = await query(`SELECT * FROM gamification_settings WHERE id = 1`);
+      if (!settings?.push_subscription || !settings.vapid_public_key) return;
+
+      // Find tasks with reminder_at in the past that haven't been sent yet
+      const { rows: dueTasks } = await query(`
+        SELECT id, title, priority, due_date FROM tasks
+        WHERE reminder_at IS NOT NULL
+          AND reminder_at <= NOW()
+          AND status NOT IN ('done')
+        LIMIT 10
+      `);
+
+      if (dueTasks.length) {
+        webpush.setVapidDetails('mailto:avi@abbrain.app', settings.vapid_public_key, settings.vapid_private_key);
+      }
+
+      for (const task of dueTasks) {
+        const sentKey = `reminder-${task.id}`;
+        if (notifState.lastSent[sentKey]) continue;
+
+        try {
+          const prioLabel = task.priority === 'urgent' ? '🔴 ' : task.priority === 'high' ? '🟠 ' : '';
+          await webpush.sendNotification(settings.push_subscription, JSON.stringify({
+            title: `${prioLabel}Task Reminder`,
+            body: task.title,
+            icon: '/icons/brand/icon-app-180.png',
+            badge: '/icons/brand/icon-app-64.png',
+            url: '/',
+          }));
+          notifState.lastSent[sentKey] = true;
+          // Clear the reminder so it doesn't fire again
+          await query('UPDATE tasks SET reminder_at = NULL WHERE id = $1', [task.id]);
+          console.log(`[push] Task reminder sent: ${task.title}`);
+        } catch (pushErr) {
+          if (pushErr.statusCode === 410) {
+            await query(`UPDATE gamification_settings SET push_subscription = NULL WHERE id = 1`);
+            break;
+          }
+          console.error(`[push] Task reminder failed: ${pushErr.message}`);
+        }
+      }
+    } catch (err) {
+      // Silently skip
+    }
   }
 
   // Check every 60 seconds
@@ -324,12 +372,26 @@ async function start() {
   setTimeout(checkNotifications, 5000); // first check 5s after boot
   console.log('[push] Notification scheduler active');
 
+  // ─── Cron: extend recurring task instances (daily) ────────────
+  const { extendAllRecurring } = require('./routes/tasks');
+  async function runRecurringExtension() {
+    try {
+      const created = await extendAllRecurring();
+      if (created > 0) console.log(`[recurring] Extended ${created} recurring task instances`);
+    } catch (err) {
+      console.error(`[recurring] Extension failed: ${err.message}`);
+    }
+  }
+  // Run once at boot (after 15s) and then every 6 hours
+  setTimeout(runRecurringExtension, 15000);
+  setInterval(runRecurringExtension, 6 * 60 * 60 * 1000);
+  console.log('[recurring] Recurring task scheduler active (every 6h)');
+
   // Initialize sync sources
   syncStatus.initSource('bee', { label: 'Bee Wearable', cron_enabled: !!process.env.BEE_API_TOKEN });
   syncStatus.initSource('chatgpt', { label: 'ChatGPT Import' });
   syncStatus.initSource('claude', { label: 'Claude Import' });
   syncStatus.initSource('intake', { label: 'Smart Intake' });
-  syncStatus.initSource('outlook', { label: 'Outlook Email', cron_enabled: !!process.env.MS_CLIENT_ID });
 
   // ─── Cron: scheduled Bee auto-sync ─────────────────────────────
   const BEE_TOKEN = process.env.BEE_API_TOKEN;
@@ -382,37 +444,6 @@ async function start() {
     console.log('[cron] Bee sync disabled (set BEE_API_TOKEN to enable)');
   }
 
-  // ─── Cron: scheduled Outlook email sync ─────────────────────
-  if (process.env.MS_CLIENT_ID && process.env.MS_CLIENT_SECRET && process.env.MS_REFRESH_TOKEN) {
-    const OUTLOOK_INTERVAL = Number(process.env.OUTLOOK_SYNC_INTERVAL || 5) * 60 * 1000; // default 5 min
-    const outlookSource = syncStatus.getSource('outlook');
-    outlookSource.cron_enabled = true;
-    outlookSource.cron_interval_min = OUTLOOK_INTERVAL / 60000;
-
-    async function runOutlookSync() {
-      console.log('[cron] Starting Outlook sync...');
-      const job = syncStatus.startJob('outlook', 'Scheduled flagged email sync');
-      try {
-        const results = await outlookRoutes.syncFlaggedEmails();
-        console.log(`[cron] Outlook: ${results.created} created, ${results.completed} completed, ${results.skipped} skipped`);
-        syncStatus.completeJob('outlook', job, {
-          imported: results.created,
-          skipped: results.skipped,
-          errors: results.errors,
-          details: { created: results.created, completed: results.completed }
-        });
-      } catch (e) {
-        console.error(`[cron] Outlook sync failed: ${e.message}`);
-        syncStatus.failJob('outlook', job, e.message);
-      }
-    }
-
-    setTimeout(runOutlookSync, 15000); // Start 15s after boot
-    setInterval(runOutlookSync, OUTLOOK_INTERVAL);
-    console.log(`[cron] Outlook sync every ${OUTLOOK_INTERVAL / 60000} min (MS credentials configured)`);
-  } else {
-    console.log('[cron] Outlook sync disabled (set MS_CLIENT_ID, MS_CLIENT_SECRET, MS_REFRESH_TOKEN)');
-  }
 }
 
 start();
