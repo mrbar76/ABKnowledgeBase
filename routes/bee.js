@@ -1075,5 +1075,40 @@ router.post('/search', async (req, res) => {
   } catch (err) { res.status(500).json({ error: `Bee neural search failed: ${err.message}` }); }
 });
 
+// Re-import a single transcript from Bee API (delete + re-fetch)
+router.post('/reimport/:transcriptId', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+  try {
+    const existing = await query('SELECT id, bee_id, title FROM transcripts WHERE id = $1', [req.params.transcriptId]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Transcript not found' });
+    const beeId = existing.rows[0].bee_id;
+    if (!beeId) return res.status(400).json({ error: 'No bee_id on this transcript — cannot re-import' });
+
+    // Fetch fresh from Bee API
+    const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken, 60000);
+    const convo = detail.conversation || detail;
+    const rawResult = extractTranscript(convo, convo.start_time || null, convo);
+    if (!rawResult.text) return res.status(400).json({ error: 'No transcript text returned from Bee API' });
+
+    // Delete old transcript (CASCADE deletes utterances)
+    await query('DELETE FROM transcripts WHERE id = $1', [req.params.transcriptId]);
+
+    // Store fresh with correct sorting
+    const tid = await storeConversation(convo, convo, rawResult);
+
+    // Queue speaker identification
+    setImmediate(() => {
+      autoIdentifySpeakers(tid).catch(e => console.error('[reimport] Auto-identify error:', e.message));
+    });
+
+    await logActivity('reimport', 'transcript', tid, 'bee', `Re-imported ${existing.rows[0].title} (bee_id: ${beeId})`);
+    res.json({ message: 'Re-imported successfully', old_id: req.params.transcriptId, new_id: tid });
+  } catch (err) {
+    console.error('[reimport] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.autoIdentifySpeakers = autoIdentifySpeakers;

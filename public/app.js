@@ -4112,7 +4112,7 @@ async function showTranscriptDetail(id) {
     if (needsSplit && !isSplitParent) {
       bodyHtml += `<div style="display:flex;gap:6px;margin-top:8px">`;
       bodyHtml += `<button class="btn-action" onclick="analyzeSplits('${id}')" id="btn-split-${id}" style="flex:1;padding:8px;font-size:0.82rem;background:var(--accent)">Analyze & Split</button>`;
-      bodyHtml += `<button class="btn-action btn-action-secondary" onclick="reorderTranscript('${id}')" id="btn-reorder-${id}" style="padding:8px;font-size:0.82rem">Fix Order</button>`;
+      if (t.bee_id) bodyHtml += `<button class="btn-action btn-action-secondary" onclick="reimportTranscript('${id}')" id="btn-reimport-${id}" style="padding:8px;font-size:0.82rem">Re-import</button>`;
       bodyHtml += `</div>`;
     }
     if (isSplitParent && meta.split_into) {
@@ -4239,6 +4239,22 @@ async function confirmSplit(id, segments) {
   } catch (e) {
     const preview = document.getElementById('split-preview-' + id);
     if (preview) preview.innerHTML = `<div style="color:var(--red);font-size:0.82rem">Split failed: ${e.message}</div>`;
+  }
+}
+
+async function reimportTranscript(id) {
+  if (!confirm('Re-import this transcript from Bee? This will delete and re-fetch it with correct ordering.')) return;
+  const btn = document.getElementById('btn-reimport-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'Re-importing...'; }
+  try {
+    const result = await api(`/bee/reimport/${id}`, { method: 'POST', body: '{}' });
+    alert(result.message || 'Re-imported successfully');
+    closeModal();
+    loadTranscripts();
+    if (result.new_id) showTranscriptDetail(result.new_id);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Re-import'; }
+    alert('Re-import failed: ' + e.message);
   }
 }
 
