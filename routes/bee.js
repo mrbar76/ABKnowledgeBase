@@ -1115,20 +1115,20 @@ router.post('/reimport-misordered', async (req, res) => {
   const beeToken = getBeeToken(req);
   if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
   try {
-    // Find transcripts where first utterance timestamp > last (misordered)
+    // Find misordered transcripts (same timestamps or wrong order)
     const affected = await query(`
       SELECT t.id, t.bee_id, t.title
       FROM transcripts t
+      JOIN transcript_speakers ts ON ts.transcript_id = t.id
       WHERE t.bee_id IS NOT NULL
-        AND (
-          SELECT spoken_at FROM transcript_speakers
-          WHERE transcript_id = t.id AND spoken_at IS NOT NULL
-          ORDER BY utterance_index ASC LIMIT 1
-        ) > (
-          SELECT spoken_at FROM transcript_speakers
-          WHERE transcript_id = t.id AND spoken_at IS NOT NULL
-          ORDER BY utterance_index DESC LIMIT 1
+      GROUP BY t.id
+      HAVING (
+        (COUNT(DISTINCT ts.spoken_at) <= 2 AND COUNT(ts.id) > 50)
+        OR (
+          MIN(CASE WHEN ts.utterance_index = 0 THEN ts.spoken_at END)
+          > MAX(ts.spoken_at)
         )
+      )
     `);
     const transcripts = affected.rows;
     if (!transcripts.length) return res.json({ message: 'No misordered transcripts found', fixed: 0, failed: 0 });

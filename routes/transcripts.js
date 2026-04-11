@@ -106,22 +106,26 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Find transcripts with broken utterance ordering (first utterance timestamp > last)
+// Find transcripts with broken utterance ordering
 router.get('/misordered', async (req, res) => {
   try {
     const r = await query(`
-      SELECT t.id, t.title, t.recorded_at, t.duration_seconds, t.bee_id
+      SELECT t.id, t.title, t.recorded_at, t.duration_seconds, t.bee_id,
+             COUNT(ts.id)::int AS utterance_count,
+             COUNT(DISTINCT ts.spoken_at)::int AS distinct_timestamps
       FROM transcripts t
+      JOIN transcript_speakers ts ON ts.transcript_id = t.id
       WHERE t.bee_id IS NOT NULL
-        AND (
-          SELECT spoken_at FROM transcript_speakers
-          WHERE transcript_id = t.id AND spoken_at IS NOT NULL
-          ORDER BY utterance_index ASC LIMIT 1
-        ) > (
-          SELECT spoken_at FROM transcript_speakers
-          WHERE transcript_id = t.id AND spoken_at IS NOT NULL
-          ORDER BY utterance_index DESC LIMIT 1
+      GROUP BY t.id
+      HAVING (
+        -- Case 1: all utterances have same spoken_at (fallback import with no start offsets)
+        (COUNT(DISTINCT ts.spoken_at) <= 2 AND COUNT(ts.id) > 50)
+        -- Case 2: first utterance timestamp > last (wrong order with valid timestamps)
+        OR (
+          MIN(CASE WHEN ts.utterance_index = 0 THEN ts.spoken_at END)
+          > MAX(ts.spoken_at)
         )
+      )
       ORDER BY t.recorded_at DESC
     `);
     res.json({ affected: r.rows.length, transcripts: r.rows });
