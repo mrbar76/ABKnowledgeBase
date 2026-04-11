@@ -4113,7 +4113,10 @@ async function showTranscriptDetail(id) {
       bodyHtml += `<button class="btn-action" onclick="analyzeSplits('${id}')" id="btn-split-${id}" style="width:100%;margin-top:8px;padding:8px;font-size:0.82rem;background:var(--accent)">Analyze & Split</button>`;
     }
     if (isSplitParent && meta.split_into) {
-      bodyHtml += `<div style="margin-top:8px;padding:8px;background:var(--surface-2);border-radius:6px;font-size:0.8rem;color:var(--text-dim)">Split into ${meta.split_into.length} segments</div>`;
+      bodyHtml += `<div style="margin-top:8px;padding:8px;background:var(--surface-2);border-radius:6px;font-size:0.8rem;display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--text-dim)">Split into ${meta.split_into.length} segments</span>
+        <button onclick="undoSplit('${id}')" style="background:var(--red);color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:0.75rem;cursor:pointer">Undo Split</button>
+      </div>`;
     }
     bodyHtml += `<div id="split-preview-${id}" style="margin-top:8px"></div>`;
     bodyHtml += '</div>';
@@ -4234,6 +4237,16 @@ async function confirmSplit(id, segments) {
     const preview = document.getElementById('split-preview-' + id);
     if (preview) preview.innerHTML = `<div style="color:var(--red);font-size:0.82rem">Split failed: ${e.message}</div>`;
   }
+}
+
+async function undoSplit(id) {
+  if (!confirm('Undo this split? This will delete all child transcripts and restore the original.')) return;
+  try {
+    const result = await api(`/transcripts/${id}/undo-split`, { method: 'POST', body: '{}' });
+    alert(result.message || 'Split undone.');
+    showTranscriptDetail(id);
+    loadTranscripts();
+  } catch (e) { alert('Undo failed: ' + e.message); }
 }
 
 async function identifySpeakers(id) {

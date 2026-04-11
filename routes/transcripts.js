@@ -947,13 +947,51 @@ router.post('/:id/split', async (req, res) => {
     );
     const utterances = allUtterances.rows;
 
+    // Pre-compute time gaps for boundary snapping
+    const gapIndexes = [];
+    for (let i = 1; i < utterances.length; i++) {
+      if (utterances[i].spoken_at && utterances[i - 1].spoken_at) {
+        const gap = new Date(utterances[i].spoken_at).getTime() - new Date(utterances[i - 1].spoken_at).getTime();
+        if (gap >= 60000) gapIndexes.push({ index: utterances[i].utterance_index, gap_ms: gap });
+      }
+    }
+
+    // Snap a boundary index to the nearest time gap (within 50 utterances)
+    function snapToGap(targetIdx) {
+      let best = targetIdx;
+      let bestDist = Infinity;
+      for (const g of gapIndexes) {
+        const dist = Math.abs(g.index - targetIdx);
+        if (dist < bestDist && dist <= 50) { bestDist = dist; best = g.index; }
+      }
+      return best;
+    }
+
+    // Sort segments by start index and snap boundaries to time gaps
+    segments.sort((a, b) => (a.start_index ?? a.start_utterance_index ?? 0) - (b.start_index ?? b.start_utterance_index ?? 0));
+    const snappedSegments = segments.map((seg, si) => {
+      let startIdx = seg.start_index ?? seg.start_utterance_index ?? 0;
+      let endIdx = seg.end_index ?? seg.end_utterance_index ?? utterances.length - 1;
+      // Don't snap the very first start or very last end
+      if (si > 0) startIdx = snapToGap(startIdx);
+      if (si < segments.length - 1) endIdx = snapToGap(endIdx + 1) - 1; // snap end to just before next gap
+      return { ...seg, startIdx, endIdx };
+    });
+
+    // Resolve overlaps: each segment starts where the previous one ended + 1
+    for (let i = 1; i < snappedSegments.length; i++) {
+      if (snappedSegments[i].startIdx <= snappedSegments[i - 1].endIdx) {
+        snappedSegments[i].startIdx = snappedSegments[i - 1].endIdx + 1;
+      }
+    }
+
     const childIds = [];
     const results = [];
 
-    for (let si = 0; si < segments.length; si++) {
-      const seg = segments[si];
-      const startIdx = seg.start_index ?? seg.start_utterance_index ?? 0;
-      const endIdx = seg.end_index ?? seg.end_utterance_index ?? utterances.length - 1;
+    for (let si = 0; si < snappedSegments.length; si++) {
+      const seg = snappedSegments[si];
+      const startIdx = seg.startIdx;
+      const endIdx = seg.endIdx;
       const segUtterances = utterances.filter(u => u.utterance_index >= startIdx && u.utterance_index <= endIdx);
       if (segUtterances.length < 1) continue;
 
@@ -1041,6 +1079,48 @@ router.post('/:id/split', async (req, res) => {
     }
   } catch (err) {
     console.error('[split] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Undo a split — delete child transcripts and reset parent
+router.post('/:id/undo-split', async (req, res) => {
+  try {
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const parent = transcriptResult.rows[0];
+    const meta = parent.metadata || {};
+
+    if (!meta.split_into || !meta.split_into.length) {
+      return res.status(400).json({ error: 'This transcript has not been split' });
+    }
+
+    // Delete all child transcripts (CASCADE deletes their utterances)
+    let deleted = 0;
+    for (const childId of meta.split_into) {
+      const r = await query('DELETE FROM transcripts WHERE id = $1 RETURNING id', [childId]);
+      if (r.rows.length) deleted++;
+    }
+
+    // Reset parent metadata and tags
+    delete meta.split_into;
+    delete meta.split_at;
+    const tags = Array.isArray(parent.tags) ? parent.tags : [];
+    const cleanTags = tags.filter(t => t !== 'split-parent');
+    // Re-add needs-split-review if it's still a long transcript
+    if (parent.duration_seconds > 3600 && !cleanTags.includes('needs-split-review')) {
+      cleanTags.push('needs-split-review');
+    }
+
+    await query(
+      'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
+      [JSON.stringify(meta), JSON.stringify(cleanTags), req.params.id]
+    );
+
+    await logActivity('undo-split', 'transcript', req.params.id, 'user', `Undid split, deleted ${deleted} child transcripts`);
+    res.json({ message: `Split undone. Deleted ${deleted} child transcripts.`, deleted });
+  } catch (err) {
+    console.error('[undo-split] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
