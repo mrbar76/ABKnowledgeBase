@@ -353,7 +353,8 @@ function extractTranscript(detail, convoStartTime, listItem) {
     }
   }
   if (detail.utterances && Array.isArray(detail.utterances)) {
-    return { text: detail.utterances.map(u => `${u.speaker || 'Speaker'}: ${u.text || ''}`).join('\n'), utterances: detail.utterances };
+    const sorted = [...detail.utterances].sort((a, b) => (a.start || 0) - (b.start || 0));
+    return { text: sorted.map(u => `${u.speaker || 'Speaker'}: ${u.text || ''}`).join('\n'), utterances: sorted };
   }
   // Fallback: use any available text field, including summary — also check the list-level item
   const text = detail.transcript || detail.full_transcript || detail.text || detail.summary || detail.short_summary

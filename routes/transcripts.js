@@ -752,6 +752,38 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ─── Reorder utterances by timestamp ────────────────────────────
+
+router.post('/:id/reorder', async (req, res) => {
+  try {
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const t = transcriptResult.rows[0];
+
+    const speakersResult = await query(
+      'SELECT id, speaker_name, text, spoken_at, start_offset_ms, end_offset_ms, confidence FROM transcript_speakers WHERE transcript_id = $1 ORDER BY spoken_at ASC NULLS LAST, utterance_index ASC',
+      [req.params.id]
+    );
+    const utterances = speakersResult.rows;
+    if (!utterances.length) return res.status(400).json({ error: 'No utterances to reorder' });
+
+    // Reassign utterance_index sequentially based on timestamp order
+    for (let i = 0; i < utterances.length; i++) {
+      await query('UPDATE transcript_speakers SET utterance_index = $1 WHERE id = $2', [i, utterances[i].id]);
+    }
+
+    // Rebuild raw_text from reordered utterances
+    const rawText = utterances.map(u => `${u.speaker_name}: ${u.text}`).join('\n');
+    await query('UPDATE transcripts SET raw_text = $1, updated_at = NOW() WHERE id = $2', [rawText, req.params.id]);
+
+    await logActivity('reorder', 'transcript', req.params.id, 'user', `Reordered ${utterances.length} utterances by timestamp`);
+    res.json({ message: `Reordered ${utterances.length} utterances by timestamp`, utterance_count: utterances.length });
+  } catch (err) {
+    console.error('[reorder] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Transcript Splitting ───────────────────────────────────────
 
 // Analyze a transcript for potential split points
