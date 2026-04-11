@@ -4,6 +4,16 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.6.1] — 2026-04-11
+
+### Fixed
+- **Bee Transcript Sync (Full Sync & Sync Updates)** — The Bee API `/v1/conversations` endpoint requires `created_after`/`created_before` date filter parameters to reliably return conversation data. Added these filters to `/sync` and `/sync-chunk` endpoints, matching the working `/sync-conversations` pattern.
+- **Incremental Sync Transcript Gap** — The `/v1/changes` feed doesn't reliably report conversation updates. Added a supplementary 7-day date-range conversation fetch to `/sync-incremental`, so both the "Sync Updates" button and the 30-minute cron job now pick up new transcripts.
+- **Conversation API Timeouts** — Increased conversation list and detail fetch timeouts from 30s to 60s across all sync endpoints to prevent silent failures on slower responses.
+- **Login Page Version** — Updated hardcoded version on login page from v1.2.0 to current.
+
+---
+
 ## [1.6.0] — 2026-03-31
 
 ### Added

@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.2.0</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.6.1</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -288,6 +288,19 @@
             <!-- Version History -->
             <div class="sm-card expanded">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.6.1 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Bee Transcript Sync Fix</strong> — Full Sync and Sync Updates now reliably import transcripts. Added required date-range filters to Bee API conversation requests matching the working Sync Date Range pattern.</p>
+                  <p><strong>Cron Conversation Sync</strong> — scheduled sync (every 30 min) now fetches recent conversations from the last 7 days, catching transcripts the changes feed misses.</p>
+                  <p><strong>Increased API Timeouts</strong> — conversation list and detail fetches increased from 30s to 60s across all sync endpoints.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.6.0 — Mar 31, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -433,7 +446,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.6.0</span>
+          AB Brain <span id="sm-version">v1.6.1</span>
         </div>
 
       </div>
