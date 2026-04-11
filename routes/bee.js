@@ -1110,5 +1110,49 @@ router.post('/reimport/:transcriptId', async (req, res) => {
   }
 });
 
+// Batch re-import all misordered transcripts
+router.post('/reimport-misordered', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+  try {
+    // Find transcripts with broken ordering (all same spoken_at)
+    const affected = await query(`
+      SELECT t.id, t.bee_id, t.title
+      FROM transcripts t
+      JOIN transcript_speakers ts ON ts.transcript_id = t.id
+      WHERE t.bee_id IS NOT NULL
+      GROUP BY t.id
+      HAVING COUNT(DISTINCT ts.spoken_at) <= 2 AND COUNT(ts.id) > 20
+    `);
+    const transcripts = affected.rows;
+    if (!transcripts.length) return res.json({ message: 'No misordered transcripts found', fixed: 0, failed: 0 });
+
+    const results = { fixed: 0, failed: 0, errors: [], total: transcripts.length };
+
+    for (const t of transcripts) {
+      try {
+        const detail = await beeApiGet(`/v1/conversations/${t.bee_id}`, beeToken, 60000);
+        const convo = detail.conversation || detail;
+        const rawResult = extractTranscript(convo, convo.start_time || null, convo);
+        if (!rawResult.text) { results.failed++; results.errors.push(`${t.title}: no text from API`); continue; }
+
+        await query('DELETE FROM transcripts WHERE id = $1', [t.id]);
+        const tid = await storeConversation(convo, convo, rawResult);
+        setImmediate(() => { autoIdentifySpeakers(tid).catch(() => {}); });
+        results.fixed++;
+      } catch (e) {
+        results.failed++;
+        results.errors.push(`${t.title}: ${e.message}`);
+      }
+    }
+
+    await logActivity('reimport', 'transcript', null, 'bee', `Batch re-imported ${results.fixed}/${results.total} misordered transcripts`);
+    res.json(results);
+  } catch (err) {
+    console.error('[reimport-misordered] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.autoIdentifySpeakers = autoIdentifySpeakers;

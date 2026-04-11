@@ -1621,6 +1621,8 @@ async function loadSettingsMenuInfo() {
   loadContactsList();
   loadUnrecognizedSpeakers();
 
+  // Check for misordered transcripts
+  checkMisorderedTranscripts();
 }
 
 async function triggerBeeSyncFromMenu(mode) {
@@ -1802,6 +1804,43 @@ async function syncConversationsByDate() {
   loadSettingsMenuInfo();
   if (currentTab === 'home') loadDashboardStats();
   if (currentTab === 'transcripts') loadTranscripts();
+}
+
+// ─── Transcript Health Check ─────────────────────────────────
+async function checkMisorderedTranscripts() {
+  const statusEl = document.getElementById('misordered-status');
+  const btnEl = document.getElementById('btn-fix-misordered');
+  if (!statusEl) return;
+  try {
+    const data = await api('/transcripts/misordered');
+    if (data.affected === 0) {
+      statusEl.textContent = 'All transcripts ordered correctly';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = `${data.affected} transcript${data.affected > 1 ? 's' : ''} with broken ordering`;
+      statusEl.style.color = 'var(--yellow)';
+      if (btnEl) { btnEl.style.display = 'block'; btnEl.textContent = `Fix All (${data.affected})`; }
+    }
+  } catch { statusEl.textContent = 'Could not check'; }
+}
+
+async function fixMisorderedTranscripts() {
+  const btnEl = document.getElementById('btn-fix-misordered');
+  const resultEl = document.getElementById('misordered-result');
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Re-importing from Bee...'; }
+  try {
+    const data = await api('/bee/reimport-misordered', { method: 'POST', body: '{}' });
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.style.color = data.failed ? 'var(--yellow)' : 'var(--green)';
+      resultEl.textContent = `Fixed ${data.fixed}/${data.total}${data.failed ? `, ${data.failed} failed` : ''}`;
+    }
+    if (btnEl) btnEl.style.display = 'none';
+    checkMisorderedTranscripts();
+  } catch (e) {
+    if (resultEl) { resultEl.style.display = 'block'; resultEl.style.color = 'var(--red)'; resultEl.textContent = e.message; }
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Fix All'; }
+  }
 }
 
 // ─── Contacts Management ────────────────────────────────────
