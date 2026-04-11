@@ -4036,6 +4036,8 @@ async function loadTranscripts(searchQuery) {
               <div class="list-item-title">${esc(t.title)}</div>
               ${contentType && contentType !== 'conversation' ? `<span class="content-type-badge ${isMedia ? 'media' : ''}">${esc(contentType.replace('_',' '))}</span>` : ''}
               ${hasGeneric ? '<span class="needs-id-badge">Needs ID</span>' : ''}
+              ${Array.isArray(t.tags) && t.tags.includes('needs-split-review') && !t.tags.includes('split-parent') ? '<span class="needs-id-badge" style="background:var(--accent)">Needs Split</span>' : ''}
+              ${Array.isArray(t.tags) && t.tags.includes('split-parent') ? '<span class="content-type-badge">Split</span>' : ''}
             </div>
             ${speakers.length ? `<div class="transcript-speakers">${speakers.map(s => `<span class="speaker-tag ${/^(speaker|unknown)/i.test(s) ? 'generic' : ''}">${esc(s)}</span>`).join('')}</div>` : ''}
             ${summary ? `<div class="transcript-summary">${esc(summary.substring(0, 300))}</div>` : ''}
@@ -4102,6 +4104,18 @@ async function showTranscriptDetail(id) {
     }
     if (t.location) bodyHtml += `<div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px">${esc(t.location)}</div>`;
     bodyHtml += '<div id="identify-result-${id}"></div>';
+
+    // Split button for long transcripts
+    const durationMin = t.duration_seconds ? Math.round(t.duration_seconds / 60) : 0;
+    const needsSplit = durationMin > 60 || (meta.utterance_count && meta.utterance_count > 500) || (Array.isArray(t.tags) && t.tags.includes('needs-split-review'));
+    const isSplitParent = Array.isArray(t.tags) && t.tags.includes('split-parent');
+    if (needsSplit && !isSplitParent) {
+      bodyHtml += `<button class="btn-action" onclick="analyzeSplits('${id}')" id="btn-split-${id}" style="width:100%;margin-top:8px;padding:8px;font-size:0.82rem;background:var(--accent)">Analyze & Split</button>`;
+    }
+    if (isSplitParent && meta.split_into) {
+      bodyHtml += `<div style="margin-top:8px;padding:8px;background:var(--surface-2);border-radius:6px;font-size:0.8rem;color:var(--text-dim)">Split into ${meta.split_into.length} segments</div>`;
+    }
+    bodyHtml += `<div id="split-preview-${id}" style="margin-top:8px"></div>`;
     bodyHtml += '</div>';
 
     // Show summary section with speakers listed
@@ -4169,6 +4183,57 @@ async function showTranscriptDetail(id) {
 async function deleteTranscript(id) {
   if (!confirm('Delete this transcript?')) return;
   try { await api(`/transcripts/${id}`, { method: 'DELETE' }); closeModal(); loadTranscripts(); } catch {}
+}
+
+async function analyzeSplits(id) {
+  const btn = document.getElementById('btn-split-' + id);
+  const preview = document.getElementById('split-preview-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
+  try {
+    const result = await api(`/transcripts/${id}/analyze-splits`, { method: 'POST', body: '{}' });
+    const segments = result.segments || [];
+    if (segments.length < 2) {
+      if (preview) preview.innerHTML = '<div style="font-size:0.82rem;color:var(--text-dim);padding:8px">AI detected a single conversation — no split needed.</div>';
+      if (btn) { btn.disabled = false; btn.textContent = 'Analyze & Split'; }
+      return;
+    }
+    let html = `<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Detected ${segments.length} Segments</div>`;
+    html += segments.map((s, i) => {
+      const isAmbient = s.relevance === 'ambient';
+      const count = (s.end_utterance_index - s.start_utterance_index + 1);
+      return `<div style="padding:8px;margin-bottom:4px;border-radius:6px;border:1px solid var(--border);${isAmbient ? 'opacity:0.5;' : ''}background:var(--surface-2)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-size:0.82rem">${esc(s.title)}</strong>
+          <span style="font-size:0.7rem;padding:2px 6px;border-radius:3px;background:${isAmbient ? 'var(--yellow)' : 'var(--green)'};color:#000">${s.relevance}</span>
+        </div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px">${s.speakers ? s.speakers.join(', ') : ''} · ${count} messages · ${s.confidence} confidence</div>
+        ${s.description ? `<div style="font-size:0.78rem;margin-top:4px">${esc(s.description)}</div>` : ''}
+      </div>`;
+    }).join('');
+    html += `<button class="btn-action" onclick='confirmSplit("${id}", ${JSON.stringify(segments).replace(/'/g, "&#39;")})' style="width:100%;margin-top:8px;padding:10px;font-size:0.85rem">Confirm Split (${segments.length} segments)</button>`;
+    if (result.reasoning) html += `<div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px">${esc(result.reasoning)}</div>`;
+    if (preview) preview.innerHTML = html;
+    if (btn) btn.style.display = 'none';
+  } catch (e) {
+    if (preview) preview.innerHTML = `<div style="color:var(--red);font-size:0.82rem">${e.message}</div>`;
+    if (btn) { btn.disabled = false; btn.textContent = 'Analyze & Split'; }
+  }
+}
+
+async function confirmSplit(id, segments) {
+  try {
+    const result = await api(`/transcripts/${id}/split`, { method: 'POST', body: JSON.stringify({ segments }) });
+    const preview = document.getElementById('split-preview-' + id);
+    if (preview) {
+      let html = `<div style="color:var(--green);font-size:0.85rem;font-weight:600;margin-bottom:8px">Split into ${result.segments.length} transcripts</div>`;
+      html += result.segments.map(s => `<div style="font-size:0.8rem;padding:4px 0;cursor:pointer" onclick="showTranscriptDetail('${s.id}')"><span style="color:var(--accent)">→</span> ${esc(s.title)} <span style="color:var(--text-dim)">(${s.utterance_count} msgs)</span></div>`).join('');
+      preview.innerHTML = html;
+    }
+    loadTranscripts();
+  } catch (e) {
+    const preview = document.getElementById('split-preview-' + id);
+    if (preview) preview.innerHTML = `<div style="color:var(--red);font-size:0.82rem">Split failed: ${e.message}</div>`;
+  }
 }
 
 async function identifySpeakers(id) {

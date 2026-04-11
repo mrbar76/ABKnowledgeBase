@@ -106,6 +106,20 @@ router.get('/', async (req, res) => {
   }
 });
 
+// List transcripts that need split review (must be before /:id route)
+router.get('/needs-split', async (req, res) => {
+  try {
+    const r = await query(`
+      SELECT id, title, duration_seconds, recorded_at, location, metadata, tags
+      FROM transcripts
+      WHERE tags ? 'needs-split-review'
+        AND NOT (tags ? 'split-parent')
+      ORDER BY recorded_at DESC
+    `);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const result = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
@@ -734,6 +748,300 @@ router.delete('/:id', async (req, res) => {
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Deleted successfully' });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Transcript Splitting ───────────────────────────────────────
+
+// Analyze a transcript for potential split points
+router.post('/:id/analyze-splits', async (req, res) => {
+  try {
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const t = transcriptResult.rows[0];
+
+    const speakersResult = await query(
+      'SELECT speaker_name, utterance_index, text, spoken_at, start_offset_ms, end_offset_ms FROM transcript_speakers WHERE transcript_id = $1 ORDER BY utterance_index',
+      [req.params.id]
+    );
+    const utterances = speakersResult.rows;
+    if (utterances.length < 10) return res.json({ segments: [{ start_utterance_index: 0, end_utterance_index: utterances.length - 1, title: t.title, speakers: [...new Set(utterances.map(u => u.speaker_name))], relevance: 'primary', confidence: 'high' }], reasoning: 'Too few utterances to split' });
+
+    // ── Pre-compute signal layers ──
+
+    // 1. Time gaps > 2 min
+    const MIN_GAP_MS = 2 * 60 * 1000;
+    const timeGaps = [];
+    for (let i = 1; i < utterances.length; i++) {
+      if (utterances[i].spoken_at && utterances[i - 1].spoken_at) {
+        const gap = new Date(utterances[i].spoken_at).getTime() - new Date(utterances[i - 1].spoken_at).getTime();
+        if (gap >= MIN_GAP_MS) {
+          timeGaps.push({ index: i, gap_minutes: Math.round(gap / 60000) });
+        }
+      }
+    }
+
+    // 2. Speaker transitions — sliding window of 20, detect speaker set changes
+    const WINDOW = 20;
+    const speakerTransitions = [];
+    for (let i = WINDOW; i < utterances.length - WINDOW; i += 10) {
+      const before = new Set(utterances.slice(Math.max(0, i - WINDOW), i).map(u => u.speaker_name));
+      const after = new Set(utterances.slice(i, Math.min(utterances.length, i + WINDOW)).map(u => u.speaker_name));
+      const disappeared = [...before].filter(s => !after.has(s));
+      const appeared = [...after].filter(s => !before.has(s));
+      if (disappeared.length > 0 || appeared.length > 0) {
+        speakerTransitions.push({ index: i, disappeared, appeared });
+      }
+    }
+
+    // 3. Active speaker windows — group consecutive utterances by speaker set
+    const speakerWindows = [];
+    let windowStart = 0;
+    let currentSpeakers = new Set();
+    const SPEAKER_WINDOW = 50;
+    for (let i = 0; i < utterances.length; i += SPEAKER_WINDOW) {
+      const chunk = utterances.slice(i, i + SPEAKER_WINDOW);
+      const chunkSpeakers = new Set(chunk.map(u => u.speaker_name));
+      const chunkKey = [...chunkSpeakers].sort().join('+');
+      const currentKey = [...currentSpeakers].sort().join('+');
+      if (chunkKey !== currentKey && currentSpeakers.size > 0) {
+        speakerWindows.push({ start: windowStart, end: i - 1, speakers: [...currentSpeakers] });
+        windowStart = i;
+      }
+      currentSpeakers = chunkSpeakers;
+    }
+    speakerWindows.push({ start: windowStart, end: utterances.length - 1, speakers: [...currentSpeakers] });
+
+    // 4. Sample utterances at intervals for content analysis
+    const SAMPLE_INTERVAL = Math.max(1, Math.floor(utterances.length / 30));
+    const sampledExcerpts = [];
+    for (let i = 0; i < utterances.length; i += SAMPLE_INTERVAL) {
+      const u = utterances[i];
+      const time = u.spoken_at ? new Date(u.spoken_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+      sampledExcerpts.push(`[${u.utterance_index}${time ? ' ' + time : ''}] ${u.speaker_name}: ${u.text}`);
+    }
+
+    // Also sample around time gaps and speaker transitions for extra context
+    const importantIndexes = new Set();
+    for (const g of timeGaps) { for (let j = Math.max(0, g.index - 2); j <= Math.min(utterances.length - 1, g.index + 2); j++) importantIndexes.add(j); }
+    for (const st of speakerTransitions) { for (let j = Math.max(0, st.index - 2); j <= Math.min(utterances.length - 1, st.index + 2); j++) importantIndexes.add(j); }
+    for (const idx of importantIndexes) {
+      const u = utterances[idx];
+      const time = u.spoken_at ? new Date(u.spoken_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+      const line = `[${u.utterance_index}${time ? ' ' + time : ''}] ${u.speaker_name}: ${u.text}`;
+      if (!sampledExcerpts.includes(line)) sampledExcerpts.push(line);
+    }
+    sampledExcerpts.sort((a, b) => {
+      const idxA = parseInt(a.match(/\[(\d+)/)?.[1] || '0');
+      const idxB = parseInt(b.match(/\[(\d+)/)?.[1] || '0');
+      return idxA - idxB;
+    });
+
+    const durationMin = t.duration_seconds ? Math.round(t.duration_seconds / 60) : '?';
+    const allSpeakers = [...new Set(utterances.map(u => u.speaker_name))];
+    const meta = t.metadata || {};
+
+    const timeGapsStr = timeGaps.length
+      ? timeGaps.map(g => `index ${g.index}: ${g.gap_minutes} min gap`).join(', ')
+      : 'none detected';
+    const speakerTransStr = speakerTransitions.length
+      ? speakerTransitions.slice(0, 15).map(st => `index ${st.index}: ${st.disappeared.length ? st.disappeared.join(',')+' left' : ''}${st.appeared.length ? (st.disappeared.length ? ', ' : '') + st.appeared.join(',')+' joined' : ''}`).join('; ')
+      : 'none detected';
+    const speakerWindowsStr = speakerWindows.map(w => `${w.start}-${w.end}: ${w.speakers.join('+')}`).join(', ');
+
+    const OpenAI = require('openai');
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+    const openai = new OpenAI({ apiKey: key });
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 2000,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `You are analyzing a Bee wearable transcript that may contain multiple distinct conversations recorded back-to-back throughout someone's day. Use ALL the signals below to determine conversation boundaries.
+
+TRANSCRIPT INFO:
+- Duration: ${durationMin} minutes, ${utterances.length} messages
+- Speakers found: ${allSpeakers.join(', ')}
+- Location: ${t.location || 'unknown'}
+
+SUMMARY (from Bee):
+${(t.summary || '').substring(0, 3000)}
+
+PRE-COMPUTED SIGNALS:
+Time gaps (>2 min): ${timeGapsStr}
+Speaker transitions: ${speakerTransStr}
+Active speaker sets: ${speakerWindowsStr}
+
+Identify distinct conversations and classify each:
+
+RELEVANCE:
+- "primary" — the user is actively participating (speaking, being addressed)
+- "ambient" — background noise, overheard strangers, public announcements, transit/airport chatter. The user is NOT a participant. Clues: short disconnected utterances, no direct address to/from the user, random unrelated topics.
+
+WHAT IS A DISTINCT CONVERSATION:
+- A separate interaction: a meeting, phone call, personal chat
+- NOT just a topic shift within the same conversation
+- Greetings/introductions signal new interactions
+- Different people talking = likely different conversation
+- Dramatic context shift (work interview → family chat)
+
+Return ONLY valid JSON:
+{
+  "segments": [
+    {
+      "start_utterance_index": 0,
+      "end_utterance_index": 350,
+      "title": "Short descriptive title",
+      "description": "One sentence about this conversation",
+      "speakers": ["Avi", "Chris"],
+      "relevance": "primary",
+      "confidence": "high"
+    }
+  ],
+  "reasoning": "Brief explanation of how you identified boundaries"
+}
+
+If the transcript is a SINGLE conversation, return one segment spanning the full range.
+Ambient segments should have descriptive titles like "Airport Background Chatter".` },
+        { role: 'user', content: sampledExcerpts.join('\n').substring(0, 12000) },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    let result;
+    try { result = JSON.parse(text); }
+    catch { const m = text.match(/\{[\s\S]*\}/); result = m ? JSON.parse(m[0]) : { segments: [], reasoning: 'Parse error' }; }
+
+    res.json({
+      transcript_id: req.params.id,
+      title: t.title,
+      total_utterances: utterances.length,
+      duration_minutes: durationMin,
+      signals: { time_gaps: timeGaps.length, speaker_transitions: speakerTransitions.length, speaker_windows: speakerWindows.length },
+      ...result,
+    });
+  } catch (err) {
+    console.error('[analyze-splits] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Execute a split on a transcript
+router.post('/:id/split', async (req, res) => {
+  try {
+    const { segments } = req.body;
+    if (!segments || !segments.length || segments.length < 2) {
+      return res.status(400).json({ error: 'At least 2 segments required to split' });
+    }
+
+    const transcriptResult = await query('SELECT * FROM transcripts WHERE id = $1', [req.params.id]);
+    if (!transcriptResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const parent = transcriptResult.rows[0];
+
+    const allUtterances = await query(
+      'SELECT * FROM transcript_speakers WHERE transcript_id = $1 ORDER BY utterance_index',
+      [req.params.id]
+    );
+    const utterances = allUtterances.rows;
+
+    const childIds = [];
+    const results = [];
+
+    for (let si = 0; si < segments.length; si++) {
+      const seg = segments[si];
+      const startIdx = seg.start_index ?? seg.start_utterance_index ?? 0;
+      const endIdx = seg.end_index ?? seg.end_utterance_index ?? utterances.length - 1;
+      const segUtterances = utterances.filter(u => u.utterance_index >= startIdx && u.utterance_index <= endIdx);
+      if (segUtterances.length < 1) continue;
+
+      const title = (seg.title || `${parent.title} (Part ${si + 1})`).substring(0, 200);
+      const rawText = segUtterances.map(u => `${u.speaker_name}: ${u.text}`).join('\n');
+      const firstSpoken = segUtterances.find(u => u.spoken_at)?.spoken_at || parent.recorded_at;
+      const lastSpoken = [...segUtterances].reverse().find(u => u.spoken_at)?.spoken_at;
+      const durationSec = (firstSpoken && lastSpoken) ? Math.round((new Date(lastSpoken).getTime() - new Date(firstSpoken).getTime()) / 1000) : null;
+      const segSpeakers = [...new Set(segUtterances.map(u => u.speaker_name))];
+      const relevance = seg.relevance || 'primary';
+      const beeSplitId = parent.bee_id ? `${parent.bee_id}_split_${si}` : null;
+
+      const meta = {
+        split_from: req.params.id,
+        split_index: si,
+        relevance,
+        speakers: segSpeakers,
+        speaker_count: segSpeakers.length,
+        utterance_count: segUtterances.length,
+      };
+      const tags = ['bee', 'conversation', 'split'];
+      if (relevance === 'ambient') tags.push('ambient');
+
+      const r = await query(
+        `INSERT INTO transcripts (title, raw_text, summary, source, duration_seconds, recorded_at, location, tags, bee_id, metadata)
+         VALUES ($1, $2, $3, 'bee', $4, $5, $6, $7::jsonb, $8, $9::jsonb) RETURNING id`,
+        [title, rawText, seg.description || rawText.substring(0, 2000),
+         durationSec, firstSpoken, parent.location, JSON.stringify(tags), beeSplitId, JSON.stringify(meta)]
+      );
+      const childId = r.rows[0].id;
+      childIds.push(childId);
+
+      // Copy utterances with re-indexed utterance_index
+      const CHUNK = 100;
+      for (let off = 0; off < segUtterances.length; off += CHUNK) {
+        const batch = segUtterances.slice(off, off + CHUNK);
+        const values = [];
+        const params = [];
+        let pi = 1;
+        for (let i = 0; i < batch.length; i++) {
+          const u = batch[i];
+          values.push(`($${pi},$${pi+1},$${pi+2},$${pi+3},$${pi+4},$${pi+5},$${pi+6},$${pi+7})`);
+          params.push(childId, u.speaker_name, off + i, u.text, u.spoken_at,
+            u.start_offset_ms, u.end_offset_ms, u.confidence);
+          pi += 8;
+        }
+        await query(
+          `INSERT INTO transcript_speakers (transcript_id, speaker_name, utterance_index, text, spoken_at, start_offset_ms, end_offset_ms, confidence) VALUES ${values.join(',')}`,
+          params
+        );
+      }
+
+      results.push({ id: childId, title, utterance_count: segUtterances.length, duration_min: durationSec ? Math.round(durationSec / 60) : null, speakers: segSpeakers, relevance });
+    }
+
+    // Mark parent as split
+    const parentMeta = parent.metadata || {};
+    parentMeta.split_into = childIds;
+    parentMeta.split_at = new Date().toISOString();
+    const parentTags = Array.isArray(parent.tags) ? parent.tags : [];
+    if (!parentTags.includes('split-parent')) parentTags.push('split-parent');
+    // Remove needs-split-review since it's been handled
+    const cleanTags = parentTags.filter(t => t !== 'needs-split-review');
+
+    await query(
+      'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
+      [JSON.stringify(parentMeta), JSON.stringify(cleanTags), req.params.id]
+    );
+
+    await logActivity('split', 'transcript', req.params.id, 'user',
+      `Split into ${childIds.length} segments (${results.filter(r => r.relevance === 'primary').length} primary, ${results.filter(r => r.relevance === 'ambient').length} ambient)`);
+
+    res.json({ original_id: req.params.id, segments: results });
+
+    // Fire-and-forget: auto-identify speakers on primary segments
+    const primaryIds = results.filter(r => r.relevance === 'primary').map(r => r.id);
+    if (primaryIds.length > 0) {
+      const { autoIdentifySpeakers } = require('./bee');
+      setImmediate(() => {
+        (async () => {
+          for (const tid of primaryIds) await autoIdentifySpeakers(tid);
+          console.log(`[split] Auto-identify done for ${primaryIds.length} split transcripts`);
+        })().catch(e => console.error('[split] Auto-identify error:', e.message));
+      });
+    }
+  } catch (err) {
+    console.error('[split] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

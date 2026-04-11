@@ -481,6 +481,16 @@ async function storeConversation(convo, full, rawResult, client) {
       );
     }
   }
+
+  // Auto-flag long transcripts for split review
+  const utteranceCount = utterances.length;
+  if ((durationSec && durationSec > 3600) || utteranceCount > 500) {
+    await q(
+      "UPDATE transcripts SET tags = tags || '\"needs-split-review\"'::jsonb WHERE id = $1 AND NOT (tags ? 'needs-split-review')",
+      [transcriptId]
+    );
+  }
+
   return transcriptId;
 }
 
