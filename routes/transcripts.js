@@ -106,6 +106,23 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Find transcripts with broken utterance ordering (all same spoken_at)
+router.get('/misordered', async (req, res) => {
+  try {
+    const r = await query(`
+      SELECT t.id, t.title, t.recorded_at, t.duration_seconds, t.bee_id,
+             COUNT(ts.id)::int AS utterance_count,
+             COUNT(DISTINCT ts.spoken_at)::int AS distinct_timestamps
+      FROM transcripts t
+      JOIN transcript_speakers ts ON ts.transcript_id = t.id
+      GROUP BY t.id
+      HAVING COUNT(DISTINCT ts.spoken_at) <= 2 AND COUNT(ts.id) > 20
+      ORDER BY t.recorded_at DESC
+    `);
+    res.json({ affected: r.rows.length, transcripts: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // List transcripts that need split review (must be before /:id route)
 router.get('/needs-split', async (req, res) => {
   try {
