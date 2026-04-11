@@ -813,29 +813,27 @@ router.post('/:id/analyze-splits', async (req, res) => {
     }
     speakerWindows.push({ start: windowStart, end: utterances.length - 1, speakers: [...currentSpeakers] });
 
-    // 4. Sample utterances at intervals for content analysis
-    const SAMPLE_INTERVAL = Math.max(1, Math.floor(utterances.length / 30));
-    const sampledExcerpts = [];
-    for (let i = 0; i < utterances.length; i += SAMPLE_INTERVAL) {
-      const u = utterances[i];
-      const time = u.spoken_at ? new Date(u.spoken_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-      sampledExcerpts.push(`[${u.utterance_index}${time ? ' ' + time : ''}] ${u.speaker_name}: ${u.text}`);
-    }
+    // 4. Sample utterances — dense enough to see conversation boundaries
+    // For a 1453-utterance transcript, sample ~80 evenly + extras around gaps
+    const TARGET_SAMPLES = Math.min(80, utterances.length);
+    const SAMPLE_INTERVAL = Math.max(1, Math.floor(utterances.length / TARGET_SAMPLES));
+    const sampledIndexes = new Set();
 
-    // Also sample around time gaps and speaker transitions for extra context
-    const importantIndexes = new Set();
-    for (const g of timeGaps) { for (let j = Math.max(0, g.index - 2); j <= Math.min(utterances.length - 1, g.index + 2); j++) importantIndexes.add(j); }
-    for (const st of speakerTransitions) { for (let j = Math.max(0, st.index - 2); j <= Math.min(utterances.length - 1, st.index + 2); j++) importantIndexes.add(j); }
-    for (const idx of importantIndexes) {
+    // Regular interval samples
+    for (let i = 0; i < utterances.length; i += SAMPLE_INTERVAL) sampledIndexes.add(i);
+    // Always include first/last 5
+    for (let i = 0; i < Math.min(5, utterances.length); i++) sampledIndexes.add(i);
+    for (let i = Math.max(0, utterances.length - 5); i < utterances.length; i++) sampledIndexes.add(i);
+    // Dense samples around time gaps (5 before + 5 after each gap)
+    for (const g of timeGaps) { for (let j = Math.max(0, g.index - 5); j <= Math.min(utterances.length - 1, g.index + 5); j++) sampledIndexes.add(j); }
+    // Dense samples around speaker transitions
+    for (const st of speakerTransitions) { for (let j = Math.max(0, st.index - 5); j <= Math.min(utterances.length - 1, st.index + 5); j++) sampledIndexes.add(j); }
+
+    const sortedIndexes = [...sampledIndexes].sort((a, b) => a - b);
+    const sampledExcerpts = sortedIndexes.map(idx => {
       const u = utterances[idx];
       const time = u.spoken_at ? new Date(u.spoken_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-      const line = `[${u.utterance_index}${time ? ' ' + time : ''}] ${u.speaker_name}: ${u.text}`;
-      if (!sampledExcerpts.includes(line)) sampledExcerpts.push(line);
-    }
-    sampledExcerpts.sort((a, b) => {
-      const idxA = parseInt(a.match(/\[(\d+)/)?.[1] || '0');
-      const idxB = parseInt(b.match(/\[(\d+)/)?.[1] || '0');
-      return idxA - idxB;
+      return `[${u.utterance_index}${time ? ' ' + time : ''}] ${u.speaker_name}: ${u.text}`;
     });
 
     const durationMin = t.duration_seconds ? Math.round(t.duration_seconds / 60) : '?';
@@ -861,33 +859,35 @@ router.post('/:id/analyze-splits', async (req, res) => {
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: `You are analyzing a Bee wearable transcript that may contain multiple distinct conversations recorded back-to-back throughout someone's day. Use ALL the signals below to determine conversation boundaries.
+        { role: 'system', content: `You are analyzing a Bee wearable transcript that contains MULTIPLE distinct conversations recorded back-to-back throughout someone's day. This is a ${durationMin}-minute recording with ${utterances.length} messages — it almost certainly contains several separate interactions.
+
+IMPORTANT: The Bee wearable records continuously. One recording often captures MULTIPLE separate conversations — meetings, phone calls, personal chats, errands — all in sequence. The summary below usually describes each distinct interaction. USE THE SUMMARY AS YOUR PRIMARY GUIDE for identifying how many conversations exist and where they occur.
+
+Note: The wearable may label all speakers as just 2 voice profiles (e.g., "Avi" and "Chris") even when the actual recording involves many different people across different conversations. Do NOT rely solely on speaker labels to detect boundaries.
 
 TRANSCRIPT INFO:
 - Duration: ${durationMin} minutes, ${utterances.length} messages
-- Speakers found: ${allSpeakers.join(', ')}
+- Speaker labels: ${allSpeakers.join(', ')} (may not reflect actual number of distinct people)
 - Location: ${t.location || 'unknown'}
 
-SUMMARY (from Bee):
-${(t.summary || '').substring(0, 3000)}
+SUMMARY (from Bee — this is your PRIMARY signal):
+${(t.summary || '').substring(0, 4000)}
 
 PRE-COMPUTED SIGNALS:
 Time gaps (>2 min): ${timeGapsStr}
 Speaker transitions: ${speakerTransStr}
 Active speaker sets: ${speakerWindowsStr}
 
-Identify distinct conversations and classify each:
+YOUR TASK: Identify EACH distinct conversation described in the summary. Map each to an utterance index range using the sampled content below. Look for:
+- Topic shifts matching summary sections (interview → mentoring call → business call → etc.)
+- Greeting/farewell patterns ("hey", "nice talking to you", "bye", "hello")
+- Context shifts (professional → personal, office → phone call → store)
+- Time gaps that align with conversation changes
+- References to different people, projects, or locations
 
 RELEVANCE:
-- "primary" — the user is actively participating (speaking, being addressed)
-- "ambient" — background noise, overheard strangers, public announcements, transit/airport chatter. The user is NOT a participant. Clues: short disconnected utterances, no direct address to/from the user, random unrelated topics.
-
-WHAT IS A DISTINCT CONVERSATION:
-- A separate interaction: a meeting, phone call, personal chat
-- NOT just a topic shift within the same conversation
-- Greetings/introductions signal new interactions
-- Different people talking = likely different conversation
-- Dramatic context shift (work interview → family chat)
+- "primary" — the user is actively participating
+- "ambient" — background noise, overheard strangers, public announcements
 
 Return ONLY valid JSON:
 {
@@ -905,8 +905,7 @@ Return ONLY valid JSON:
   "reasoning": "Brief explanation of how you identified boundaries"
 }
 
-If the transcript is a SINGLE conversation, return one segment spanning the full range.
-Ambient segments should have descriptive titles like "Airport Background Chatter".` },
+You MUST return multiple segments if the summary describes multiple distinct interactions. A ${durationMin}-minute recording with ${utterances.length} messages is extremely unlikely to be a single conversation.` },
         { role: 'user', content: sampledExcerpts.join('\n').substring(0, 12000) },
       ],
     });
