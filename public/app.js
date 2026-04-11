@@ -4110,7 +4110,10 @@ async function showTranscriptDetail(id) {
     const needsSplit = durationMin > 60 || (meta.utterance_count && meta.utterance_count > 500) || (Array.isArray(t.tags) && t.tags.includes('needs-split-review'));
     const isSplitParent = Array.isArray(t.tags) && t.tags.includes('split-parent');
     if (needsSplit && !isSplitParent) {
-      bodyHtml += `<button class="btn-action" onclick="analyzeSplits('${id}')" id="btn-split-${id}" style="width:100%;margin-top:8px;padding:8px;font-size:0.82rem;background:var(--accent)">Analyze & Split</button>`;
+      bodyHtml += `<div style="display:flex;gap:6px;margin-top:8px">`;
+      bodyHtml += `<button class="btn-action" onclick="analyzeSplits('${id}')" id="btn-split-${id}" style="flex:1;padding:8px;font-size:0.82rem;background:var(--accent)">Analyze & Split</button>`;
+      bodyHtml += `<button class="btn-action btn-action-secondary" onclick="reorderTranscript('${id}')" id="btn-reorder-${id}" style="padding:8px;font-size:0.82rem">Fix Order</button>`;
+      bodyHtml += `</div>`;
     }
     if (isSplitParent && meta.split_into) {
       bodyHtml += `<div style="margin-top:8px;padding:8px;background:var(--surface-2);border-radius:6px;font-size:0.8rem;display:flex;justify-content:space-between;align-items:center">
@@ -4236,6 +4239,19 @@ async function confirmSplit(id, segments) {
   } catch (e) {
     const preview = document.getElementById('split-preview-' + id);
     if (preview) preview.innerHTML = `<div style="color:var(--red);font-size:0.82rem">Split failed: ${e.message}</div>`;
+  }
+}
+
+async function reorderTranscript(id) {
+  const btn = document.getElementById('btn-reorder-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'Reordering...'; }
+  try {
+    const result = await api(`/transcripts/${id}/reorder`, { method: 'POST', body: '{}' });
+    if (btn) { btn.textContent = 'Done'; btn.style.background = 'var(--green)'; btn.style.color = '#000'; }
+    showTranscriptDetail(id);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Fix Order'; }
+    alert('Reorder failed: ' + e.message);
   }
 }
 
