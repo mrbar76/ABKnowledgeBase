@@ -540,9 +540,10 @@ router.post('/sync', async (req, res) => {
     // Sync Conversations (paginated, fetch details concurrently 5-at-a-time)
     try {
       let cursor = null;
+      const convTodayStr = req.getToday();
       do {
-        const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-        const data = await beeApiGet(url, beeToken);
+        const url = `/v1/conversations?limit=50&created_after=2024-01-01&created_before=${convTodayStr}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken, 60000);
         const convos = extractArray(data, 'conversations'); cursor = data.next_cursor || null;
 
         // Filter out already-synced and in-progress convos
@@ -557,7 +558,7 @@ router.post('/sync', async (req, res) => {
         // Fetch conversation details concurrently (5 at a time)
         const detailed = await mapConcurrent(toSync, 5, async (convo) => {
           let full = convo;
-          try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; }
+          try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000); full = d.conversation || d; }
           catch (e) { results.errors.push(`Conv ${convo.id}: ${e.message}`); }
           const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
           if (!rawResult.text) {
@@ -682,8 +683,9 @@ router.post('/sync-chunk', async (req, res) => {
       if (!result.cursor) result.done = true;
 
     } else if (type === 'conversations') {
-      const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
+      const todayStr = req.getToday();
+      const url = `/v1/conversations?limit=50&created_after=2024-01-01&created_before=${todayStr}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken, 60000);
       const convos = extractArray(data, 'conversations');
       result.cursor = data.next_cursor || null;
       result.page_items = convos.length;
@@ -896,7 +898,7 @@ router.post('/sync-incremental', async (req, res) => {
     const incrTranscriptIds = [];
     for (const convoId of changedConvos) {
       try {
-        const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken);
+        const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken, 60000);
         const c = detail.conversation || detail;
         if (c.state === 'CAPTURING') continue;
         const rawResult = extractTranscript(c, c.start_time || null, c);
@@ -907,6 +909,37 @@ router.post('/sync-incremental', async (req, res) => {
         results.conversations++;
       } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
     }
+
+    // Supplementary: fetch recent conversations by date range (last 7 days)
+    // The /v1/changes feed doesn't reliably report conversation updates
+    try {
+      const today = new Date();
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const endStr = today.toISOString().split('T')[0];
+      const startStr = weekAgo.toISOString().split('T')[0];
+      let convCursor = null;
+      do {
+        let convUrl = `/v1/conversations?limit=50&created_after=${startStr}&created_before=${endStr}`;
+        if (convCursor) convUrl += `&cursor=${encodeURIComponent(convCursor)}`;
+        const convData = await beeApiGet(convUrl, beeToken, 60000);
+        const convos = extractArray(convData, 'conversations');
+        convCursor = convData.next_cursor || null;
+        for (const convo of convos) {
+          if (!convo.id || convo.state === 'CAPTURING') continue;
+          if (await findExistingTranscript(convo.id)) continue;
+          try {
+            const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000);
+            const full = d.conversation || d;
+            const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
+            if (!rawResult.text) continue;
+            const tid = await storeConversation(convo, full, rawResult);
+            incrTranscriptIds.push(tid);
+            results.conversations++;
+          } catch (e) { results.errors.push(`conv-range ${convo.id}: ${e.message}`); }
+        }
+      } while (convCursor);
+    } catch (e) { results.errors.push(`conv-range: ${e.message}`); }
 
     if (newCursor) { await logActivity('bee-change-cursor', 'bee-import', 'cursor', 'bee', `cursor:${newCursor}`); }
     await logActivity('sync', 'bee-import', 'incremental', 'bee', `Incremental: ${results.facts}F ${results.todos}T ${results.conversations}C`);
