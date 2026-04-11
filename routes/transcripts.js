@@ -814,8 +814,7 @@ router.post('/:id/analyze-splits', async (req, res) => {
     speakerWindows.push({ start: windowStart, end: utterances.length - 1, speakers: [...currentSpeakers] });
 
     // 4. Sample utterances — dense enough to see conversation boundaries
-    // For a 1453-utterance transcript, sample ~80 evenly + extras around gaps
-    const TARGET_SAMPLES = Math.min(80, utterances.length);
+    const TARGET_SAMPLES = Math.min(120, utterances.length);
     const SAMPLE_INTERVAL = Math.max(1, Math.floor(utterances.length / TARGET_SAMPLES));
     const sampledIndexes = new Set();
 
@@ -828,6 +827,14 @@ router.post('/:id/analyze-splits', async (req, res) => {
     for (const g of timeGaps) { for (let j = Math.max(0, g.index - 5); j <= Math.min(utterances.length - 1, g.index + 5); j++) sampledIndexes.add(j); }
     // Dense samples around speaker transitions
     for (const st of speakerTransitions) { for (let j = Math.max(0, st.index - 5); j <= Math.min(utterances.length - 1, st.index + 5); j++) sampledIndexes.add(j); }
+
+    // KEY: Find utterances with greeting/farewell/call-transition patterns and always include them + context
+    const transitionPatterns = /\b(hey |hello|hi |good morning|good afternoon|how are you|nice to meet|nice meeting|call you back|gotta go|gotta run|talk to you|have a good|take care|bye|goodbye|appreciate your time|sorry i'm late|calling|let me take this|hang up|welcome back|finally connected)\b/i;
+    for (let i = 0; i < utterances.length; i++) {
+      if (transitionPatterns.test(utterances[i].text)) {
+        for (let j = Math.max(0, i - 3); j <= Math.min(utterances.length - 1, i + 3); j++) sampledIndexes.add(j);
+      }
+    }
 
     const sortedIndexes = [...sampledIndexes].sort((a, b) => a - b);
     const sampledExcerpts = sortedIndexes.map(idx => {
@@ -863,7 +870,15 @@ router.post('/:id/analyze-splits', async (req, res) => {
 
 IMPORTANT: The Bee wearable records continuously. One recording often captures MULTIPLE separate conversations — meetings, phone calls, personal chats, errands — all in sequence. The summary below usually describes each distinct interaction. USE THE SUMMARY AS YOUR PRIMARY GUIDE for identifying how many conversations exist and where they occur.
 
-Note: The wearable may label all speakers as just 2 voice profiles (e.g., "Avi" and "Chris") even when the actual recording involves many different people across different conversations. Do NOT rely solely on speaker labels to detect boundaries.
+Note: The wearable may label all speakers as just 2 voice profiles (e.g., "Avi" and "Unknown") even when the actual recording involves many different people across different conversations. Do NOT rely on speaker labels to detect boundaries.
+
+CRITICAL — LOOK FOR THESE CONTENT PATTERNS TO FIND BOUNDARIES:
+- Phone call transitions: "Can I call you back?", "Let me take this call", "Hey [name], finally"
+- Greetings that start new interactions: "Good morning", "How are you?", "Welcome back"
+- Farewells that end interactions: "Take care", "Have a good weekend", "Appreciate your time"
+- Call dialing: "Calling [name]", "Let me try that one more time"
+- Context shifts: professional interview → personal family call → physical therapy session
+- Name usage: when the user addresses someone by a new name, it likely indicates a different person/conversation
 
 TRANSCRIPT INFO:
 - Duration: ${durationMin} minutes, ${utterances.length} messages
@@ -906,7 +921,7 @@ Return ONLY valid JSON:
 }
 
 You MUST return multiple segments if the summary describes multiple distinct interactions. A ${durationMin}-minute recording with ${utterances.length} messages is extremely unlikely to be a single conversation.` },
-        { role: 'user', content: sampledExcerpts.join('\n').substring(0, 12000) },
+        { role: 'user', content: sampledExcerpts.join('\n').substring(0, 20000) },
       ],
     });
 
