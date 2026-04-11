@@ -1617,6 +1617,10 @@ async function loadSettingsMenuInfo() {
     if (oaEl) { oaEl.textContent = 'Error'; oaEl.style.color = 'var(--red)'; }
   }
 
+  // Load contacts and unrecognized speakers
+  loadContactsList();
+  loadUnrecognizedSpeakers();
+
 }
 
 async function triggerBeeSyncFromMenu(mode) {
@@ -1798,6 +1802,78 @@ async function syncConversationsByDate() {
   loadSettingsMenuInfo();
   if (currentTab === 'home') loadDashboardStats();
   if (currentTab === 'transcripts') loadTranscripts();
+}
+
+// ─── Contacts Management ────────────────────────────────────
+async function loadContactsList() {
+  const list = document.getElementById('contacts-list');
+  const countEl = document.getElementById('contacts-count');
+  if (!list) return;
+  try {
+    const contacts = await api('/contacts');
+    if (countEl) countEl.textContent = `(${contacts.length})`;
+    if (!contacts.length) { list.innerHTML = '<div style="font-size:0.75rem;color:var(--text-dim);padding:4px 0">No contacts yet</div>'; return; }
+    list.innerHTML = contacts.map(c => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
+        <div>
+          <strong>${esc(c.name)}</strong>${c.relationship ? ` <span style="color:var(--text-dim)">· ${esc(c.relationship)}</span>` : ''}
+          ${c.organization ? `<span style="color:var(--text-dim)"> · ${esc(c.organization)}</span>` : ''}
+          ${c.aliases && c.aliases.length ? `<div style="font-size:0.7rem;color:var(--text-dim)">aka: ${c.aliases.map(a => esc(a)).join(', ')}</div>` : ''}
+        </div>
+        <button onclick="deleteContact('${c.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.75rem;padding:2px 6px">✕</button>
+      </div>
+    `).join('');
+  } catch { list.innerHTML = '<div style="font-size:0.75rem;color:var(--red)">Failed to load</div>'; }
+}
+
+async function addContact() {
+  const nameEl = document.getElementById('contact-name');
+  const aliasEl = document.getElementById('contact-aliases');
+  const relEl = document.getElementById('contact-relationship');
+  const orgEl = document.getElementById('contact-organization');
+  const resultEl = document.getElementById('contact-result');
+  const name = nameEl?.value?.trim();
+  if (!name) { if (resultEl) { resultEl.style.display = 'block'; resultEl.textContent = 'Name is required'; resultEl.style.color = 'var(--red)'; } return; }
+  const aliases = aliasEl?.value?.trim() ? aliasEl.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+  try {
+    await api('/contacts', { method: 'POST', body: JSON.stringify({ name, aliases, relationship: relEl?.value?.trim() || null, organization: orgEl?.value?.trim() || null }) });
+    if (nameEl) nameEl.value = '';
+    if (aliasEl) aliasEl.value = '';
+    if (relEl) relEl.value = '';
+    if (orgEl) orgEl.value = '';
+    if (resultEl) { resultEl.style.display = 'block'; resultEl.textContent = `Added ${name}`; resultEl.style.color = 'var(--green)'; }
+    loadContactsList();
+  } catch (e) { if (resultEl) { resultEl.style.display = 'block'; resultEl.textContent = e.message; resultEl.style.color = 'var(--red)'; } }
+}
+
+async function deleteContact(id) {
+  try {
+    await api('/contacts/' + id, { method: 'DELETE' });
+    loadContactsList();
+  } catch (e) { console.error('Delete contact failed:', e.message); }
+}
+
+async function addContactFromUnrecognized(name) {
+  const nameEl = document.getElementById('contact-name');
+  if (nameEl) { nameEl.value = name; nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+}
+
+async function loadUnrecognizedSpeakers() {
+  const list = document.getElementById('unrecognized-list');
+  if (!list) return;
+  try {
+    const speakers = await api('/contacts/unrecognized');
+    if (!speakers.length) { list.innerHTML = '<div style="font-size:0.75rem;color:var(--text-dim);padding:4px 0">All speakers matched</div>'; return; }
+    list.innerHTML = speakers.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
+        <div>
+          <strong>${esc(s.speaker_name)}</strong>
+          <span style="color:var(--text-dim);font-size:0.7rem">${s.transcript_count} transcript${s.transcript_count > 1 ? 's' : ''}</span>
+        </div>
+        <button onclick="addContactFromUnrecognized('${esc(s.speaker_name).replace(/'/g, "\\'")}')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:0.7rem;padding:2px 8px;border-radius:4px">+ Add</button>
+      </div>
+    `).join('');
+  } catch { list.innerHTML = '<div style="font-size:0.75rem;color:var(--red)">Failed to load</div>'; }
 }
 
 // ─── Debug / Diagnostics Panel ───────────────────────────────

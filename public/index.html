@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.6.1</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.7.0</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -158,6 +158,34 @@
                 <button class="btn-action btn-action-secondary sm-btn-full" onclick="addGymProfile()">Add Gym Profile</button>
               </div>
               <div id="gym-profile-result" class="sm-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Known Contacts ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Known Contacts</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Contacts <span id="contacts-count" style="color:var(--text-dim);font-weight:400"></span></div>
+              <div class="sm-card-desc">Known people for speaker identification. Names and aliases are matched against Bee transcripts.</div>
+              <div id="contacts-list" style="max-height:300px;overflow-y:auto;margin-bottom:8px"></div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <input type="text" id="contact-name" placeholder="Name" class="sm-date-input" style="width:100%;box-sizing:border-box">
+                <input type="text" id="contact-aliases" placeholder="Aliases (comma-separated)" class="sm-date-input" style="width:100%;box-sizing:border-box">
+                <div style="display:flex;gap:6px">
+                  <input type="text" id="contact-relationship" placeholder="Relationship" class="sm-date-input" style="flex:1">
+                  <input type="text" id="contact-organization" placeholder="Organization" class="sm-date-input" style="flex:1">
+                </div>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="addContact()">Add Contact</button>
+              </div>
+              <div id="contact-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Unrecognized Speakers</div>
+              <div class="sm-card-desc">Names from transcripts that don't match any contact.</div>
+              <div id="unrecognized-list" style="max-height:200px;overflow-y:auto"></div>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="loadUnrecognizedSpeakers()" style="margin-top:6px">Refresh</button>
             </div>
           </div>
         </div>
@@ -287,6 +315,20 @@
 
             <!-- Version History -->
             <div class="sm-card expanded">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.7.0 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Known Contacts System</strong> — new contacts table with name, aliases, relationship, organization, and confidentiality tier. CRUD API at <code>/api/contacts</code>. Foundation for calendar matching, confidentiality filtering, and task extraction.</p>
+                  <p><strong>Contact-Aware Speaker ID</strong> — <code>autoIdentifySpeakers</code> now queries the contacts table and injects known names as hints into the GPT-4o-mini prompt. Identified speakers are linked to contact records via <code>metadata.contact_links</code>.</p>
+                  <p><strong>Unrecognized Speaker Detection</strong> — speakers identified by name but not matching any contact are flagged in <code>metadata.unrecognized_speakers</code>. Surfaced via <code>/api/contacts/unrecognized</code> with frequency counts.</p>
+                  <p><strong>Contacts UI in Settings</strong> — add, view, and delete contacts. Unrecognized speakers section with one-tap "Add as contact" button.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.6.1 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
@@ -446,7 +488,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.6.1</span>
+          AB Brain <span id="sm-version">v1.7.0</span>
         </div>
 
       </div>

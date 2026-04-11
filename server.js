@@ -25,6 +25,7 @@ const dailyPlanRoutes = require('./routes/daily-plans');
 const exerciseRoutes = require('./routes/exercises');
 const gymProfileRoutes = require('./routes/gym-profiles');
 const briefingRoutes = require('./routes/briefing');
+const contactRoutes = require('./routes/contacts');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -161,6 +162,7 @@ app.use('/api/daily-plans', dailyPlanRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/gym-profiles', gymProfileRoutes);
 app.use('/api/briefing', briefingRoutes);
+app.use('/api/contacts', contactRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));

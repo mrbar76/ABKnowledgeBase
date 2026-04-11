@@ -910,6 +910,26 @@ async function initDB() {
 
   // Seed exercises removed — 1069 exercises already imported via CSV
 
+  // ===== CONTACTS =====
+  await safeQuery('contacts table', `
+    CREATE TABLE IF NOT EXISTS contacts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      aliases JSONB DEFAULT '[]',
+      email TEXT,
+      phone TEXT,
+      relationship TEXT,
+      organization TEXT,
+      confidentiality TEXT DEFAULT 'open' CHECK(confidentiality IN ('open','confidential','restricted')),
+      metadata JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('contacts indexes', `
+    CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
+    CREATE INDEX IF NOT EXISTS idx_contacts_relationship ON contacts(relationship);
+  `);
+
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
     CREATE OR REPLACE FUNCTION update_knowledge_search() RETURNS TRIGGER AS $$
