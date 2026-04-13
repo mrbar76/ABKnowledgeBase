@@ -243,7 +243,7 @@ async function ensureWaitingOnCol() {
     await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
     await query(`CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
     await query(`ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check`);
-    await query(`ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN ('todo','in_progress','waiting_on','review','done'))`);
+    await query(`ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN ('inbox','todo','planned','in_progress','waiting','waiting_on','review','done','cancelled'))`);
   } catch (e) { console.error('[tasks] waiting_on setup:', e.message); }
   _waitingOnColChecked = true;
 }
