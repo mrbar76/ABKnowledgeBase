@@ -185,7 +185,7 @@ router.get('/:id', async (req, res) => {
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
 
     // Include activity history and comments
-    const [history, comments] = await Promise.all([
+    const [history, comments, children] = await Promise.all([
       query(
         `SELECT action, details, created_at FROM activity_log
          WHERE entity_type = 'task' AND entity_id = $1
@@ -197,9 +197,14 @@ router.get('/:id', async (req, res) => {
          WHERE task_id = $1 ORDER BY created_at ASC`,
         [req.params.id]
       ),
+      query(
+        `SELECT id, title, status, priority, due_date FROM tasks
+         WHERE parent_id = $1 ORDER BY created_at ASC`,
+        [req.params.id]
+      ),
     ]);
 
-    res.json({ ...result.rows[0], history: history.rows, comments: comments.rows });
+    res.json({ ...result.rows[0], history: history.rows, comments: comments.rows, children: children.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -207,18 +212,18 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, waiting_on, recurrence_rule } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, waiting_on, recurrence_rule, parent_id } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
 
     const effectiveStatus = status || 'todo';
     const result = await query(
-      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, completed_at, waiting_on, recurrence_rule)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+      `INSERT INTO tasks (title, description, status, priority, ai_agent, next_steps, due_date, context, source_id, notes, completed_at, waiting_on, recurrence_rule, parent_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
       [title, description || null, effectiveStatus,
        priority || 'medium', ai_agent || null, next_steps || null, due_date || null,
        context || null, source_id || null, notes || null,
        effectiveStatus === 'done' ? new Date() : null, waiting_on || null,
-       recurrence_rule ? JSON.stringify(recurrence_rule) : null]
+       recurrence_rule ? JSON.stringify(recurrence_rule) : null, parent_id || null]
     );
 
     const taskId = result.rows[0].id;
@@ -251,7 +256,7 @@ async function ensureWaitingOnCol() {
 router.put('/:id', async (req, res) => {
   try {
     await ensureWaitingOnCol();
-    const { title, description, status, priority, ai_agent, next_steps, output_log, due_date, context, notes, tags, checklist, waiting_on } = req.body;
+    const { title, description, status, priority, ai_agent, next_steps, output_log, due_date, context, notes, tags, checklist, waiting_on, parent_id } = req.body;
     const sets = ['updated_at = NOW()'];
     const params = [];
     let i = 1;
@@ -281,6 +286,7 @@ router.put('/:id', async (req, res) => {
       sets.push(`linked_items = $${i++}::jsonb`);
       params.push(JSON.stringify(req.body.linked_items));
     }
+    if (parent_id !== undefined) { sets.push(`parent_id = $${i++}`); params.push(parent_id || null); }
 
     // Auto-clear waiting_on when moving away from waiting_on status
     if (status !== undefined && status !== 'waiting_on' && waiting_on === undefined) {

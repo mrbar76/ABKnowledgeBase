@@ -495,6 +495,8 @@ async function initDB() {
   await safeQuery('tasks +reminder_at', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_at TIMESTAMPTZ`);
   await safeQuery('tasks idx_reminder_at', `CREATE INDEX IF NOT EXISTS idx_tasks_reminder_at ON tasks(reminder_at) WHERE reminder_at IS NOT NULL`);
   await safeQuery('tasks +linked_items', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS linked_items JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('tasks +parent_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES tasks(id) ON DELETE SET NULL`);
+  await safeQuery('tasks idx_parent', `CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)`);
   await safeQuery('tasks status_check +all_statuses', `
     ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
     ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN ('inbox','todo','planned','in_progress','waiting','waiting_on','review','done','cancelled'))
