@@ -588,7 +588,10 @@ async function initDB() {
   await safeQuery('workouts +completion_status', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS completion_status TEXT DEFAULT 'logged'`);
   await safeQuery('workouts +plan_comparison_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_comparison_notes TEXT`);
 
-  // exercises migrations not needed — table is dropped and recreated fresh on each startup
+  // exercises: table is created with CREATE TABLE IF NOT EXISTS (line 215) and is
+  // never dropped on boot. User edits and bulk-imported rows survive restarts.
+  // Bulk re-imports go through routes/exercises.js POST /import-fitbod which
+  // upserts via INSERT ... ON CONFLICT (name) DO UPDATE.
 
   // -- gym_profiles migrations --
   await safeQuery('gym_profiles +name', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS name TEXT`);
@@ -910,7 +913,10 @@ async function initDB() {
     ON CONFLICT (id) DO NOTHING
   `);
 
-  // Seed exercises removed — 1069 exercises already imported via CSV
+  // No automatic exercise seed runs at startup. Initial library is loaded via
+  // POST /api/exercises/import-fitbod and persists across restarts. Subsequent
+  // imports upsert via ON CONFLICT (name) DO UPDATE so user edits to existing
+  // rows are not overwritten by re-import.
 
   // ===== CONTACTS =====
   await safeQuery('contacts table', `
