@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { initDB, query } = require('./db');
+const { initDB, query, logActivity } = require('./db');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
@@ -100,15 +100,37 @@ app.use('/api', (req, res, next) => {
 });
 
 // ─── Purge: clear all data from PostgreSQL tables ──────────────────
+// Each entry below holds a hardcoded DELETE statement. The map keys are the
+// only table names accepted from the request body. We never interpolate user
+// input into SQL — the only way to add a new purgeable table is to edit this
+// file and add a literal statement here.
+const PURGE_STATEMENTS = Object.freeze({
+  knowledge:          'DELETE FROM knowledge',
+  tasks:              'DELETE FROM tasks',
+  transcripts:        'DELETE FROM transcripts',
+  conversations:      'DELETE FROM conversations',
+  workouts:           'DELETE FROM workouts',
+  body_metrics:       'DELETE FROM body_metrics',
+  meals:              'DELETE FROM meals',
+  daily_context:      'DELETE FROM daily_context',
+  coaching_sessions:  'DELETE FROM coaching_sessions',
+  injuries:           'DELETE FROM injuries',
+  daily_plans:        'DELETE FROM daily_plans',
+  exercises:          'DELETE FROM exercises',
+  gym_profiles:       'DELETE FROM gym_profiles',
+});
+const PURGE_TABLES = Object.keys(PURGE_STATEMENTS);
+
 const purgeState = { running: false, progress: null, result: null };
 
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_context', 'coaching_sessions', 'injuries', 'daily_plans', 'exercises', 'gym_profiles'];
-    const requested = req.body.databases || allowed;
-    const targets = requested.filter(d => allowed.includes(d));
-    if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
+    const requested = Array.isArray(req.body.databases) && req.body.databases.length
+      ? req.body.databases
+      : PURGE_TABLES;
+    const targets = requested.filter(d => Object.prototype.hasOwnProperty.call(PURGE_STATEMENTS, d));
+    if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed: PURGE_TABLES });
 
     purgeState.running = true;
     purgeState.progress = { current: 0, databases: targets };
@@ -118,12 +140,18 @@ app.post('/api/purge', async (req, res) => {
     let totalDeleted = 0;
     const results = {};
     for (const table of targets) {
+      const sql = PURGE_STATEMENTS[table];
       try {
-        const r = await query(`DELETE FROM ${table}`);
-        results[table] = r.rowCount || 0;
-        totalDeleted += r.rowCount || 0;
-        purgeState.progress.current += r.rowCount || 0;
-      } catch (e) { results[table] = `error: ${e.message}`; }
+        const r = await query(sql);
+        const count = r.rowCount || 0;
+        results[table] = count;
+        totalDeleted += count;
+        purgeState.progress.current += count;
+        await logActivity('purge', table, 'all', 'manual', `Purged ${count} rows from ${table}`);
+      } catch (e) {
+        results[table] = `error: ${e.message}`;
+        await logActivity('purge-error', table, 'all', 'manual', `Purge of ${table} failed: ${e.message}`);
+      }
     }
 
     purgeState.result = { message: `Purged ${totalDeleted} entries`, results };
