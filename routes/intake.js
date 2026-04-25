@@ -3,7 +3,7 @@
 // then files it into the correct PostgreSQL table with proper metadata.
 
 const express = require('express');
-const { query, logActivity } = require('../db');
+const { query, logActivity, logActivityWith, withTransaction } = require('../db');
 const syncStatus = require('../sync-status');
 const router = express.Router();
 
@@ -221,38 +221,43 @@ router.post('/distill', async (req, res) => {
     const originalDate = created_at || req.getNow();
     const results = { facts: 0, decisions: 0, tasks: 0, project: extracted.project || null };
 
-    for (const fact of (extracted.facts || [])) {
-      if (!fact.text) continue;
-      await query(
-        'INSERT INTO knowledge (title, content, category, tags, source, confirmed, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, false, $6)',
-        [fact.text.substring(0, 80), fact.text, fact.category || 'general',
-         JSON.stringify(extracted.tags || []), source || 'manual', originalDate]
-      );
-      results.facts++;
-    }
+    // All distilled rows + the audit-log entry commit atomically. If any insert
+    // fails partway through, the whole batch rolls back so the caller can retry
+    // without ending up with half a distillation.
+    await withTransaction(async (client) => {
+      for (const fact of (extracted.facts || [])) {
+        if (!fact.text) continue;
+        await client.query(
+          'INSERT INTO knowledge (title, content, category, tags, source, confirmed, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, false, $6)',
+          [fact.text.substring(0, 80), fact.text, fact.category || 'general',
+           JSON.stringify(extracted.tags || []), source || 'manual', originalDate]
+        );
+        results.facts++;
+      }
 
-    for (const decision of (extracted.decisions || [])) {
-      if (!decision.title && !decision.content) continue;
-      await query(
-        'INSERT INTO knowledge (title, content, category, tags, source, ai_source, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)',
-        [decision.title || (decision.content || '').substring(0, 80), decision.content || decision.title,
-         decision.category || 'decision', JSON.stringify(extracted.tags || []),
-         source || 'manual', source, originalDate]
-      );
-      results.decisions++;
-    }
+      for (const decision of (extracted.decisions || [])) {
+        if (!decision.title && !decision.content) continue;
+        await client.query(
+          'INSERT INTO knowledge (title, content, category, tags, source, ai_source, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)',
+          [decision.title || (decision.content || '').substring(0, 80), decision.content || decision.title,
+           decision.category || 'decision', JSON.stringify(extracted.tags || []),
+           source || 'manual', source, originalDate]
+        );
+        results.decisions++;
+      }
 
-    for (const task of (extracted.tasks || [])) {
-      if (!task.title) continue;
-      await query(
-        'INSERT INTO tasks (title, status, priority, ai_agent) VALUES ($1, $2, $3, $4)',
-        [task.title, 'todo', task.priority || 'medium', source]
-      );
-      results.tasks++;
-    }
+      for (const task of (extracted.tasks || [])) {
+        if (!task.title) continue;
+        await client.query(
+          'INSERT INTO tasks (title, status, priority, ai_agent) VALUES ($1, $2, $3, $4)',
+          [task.title, 'todo', task.priority || 'medium', source]
+        );
+        results.tasks++;
+      }
 
-    await logActivity('create', 'intake-distill', 'distill', source,
-      `Distilled "${title}": ${results.facts}F ${results.decisions}D ${results.tasks}T`);
+      await logActivityWith(client, 'create', 'intake-distill', 'distill', source,
+        `Distilled "${title}": ${results.facts}F ${results.decisions}D ${results.tasks}T`);
+    });
 
     res.json({ message: 'Distillation complete', extracted: results, project: extracted.project, tags: extracted.tags || [] });
   } catch (err) {

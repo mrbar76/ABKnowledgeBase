@@ -1,6 +1,6 @@
 const express = require('express');
 const https = require('https');
-const { pool, query, logActivity } = require('../db');
+const { pool, query, logActivity, withTransaction } = require('../db');
 const syncStatus = require('../sync-status');
 const router = express.Router();
 
@@ -930,8 +930,10 @@ router.post('/sync-incremental', async (req, res) => {
         const fact = await beeApiGet(`/v1/facts/${factId}`, beeToken);
         const f = fact.fact || fact; const fText = extractFactText(f); if (!fText) continue;
         const existing = await findExistingFact(fText);
-        if (existing) { await query('UPDATE knowledge SET content=$1, updated_at=NOW() WHERE id=$2', [fText, existing.id]); }
-        else { await storeFact(fText, f); }
+        await withTransaction(async (client) => {
+          if (existing) { await client.query('UPDATE knowledge SET content=$1, updated_at=NOW() WHERE id=$2', [fText, existing.id]); }
+          else { await storeFact(fText, f, client); }
+        });
         results.facts++;
       } catch (e) { results.errors.push(`fact ${factId}: ${e.message}`); }
     }
@@ -941,8 +943,10 @@ router.post('/sync-incremental', async (req, res) => {
         const todo = await beeApiGet(`/v1/todos/${todoId}`, beeToken);
         const t = todo.todo || todo; const tText = extractTodoText(t); if (!tText) continue;
         const existing = await findExistingTask(tText);
-        if (existing) { await query("UPDATE tasks SET status=$1, updated_at=NOW() WHERE id=$2", [t.completed ? 'done' : 'todo', existing.id]); }
-        else { await storeTodo(tText, t); }
+        await withTransaction(async (client) => {
+          if (existing) { await client.query("UPDATE tasks SET status=$1, updated_at=NOW() WHERE id=$2", [t.completed ? 'done' : 'todo', existing.id]); }
+          else { await storeTodo(tText, t, client); }
+        });
         results.todos++;
       } catch (e) { results.errors.push(`todo ${todoId}: ${e.message}`); }
     }
@@ -956,8 +960,17 @@ router.post('/sync-incremental', async (req, res) => {
         const rawResult = extractTranscript(c, c.start_time || null, c);
         if (!rawResult.text) continue;
         const existing = await findExistingTranscript(convoId);
-        if (existing) { await query('UPDATE transcripts SET summary=$1, updated_at=NOW() WHERE id=$2', [c.summary || rawResult.text.substring(0, 2000), existing.id]); }
-        else { const tid = await storeConversation(c, c, rawResult); incrTranscriptIds.push(tid); }
+        // Atomic per conversation: transcript row + all transcript_speakers
+        // utterances commit together. Without this, a mid-batch failure
+        // would leave a transcript with partial speaker rows.
+        const tid = await withTransaction(async (client) => {
+          if (existing) {
+            await client.query('UPDATE transcripts SET summary=$1, updated_at=NOW() WHERE id=$2', [c.summary || rawResult.text.substring(0, 2000), existing.id]);
+            return null;
+          }
+          return await storeConversation(c, c, rawResult, client);
+        });
+        if (tid) incrTranscriptIds.push(tid);
         results.conversations++;
       } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
     }
@@ -985,7 +998,9 @@ router.post('/sync-incremental', async (req, res) => {
             const full = d.conversation || d;
             const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
             if (!rawResult.text) continue;
-            const tid = await storeConversation(convo, full, rawResult);
+            const tid = await withTransaction(async (client) =>
+              storeConversation(convo, full, rawResult, client)
+            );
             incrTranscriptIds.push(tid);
             results.conversations++;
           } catch (e) { results.errors.push(`conv-range ${convo.id}: ${e.message}`); }

@@ -23,6 +23,26 @@ async function query(text, params) {
   return pool.query(text, params);
 }
 
+// Run `fn` inside a single-client transaction. The callback receives a
+// pg Client; every statement that should be atomic must use that client
+// (not the module-level `query` helper, which checks out its own client).
+// Commits on success, rolls back on any thrown error, and always releases
+// the client back to the pool.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* connection may already be broken */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // Run a query, log errors but don't throw (for init resilience)
 async function safeQuery(label, text, params) {
   try {
@@ -588,7 +608,10 @@ async function initDB() {
   await safeQuery('workouts +completion_status', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS completion_status TEXT DEFAULT 'logged'`);
   await safeQuery('workouts +plan_comparison_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_comparison_notes TEXT`);
 
-  // exercises migrations not needed — table is dropped and recreated fresh on each startup
+  // exercises: table is created with CREATE TABLE IF NOT EXISTS (line 215) and is
+  // never dropped on boot. User edits and bulk-imported rows survive restarts.
+  // Bulk re-imports go through routes/exercises.js POST /import-fitbod which
+  // upserts via INSERT ... ON CONFLICT (name) DO UPDATE.
 
   // -- gym_profiles migrations --
   await safeQuery('gym_profiles +name', `ALTER TABLE gym_profiles ADD COLUMN IF NOT EXISTS name TEXT`);
@@ -910,7 +933,10 @@ async function initDB() {
     ON CONFLICT (id) DO NOTHING
   `);
 
-  // Seed exercises removed — 1069 exercises already imported via CSV
+  // No automatic exercise seed runs at startup. Initial library is loaded via
+  // POST /api/exercises/import-fitbod and persists across restarts. Subsequent
+  // imports upsert via ON CONFLICT (name) DO UPDATE so user edits to existing
+  // rows are not overwritten by re-import.
 
   // ===== CONTACTS =====
   await safeQuery('contacts table', `
@@ -1156,4 +1182,15 @@ async function logActivity(action, entityType, entityId, aiSource, details) {
   }
 }
 
-module.exports = { pool, query, initDB, logActivity };
+// Same as logActivity but uses a caller-supplied client so the insert
+// participates in an open transaction. Errors propagate so the caller can
+// roll back; this is intentional since the activity log is part of the
+// atomic unit being committed.
+async function logActivityWith(client, action, entityType, entityId, aiSource, details) {
+  await client.query(
+    `INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ($1, $2, $3, $4, $5)`,
+    [action, entityType, entityId, aiSource, details]
+  );
+}
+
+module.exports = { pool, query, withTransaction, initDB, logActivity, logActivityWith };

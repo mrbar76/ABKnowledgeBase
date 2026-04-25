@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { initDB, query } = require('./db');
+const { initDB, query, logActivity, logActivityWith, withTransaction } = require('./db');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
@@ -32,8 +32,40 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY;
 
 // Middleware
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+// CSP: keeps Helmet's strict defaults (object-src 'none', base-uri 'self',
+// frame-ancestors 'self', upgrade-insecure-requests) and only opens what the
+// PWA actually loads — Lucide from unpkg, Chart.js from jsDelivr, Google Fonts
+// CSS+files. 'unsafe-inline' is required because index.html and the SPA emit
+// inline <script> and inline style="…" attributes; tightening to nonces/hashes
+// would require a frontend rewrite and is out of scope here.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      'script-src': ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      'img-src': ["'self'", 'data:', 'blob:'],
+      'connect-src': ["'self'"],
+      'worker-src': ["'self'"],
+      'manifest-src': ["'self'"],
+    },
+  },
+}));
+
+// CORS: deny cross-origin by default. Set CORS_ORIGINS to a comma-separated
+// allowlist (e.g. "https://app.example.com,https://chat.openai.com") to enable
+// browser-based callers from those origins. Server-to-server callers (Claude
+// API, ChatGPT Actions, Bee scripts) don't need CORS — only browsers enforce
+// it. If CORS_ORIGINS is unset, no Access-Control-Allow-Origin header is sent
+// and same-origin requests from the bundled PWA still work.
+const corsOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+if (corsOrigins.length) {
+  app.use(cors({ origin: corsOrigins, credentials: false }));
+}
+
 app.use(express.json({ limit: '50mb' }));
 
 // Timezone-aware "today" helper — uses client's X-Timezone header
@@ -90,25 +122,54 @@ app.get('/privacy', (req, res) => {
     <p>Last updated: 2026</p></body></html>`);
 });
 
-// API key authentication for /api routes
+// API key authentication for /api routes — header only.
+// Accepts `X-Api-Key: <key>` or `Authorization: Bearer <key>`. Query-string
+// auth is intentionally not supported: keys in URLs leak into access logs,
+// browser history, and Referer headers.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health-check') return next();
   if (!API_KEY) return next();
-  const provided = req.headers['x-api-key'] || req.query.api_key;
+  let provided = req.headers['x-api-key'];
+  if (!provided) {
+    const auth = req.headers['authorization'];
+    if (typeof auth === 'string' && auth.startsWith('Bearer ')) provided = auth.slice(7).trim();
+  }
   if (provided !== API_KEY) return res.status(401).json({ error: 'Invalid or missing API key' });
   next();
 });
 
 // ─── Purge: clear all data from PostgreSQL tables ──────────────────
+// Each entry below holds a hardcoded DELETE statement. The map keys are the
+// only table names accepted from the request body. We never interpolate user
+// input into SQL — the only way to add a new purgeable table is to edit this
+// file and add a literal statement here.
+const PURGE_STATEMENTS = Object.freeze({
+  knowledge:          'DELETE FROM knowledge',
+  tasks:              'DELETE FROM tasks',
+  transcripts:        'DELETE FROM transcripts',
+  conversations:      'DELETE FROM conversations',
+  workouts:           'DELETE FROM workouts',
+  body_metrics:       'DELETE FROM body_metrics',
+  meals:              'DELETE FROM meals',
+  daily_context:      'DELETE FROM daily_context',
+  coaching_sessions:  'DELETE FROM coaching_sessions',
+  injuries:           'DELETE FROM injuries',
+  daily_plans:        'DELETE FROM daily_plans',
+  exercises:          'DELETE FROM exercises',
+  gym_profiles:       'DELETE FROM gym_profiles',
+});
+const PURGE_TABLES = Object.keys(PURGE_STATEMENTS);
+
 const purgeState = { running: false, progress: null, result: null };
 
 app.post('/api/purge', async (req, res) => {
   if (purgeState.running) return res.json({ status: 'running', progress: purgeState.progress });
   try {
-    const allowed = ['knowledge', 'tasks', 'transcripts', 'conversations', 'workouts', 'body_metrics', 'meals', 'daily_context', 'coaching_sessions', 'injuries', 'daily_plans', 'exercises', 'gym_profiles'];
-    const requested = req.body.databases || allowed;
-    const targets = requested.filter(d => allowed.includes(d));
-    if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed });
+    const requested = Array.isArray(req.body.databases) && req.body.databases.length
+      ? req.body.databases
+      : PURGE_TABLES;
+    const targets = requested.filter(d => Object.prototype.hasOwnProperty.call(PURGE_STATEMENTS, d));
+    if (!targets.length) return res.status(400).json({ error: 'No valid tables specified', allowed: PURGE_TABLES });
 
     purgeState.running = true;
     purgeState.progress = { current: 0, databases: targets };
@@ -118,12 +179,25 @@ app.post('/api/purge', async (req, res) => {
     let totalDeleted = 0;
     const results = {};
     for (const table of targets) {
+      const sql = PURGE_STATEMENTS[table];
       try {
-        const r = await query(`DELETE FROM ${table}`);
-        results[table] = r.rowCount || 0;
-        totalDeleted += r.rowCount || 0;
-        purgeState.progress.current += r.rowCount || 0;
-      } catch (e) { results[table] = `error: ${e.message}`; }
+        // Atomic per table: the DELETE and its activity_log entry commit
+        // together or roll back together. Other tables in the loop continue
+        // independently — one failure shouldn't block the rest of the purge.
+        const count = await withTransaction(async (client) => {
+          const r = await client.query(sql);
+          const n = r.rowCount || 0;
+          await logActivityWith(client, 'purge', table, 'all', 'manual', `Purged ${n} rows from ${table}`);
+          return n;
+        });
+        results[table] = count;
+        totalDeleted += count;
+        purgeState.progress.current += count;
+      } catch (e) {
+        results[table] = `error: ${e.message}`;
+        // Best-effort failure log — outside the rolled-back transaction.
+        await logActivity('purge-error', table, 'all', 'manual', `Purge of ${table} failed: ${e.message}`);
+      }
     }
 
     purgeState.result = { message: `Purged ${totalDeleted} entries`, results };
