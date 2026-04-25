@@ -32,8 +32,40 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY;
 
 // Middleware
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+// CSP: keeps Helmet's strict defaults (object-src 'none', base-uri 'self',
+// frame-ancestors 'self', upgrade-insecure-requests) and only opens what the
+// PWA actually loads — Lucide from unpkg, Chart.js from jsDelivr, Google Fonts
+// CSS+files. 'unsafe-inline' is required because index.html and the SPA emit
+// inline <script> and inline style="…" attributes; tightening to nonces/hashes
+// would require a frontend rewrite and is out of scope here.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      'script-src': ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      'img-src': ["'self'", 'data:', 'blob:'],
+      'connect-src': ["'self'"],
+      'worker-src': ["'self'"],
+      'manifest-src': ["'self'"],
+    },
+  },
+}));
+
+// CORS: deny cross-origin by default. Set CORS_ORIGINS to a comma-separated
+// allowlist (e.g. "https://app.example.com,https://chat.openai.com") to enable
+// browser-based callers from those origins. Server-to-server callers (Claude
+// API, ChatGPT Actions, Bee scripts) don't need CORS — only browsers enforce
+// it. If CORS_ORIGINS is unset, no Access-Control-Allow-Origin header is sent
+// and same-origin requests from the bundled PWA still work.
+const corsOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+if (corsOrigins.length) {
+  app.use(cors({ origin: corsOrigins, credentials: false }));
+}
+
 app.use(express.json({ limit: '50mb' }));
 
 // Timezone-aware "today" helper — uses client's X-Timezone header
