@@ -2,3 +2,4 @@ node_modules/
 *.db
 .env
 .DS_Store
+scripts/architecture-v2-ids.json
