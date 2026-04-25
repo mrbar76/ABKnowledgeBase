@@ -37,8 +37,25 @@ async function autoIdentifySpeakers(transcriptId) {
     const hasGeneric = uniqueSpeakers.some(s => /^(speaker|unknown)/i.test(s));
     if (!hasGeneric) return; // All speakers already named
 
+    // Fetch known contacts for hint-based identification
+    let contacts = [];
+    let knownNames = [];
+    try {
+      const contactsResult = await query('SELECT id, name, aliases FROM contacts');
+      contacts = contactsResult.rows;
+      for (const c of contacts) {
+        knownNames.push(c.name);
+        if (Array.isArray(c.aliases)) knownNames.push(...c.aliases);
+      }
+    } catch { /* contacts table may not exist yet */ }
+
     const excerpt = speakers.slice(0, 80).map(s => `${s.speaker_name}: ${s.text}`).join('\n');
     if (!excerpt && !t.raw_text) return;
+
+    const hasContacts = knownNames.length > 0;
+    const contactsSection = hasContacts
+      ? `\nCONFIRMED KNOWN CONTACTS: ${[...new Set(knownNames)].join(', ')}\nTry to match each speaker label to someone from this list using direct address and self-identification evidence. Use process of elimination with the known contacts.\n`
+      : '';
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -50,7 +67,7 @@ async function autoIdentifySpeakers(transcriptId) {
 
 The conversation has these speaker labels: ${uniqueSpeakers.join(', ')}
 ${t.location ? `Location: ${t.location}` : ''}
-${t.title ? `Topic: ${t.title}` : ''}
+${t.title ? `Topic: ${t.title}` : ''}${contactsSection}
 
 CRITICAL REASONING RULES for name usage:
 
@@ -190,6 +207,28 @@ Rules:
       meta.content_type_reasoning = result.content_type_reasoning || null;
       meta.is_media = isMedia;
       meta.people_mentioned = Array.isArray(result.people_mentioned) ? result.people_mentioned : [];
+
+      // Resolve identified speakers against known contacts
+      if (contacts.length > 0) {
+        const contactLinks = {};
+        const unrecognized = [];
+        for (const speakerName of meta.speakers) {
+          if (/^(speaker|unknown)/i.test(speakerName)) continue;
+          const nameLower = speakerName.toLowerCase();
+          const match = contacts.find(c =>
+            c.name.toLowerCase() === nameLower ||
+            (Array.isArray(c.aliases) && c.aliases.some(a => String(a).toLowerCase() === nameLower))
+          );
+          if (match) {
+            contactLinks[speakerName] = { contact_id: match.id, contact_name: match.name };
+          } else {
+            unrecognized.push(speakerName);
+          }
+        }
+        meta.contact_links = contactLinks;
+        meta.unrecognized_speakers = unrecognized;
+      }
+
       await query(
         'UPDATE transcripts SET metadata = $1::jsonb, tags = $2::jsonb, updated_at = NOW() WHERE id = $3',
         [JSON.stringify(meta), JSON.stringify(newTags), transcriptId]
@@ -197,6 +236,8 @@ Rules:
       const logParts = [];
       if (Object.keys(renames).length > 0) logParts.push(`speakers: ${Object.entries(renames).map(([o,n]) => `${o}→${n}`).join(', ')}`);
       logParts.push(`type: ${contentType}`);
+      if (meta.contact_links && Object.keys(meta.contact_links).length > 0) logParts.push(`contacts: ${Object.keys(meta.contact_links).join(', ')}`);
+      if (meta.unrecognized_speakers?.length) logParts.push(`unrecognized: ${meta.unrecognized_speakers.join(', ')}`);
       await logActivity('update', 'transcript', transcriptId, 'openai', `Auto-identified ${logParts.join('; ')}`);
       console.log(`[auto-identify] transcript ${transcriptId}: ${logParts.join('; ')}`);
     } else {
@@ -312,7 +353,8 @@ function extractTranscript(detail, convoStartTime, listItem) {
     }
   }
   if (detail.utterances && Array.isArray(detail.utterances)) {
-    return { text: detail.utterances.map(u => `${u.speaker || 'Speaker'}: ${u.text || ''}`).join('\n'), utterances: detail.utterances };
+    const sorted = [...detail.utterances].sort((a, b) => (a.start || 0) - (b.start || 0));
+    return { text: sorted.map(u => `${u.speaker || 'Speaker'}: ${u.text || ''}`).join('\n'), utterances: sorted };
   }
   // Fallback: use any available text field, including summary — also check the list-level item
   const text = detail.transcript || detail.full_transcript || detail.text || detail.summary || detail.short_summary
@@ -440,6 +482,16 @@ async function storeConversation(convo, full, rawResult, client) {
       );
     }
   }
+
+  // Auto-flag long transcripts for split review
+  const utteranceCount = utterances.length;
+  if ((durationSec && durationSec > 3600) || utteranceCount > 500) {
+    await q(
+      "UPDATE transcripts SET tags = tags || '\"needs-split-review\"'::jsonb WHERE id = $1 AND NOT (tags ? 'needs-split-review')",
+      [transcriptId]
+    );
+  }
+
   return transcriptId;
 }
 
@@ -540,9 +592,10 @@ router.post('/sync', async (req, res) => {
     // Sync Conversations (paginated, fetch details concurrently 5-at-a-time)
     try {
       let cursor = null;
+      const convTodayStr = req.getToday();
       do {
-        const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-        const data = await beeApiGet(url, beeToken);
+        const url = `/v1/conversations?limit=50&created_after=2024-01-01&created_before=${convTodayStr}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const data = await beeApiGet(url, beeToken, 60000);
         const convos = extractArray(data, 'conversations'); cursor = data.next_cursor || null;
 
         // Filter out already-synced and in-progress convos
@@ -557,7 +610,7 @@ router.post('/sync', async (req, res) => {
         // Fetch conversation details concurrently (5 at a time)
         const detailed = await mapConcurrent(toSync, 5, async (convo) => {
           let full = convo;
-          try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken); full = d.conversation || d; }
+          try { const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000); full = d.conversation || d; }
           catch (e) { results.errors.push(`Conv ${convo.id}: ${e.message}`); }
           const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
           if (!rawResult.text) {
@@ -682,8 +735,9 @@ router.post('/sync-chunk', async (req, res) => {
       if (!result.cursor) result.done = true;
 
     } else if (type === 'conversations') {
-      const url = `/v1/conversations?limit=50` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-      const data = await beeApiGet(url, beeToken);
+      const todayStr = req.getToday();
+      const url = `/v1/conversations?limit=50&created_after=2024-01-01&created_before=${todayStr}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+      const data = await beeApiGet(url, beeToken, 60000);
       const convos = extractArray(data, 'conversations');
       result.cursor = data.next_cursor || null;
       result.page_items = convos.length;
@@ -896,7 +950,7 @@ router.post('/sync-incremental', async (req, res) => {
     const incrTranscriptIds = [];
     for (const convoId of changedConvos) {
       try {
-        const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken);
+        const detail = await beeApiGet(`/v1/conversations/${convoId}`, beeToken, 60000);
         const c = detail.conversation || detail;
         if (c.state === 'CAPTURING') continue;
         const rawResult = extractTranscript(c, c.start_time || null, c);
@@ -907,6 +961,37 @@ router.post('/sync-incremental', async (req, res) => {
         results.conversations++;
       } catch (e) { results.errors.push(`conversation ${convoId}: ${e.message}`); }
     }
+
+    // Supplementary: fetch recent conversations by date range (last 7 days)
+    // The /v1/changes feed doesn't reliably report conversation updates
+    try {
+      const today = new Date();
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const endStr = today.toISOString().split('T')[0];
+      const startStr = weekAgo.toISOString().split('T')[0];
+      let convCursor = null;
+      do {
+        let convUrl = `/v1/conversations?limit=50&created_after=${startStr}&created_before=${endStr}`;
+        if (convCursor) convUrl += `&cursor=${encodeURIComponent(convCursor)}`;
+        const convData = await beeApiGet(convUrl, beeToken, 60000);
+        const convos = extractArray(convData, 'conversations');
+        convCursor = convData.next_cursor || null;
+        for (const convo of convos) {
+          if (!convo.id || convo.state === 'CAPTURING') continue;
+          if (await findExistingTranscript(convo.id)) continue;
+          try {
+            const d = await beeApiGet(`/v1/conversations/${convo.id}`, beeToken, 60000);
+            const full = d.conversation || d;
+            const rawResult = extractTranscript(full, convo.start_time || full.start_time || null, convo);
+            if (!rawResult.text) continue;
+            const tid = await storeConversation(convo, full, rawResult);
+            incrTranscriptIds.push(tid);
+            results.conversations++;
+          } catch (e) { results.errors.push(`conv-range ${convo.id}: ${e.message}`); }
+        }
+      } while (convCursor);
+    } catch (e) { results.errors.push(`conv-range: ${e.message}`); }
 
     if (newCursor) { await logActivity('bee-change-cursor', 'bee-import', 'cursor', 'bee', `cursor:${newCursor}`); }
     await logActivity('sync', 'bee-import', 'incremental', 'bee', `Incremental: ${results.facts}F ${results.todos}T ${results.conversations}C`);
@@ -988,6 +1073,91 @@ router.post('/search', async (req, res) => {
       preview: c.summary || c.snippet || '', score: c.score || 0, start_time: c.start_time || c.created_at,
     })) });
   } catch (err) { res.status(500).json({ error: `Bee neural search failed: ${err.message}` }); }
+});
+
+// Re-import a single transcript from Bee API (delete + re-fetch)
+router.post('/reimport/:transcriptId', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+  try {
+    const existing = await query('SELECT id, bee_id, title FROM transcripts WHERE id = $1', [req.params.transcriptId]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Transcript not found' });
+    const beeId = existing.rows[0].bee_id;
+    if (!beeId) return res.status(400).json({ error: 'No bee_id on this transcript — cannot re-import' });
+
+    // Fetch fresh from Bee API
+    const detail = await beeApiGet(`/v1/conversations/${beeId}`, beeToken, 60000);
+    const convo = detail.conversation || detail;
+    const rawResult = extractTranscript(convo, convo.start_time || null, convo);
+    if (!rawResult.text) return res.status(400).json({ error: 'No transcript text returned from Bee API' });
+
+    // Delete old transcript (CASCADE deletes utterances)
+    await query('DELETE FROM transcripts WHERE id = $1', [req.params.transcriptId]);
+
+    // Store fresh with correct sorting
+    const tid = await storeConversation(convo, convo, rawResult);
+
+    // Queue speaker identification
+    setImmediate(() => {
+      autoIdentifySpeakers(tid).catch(e => console.error('[reimport] Auto-identify error:', e.message));
+    });
+
+    await logActivity('reimport', 'transcript', tid, 'bee', `Re-imported ${existing.rows[0].title} (bee_id: ${beeId})`);
+    res.json({ message: 'Re-imported successfully', old_id: req.params.transcriptId, new_id: tid });
+  } catch (err) {
+    console.error('[reimport] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batch re-import all misordered transcripts
+router.post('/reimport-misordered', async (req, res) => {
+  const beeToken = getBeeToken(req);
+  if (!beeToken) return res.status(400).json({ error: 'Bee token required' });
+  try {
+    // Find misordered transcripts (same timestamps or wrong order)
+    const affected = await query(`
+      SELECT t.id, t.bee_id, t.title
+      FROM transcripts t
+      JOIN transcript_speakers ts ON ts.transcript_id = t.id
+      WHERE t.bee_id IS NOT NULL
+      GROUP BY t.id
+      HAVING (
+        (COUNT(DISTINCT ts.spoken_at) <= 2 AND COUNT(ts.id) > 50)
+        OR (
+          MIN(CASE WHEN ts.utterance_index = 0 THEN ts.spoken_at END)
+          > MAX(ts.spoken_at)
+        )
+      )
+    `);
+    const transcripts = affected.rows;
+    if (!transcripts.length) return res.json({ message: 'No misordered transcripts found', fixed: 0, failed: 0 });
+
+    const results = { fixed: 0, failed: 0, errors: [], total: transcripts.length };
+
+    for (const t of transcripts) {
+      try {
+        const detail = await beeApiGet(`/v1/conversations/${t.bee_id}`, beeToken, 60000);
+        const convo = detail.conversation || detail;
+        const rawResult = extractTranscript(convo, convo.start_time || null, convo);
+        if (!rawResult.text) { results.failed++; results.errors.push(`${t.title}: no text from API`); continue; }
+
+        await query('DELETE FROM transcripts WHERE id = $1', [t.id]);
+        const tid = await storeConversation(convo, convo, rawResult);
+        setImmediate(() => { autoIdentifySpeakers(tid).catch(() => {}); });
+        results.fixed++;
+      } catch (e) {
+        results.failed++;
+        results.errors.push(`${t.title}: ${e.message}`);
+      }
+    }
+
+    await logActivity('reimport', 'transcript', null, 'bee', `Batch re-imported ${results.fixed}/${results.total} misordered transcripts`);
+    res.json(results);
+  } catch (err) {
+    console.error('[reimport-misordered] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

@@ -4,6 +4,69 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.7.1] — 2026-04-11
+
+### Added
+- **Transcript Splitting** — AI-powered detection and splitting of long Bee recordings that contain multiple distinct conversations. Uses multi-signal analysis: time gaps between utterances, speaker set transitions (sliding window), active speaker windows, and GPT-4o-mini topic/context boundary detection.
+- **Ambient Noise Detection** — each detected segment classified as "primary" (user actively participating) or "ambient" (background chatter, airport noise, overheard strangers). Ambient segments tagged separately for filtering.
+- **Auto-Flag Long Recordings** — transcripts exceeding 60 minutes or 500 utterances are automatically tagged `needs-split-review` during Bee sync. Shown with "Needs Split" badge in transcript list.
+- **Split Analysis API** — `POST /api/transcripts/:id/analyze-splits` pre-computes signal layers (time gaps, speaker transitions, speaker windows) and sends them with sampled utterances to GPT-4o-mini for holistic boundary detection.
+- **Split Execution API** — `POST /api/transcripts/:id/split` creates new transcript records per segment, copies utterances with re-indexed positions, queues speaker identification for primary segments, and marks the original as `split-parent`.
+- **Needs-Split Review API** — `GET /api/transcripts/needs-split` lists all flagged transcripts not yet split.
+- **Split UI** — "Analyze & Split" button on long transcript detail view. Shows AI-detected segments with title, speakers, relevance badge, and confidence. Confirm button executes split and links to child transcripts.
+
+---
+
+## [1.7.0] — 2026-04-11
+
+### Added
+- **Known Contacts System** — new `contacts` table storing name, aliases (JSONB), email, phone, relationship, organization, confidentiality tier (open/confidential/restricted), and metadata. CRUD API at `/api/contacts` with list, search, create, update, delete endpoints.
+- **Contact-Aware Speaker Identification** — `autoIdentifySpeakers` now queries the contacts table before calling GPT-4o-mini. When contacts exist, known names are injected as "CONFIRMED KNOWN CONTACTS" in the prompt, using the proven hints-based identification pattern. Resolved speakers are linked to contact IDs via `metadata.contact_links`.
+- **Unrecognized Speaker Detection** — after speaker identification, names that don't match any contact are stored in `metadata.unrecognized_speakers`. New `GET /api/contacts/unrecognized` endpoint returns distinct unrecognized names across all transcripts with frequency counts, sorted by most common.
+- **Contacts Management UI** — new "Known Contacts" section in Settings with contact list, add form (name, aliases, relationship, organization), delete button, and "Unrecognized Speakers" panel showing names from transcripts with one-tap "Add as contact" flow.
+
+---
+
+## [1.6.1] — 2026-04-11
+
+### Fixed
+- **Bee Transcript Sync (Full Sync & Sync Updates)** — The Bee API `/v1/conversations` endpoint requires `created_after`/`created_before` date filter parameters to reliably return conversation data. Added these filters to `/sync` and `/sync-chunk` endpoints, matching the working `/sync-conversations` pattern.
+- **Incremental Sync Transcript Gap** — The `/v1/changes` feed doesn't reliably report conversation updates. Added a supplementary 7-day date-range conversation fetch to `/sync-incremental`, so both the "Sync Updates" button and the 30-minute cron job now pick up new transcripts.
+- **Conversation API Timeouts** — Increased conversation list and detail fetch timeouts from 30s to 60s across all sync endpoints to prevent silent failures on slower responses.
+- **Login Page Version** — Updated hardcoded version on login page from v1.2.0 to current.
+
+---
+
+## [1.6.0] — 2026-03-31
+
+### Added
+- **Morning Briefing Endpoint** — `GET /api/briefing` returns a complete markdown morning briefing with smart task ranking, recovery readiness, rings/streaks, yesterday's activity, stale alerts, and today's plan. Designed for Claude Projects, Claude Code, and ChatGPT to call on-demand.
+  - **Smart Task Ranking** — scores each task by priority (urgent=40, high=30, medium=20, low=10) + due urgency (overdue=50, today=30, this week=15) + staleness (>14d=+15, >7d=+10) + waiting duration (>5d=+10, >3d=+5). Top 3 Focus shown first.
+  - **Stale Task Detection** — flags tasks untouched for 7+ days in briefing output
+  - **Recovery Summary** — sleep, recovery score, injury status, workout fatigue
+  - **Rings & Streaks** — train/execute/recover streak counts
+  - **Yesterday Recap** — completed tasks, workout, nutrition totals
+  - **Today's Plan** — daily plan if set, including workout/nutrition targets
+  - Added to `claude-schema.json` and `openapi-chatgpt.json` for Custom GPT integration
+- **Today View: Top 3 Focus** — new section at the top of Today view showing the 3 highest-scored tasks with highlighted cards, priority badges, and score indicators
+- **Today View: Stale Tasks** — new section showing tasks untouched 7+ days with "Snooze 1w" and "Archive" quick actions
+
+### Removed
+- **Server-side Outlook email sync** — replaced by Claude's Outlook MCP tools
+- **Agent system (Jarvis)** — roster, org chart, work board, agent CRUD, auto-seed. Removed as Claude Code handles delegation natively. The `ai_agent` field on tasks remains for source tracking.
+
+### Fixed
+- **`GET /api/exercises/available` SQL binding error** — query passed equipment array as parameter but had no `$1` placeholder. Fixed with `WHERE equipment = ANY($1::text[]) OR equipment IS NULL`. Same fix applied to `GET /api/exercises/for-profile/:profileId`.
+
+---
+
+## [1.5.0] — 2026-03-29
+
+### Deprecated
+- **Agents Section** — removed in v1.6.0. Agent personas (Jarvis, Cascade, Scout, Forge, Pixel, Sentinel) added management overhead without execution value. Claude Code handles task delegation natively.
+
+---
+
 ## [1.4.0] — 2026-03-27
 
 ### Added

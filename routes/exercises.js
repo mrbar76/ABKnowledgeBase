@@ -54,9 +54,9 @@ router.get('/for-profile/:profileId', async (req, res) => {
     const equip = profile.rows[0].equipment || [];
     if (!equip.length) return res.json([]);
 
-    // Find exercises where ALL required equipment is in the profile
+    // Find exercises where equipment matches the profile's list
     const result = await query(
-      `SELECT * FROM exercises ORDER BY name`,
+      `SELECT * FROM exercises WHERE equipment = ANY($1::text[]) OR equipment IS NULL ORDER BY name`,
       [equip]
     );
     res.json(result.rows);
@@ -77,7 +77,7 @@ router.get('/available', async (req, res) => {
 
     const equip = profile.rows[0].equipment || [];
     const result = await query(
-      `SELECT * FROM exercises ORDER BY name`,
+      `SELECT * FROM exercises WHERE equipment = ANY($1::text[]) OR equipment IS NULL ORDER BY name`,
       [equip]
     );
     res.json(result.rows);

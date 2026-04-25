@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.2.0</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.7.2</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -91,7 +91,6 @@
             <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
             <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">&mdash;</div></div>
             <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">&mdash;</div></div>
-            <div class="settings-row"><div class="settings-row-label">Outlook</div><div class="settings-row-value" id="sm-outlook-val">&mdash;</div></div>
             <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">&mdash;</div></div>
           </div>
         </div>
@@ -119,10 +118,11 @@
               <div id="sm-conv-sync-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
-              <div class="sm-card-label">Outlook Email</div>
-              <div class="sm-card-desc">Sync flagged emails as tasks. Unflagged = done.</div>
-              <button class="btn-action sm-btn-full" onclick="triggerOutlookSync()" id="sm-btn-outlook-sync">Sync Flagged Emails</button>
-              <div id="sm-outlook-result" class="sm-result"></div>
+              <div class="sm-card-label">Transcript Health</div>
+              <div class="sm-card-desc">Check for transcripts with broken utterance ordering and fix them.</div>
+              <div id="misordered-status" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:6px">Checking...</div>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="fixMisorderedTranscripts()" id="btn-fix-misordered" style="display:none">Fix All</button>
+              <div id="misordered-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
               <div class="sm-card-label">ChatGPT Import</div>
@@ -165,6 +165,34 @@
                 <button class="btn-action btn-action-secondary sm-btn-full" onclick="addGymProfile()">Add Gym Profile</button>
               </div>
               <div id="gym-profile-result" class="sm-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Known Contacts ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Known Contacts</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Contacts <span id="contacts-count" style="color:var(--text-dim);font-weight:400"></span></div>
+              <div class="sm-card-desc">Known people for speaker identification. Names and aliases are matched against Bee transcripts.</div>
+              <div id="contacts-list" style="max-height:300px;overflow-y:auto;margin-bottom:8px"></div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <input type="text" id="contact-name" placeholder="Name" class="sm-date-input" style="width:100%;box-sizing:border-box">
+                <input type="text" id="contact-aliases" placeholder="Aliases (comma-separated)" class="sm-date-input" style="width:100%;box-sizing:border-box">
+                <div style="display:flex;gap:6px">
+                  <input type="text" id="contact-relationship" placeholder="Relationship" class="sm-date-input" style="flex:1">
+                  <input type="text" id="contact-organization" placeholder="Organization" class="sm-date-input" style="flex:1">
+                </div>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="addContact()">Add Contact</button>
+              </div>
+              <div id="contact-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Unrecognized Speakers</div>
+              <div class="sm-card-desc">Names from transcripts that don't match any contact.</div>
+              <div id="unrecognized-list" style="max-height:200px;overflow-y:auto"></div>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="loadUnrecognizedSpeakers()" style="margin-top:6px">Refresh</button>
             </div>
           </div>
         </div>
@@ -249,7 +277,7 @@
                   <p><strong>AB Brain</strong> is your personal AI-powered knowledge base and fitness platform. It stores everything — workouts, meals, body metrics, conversations, knowledge, tasks — in a single PostgreSQL database with full-text search.</p>
                   <p><strong>Architecture:</strong> Node.js + Express backend, vanilla JS frontend (PWA), PostgreSQL 16 with 14+ tables, deployed on Railway.</p>
                   <p><strong>AI Integration:</strong> ChatGPT and Claude connect via OpenAPI schemas (Actions/Projects). The coach reads your data, plans workouts, logs meals, and tracks recovery — all through the API.</p>
-                  <p><strong>Data Flow:</strong> Bee wearable auto-syncs conversations. Fitbod CSVs import exercises. Outlook syncs flagged emails as tasks. Coach logs workouts/meals/plans via API. Everything is searchable.</p>
+                  <p><strong>Data Flow:</strong> Bee wearable auto-syncs conversations. Fitbod CSVs import exercises. Coach logs workouts/meals/plans via API. Everything is searchable.</p>
                 </div>
               </div>
             </div>
@@ -293,6 +321,72 @@
             </div>
 
             <!-- Version History -->
+            <div class="sm-card expanded">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.7.1 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Transcript Splitting</strong> — AI-powered detection of conversation boundaries in long Bee recordings. Uses multi-signal analysis: time gaps, speaker transitions, active speaker windows, and GPT-4o-mini topic/context detection.</p>
+                  <p><strong>Ambient Noise Detection</strong> — classifies segments as "primary" (user participating) or "ambient" (background chatter, airport noise, overheard strangers). Ambient segments auto-tagged for filtering.</p>
+                  <p><strong>Auto-Flag Long Recordings</strong> — transcripts over 60 min or 500 messages automatically tagged "needs-split-review" during sync. "Needs Split" badge in transcript list.</p>
+                  <p><strong>Split UI</strong> — "Analyze & Split" button in transcript detail. Shows AI-detected segments with confidence, speakers, and relevance. Confirm to split into individual transcripts with auto speaker identification.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.7.0 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Known Contacts System</strong> — new contacts table with name, aliases, relationship, organization, and confidentiality tier. CRUD API at <code>/api/contacts</code>. Foundation for calendar matching, confidentiality filtering, and task extraction.</p>
+                  <p><strong>Contact-Aware Speaker ID</strong> — <code>autoIdentifySpeakers</code> now queries the contacts table and injects known names as hints into the GPT-4o-mini prompt. Identified speakers are linked to contact records via <code>metadata.contact_links</code>.</p>
+                  <p><strong>Unrecognized Speaker Detection</strong> — speakers identified by name but not matching any contact are flagged in <code>metadata.unrecognized_speakers</code>. Surfaced via <code>/api/contacts/unrecognized</code> with frequency counts.</p>
+                  <p><strong>Contacts UI in Settings</strong> — add, view, and delete contacts. Unrecognized speakers section with one-tap "Add as contact" button.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.6.1 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Bee Transcript Sync Fix</strong> — Full Sync and Sync Updates now reliably import transcripts. Added required date-range filters to Bee API conversation requests matching the working Sync Date Range pattern.</p>
+                  <p><strong>Cron Conversation Sync</strong> — scheduled sync (every 30 min) now fetches recent conversations from the last 7 days, catching transcripts the changes feed misses.</p>
+                  <p><strong>Increased API Timeouts</strong> — conversation list and detail fetches increased from 30s to 60s across all sync endpoints.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.6.0 — Mar 31, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Morning Briefing API</strong> — <code>GET /api/briefing</code> returns a complete markdown morning briefing. Call from Claude Projects, Claude Code, or ChatGPT. Includes smart-ranked Top 3 Focus, overdue/due today/in progress, stale alerts, recovery, rings/streaks, yesterday recap, and today's plan.</p>
+                  <p><strong>Smart Task Ranking</strong> — tasks scored by priority + due urgency + staleness + waiting duration. Top 3 shown as "Focus" items.</p>
+                  <p><strong>Today View: Top 3 Focus</strong> — new highlighted section at top of Today view with your 3 most important tasks.</p>
+                  <p><strong>Today View: Stale Tasks</strong> — tasks untouched 7+ days flagged with "Snooze 1w" and "Archive" actions.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.5.0 — Mar 29, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Agents Section</strong> — deprecated and removed in v1.6.0. Agent personas added management overhead without execution value. Claude Code handles delegation natively.</p>
+                </div>
+              </div>
+            </div>
+
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.4.0 — Mar 27, 2026 <span class="sm-chevron">&#9654;</span>
@@ -369,7 +463,7 @@
                   <p><strong>Gamification</strong> — streaks, badges, smart goal suggestions, push notifications.</p>
                   <p><strong>Coaching Sessions</strong> — end-of-day review with key decisions, adjustments, injury linkage.</p>
                   <p><strong>Schema Builder</strong> — in-app UI to generate custom OpenAPI specs for ChatGPT Actions.</p>
-                  <p><strong>Outlook sync</strong> — flagged emails → tasks. <strong>ChatGPT import</strong> — bulk conversations.json.</p>
+                  <p><strong>ChatGPT import</strong> — bulk conversations.json.</p>
                 </div>
               </div>
             </div>
@@ -415,7 +509,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.4.0</span>
+          AB Brain <span id="sm-version">v1.7.2</span>
         </div>
 
       </div>
@@ -479,8 +573,8 @@
     </button>
     <button class="tab-btn" data-tab="badges" onclick="switchTab('badges')">
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="8" r="6"/>
-        <path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>
+        <circle cx="12" cy="8" r="7"/>
+        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>
       </svg>
       <span>Badges</span>
     </button>
