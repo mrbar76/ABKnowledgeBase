@@ -90,11 +90,18 @@ app.get('/privacy', (req, res) => {
     <p>Last updated: 2026</p></body></html>`);
 });
 
-// API key authentication for /api routes
+// API key authentication for /api routes — header only.
+// Accepts `X-Api-Key: <key>` or `Authorization: Bearer <key>`. Query-string
+// auth is intentionally not supported: keys in URLs leak into access logs,
+// browser history, and Referer headers.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health-check') return next();
   if (!API_KEY) return next();
-  const provided = req.headers['x-api-key'] || req.query.api_key;
+  let provided = req.headers['x-api-key'];
+  if (!provided) {
+    const auth = req.headers['authorization'];
+    if (typeof auth === 'string' && auth.startsWith('Bearer ')) provided = auth.slice(7).trim();
+  }
   if (provided !== API_KEY) return res.status(401).json({ error: 'Invalid or missing API key' });
   next();
 });

@@ -240,9 +240,11 @@ transcripts <-- transcript_speakers.transcript_id (CASCADE)
 
 ### 3.1 Authentication
 
-All `/api/*` routes (except `/api/health-check`) require:
-- Header: `X-Api-Key: <key>`
-- OR query parameter: `?api_key=<key>`
+All `/api/*` routes (except `/api/health-check`) require a header:
+- `X-Api-Key: <key>`, or
+- `Authorization: Bearer <key>`
+
+Query-string authentication (`?api_key=<key>`) is **not** supported — keys in URLs leak into access logs, browser history, and Referer headers.
 
 Compared against `API_KEY` env var. If unset, auth is skipped (dev mode). Returns `401` on mismatch.
 
