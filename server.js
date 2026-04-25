@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { initDB, query, logActivity } = require('./db');
+const { initDB, query, logActivity, logActivityWith, withTransaction } = require('./db');
 const syncStatus = require('./sync-status');
 
 const knowledgeRoutes = require('./routes/knowledge');
@@ -181,14 +181,21 @@ app.post('/api/purge', async (req, res) => {
     for (const table of targets) {
       const sql = PURGE_STATEMENTS[table];
       try {
-        const r = await query(sql);
-        const count = r.rowCount || 0;
+        // Atomic per table: the DELETE and its activity_log entry commit
+        // together or roll back together. Other tables in the loop continue
+        // independently — one failure shouldn't block the rest of the purge.
+        const count = await withTransaction(async (client) => {
+          const r = await client.query(sql);
+          const n = r.rowCount || 0;
+          await logActivityWith(client, 'purge', table, 'all', 'manual', `Purged ${n} rows from ${table}`);
+          return n;
+        });
         results[table] = count;
         totalDeleted += count;
         purgeState.progress.current += count;
-        await logActivity('purge', table, 'all', 'manual', `Purged ${count} rows from ${table}`);
       } catch (e) {
         results[table] = `error: ${e.message}`;
+        // Best-effort failure log — outside the rolled-back transaction.
         await logActivity('purge-error', table, 'all', 'manual', `Purge of ${table} failed: ${e.message}`);
       }
     }

@@ -23,6 +23,26 @@ async function query(text, params) {
   return pool.query(text, params);
 }
 
+// Run `fn` inside a single-client transaction. The callback receives a
+// pg Client; every statement that should be atomic must use that client
+// (not the module-level `query` helper, which checks out its own client).
+// Commits on success, rolls back on any thrown error, and always releases
+// the client back to the pool.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* connection may already be broken */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // Run a query, log errors but don't throw (for init resilience)
 async function safeQuery(label, text, params) {
   try {
@@ -1162,4 +1182,15 @@ async function logActivity(action, entityType, entityId, aiSource, details) {
   }
 }
 
-module.exports = { pool, query, initDB, logActivity };
+// Same as logActivity but uses a caller-supplied client so the insert
+// participates in an open transaction. Errors propagate so the caller can
+// roll back; this is intentional since the activity log is part of the
+// atomic unit being committed.
+async function logActivityWith(client, action, entityType, entityId, aiSource, details) {
+  await client.query(
+    `INSERT INTO activity_log (action, entity_type, entity_id, ai_source, details) VALUES ($1, $2, $3, $4, $5)`,
+    [action, entityType, entityId, aiSource, details]
+  );
+}
+
+module.exports = { pool, query, withTransaction, initDB, logActivity, logActivityWith };
