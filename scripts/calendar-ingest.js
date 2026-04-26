@@ -9,7 +9,7 @@
 // calendar_events. Full event payloads are NOT stored long-term beyond the
 // fields we extract; fetch-on-demand via routes/calendar.js for raw details.
 
-require('dotenv').config?.();
+try { require('dotenv').config(); } catch { /* dotenv optional */ }
 const { McpClient } = require('../lib/mcp-client');
 const { query, logActivity } = require('../db');
 
@@ -340,14 +340,18 @@ async function ingest({ account, days, past, limit, calendarId, dryRun }) {
     };
 
     let classification;
-    try { classification = await classifyEvent(eventForLLM); }
-    catch (err) {
-      console.warn(`[cal-ingest] classifier failed for ${ev.id}: ${err.message}`);
-      classification = { classification: 'index', confidence: 0.2, summary: ev.title, entities: [], topics: [] };
+    if (dryRun && !process.env.OPENAI_API_KEY) {
+      classification = { classification: '?', confidence: null, summary: '(no OPENAI_API_KEY; LLM skipped)', entities: [], topics: [] };
+    } else {
+      try { classification = await classifyEvent(eventForLLM); }
+      catch (err) {
+        console.warn(`[cal-ingest] classifier failed for ${ev.id}: ${err.message}`);
+        classification = { classification: 'index', confidence: 0.2, summary: ev.title, entities: [], topics: [] };
+      }
     }
 
     let embedding = null;
-    if (classification.classification !== 'noise' && classification.summary?.trim()) {
+    if (!dryRun && classification.classification !== 'noise' && classification.summary?.trim() && process.env.OPENAI_API_KEY) {
       try { embedding = await embedSummary(classification.summary); }
       catch (err) { console.warn(`[cal-ingest] embed failed: ${err.message}`); }
     }

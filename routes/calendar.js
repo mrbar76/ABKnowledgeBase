@@ -233,11 +233,10 @@ router.get('/events/:id/raw', async (req, res) => {
 
     const props = get.inputSchema?.properties || {};
     const args = {};
-    if ('eventId' in props) args.eventId = event_provider_id;
-    else if ('id' in props) args.id = event_provider_id;
-    else args.eventId = event_provider_id;
-    if ('calendarId' in props) args.calendarId = calendar_id || 'primary';
-    else if ('calendar_id' in props) args.calendar_id = calendar_id || 'primary';
+    const idKey = ['event_id', 'eventId', 'id'].find(k => k in props) || 'event_id';
+    args[idKey] = event_provider_id;
+    const calKey = ['calendar_id', 'calendarId', 'calendar'].find(k => k in props);
+    if (calKey) args[calKey] = calendar_id || 'primary';
     if ('account' in props) args.account = account;
     else if ('userId' in props) args.userId = account;
     else if ('email' in props) args.email = account;

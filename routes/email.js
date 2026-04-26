@@ -211,15 +211,14 @@ router.get('/threads/:id/body', async (req, res) => {
     const getThread = tools.find(x => /get_thread|gmail_get_thread|fetch_thread/i.test(x.name));
     const getMessage = tools.find(x => /get_message|gmail_get_email|read_message|fetch_message/i.test(x.name));
 
+    const pickIdKey = (props, candidates) => candidates.find(k => k in props) || candidates[candidates.length - 1];
+    const pickAccountKey = (props) => ['account', 'userId', 'user', 'email'].find(k => k in props) || 'account';
+
     if (getThread) {
       const props = getThread.inputSchema?.properties || {};
       const args = {};
-      if ('threadId' in props) args.threadId = thread_provider_id;
-      else if ('id' in props) args.id = thread_provider_id;
-      else args.threadId = thread_provider_id;
-      if ('account' in props) args.account = account;
-      else if ('userId' in props) args.userId = account;
-      else if ('email' in props) args.email = account;
+      args[pickIdKey(props, ['thread_id', 'threadId', 'id'])] = thread_provider_id;
+      args[pickAccountKey(props)] = account;
       const r = await mcp.callTool(getThread.name, args);
       return res.json({ source: getThread.name, account, thread_provider_id, result: r });
     }
@@ -231,14 +230,10 @@ router.get('/threads/:id/body', async (req, res) => {
       );
       const messages = [];
       const props = getMessage.inputSchema?.properties || {};
+      const idKey = pickIdKey(props, ['message_id', 'messageId', 'id']);
+      const acctKey = pickAccountKey(props);
       for (const m of msgs.rows) {
-        const args = {};
-        if ('messageId' in props) args.messageId = m.message_provider_id;
-        else if ('id' in props) args.id = m.message_provider_id;
-        else args.id = m.message_provider_id;
-        if ('account' in props) args.account = account;
-        else if ('userId' in props) args.userId = account;
-        else if ('email' in props) args.email = account;
+        const args = { [idKey]: m.message_provider_id, [acctKey]: account };
         const r = await mcp.callTool(getMessage.name, args);
         messages.push(r);
       }

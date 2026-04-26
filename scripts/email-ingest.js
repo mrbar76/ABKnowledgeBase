@@ -10,7 +10,7 @@
 //
 // Bodies are NOT stored. Fetch on demand via routes/email.js.
 
-require('dotenv').config?.();
+try { require('dotenv').config(); } catch { /* dotenv optional */ }
 const { McpClient } = require('../lib/mcp-client');
 const { query, logActivity } = require('../db');
 
@@ -91,19 +91,26 @@ function buildSearchArgs(tool, { q, account, max }) {
   return args;
 }
 
-function buildGetArgs(tool, { id, account }) {
+function buildGetArgs(tool, { id, account, kind }) {
   const props = tool?.inputSchema?.properties || {};
   const args = {};
-  if ('id' in props) args.id = id;
-  else if ('messageId' in props) args.messageId = id;
-  else if ('threadId' in props) args.threadId = id;
-  else args.id = id;
+  // try the most-specific match first, then snake_case, then camelCase, then plain id
+  const idCandidates = kind === 'thread'
+    ? ['thread_id', 'threadId', 'id']
+    : ['message_id', 'messageId', 'id'];
+  for (const k of idCandidates) {
+    if (k in props) { args[k] = id; break; }
+  }
+  if (!Object.keys(args).length) args.id = id;
   if (account) {
     if ('account' in props) args.account = account;
     else if ('userId' in props) args.userId = account;
     else if ('user' in props) args.user = account;
+    else if ('email' in props) args.email = account;
     else args.account = account;
   }
+  // We never want bodies for ingestion (saves tokens; bodies are fetched on demand)
+  if ('include_body' in props) args.include_body = false;
   return args;
 }
 
@@ -329,7 +336,9 @@ function normalizeMessage(raw, account) {
   const dateStr = raw.date || raw.internalDate || get('Date');
   const date = dateStr ? new Date(isNaN(dateStr) ? dateStr : Number(dateStr)) : null;
 
-  const direction = from.email && from.email === account.toLowerCase() ? 'outbound' : 'inbound';
+  // Outbound if the sender is one of our known addresses (handles MCP aliases like 'js')
+  const userSet = new Set([account.toLowerCase(), ...USER_ADDRESSES]);
+  const direction = from.email && userSet.has(from.email) ? 'outbound' : 'inbound';
   const isCalendar = isCalendarMessage({ subject, contentType: get('Content-Type') });
 
   return {
@@ -378,36 +387,56 @@ async function ingest({ account, days, limit, dryRun }) {
   const searchArgs = buildSearchArgs(search, { q, account, max: limit });
   const searchResult = parseToolResult(await mcp.callTool(search.name, searchArgs));
 
-  // Try common shapes for the result list
-  const messages = searchResult.messages || searchResult.results || searchResult.items || searchResult.data || [];
-  if (!messages.length) {
-    console.log(`[ingest] no messages returned. Raw shape keys: ${Object.keys(searchResult).join(', ')}`);
+  // gmail_search returns { threads: [{threadId, subject, from, lastDate, snippet, ...}] }
+  const threadStubs = searchResult.threads || searchResult.results || searchResult.items || searchResult.messages || searchResult.data || [];
+  if (!threadStubs.length) {
+    console.log(`[ingest] no threads returned. Raw shape keys: ${Object.keys(searchResult).join(', ')}`);
     await mcp.close();
     return { threads: 0, messages: 0 };
   }
-  console.log(`[ingest] search returned ${messages.length} messages`);
+  console.log(`[ingest] search returned ${threadStubs.length} threads`);
 
-  // If search returned only IDs/snippets, fetch each for full headers
-  const fetched = [];
-  for (const m of messages) {
-    const hasHeaders = m.from || m.headers || m.payload;
-    if (hasHeaders) { fetched.push(m); continue; }
-    if (!getMessage) { fetched.push(m); continue; }
-    try {
-      const r = parseToolResult(await mcp.callTool(getMessage.name, buildGetArgs(getMessage, { id: m.id || m.messageId, account })));
-      fetched.push(r.message || r);
-    } catch (err) {
-      console.warn(`[ingest] could not fetch ${m.id}: ${err.message}`);
+  // For each thread, fetch its messages (headers only).
+  const threads = [];
+  for (const stub of threadStubs) {
+    const tid = stub.threadId || stub.thread_id || stub.id;
+    if (!tid) continue;
+    let messages = [];
+    if (getThread) {
+      try {
+        const r = parseToolResult(await mcp.callTool(getThread.name, buildGetArgs(getThread, { id: tid, account, kind: 'thread' })));
+        messages = (r.messages || []).map(m => normalizeMessage(m, account));
+      } catch (err) {
+        console.warn(`[ingest] get_thread failed for ${tid}: ${err.message}`);
+        // Fall back to the stub itself
+        messages = [normalizeMessage({ ...stub, id: tid, threadId: tid }, account)];
+      }
+    } else {
+      messages = [normalizeMessage({ ...stub, id: tid, threadId: tid }, account)];
     }
+    if (!messages.length) continue;
+
+    // Recipient filter at message level: keep outbound, or inbound where we're addressed
+    const filtered = messages.filter(m => m.direction === 'outbound' || recipientIsUser(m.to, m.cc, account));
+    if (!filtered.length) continue;
+
+    const participants = new Map();
+    let firstAt = null, lastAt = null, subject = stub.subject;
+    for (const m of filtered) {
+      if (m.from?.email) participants.set(m.from.email, { email: m.from.email, name: m.from.name || null });
+      for (const a of m.to) if (a.email) participants.set(a.email, { email: a.email, name: a.name || null });
+      for (const a of m.cc) if (a.email) participants.set(a.email, { email: a.email, name: a.name || null });
+      if (m.date && (!firstAt || m.date < firstAt)) firstAt = m.date;
+      if (m.date && (!lastAt || m.date > lastAt)) lastAt = m.date;
+      if (!subject && m.subject) subject = m.subject;
+    }
+    threads.push({
+      account, threadId: tid, subject,
+      participants: [...participants.values()],
+      messages: filtered, firstAt, lastAt,
+    });
   }
-
-  const normalized = fetched.map(r => normalizeMessage(r, account)).filter(m => m.id);
-  // Recipient filter: skip messages where we are not in to/cc/from
-  const filtered = normalized.filter(m => m.direction === 'outbound' || recipientIsUser(m.to, m.cc, account));
-  console.log(`[ingest] normalized ${normalized.length} messages, ${filtered.length} pass recipient filter`);
-
-  const threads = groupByThread(filtered, account);
-  console.log(`[ingest] grouped into ${threads.length} threads`);
+  console.log(`[ingest] built ${threads.length} threads with messages`);
 
   let stored = 0;
   for (const th of threads) {
@@ -427,17 +456,22 @@ async function ingest({ account, days, limit, dryRun }) {
     };
 
     let classification;
-    try { classification = await classifyThread(headersForLLM); }
-    catch (err) {
-      console.warn(`[ingest] classifier failed for thread ${th.threadId}: ${err.message}`);
-      classification = { classification: 'index', confidence: 0.2, summary: th.subject || '', entities: [], topics: [] };
+    if (dryRun && !process.env.OPENAI_API_KEY) {
+      // Structural dry-run: no LLM, just placeholder
+      classification = { classification: '?', confidence: null, summary: '(no OPENAI_API_KEY; LLM skipped)', entities: [], topics: [] };
+    } else {
+      try { classification = await classifyThread(headersForLLM); }
+      catch (err) {
+        console.warn(`[ingest] classifier failed for thread ${th.threadId}: ${err.message}`);
+        classification = { classification: 'index', confidence: 0.2, summary: th.subject || '', entities: [], topics: [] };
+      }
     }
 
     // Override: if every message in the thread is a calendar message, force classification
     if (th.messages.every(m => m.isCalendar)) classification.classification = 'calendar';
 
     let embedding = null;
-    if (classification.classification !== 'noise' && classification.summary?.trim()) {
+    if (!dryRun && classification.classification !== 'noise' && classification.summary?.trim() && process.env.OPENAI_API_KEY) {
       try { embedding = await embedSummary(classification.summary); }
       catch (err) { console.warn(`[ingest] embed failed: ${err.message}`); }
     }
@@ -456,12 +490,13 @@ async function ingest({ account, days, limit, dryRun }) {
     }
   }
 
+  const totalMessages = threads.reduce((n, t) => n + t.messages.length, 0);
   await mcp.close();
   if (!dryRun) {
-    await logActivity('ingest', 'email', account, 'mcp', `Email ingest: ${stored} threads (${filtered.length} messages, ${days}d)`);
+    await logActivity('ingest', 'email', account, 'mcp', `Email ingest: ${stored} threads (${totalMessages} messages, ${days}d)`);
   }
   console.log(`[ingest] done. stored ${stored} threads.`);
-  return { threads: stored, messages: filtered.length };
+  return { threads: stored, messages: totalMessages };
 }
 
 // ─── entry ───────────────────────────────────────────────────────────────────
