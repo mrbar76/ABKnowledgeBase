@@ -27,6 +27,7 @@ const gymProfileRoutes = require('./routes/gym-profiles');
 const briefingRoutes = require('./routes/briefing');
 const contactRoutes = require('./routes/contacts');
 const emailRoutes = require('./routes/email');
+const calendarRoutes = require('./routes/calendar');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -239,6 +240,7 @@ app.use('/api/gym-profiles', gymProfileRoutes);
 app.use('/api/briefing', briefingRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
@@ -471,6 +473,7 @@ async function start() {
   syncStatus.initSource('claude', { label: 'Claude Import' });
   syncStatus.initSource('intake', { label: 'Smart Intake' });
   syncStatus.initSource('email', { label: 'Email Index', cron_enabled: !!process.env.MCP_GMAIL_URL });
+  syncStatus.initSource('calendar', { label: 'Calendar Index', cron_enabled: !!process.env.MCP_GMAIL_URL });
 
   // ─── Cron: scheduled Bee auto-sync ─────────────────────────────
   const BEE_TOKEN = process.env.BEE_API_TOKEN;

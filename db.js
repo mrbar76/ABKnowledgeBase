@@ -1211,6 +1211,57 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_email_messages_date ON email_messages(date DESC);
     CREATE INDEX IF NOT EXISTS idx_email_messages_from ON email_messages(from_email)`);
 
+  // ===== CALENDAR INDEX =====
+  // One row per calendar event. Like email, full event payloads stay in the
+  // source (Google/Outlook); we hold pointers + classification + embedding.
+  await safeQuery('calendar_events table', `
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider TEXT NOT NULL,
+      account TEXT NOT NULL,
+      calendar_id TEXT,
+      event_provider_id TEXT NOT NULL,
+      recurring_event_id TEXT,
+      ical_uid TEXT,
+      title TEXT,
+      description TEXT,
+      location TEXT,
+      start_time TIMESTAMPTZ,
+      end_time TIMESTAMPTZ,
+      all_day BOOLEAN DEFAULT false,
+      status TEXT,
+      organizer_email TEXT,
+      organizer_name TEXT,
+      attendees JSONB DEFAULT '[]'::jsonb,
+      attendee_count INTEGER,
+      classification TEXT,
+      classifier_confidence REAL,
+      classifier_model TEXT,
+      classifier_prompt_version TEXT,
+      summary TEXT,
+      entities JSONB DEFAULT '[]'::jsonb,
+      topics JSONB DEFAULT '[]'::jsonb,
+      embedding vector(1536),
+      embedding_model TEXT,
+      search_vector TSVECTOR,
+      ingested_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (provider, account, event_provider_id)
+    )`);
+
+  await safeQuery('calendar_events indexes', `
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_account ON calendar_events(account);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_start ON calendar_events(start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_classification ON calendar_events(classification);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_search ON calendar_events USING gin(search_vector);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_attendees ON calendar_events USING gin(attendees);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_topics ON calendar_events USING gin(topics);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_entities ON calendar_events USING gin(entities)`);
+
+  await safeQuery('calendar_events embedding index',
+    `CREATE INDEX IF NOT EXISTS idx_calendar_events_embedding
+       ON calendar_events USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`);
+
   // Backfill search vectors for any existing rows
   await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
@@ -1223,6 +1274,7 @@ async function initDB() {
   await safeQuery('backfill exercises search', `UPDATE exercises SET search_vector = to_tsvector('english', coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill email_threads search', `UPDATE email_threads SET search_vector = to_tsvector('english', coalesce(subject,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill calendar_events search', `UPDATE calendar_events SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(location,'')) WHERE search_vector IS NULL`);
 
 
   // ===== DATA MIGRATIONS =====
