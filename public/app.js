@@ -1011,19 +1011,70 @@ async function loadEmailSettingsInfo() {
   } catch { setRow('sm-cal-count-val', 'error', 'var(--red)'); }
 }
 
+// Poll syncStatus until the most-recent job finishes, then update the UI.
+async function pollIngestJob(source, jobId, out, kind) {
+  const started = Date.now();
+  const TIMEOUT_MS = 15 * 60 * 1000; // give up after 15 minutes
+  while (Date.now() - started < TIMEOUT_MS) {
+    await new Promise(r => setTimeout(r, 4000));
+    try {
+      const data = await api('/sync-status');
+      const sources = data.sources || data;
+      const src = sources[source] || {};
+      const job = (src.recent_jobs || []).find(j => j.id === jobId)
+              || (src.recent_jobs || [])[0]; // fallback to most-recent
+      if (!job) continue;
+      if (job.status === 'completed') {
+        const d = job.details || {};
+        const summary = kind === 'calendar'
+          ? `✓ Stored ${job.imported ?? d.imported ?? 0} events.`
+          : `✓ Stored ${job.imported ?? d.imported ?? 0} threads (${d.messages ?? 0} messages).`;
+        if (out) { out.style.color = 'var(--green)'; out.innerHTML = summary; }
+        loadEmailSettingsInfo();
+        return;
+      }
+      if (job.status === 'failed' || job.status === 'error') {
+        if (out) { out.style.color = 'var(--red)'; out.innerHTML = `✗ ${esc(job.error || 'failed')}`; }
+        return;
+      }
+      // still running — show elapsed
+      const sec = Math.round((Date.now() - started) / 1000);
+      if (out) out.innerHTML = `Running… ${sec}s elapsed. Safe to close Settings; cron + this job continue server-side.`;
+    } catch { /* keep polling */ }
+  }
+  if (out) { out.style.color = 'var(--text-dim)'; out.innerHTML = 'Still running after 15 min. Check Settings → Cron Status later.'; }
+}
+
 async function triggerEmailIngestFromMenu() {
   const account = document.getElementById('sm-email-account')?.value || 'js';
   const days = Math.max(1, Math.min(365, Number(document.getElementById('sm-email-days')?.value || 7)));
   const btn = document.getElementById('sm-btn-email-ingest');
   const out = document.getElementById('sm-email-ingest-result');
   if (btn) btn.disabled = true;
-  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.innerHTML = `Ingesting ${account} (last ${days}d)… can take 30–90s.`; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.innerHTML = `Starting ingest of ${account} (${days}d)…`; }
   try {
     const data = await api('/email/ingest', { method: 'POST', body: JSON.stringify({ account, days, limit: Math.min(500, days * 30) }) });
-    if (out) { out.style.color = 'var(--green)'; out.innerHTML = `✓ Stored ${data.threads || 0} threads (${data.messages || 0} messages).`; }
-    loadEmailSettingsInfo();
+    // Endpoint now returns 202 with {started: true, job_id}. Poll for completion.
+    if (out) out.innerHTML = `Started. Pulling threads, classifying, embedding…`;
+    pollIngestJob('email', data.job_id, out, 'email').finally(() => { if (btn) btn.disabled = false; });
   } catch (e) {
     if (out) { out.style.color = 'var(--red)'; out.innerHTML = `✗ ${esc(e.message)}`; }
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function purgeEmailNoise() {
+  if (!confirm('Delete all stored noise threads? Keeps index/distill/calendar.')) return;
+  const btn = document.getElementById('sm-btn-purge-noise');
+  const out = document.getElementById('sm-purge-noise-result');
+  if (btn) btn.disabled = true;
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Purging…'; }
+  try {
+    const data = await api('/email/purge-noise', { method: 'POST' });
+    if (out) { out.style.color = 'var(--green)'; out.textContent = `✓ Deleted ${data.deleted || 0} noise threads.`; }
+    loadEmailSettingsInfo();
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1035,14 +1086,13 @@ async function triggerCalendarIngestFromMenu() {
   const btn = document.getElementById('sm-btn-cal-ingest');
   const out = document.getElementById('sm-email-ingest-result');
   if (btn) btn.disabled = true;
-  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.innerHTML = `Ingesting calendar for ${account} (+${days}d)…`; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.innerHTML = `Starting calendar ingest of ${account} (+${days}d)…`; }
   try {
     const data = await api('/calendar/ingest', { method: 'POST', body: JSON.stringify({ account, days, past: 7, limit: 500 }) });
-    if (out) { out.style.color = 'var(--green)'; out.innerHTML = `✓ Stored ${data.events || 0} events.`; }
-    loadEmailSettingsInfo();
+    if (out) out.innerHTML = `Started. Pulling events, classifying, embedding…`;
+    pollIngestJob('calendar', data.job_id, out, 'calendar').finally(() => { if (btn) btn.disabled = false; });
   } catch (e) {
     if (out) { out.style.color = 'var(--red)'; out.innerHTML = `✗ ${esc(e.message)}`; }
-  } finally {
     if (btn) btn.disabled = false;
   }
 }
@@ -4049,7 +4099,9 @@ function debounceBrainSearch(q) { clearTimeout(brainSearchTimer); brainSearchTim
 
 // ─── Email Index (sub-tab of Brain) ────────────────────────────
 let emailFilterAccount = '';
-let emailFilterClass = '';
+// Default to hiding noise — show only INDEX + DISTILL threads.
+// User can switch to 'noise' or '' (all) in the dropdown.
+let emailFilterClass = 'index';
 let emailSearchTimer = null;
 function debounceEmailSearch(q) { clearTimeout(emailSearchTimer); emailSearchTimer = setTimeout(() => loadEmailIndex(q), 300); }
 function classBadgeColor(c) {
