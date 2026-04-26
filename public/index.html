@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.7.2</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.8.0</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -323,6 +323,23 @@
             <!-- Version History -->
             <div class="sm-card expanded">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.0 — Apr 26, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Email + Calendar Ingestion</strong> — pulls Gmail threads and Google Calendar events through your gmail-multi MCP server. Brain stores pointers + summaries + embeddings only; full bodies stay in the source and are fetched on demand. Pgvector for semantic search.</p>
+                  <p><strong>Brain &rarr; Email + Calendar tabs</strong> — list, hybrid keyword/semantic search, classification + account filters, thread/event detail with summary, participants, entities, topics. "Open full thread (live)" / "Open full event (live)" buttons fetch the live source via MCP.</p>
+                  <p><strong>Auto-ingest cron</strong> — runs every 30 min for email and 60 min for calendar. Auto-enables when <code>OPENAI_API_KEY</code> is set; account list and intervals overrideable via env. Self-HTTP pattern matching the existing Bee cron.</p>
+                  <p><strong>Async ingest endpoints</strong> — <code>POST /api/email/ingest</code> and <code>/api/calendar/ingest</code> now return 202 immediately and run the pipeline in the background, tracked via syncStatus. Settings UI polls for live "running… N seconds elapsed" state. Fixes 60s browser timeout on long backfills.</p>
+                  <p><strong>Strict noise filter</strong> — pre-filter drops obvious spam (job boards, marketing, USPS, OTPs, LinkedIn digests, school broadcasts) before the LLM is called and before any DB write. Classifier prompt rewritten with explicit ALWAYS-NOISE list and "default to noise" rule. Anything still classified as noise is no longer upserted. New "Purge noise threads" button in Settings.</p>
+                  <p><strong>Settings &rarr; Email &amp; Calendar</strong> — operator panel with cron status (enabled/last-run for both), thread/event counts, manual ingest controls (account picker + days-back input), purge-noise button.</p>
+                  <p><strong>CSP fix</strong> — Helmet's default <code>script-src-attr 'none'</code> was silently blocking every inline <code>onclick</code> and <code>onsubmit</code> in the SPA — page rendered, data loaded, every button was dead. Added <code>'script-src-attr': ['unsafe-inline']</code> to the directives.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.7.1 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -552,7 +569,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.7.2</span>
+          AB Brain <span id="sm-version">v1.8.0</span>
         </div>
 
       </div>
