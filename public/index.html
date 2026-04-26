@@ -523,6 +523,12 @@
               </div>
               <div id="sm-email-ingest-result" class="sm-result"></div>
             </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Cleanup</div>
+              <div class="sm-card-desc">Removes any email threads already stored as noise (marketing, job boards, OTPs, digests). Safe — keeps index, distill, and calendar threads.</div>
+              <button class="btn-action btn-action-danger sm-btn-full" onclick="purgeEmailNoise()" id="sm-btn-purge-noise">Purge noise threads</button>
+              <div id="sm-purge-noise-result" class="sm-result"></div>
+            </div>
           </div>
         </div>
 

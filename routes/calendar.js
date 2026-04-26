@@ -252,18 +252,37 @@ router.get('/events/:id/raw', async (req, res) => {
 });
 
 // ─── POST /api/calendar/ingest ─────────────────────────────────────────────
+// Fire-and-forget like email ingest; returns 202 immediately so long
+// windows (90+ days) don't hit browser timeouts.
 router.post('/ingest', async (req, res) => {
   try {
     const { account, days = 14, past = 7, limit = 500, calendar = null, dry_run = false } = req.body || {};
     if (!account) return res.status(400).json({ error: 'account is required' });
+
     const { ingest } = require('../scripts/calendar-ingest');
-    const result = await ingest({
-      account,
-      days: Number(days), past: Number(past), limit: Number(limit),
-      calendarId: calendar, dryRun: !!dry_run,
+    const syncStatus = require('../sync-status');
+
+    const job = syncStatus.startJob('calendar', `Ingest ${account} (+${days}d/-${past}d)`);
+    Promise.resolve().then(async () => {
+      try {
+        const result = await ingest({
+          account,
+          days: Number(days), past: Number(past), limit: Number(limit),
+          calendarId: calendar, dryRun: !!dry_run,
+        });
+        await logActivity('ingest', 'calendar', account, 'api', `Calendar ingest: ${result.events} events`);
+        syncStatus.completeJob('calendar', job, {
+          imported: result.events || 0,
+          skipped: 0,
+          details: { account, days, past, limit },
+        });
+      } catch (err) {
+        console.error('[calendar/ingest] background error:', err.message);
+        syncStatus.failJob('calendar', job, err.message);
+      }
     });
-    await logActivity('ingest', 'calendar', account, 'api', `Calendar ingest via API: ${result.events} events`);
-    res.json({ ok: true, ...result });
+
+    res.status(202).json({ ok: true, started: true, account, days, past, limit, job_id: job });
   } catch (err) {
     console.error('[calendar/ingest] error:', err.message);
     res.status(500).json({ error: err.message });

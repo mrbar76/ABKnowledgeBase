@@ -250,17 +250,53 @@ router.get('/threads/:id/body', async (req, res) => {
 });
 
 // ─── POST /api/email/ingest ────────────────────────────────────────────────
-// Trigger ingestion. Runs the same pipeline as the CLI script.
+// Trigger ingestion. Fires the work in the background and returns
+// immediately with 202 so we don't hit browser/edge timeouts on long runs.
+// Progress is tracked via syncStatus; clients poll /api/sync-status.
 router.post('/ingest', async (req, res) => {
   try {
     const { account, days = 7, limit = 200, dry_run = false } = req.body || {};
-    if (!account) return res.status(400).json({ error: 'account is required (e.g. avibar.js@gmail.com)' });
+    if (!account) return res.status(400).json({ error: 'account is required (e.g. js, ny, or full email)' });
+
     const { ingest } = require('../scripts/email-ingest');
-    const result = await ingest({ account, days: Number(days), limit: Number(limit), dryRun: !!dry_run });
-    await logActivity('ingest', 'email', account, 'api', `Email ingest via API: ${result.threads} threads`);
-    res.json({ ok: true, ...result });
+    const syncStatus = require('../sync-status');
+
+    const job = syncStatus.startJob('email', `Ingest ${account} (${days}d)`);
+    // Fire and forget — pipeline can take many minutes for large windows.
+    Promise.resolve().then(async () => {
+      try {
+        const result = await ingest({ account, days: Number(days), limit: Number(limit), dryRun: !!dry_run });
+        await logActivity('ingest', 'email', account, 'api', `Email ingest: ${result.threads} threads`);
+        syncStatus.completeJob('email', job, {
+          imported: result.threads || 0,
+          skipped: 0,
+          details: { messages: result.messages || 0, account, days, limit },
+        });
+      } catch (err) {
+        console.error('[email/ingest] background error:', err.message);
+        syncStatus.failJob('email', job, err.message);
+      }
+    });
+
+    res.status(202).json({ ok: true, started: true, account, days, limit, job_id: job });
   } catch (err) {
     console.error('[email/ingest] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/email/purge-noise ──────────────────────────────────────────
+// One-shot cleanup: delete already-stored threads classified as noise.
+// Safe — leaves index/distill/calendar threads untouched.
+router.post('/purge-noise', async (req, res) => {
+  try {
+    const r = await query(
+      `DELETE FROM email_threads WHERE classification = 'noise' RETURNING id`,
+    );
+    await logActivity('purge', 'email', 'noise', 'api', `Purged ${r.rowCount} noise threads`);
+    res.json({ ok: true, deleted: r.rowCount });
+  } catch (err) {
+    console.error('[email/purge-noise] error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

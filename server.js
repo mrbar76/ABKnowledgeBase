@@ -535,15 +535,17 @@ async function start() {
   // Both share the same MCP server and OpenAI key; we drive them on
   // independent intervals via self-HTTP so the ingest routes apply
   // their existing classifier/embedder/upsert pipeline.
+  // Auto-enable when OPENAI_API_KEY is set; the MCP URL has a sensible
+  // default in scripts/email-ingest.js so it doesn't need to be in env.
   const EMAIL_ENABLED = process.env.EMAIL_SYNC_ENABLED === 'true' ||
-    (process.env.EMAIL_SYNC_ENABLED == null && !!process.env.OPENAI_API_KEY && !!process.env.MCP_GMAIL_URL);
+    (process.env.EMAIL_SYNC_ENABLED == null && !!process.env.OPENAI_API_KEY);
   const EMAIL_INTERVAL = Number(process.env.EMAIL_SYNC_INTERVAL || 30) * 60 * 1000;
   const EMAIL_ACCOUNTS = (process.env.EMAIL_SYNC_ACCOUNTS || 'js').split(',').map(s => s.trim()).filter(Boolean);
   const EMAIL_DAYS = Number(process.env.EMAIL_SYNC_DAYS || 2);
   const EMAIL_LIMIT = Number(process.env.EMAIL_SYNC_LIMIT || 100);
 
   const CAL_ENABLED = process.env.CALENDAR_SYNC_ENABLED === 'true' ||
-    (process.env.CALENDAR_SYNC_ENABLED == null && !!process.env.OPENAI_API_KEY && !!process.env.MCP_GMAIL_URL);
+    (process.env.CALENDAR_SYNC_ENABLED == null && !!process.env.OPENAI_API_KEY);
   const CAL_INTERVAL = Number(process.env.CALENDAR_SYNC_INTERVAL || 60) * 60 * 1000;
   const CAL_ACCOUNTS = (process.env.CALENDAR_SYNC_ACCOUNTS || 'js').split(',').map(s => s.trim()).filter(Boolean);
   const CAL_DAYS = Number(process.env.CALENDAR_SYNC_DAYS || 14);
