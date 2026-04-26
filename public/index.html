@@ -489,6 +489,43 @@
           </div>
         </div>
 
+        <!-- ─── Email &amp; Calendar ─── -->
+        <div class="sm-section">
+          <div class="sm-section-title">Email &amp; Calendar</div>
+          <div class="sm-group">
+            <div class="sm-card">
+              <div class="sm-card-label">Cron Status</div>
+              <div class="settings-row"><div class="settings-row-label">Email cron</div><div class="settings-row-value" id="sm-email-cron-val">&mdash;</div></div>
+              <div class="settings-row"><div class="settings-row-label">Last email run</div><div class="settings-row-value" id="sm-email-last-val">&mdash;</div></div>
+              <div class="settings-row"><div class="settings-row-label">Calendar cron</div><div class="settings-row-value" id="sm-cal-cron-val">&mdash;</div></div>
+              <div class="settings-row"><div class="settings-row-label">Last calendar run</div><div class="settings-row-value" id="sm-cal-last-val">&mdash;</div></div>
+              <div class="settings-row"><div class="settings-row-label">Threads stored</div><div class="settings-row-value" id="sm-email-count-val">&mdash;</div></div>
+              <div class="settings-row"><div class="settings-row-label">Events stored</div><div class="settings-row-value" id="sm-cal-count-val">&mdash;</div></div>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="loadEmailSettingsInfo()" style="margin-top:8px">Refresh status</button>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Manual ingest</div>
+              <div class="sm-card-desc">Cron handles routine pulls. Use this for backfill (e.g. first time, or after improving the classifier) or to force a fresh pull right now.</div>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+                <label style="font-size:0.75rem;color:var(--text-dim)">Account</label>
+                <select id="sm-email-account" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:0.85rem">
+                  <option value="js">JS — avibar.js</option>
+                  <option value="ny">NY — avibar.ny</option>
+                  <option value="solar">Solar — avi.solar</option>
+                  <option value="lilach">Lilach — avi.lilach</option>
+                </select>
+                <label style="font-size:0.75rem;color:var(--text-dim);margin-top:4px">Days back</label>
+                <input type="number" id="sm-email-days" value="7" min="1" max="365" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:0.85rem">
+              </div>
+              <div class="sm-btn-row">
+                <button class="btn-action sm-btn-full" onclick="triggerEmailIngestFromMenu()" id="sm-btn-email-ingest">Ingest Email</button>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="triggerCalendarIngestFromMenu()" id="sm-btn-cal-ingest">Ingest Calendar</button>
+              </div>
+              <div id="sm-email-ingest-result" class="sm-result"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- ─── Advanced ─── -->
         <div class="sm-section">
           <div class="sm-section-title">Advanced</div>
