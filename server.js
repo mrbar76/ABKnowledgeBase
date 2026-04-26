@@ -40,10 +40,15 @@ const API_KEY = process.env.API_KEY;
 // CSS+files. 'unsafe-inline' is required because index.html and the SPA emit
 // inline <script> and inline style="…" attributes; tightening to nonces/hashes
 // would require a frontend rewrite and is out of scope here.
+//
+// Note: helmet's default CSP sets `script-src-attr 'none'` which blocks
+// inline event handlers (onclick=, onsubmit=, etc.) — the SPA uses these
+// extensively, so we explicitly allow them here.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       'script-src': ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net'],
+      'script-src-attr': ["'unsafe-inline'"],
       'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
       'img-src': ["'self'", 'data:', 'blob:'],
