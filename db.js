@@ -1144,6 +1144,73 @@ async function initDB() {
 
   // (progress_checkins and progress_photos migrations removed)
 
+  // ===== EMAIL INDEX =====
+  // Stores pointers + summaries for email threads. Bodies are NOT stored;
+  // they are fetched on demand from the source (Gmail/Outlook via MCP).
+  await safeQuery('vector extension', `CREATE EXTENSION IF NOT EXISTS vector`);
+
+  await safeQuery('email_threads table', `
+    CREATE TABLE IF NOT EXISTS email_threads (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider TEXT NOT NULL,
+      account TEXT NOT NULL,
+      thread_provider_id TEXT NOT NULL,
+      subject TEXT,
+      participants JSONB DEFAULT '[]'::jsonb,
+      message_count INTEGER DEFAULT 0,
+      first_message_at TIMESTAMPTZ,
+      last_message_at TIMESTAMPTZ,
+      classification TEXT,
+      classifier_confidence REAL,
+      classifier_model TEXT,
+      classifier_prompt_version TEXT,
+      summary TEXT,
+      entities JSONB DEFAULT '[]'::jsonb,
+      topics JSONB DEFAULT '[]'::jsonb,
+      embedding vector(1536),
+      embedding_model TEXT,
+      search_vector TSVECTOR,
+      ingested_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (provider, account, thread_provider_id)
+    )`);
+
+  await safeQuery('email_threads indexes', `
+    CREATE INDEX IF NOT EXISTS idx_email_threads_account ON email_threads(account);
+    CREATE INDEX IF NOT EXISTS idx_email_threads_classification ON email_threads(classification);
+    CREATE INDEX IF NOT EXISTS idx_email_threads_last_msg ON email_threads(last_message_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_email_threads_search ON email_threads USING gin(search_vector);
+    CREATE INDEX IF NOT EXISTS idx_email_threads_topics ON email_threads USING gin(topics);
+    CREATE INDEX IF NOT EXISTS idx_email_threads_entities ON email_threads USING gin(entities)`);
+
+  await safeQuery('email_threads embedding index',
+    `CREATE INDEX IF NOT EXISTS idx_email_threads_embedding
+       ON email_threads USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`);
+
+  await safeQuery('email_messages table', `
+    CREATE TABLE IF NOT EXISTS email_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      thread_id UUID REFERENCES email_threads(id) ON DELETE CASCADE,
+      message_provider_id TEXT NOT NULL,
+      rfc822_message_id TEXT,
+      date TIMESTAMPTZ,
+      subject TEXT,
+      from_email TEXT,
+      from_name TEXT,
+      to_emails JSONB DEFAULT '[]'::jsonb,
+      cc_emails JSONB DEFAULT '[]'::jsonb,
+      direction TEXT,
+      snippet TEXT,
+      is_calendar BOOLEAN DEFAULT false,
+      ingested_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (message_provider_id)
+    )`);
+
+  await safeQuery('email_messages indexes', `
+    CREATE INDEX IF NOT EXISTS idx_email_messages_thread ON email_messages(thread_id);
+    CREATE INDEX IF NOT EXISTS idx_email_messages_date ON email_messages(date DESC);
+    CREATE INDEX IF NOT EXISTS idx_email_messages_from ON email_messages(from_email)`);
+
   // Backfill search vectors for any existing rows
   await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
@@ -1155,6 +1222,7 @@ async function initDB() {
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill exercises search', `UPDATE exercises SET search_vector = to_tsvector('english', coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill email_threads search', `UPDATE email_threads SET search_vector = to_tsvector('english', coalesce(subject,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
 
 
   // ===== DATA MIGRATIONS =====
