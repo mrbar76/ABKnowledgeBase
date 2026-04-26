@@ -3668,6 +3668,8 @@ function brainTabsHtml() {
     <button class="brain-tab${brainSubTab==='knowledge'?' active':''}" onclick="brainSubTab='knowledge';loadBrain()">Knowledge</button>
     <button class="brain-tab${brainSubTab==='conversations'?' active':''}" onclick="brainSubTab='conversations';loadBrain()">Conversations</button>
     <button class="brain-tab${brainSubTab==='transcripts'?' active':''}" onclick="brainSubTab='transcripts';loadBrain()">Transcripts</button>
+    <button class="brain-tab${brainSubTab==='email'?' active':''}" onclick="brainSubTab='email';loadBrain()">Email</button>
+    <button class="brain-tab${brainSubTab==='calendar'?' active':''}" onclick="brainSubTab='calendar';loadBrain()">Calendar</button>
     <button class="brain-tab${brainSubTab==='guide'?' active':''}" onclick="brainSubTab='guide';loadBrain()">Guide</button>
   </div>`;
 }
@@ -3678,6 +3680,8 @@ async function loadBrain(searchQuery) {
   if (brainSubTab === 'all') return loadBrainAll(searchQuery);
   if (brainSubTab === 'conversations') return loadConversations(searchQuery);
   if (brainSubTab === 'transcripts') return loadTranscripts(searchQuery);
+  if (brainSubTab === 'email') return loadEmailIndex(searchQuery);
+  if (brainSubTab === 'calendar') return loadCalendarIndex(searchQuery);
   if (brainSubTab === 'guide') return loadBrainGuide();
   try {
     const qs = searchQuery ? `?q=${encodeURIComponent(searchQuery)}&limit=50` : '?limit=50';
@@ -3966,6 +3970,272 @@ async function deleteConversation(id) {
 
 let brainSearchTimer = null;
 function debounceBrainSearch(q) { clearTimeout(brainSearchTimer); brainSearchTimer = setTimeout(() => loadBrain(q), 300); }
+
+// ─── Email Index (sub-tab of Brain) ────────────────────────────
+let emailFilterAccount = '';
+let emailFilterClass = '';
+let emailSearchTimer = null;
+function debounceEmailSearch(q) { clearTimeout(emailSearchTimer); emailSearchTimer = setTimeout(() => loadEmailIndex(q), 300); }
+function classBadgeColor(c) {
+  if (c === 'distill') return 'var(--green)';
+  if (c === 'index') return 'var(--accent)';
+  if (c === 'calendar') return 'var(--color-mental, #a78bfa)';
+  return 'var(--text-dim)';
+}
+async function loadEmailIndex(searchQuery) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = brainTabsHtml() + '<div class="loading">Loading email index…</div>';
+  try {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('q', searchQuery);
+    if (emailFilterAccount) params.set('account', emailFilterAccount);
+    if (emailFilterClass === 'index' || emailFilterClass === 'distill') params.set('min_class', emailFilterClass);
+    params.set('limit', '50');
+    const path = searchQuery ? `/email/search?${params.toString()}` : `/email/threads?${params.toString()}${emailFilterClass && emailFilterClass !== 'index' && emailFilterClass !== 'distill' ? `&classification=${emailFilterClass}` : ''}`;
+    const data = await api(path);
+    const items = data.results || data.threads || [];
+    main.innerHTML = brainTabsHtml() + `
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" class="brain-search" placeholder="Search email (skyline, anna glover…)" value="${esc(searchQuery || '')}" oninput="debounceEmailSearch(this.value)">
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:0.75rem">
+        <select onchange="emailFilterAccount=this.value;loadEmailIndex(${searchQuery?`'${esc(searchQuery).replace(/'/g,"\\'")}'`:''})" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px">
+          <option value="" ${emailFilterAccount===''?'selected':''}>All accounts</option>
+          <option value="js" ${emailFilterAccount==='js'?'selected':''}>JS</option>
+          <option value="ny" ${emailFilterAccount==='ny'?'selected':''}>NY</option>
+          <option value="solar" ${emailFilterAccount==='solar'?'selected':''}>Solar</option>
+          <option value="lilach" ${emailFilterAccount==='lilach'?'selected':''}>Lilach</option>
+        </select>
+        <select onchange="emailFilterClass=this.value;loadEmailIndex(${searchQuery?`'${esc(searchQuery).replace(/'/g,"\\'")}'`:''})" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px">
+          <option value="" ${emailFilterClass===''?'selected':''}>All classes</option>
+          <option value="distill" ${emailFilterClass==='distill'?'selected':''}>Distill only</option>
+          <option value="index" ${emailFilterClass==='index'?'selected':''}>Index + Distill</option>
+          <option value="calendar" ${emailFilterClass==='calendar'?'selected':''}>Calendar</option>
+          <option value="noise" ${emailFilterClass==='noise'?'selected':''}>Noise</option>
+        </select>
+        <span style="color:var(--text-dim);align-self:center">${items.length} threads</span>
+      </div>
+      <div id="email-list">
+        ${items.length ? items.map(t => `
+          <div class="list-item" onclick="showEmailThreadDetail('${t.id}')">
+            <div class="list-item-title">
+              <span class="k-source-badge" style="background:${classBadgeColor(t.classification)};color:#fff">${(t.classification||'?').toUpperCase()}</span>
+              ${esc(t.subject || '(no subject)')}
+            </div>
+            ${t.summary ? `<div class="list-item-preview">${esc((t.summary || '').substring(0, 200))}</div>` : ''}
+            <div class="list-item-meta">
+              <span>${esc(t.account || '')}</span>
+              <span>${t.message_count || 1} msg</span>
+              <span>${t.last_message_at ? timeAgo(t.last_message_at) : ''}</span>
+              ${t.matched_via ? `<span style="color:var(--text-dim)">via ${(t.matched_via || []).join('+')}</span>` : ''}
+            </div>
+          </div>`).join('') : '<div class="empty-state">No threads. Run an ingest from Settings, or wait for the next cron.</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = brainTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function showEmailThreadDetail(id) {
+  try {
+    const data = await api(`/email/threads/${id}`);
+    const t = data.thread;
+    const messages = data.messages || [];
+    const participantsHtml = (t.participants || []).slice(0, 8).map(p =>
+      `<span class="tag-pill">${esc(p.name || p.email)}</span>`
+    ).join(' ');
+    const messagesHtml = messages.map(m => `
+      <div style="margin-bottom:10px;padding:8px 10px;border-radius:6px;background:var(--bg-input);border:1px solid var(--border);font-size:0.78rem">
+        <div style="font-weight:600;margin-bottom:2px">${esc(m.from_name || m.from_email || '?')} ${m.direction === 'outbound' ? '→' : '←'}</div>
+        <div style="color:var(--text-dim);font-size:0.7rem;margin-bottom:4px">
+          ${m.date ? new Date(m.date).toLocaleString() : ''}${m.is_calendar ? ' · 📅 calendar msg' : ''}
+        </div>
+        ${m.snippet ? `<div style="color:var(--text-dim)">${esc(m.snippet.substring(0, 200))}…</div>` : ''}
+      </div>`).join('');
+
+    openModal(t.subject || '(no subject)', `
+      <div class="list-item-meta" style="margin-bottom:10px">
+        <span class="k-source-badge" style="background:${classBadgeColor(t.classification)};color:#fff">${(t.classification||'?').toUpperCase()}</span>
+        <span>${esc(t.account)}</span>
+        <span>${t.message_count || messages.length} msg</span>
+        <span>${t.last_message_at ? timeAgo(t.last_message_at) : ''}</span>
+      </div>
+      ${t.summary ? `<div style="font-size:0.85rem;line-height:1.55;margin-bottom:12px;padding:10px 12px;background:var(--bg-input);border-radius:6px;border-left:3px solid ${classBadgeColor(t.classification)}">${esc(t.summary)}</div>` : ''}
+      ${participantsHtml ? `<div style="margin-bottom:12px;font-size:0.75rem"><span style="color:var(--text-dim)">Participants:</span> ${participantsHtml}</div>` : ''}
+      ${(t.entities && t.entities.length) ? `<div style="margin-bottom:8px;font-size:0.75rem"><span style="color:var(--text-dim)">Entities:</span> ${t.entities.slice(0,12).map(e => `<span class="tag-pill">${esc(e)}</span>`).join(' ')}</div>` : ''}
+      ${(t.topics && t.topics.length) ? `<div style="margin-bottom:14px;font-size:0.75rem"><span style="color:var(--text-dim)">Topics:</span> ${t.topics.slice(0,8).map(e => `<span class="tag-pill">${esc(e)}</span>`).join(' ')}</div>` : ''}
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px">Messages (${messages.length})</div>
+      <div style="max-height:35vh;overflow-y:auto;margin-bottom:12px">${messagesHtml || '<div class="empty-state">No messages stored.</div>'}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-action" onclick="fetchEmailBody('${id}')" id="btn-fetch-body" style="flex:1">Open full thread (live)</button>
+      </div>
+      <div id="email-body-result" style="margin-top:10px"></div>
+    `);
+  } catch (e) { openModal('Error', esc(e.message)); }
+}
+
+async function fetchEmailBody(id) {
+  const out = document.getElementById('email-body-result');
+  const btn = document.getElementById('btn-fetch-body');
+  if (btn) btn.disabled = true;
+  if (out) out.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem">Fetching from Gmail…</div>';
+  try {
+    const data = await api(`/email/threads/${id}/body`);
+    // Result shape from MCP: { result: { content: [{ type:'text', text:'...' }] } } or { messages: [...] }
+    let payload = data.result || data;
+    let textBlocks = [];
+    if (payload.content) {
+      for (const b of payload.content) if (b.text) textBlocks.push(b.text);
+    } else if (data.messages) {
+      for (const m of data.messages) if (m.content) for (const b of m.content) if (b.text) textBlocks.push(b.text);
+    }
+    const combined = textBlocks.join('\n\n').slice(0, 50000);
+    let parsedHtml = '';
+    try {
+      const parsed = JSON.parse(combined);
+      if (parsed.messages) {
+        parsedHtml = parsed.messages.map(m => `
+          <div style="margin-bottom:10px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem">
+            <div style="font-weight:600">${esc(m.from || '')}</div>
+            <div style="color:var(--text-dim);font-size:0.7rem;margin-bottom:6px">${esc(m.date || '')}</div>
+            <div style="white-space:pre-wrap;max-height:300px;overflow-y:auto">${esc(m.body || m.snippet || '').substring(0, 5000)}</div>
+          </div>`).join('');
+      }
+    } catch { /* not JSON, show raw */ }
+    if (out) out.innerHTML = parsedHtml || `<pre style="white-space:pre-wrap;font-size:0.7rem;max-height:40vh;overflow:auto;background:var(--bg-input);padding:8px;border-radius:6px">${esc(combined)}</pre>`;
+  } catch (e) {
+    if (out) out.innerHTML = `<div style="color:var(--red,#f55);font-size:0.8rem">${esc(e.message)}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ─── Calendar Index (sub-tab of Brain) ────────────────────────
+let calendarFilterAccount = '';
+let calendarView = 'upcoming'; // 'upcoming' | 'all' | 'search'
+let calendarSearchTimer = null;
+function debounceCalendarSearch(q) {
+  clearTimeout(calendarSearchTimer);
+  calendarSearchTimer = setTimeout(() => { calendarView = q ? 'search' : 'upcoming'; loadCalendarIndex(q); }, 300);
+}
+
+async function loadCalendarIndex(searchQuery) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = brainTabsHtml() + '<div class="loading">Loading calendar…</div>';
+  try {
+    const params = new URLSearchParams();
+    if (calendarFilterAccount) params.set('account', calendarFilterAccount);
+    let path;
+    if (searchQuery) {
+      params.set('q', searchQuery); params.set('limit', '50');
+      path = `/calendar/search?${params.toString()}`;
+    } else if (calendarView === 'all') {
+      params.set('limit', '50');
+      path = `/calendar/events?${params.toString()}`;
+    } else {
+      params.set('days', '14');
+      path = `/calendar/upcoming?${params.toString()}`;
+    }
+    const data = await api(path);
+    const items = data.results || data.events || [];
+    main.innerHTML = brainTabsHtml() + `
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" class="brain-search" placeholder="Search calendar (interview, anna glover…)" value="${esc(searchQuery || '')}" oninput="debounceCalendarSearch(this.value)">
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:0.75rem">
+        <select onchange="calendarFilterAccount=this.value;loadCalendarIndex(${searchQuery?`'${esc(searchQuery).replace(/'/g,"\\'")}'`:''})" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px">
+          <option value="" ${calendarFilterAccount===''?'selected':''}>All accounts</option>
+          <option value="js" ${calendarFilterAccount==='js'?'selected':''}>JS</option>
+          <option value="ny" ${calendarFilterAccount==='ny'?'selected':''}>NY</option>
+          <option value="solar" ${calendarFilterAccount==='solar'?'selected':''}>Solar</option>
+          <option value="lilach" ${calendarFilterAccount==='lilach'?'selected':''}>Lilach</option>
+        </select>
+        <button class="brain-tab${calendarView==='upcoming'?' active':''}" onclick="calendarView='upcoming';loadCalendarIndex()" style="font-size:0.75rem;padding:4px 8px">Upcoming</button>
+        <button class="brain-tab${calendarView==='all'?' active':''}" onclick="calendarView='all';loadCalendarIndex()" style="font-size:0.75rem;padding:4px 8px">All</button>
+        <span style="color:var(--text-dim);align-self:center">${items.length} events</span>
+      </div>
+      <div id="cal-list">
+        ${items.length ? items.map(e => {
+          const start = e.start_time ? new Date(e.start_time) : null;
+          const when = start ? start.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '?';
+          return `<div class="list-item" onclick="showCalendarEventDetail('${e.id}')">
+            <div class="list-item-title">
+              ${e.classification ? `<span class="k-source-badge" style="background:${classBadgeColor(e.classification)};color:#fff">${e.classification.toUpperCase()}</span>` : ''}
+              ${esc(e.title || '(no title)')}
+            </div>
+            ${e.summary ? `<div class="list-item-preview">${esc((e.summary || '').substring(0, 200))}</div>` : ''}
+            <div class="list-item-meta">
+              <span>${esc(when)}</span>
+              ${e.location ? `<span>📍 ${esc(e.location)}</span>` : ''}
+              ${e.attendee_count ? `<span>${e.attendee_count} attendees</span>` : ''}
+              <span>${esc(e.account || '')}</span>
+            </div>
+          </div>`;
+        }).join('') : '<div class="empty-state">No events.</div>'}
+      </div>
+    `;
+  } catch (e) { main.innerHTML = brainTabsHtml() + `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+async function showCalendarEventDetail(id) {
+  try {
+    const data = await api(`/calendar/events/${id}`);
+    const e = data.event;
+    const start = e.start_time ? new Date(e.start_time) : null;
+    const end = e.end_time ? new Date(e.end_time) : null;
+    const when = start ? start.toLocaleString() : '?';
+    const dur = (start && end) ? Math.round((end - start) / 60000) : null;
+    const attendees = (e.attendees || []).slice(0, 12).map(a =>
+      `<span class="tag-pill">${esc(a.name || a.email)}</span>`
+    ).join(' ');
+
+    openModal(e.title || '(no title)', `
+      <div class="list-item-meta" style="margin-bottom:10px">
+        ${e.classification ? `<span class="k-source-badge" style="background:${classBadgeColor(e.classification)};color:#fff">${e.classification.toUpperCase()}</span>` : ''}
+        <span>${esc(e.account)}</span>
+        ${dur ? `<span>${dur} min</span>` : ''}
+      </div>
+      <div style="font-size:0.85rem;margin-bottom:8px"><strong>When:</strong> ${esc(when)}${end ? ` → ${end.toLocaleString()}` : ''}</div>
+      ${e.location ? `<div style="font-size:0.85rem;margin-bottom:8px"><strong>Where:</strong> ${esc(e.location)}</div>` : ''}
+      ${e.organizer_email ? `<div style="font-size:0.85rem;margin-bottom:8px"><strong>Organizer:</strong> ${esc(e.organizer_name || e.organizer_email)}</div>` : ''}
+      ${attendees ? `<div style="margin-bottom:10px;font-size:0.75rem"><span style="color:var(--text-dim)">Attendees:</span> ${attendees}</div>` : ''}
+      ${e.summary ? `<div style="font-size:0.85rem;line-height:1.55;margin-bottom:12px;padding:10px 12px;background:var(--bg-input);border-radius:6px;border-left:3px solid ${classBadgeColor(e.classification)}">${esc(e.summary)}</div>` : ''}
+      ${(e.entities && e.entities.length) ? `<div style="margin-bottom:8px;font-size:0.75rem"><span style="color:var(--text-dim)">Entities:</span> ${e.entities.slice(0,12).map(x => `<span class="tag-pill">${esc(x)}</span>`).join(' ')}</div>` : ''}
+      ${(e.topics && e.topics.length) ? `<div style="margin-bottom:14px;font-size:0.75rem"><span style="color:var(--text-dim)">Topics:</span> ${e.topics.slice(0,8).map(x => `<span class="tag-pill">${esc(x)}</span>`).join(' ')}</div>` : ''}
+      <div style="display:flex;gap:8px">
+        <button class="btn-action" onclick="fetchCalendarRaw('${id}')" id="btn-fetch-cal-raw" style="flex:1">Open full event (live)</button>
+      </div>
+      <div id="cal-raw-result" style="margin-top:10px"></div>
+    `);
+  } catch (err) { openModal('Error', esc(err.message)); }
+}
+
+async function fetchCalendarRaw(id) {
+  const out = document.getElementById('cal-raw-result');
+  const btn = document.getElementById('btn-fetch-cal-raw');
+  if (btn) btn.disabled = true;
+  if (out) out.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem">Fetching from Google Calendar…</div>';
+  try {
+    const data = await api(`/calendar/events/${id}/raw`);
+    const blocks = data.result?.content || [];
+    const combined = blocks.map(b => b.text || '').join('\n\n').slice(0, 50000);
+    let parsedHtml = '';
+    try {
+      const parsed = JSON.parse(combined);
+      const desc = parsed.description || '';
+      const link = parsed.htmlLink || '';
+      parsedHtml = `
+        ${parsed.summary ? `<div style="font-weight:600;margin-bottom:6px">${esc(parsed.summary)}</div>` : ''}
+        ${desc ? `<div style="white-space:pre-wrap;font-size:0.8rem;line-height:1.5;background:var(--bg-input);padding:8px 10px;border-radius:6px;max-height:40vh;overflow:auto">${esc(desc)}</div>` : ''}
+        ${link ? `<div style="margin-top:8px"><a href="${esc(link)}" target="_blank" rel="noopener" style="color:var(--accent)">Open in Google Calendar →</a></div>` : ''}
+      `;
+    } catch { /* not JSON */ }
+    if (out) out.innerHTML = parsedHtml || `<pre style="white-space:pre-wrap;font-size:0.7rem;max-height:40vh;overflow:auto;background:var(--bg-input);padding:8px;border-radius:6px">${esc(combined)}</pre>`;
+  } catch (e) {
+    if (out) out.innerHTML = `<div style="color:var(--red,#f55);font-size:0.8rem">${esc(e.message)}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 async function showKnowledgeDetail(id) {
   try {
