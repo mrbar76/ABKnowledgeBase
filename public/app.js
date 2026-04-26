@@ -972,6 +972,81 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // ─── Settings Menu (logo tap) ────────────────────────────────
+async function loadEmailSettingsInfo() {
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  const setRow = (id, value, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = value;
+    if (color) el.style.color = color;
+  };
+
+  // Cron + last-run state
+  try {
+    const data = await api('/sync-status');
+    const sources = data.sources || data;
+    const email = sources.email || {};
+    const cal = sources.calendar || {};
+    setRow('sm-email-cron-val',
+      email.cron_enabled ? `every ${email.cron_interval_min || '?'} min` : 'disabled',
+      email.cron_enabled ? 'var(--green)' : 'var(--text-dim)');
+    setRow('sm-email-last-val', fmt(email.last_run_at || email.last_success_at), null);
+    setRow('sm-cal-cron-val',
+      cal.cron_enabled ? `every ${cal.cron_interval_min || '?'} min` : 'disabled',
+      cal.cron_enabled ? 'var(--green)' : 'var(--text-dim)');
+    setRow('sm-cal-last-val', fmt(cal.last_run_at || cal.last_success_at), null);
+  } catch {
+    setRow('sm-email-cron-val', 'unknown', 'var(--red)');
+    setRow('sm-cal-cron-val', 'unknown', 'var(--red)');
+  }
+
+  // Counts
+  try {
+    const t = await api('/email/threads?limit=1');
+    setRow('sm-email-count-val', String(t.count != null ? '1+ (showing ' + t.threads.length + ')' : '?'), null);
+  } catch (e) { setRow('sm-email-count-val', 'error', 'var(--red)'); }
+  try {
+    const e = await api('/calendar/events?limit=1');
+    setRow('sm-cal-count-val', String(e.count != null ? '1+ (showing ' + e.events.length + ')' : '?'), null);
+  } catch { setRow('sm-cal-count-val', 'error', 'var(--red)'); }
+}
+
+async function triggerEmailIngestFromMenu() {
+  const account = document.getElementById('sm-email-account')?.value || 'js';
+  const days = Math.max(1, Math.min(365, Number(document.getElementById('sm-email-days')?.value || 7)));
+  const btn = document.getElementById('sm-btn-email-ingest');
+  const out = document.getElementById('sm-email-ingest-result');
+  if (btn) btn.disabled = true;
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.innerHTML = `Ingesting ${account} (last ${days}d)… can take 30–90s.`; }
+  try {
+    const data = await api('/email/ingest', { method: 'POST', body: JSON.stringify({ account, days, limit: Math.min(500, days * 30) }) });
+    if (out) { out.style.color = 'var(--green)'; out.innerHTML = `✓ Stored ${data.threads || 0} threads (${data.messages || 0} messages).`; }
+    loadEmailSettingsInfo();
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.innerHTML = `✗ ${esc(e.message)}`; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function triggerCalendarIngestFromMenu() {
+  const account = document.getElementById('sm-email-account')?.value || 'js';
+  const days = Math.max(1, Math.min(365, Number(document.getElementById('sm-email-days')?.value || 14)));
+  const btn = document.getElementById('sm-btn-cal-ingest');
+  const out = document.getElementById('sm-email-ingest-result');
+  if (btn) btn.disabled = true;
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.innerHTML = `Ingesting calendar for ${account} (+${days}d)…`; }
+  try {
+    const data = await api('/calendar/ingest', { method: 'POST', body: JSON.stringify({ account, days, past: 7, limit: 500 }) });
+    if (out) { out.style.color = 'var(--green)'; out.innerHTML = `✓ Stored ${data.events || 0} events.`; }
+    loadEmailSettingsInfo();
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.innerHTML = `✗ ${esc(e.message)}`; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function toggleSettingsMenu() {
   const menu = document.getElementById('settings-menu');
   if (menu.classList.contains('open')) { closeSettingsMenu(); return; }
@@ -979,6 +1054,7 @@ function toggleSettingsMenu() {
   loadSettingsMenuInfo();
   loadSchemaBuilder();
   loadGymProfiles();
+  loadEmailSettingsInfo();
   updateThemeButtons(getThemeMode());
 }
 function closeSettingsMenu() { document.getElementById('settings-menu').classList.remove('open'); }
