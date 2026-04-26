@@ -526,6 +526,103 @@ async function start() {
     console.log('[cron] Bee sync disabled (set BEE_API_TOKEN to enable)');
   }
 
+  // ─── Cron: scheduled Email + Calendar auto-ingest ─────────────────
+  // Both share the same MCP server and OpenAI key; we drive them on
+  // independent intervals via self-HTTP so the ingest routes apply
+  // their existing classifier/embedder/upsert pipeline.
+  const EMAIL_ENABLED = process.env.EMAIL_SYNC_ENABLED === 'true' ||
+    (process.env.EMAIL_SYNC_ENABLED == null && !!process.env.OPENAI_API_KEY && !!process.env.MCP_GMAIL_URL);
+  const EMAIL_INTERVAL = Number(process.env.EMAIL_SYNC_INTERVAL || 30) * 60 * 1000;
+  const EMAIL_ACCOUNTS = (process.env.EMAIL_SYNC_ACCOUNTS || 'js').split(',').map(s => s.trim()).filter(Boolean);
+  const EMAIL_DAYS = Number(process.env.EMAIL_SYNC_DAYS || 2);
+  const EMAIL_LIMIT = Number(process.env.EMAIL_SYNC_LIMIT || 100);
+
+  const CAL_ENABLED = process.env.CALENDAR_SYNC_ENABLED === 'true' ||
+    (process.env.CALENDAR_SYNC_ENABLED == null && !!process.env.OPENAI_API_KEY && !!process.env.MCP_GMAIL_URL);
+  const CAL_INTERVAL = Number(process.env.CALENDAR_SYNC_INTERVAL || 60) * 60 * 1000;
+  const CAL_ACCOUNTS = (process.env.CALENDAR_SYNC_ACCOUNTS || 'js').split(',').map(s => s.trim()).filter(Boolean);
+  const CAL_DAYS = Number(process.env.CALENDAR_SYNC_DAYS || 14);
+  const CAL_PAST = Number(process.env.CALENDAR_SYNC_PAST || 1);
+  const CAL_LIMIT = Number(process.env.CALENDAR_SYNC_LIMIT || 200);
+
+  function selfPost(path, payload) {
+    const http = require('http');
+    return new Promise((resolve, reject) => {
+      const data = JSON.stringify(payload);
+      const req = http.request(`http://127.0.0.1:${PORT}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': API_KEY || '', 'Content-Length': Buffer.byteLength(data) },
+      }, (res) => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => { try { resolve(JSON.parse(body)); } catch { reject(new Error(body || `HTTP ${res.statusCode}`)); } });
+      });
+      req.on('error', reject);
+      req.write(data); req.end();
+    });
+  }
+
+  if (EMAIL_ENABLED) {
+    const src = syncStatus.getSource('email');
+    src.cron_enabled = true;
+    src.cron_interval_min = EMAIL_INTERVAL / 60000;
+
+    async function runEmailIngest() {
+      const job = syncStatus.startJob('email', `Cron ingest: ${EMAIL_ACCOUNTS.join(',')}`);
+      const t0 = Date.now();
+      let totalThreads = 0, totalMessages = 0;
+      const errors = [];
+      for (const account of EMAIL_ACCOUNTS) {
+        try {
+          const r = await selfPost('/api/email/ingest', { account, days: EMAIL_DAYS, limit: EMAIL_LIMIT });
+          totalThreads += r.threads || 0;
+          totalMessages += r.messages || 0;
+        } catch (e) {
+          errors.push(`${account}: ${e.message}`);
+        }
+      }
+      console.log(`[cron] Email: ${totalThreads} threads / ${totalMessages} messages across ${EMAIL_ACCOUNTS.length} accounts (${Date.now()-t0}ms)`);
+      if (errors.length) syncStatus.failJob('email', job, errors.join('; '));
+      else syncStatus.completeJob('email', job, { imported: totalThreads, skipped: 0, details: { messages: totalMessages, accounts: EMAIL_ACCOUNTS } });
+    }
+
+    setTimeout(runEmailIngest, 30000); // wait 30s after boot before first run
+    setInterval(runEmailIngest, EMAIL_INTERVAL);
+    console.log(`[cron] Email ingest every ${EMAIL_INTERVAL/60000} min (accounts: ${EMAIL_ACCOUNTS.join(',')}, days: ${EMAIL_DAYS})`);
+  } else {
+    console.log('[cron] Email ingest disabled (set OPENAI_API_KEY + MCP_GMAIL_URL or EMAIL_SYNC_ENABLED=true)');
+  }
+
+  if (CAL_ENABLED) {
+    const src = syncStatus.getSource('calendar');
+    src.cron_enabled = true;
+    src.cron_interval_min = CAL_INTERVAL / 60000;
+
+    async function runCalendarIngest() {
+      const job = syncStatus.startJob('calendar', `Cron ingest: ${CAL_ACCOUNTS.join(',')}`);
+      const t0 = Date.now();
+      let total = 0;
+      const errors = [];
+      for (const account of CAL_ACCOUNTS) {
+        try {
+          const r = await selfPost('/api/calendar/ingest', { account, days: CAL_DAYS, past: CAL_PAST, limit: CAL_LIMIT });
+          total += r.events || 0;
+        } catch (e) {
+          errors.push(`${account}: ${e.message}`);
+        }
+      }
+      console.log(`[cron] Calendar: ${total} events across ${CAL_ACCOUNTS.length} accounts (${Date.now()-t0}ms)`);
+      if (errors.length) syncStatus.failJob('calendar', job, errors.join('; '));
+      else syncStatus.completeJob('calendar', job, { imported: total, skipped: 0, details: { accounts: CAL_ACCOUNTS } });
+    }
+
+    setTimeout(runCalendarIngest, 60000); // wait 60s after boot
+    setInterval(runCalendarIngest, CAL_INTERVAL);
+    console.log(`[cron] Calendar ingest every ${CAL_INTERVAL/60000} min (accounts: ${CAL_ACCOUNTS.join(',')}, +${CAL_DAYS}d/-${CAL_PAST}d)`);
+  } else {
+    console.log('[cron] Calendar ingest disabled (set OPENAI_API_KEY + MCP_GMAIL_URL or CALENDAR_SYNC_ENABLED=true)');
+  }
+
 }
 
 start();
