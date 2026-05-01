@@ -1178,6 +1178,138 @@
         "parameters": [ { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "format": "date" }, "description": "Date in YYYY-MM-DD format" } ],
         "responses": { "200": { "description": "Complete training day view with all cross-referenced data" } }
       }
+    },
+    "/health/ingest": {
+      "post": {
+        "operationId": "ingestHealthExport",
+        "summary": "Ingest an Apple Health JSON export. Auto-detects format (A=week rollup with workouts+GPS, B=time-series samples, C=lode-export yearly snapshot). Idempotent by file_hash; per-format authority for daily_activity columns.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "description": "The full JSON file body. One of: { activity: {...} } | { metrics: [...], date_range: {...} } | { days: {...}, summaries: {...} }" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ingest result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "duplicate": { "type": "boolean" },
+                    "file_hash": { "type": "string" },
+                    "format": { "type": "string", "enum": ["A","B","C"] },
+                    "date_range": { "type": "object", "properties": { "start": { "type": "string" }, "end": { "type": "string" } } },
+                    "daily_inserted": { "type": "integer" },
+                    "daily_updated": { "type": "integer" },
+                    "workouts_inserted": { "type": "integer" },
+                    "workouts_updated": { "type": "integer" },
+                    "workout_types_corrected": { "type": "integer" },
+                    "zones_computed": { "type": "integer" },
+                    "skipped_metrics": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Unknown payload format" }
+        }
+      }
+    },
+    "/health/imports": {
+      "get": {
+        "operationId": "listHealthImports",
+        "summary": "List recent health-export imports (audit log)",
+        "parameters": [
+          { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["A","B","C","gpx","unknown"] } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Import history" } }
+      }
+    },
+    "/health/daily": {
+      "get": {
+        "operationId": "listDailyActivity",
+        "summary": "List daily_activity rows (movement + recovery + sleep merged from all sources)",
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 90 } }
+        ],
+        "responses": { "200": { "description": "Daily activity rows, newest first" } }
+      }
+    },
+    "/athlete/zones": {
+      "get": {
+        "operationId": "getAthleteZones",
+        "summary": "Get the HR zones effective on a specific date (default: today)",
+        "parameters": [
+          { "name": "on", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Effective zones row, or null if none set" } }
+      },
+      "post": {
+        "operationId": "setAthleteZones",
+        "summary": "Set new HR zones (auto-closes prior active row's effective_to). Trainer (Claude Project) calls this after reviewing recent HR data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["effective_from", "max_hr", "z1_max", "z2_max", "z3_max", "z4_max", "z5_max"],
+                "properties": {
+                  "effective_from": { "type": "string", "format": "date" },
+                  "max_hr": { "type": "integer", "description": "Observed or estimated max heart rate (bpm)" },
+                  "resting_hr": { "type": "integer", "description": "Recent resting HR baseline (bpm)" },
+                  "lthr": { "type": "integer", "description": "Lactate threshold HR; nullable until measured" },
+                  "z1_max": { "type": "integer", "description": "Upper bound of zone 1 (recovery)" },
+                  "z2_max": { "type": "integer", "description": "Upper bound of zone 2 (aerobic base)" },
+                  "z3_max": { "type": "integer", "description": "Upper bound of zone 3 (tempo)" },
+                  "z4_max": { "type": "integer", "description": "Upper bound of zone 4 (threshold)" },
+                  "z5_max": { "type": "integer", "description": "Upper bound of zone 5 (VO2max)" },
+                  "method": { "type": "string", "enum": ["percent_max","karvonen","lthr","observed"], "default": "percent_max" },
+                  "set_by": { "type": "string", "default": "trainer" },
+                  "rationale": { "type": "string", "description": "Why these zones — what data informed them" },
+                  "source_data": { "type": "object", "description": "Free-form: dates/workouts/RHR values that informed the calc" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "New zones row created" }, "400": { "description": "Validation failed" } }
+      }
+    },
+    "/athlete/zones/{id}": {
+      "patch": {
+        "operationId": "updateAthleteZones",
+        "summary": "Correct an existing zones row (typo, rationale update, etc.)",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/athlete/zones/history": {
+      "get": {
+        "operationId": "getAthleteZonesHistory",
+        "summary": "Full audit trail of zone changes",
+        "responses": { "200": { "description": "All zones rows, newest first" } }
+      }
+    },
+    "/workouts/{id}/recompute-zones": {
+      "post": {
+        "operationId": "recomputeWorkoutZones",
+        "summary": "Recompute hr_zones for a workout from the most recent format-B HR samples covering its date. Call after setting/updating athlete_zones.",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+        "responses": {
+          "200": { "description": "hr_zones recomputed and saved" },
+          "400": { "description": "Cannot compute (no zones set, or no samples in workout window)" },
+          "404": { "description": "Workout not found, or no format-B import covers this date" }
+        }
+      }
     }
   },
   "components": {

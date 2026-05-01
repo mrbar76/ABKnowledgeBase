@@ -285,6 +285,48 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ─── POST /:id/recompute-zones ───────────────────────────────
+// Recomputes hr_zones for a workout from the most recently ingested format-B
+// HR samples (raw_health_imports). Useful after the trainer sets new zones.
+
+router.post('/:id/recompute-zones', async (req, res) => {
+  try {
+    const health = require('./health');
+    const wkResult = await query('SELECT id, started_at, ended_at FROM workouts WHERE id = $1', [req.params.id]);
+    if (!wkResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const w = wkResult.rows[0];
+    if (!w.started_at) return res.status(400).json({ error: 'Workout has no started_at; cannot compute zones' });
+
+    // Find a format-B import covering the workout window
+    const startD = new Date(w.started_at).toISOString().slice(0, 10);
+    const importResult = await query(
+      `SELECT payload FROM raw_health_imports
+       WHERE source_format = 'B'
+         AND date_range_start <= $1::date
+         AND date_range_end >= $1::date
+       ORDER BY ingested_at DESC LIMIT 1`,
+      [startD]
+    );
+    if (!importResult.rows.length) {
+      return res.status(404).json({ error: 'No format-B HR samples available for this workout date' });
+    }
+    const hrSamples = health.extractHrSamplesFromB(importResult.rows[0].payload);
+    if (!hrSamples.length) {
+      return res.status(404).json({ error: 'Format-B import found but contains no heartRate samples' });
+    }
+    const zones = await health.computeHrZonesForWorkout(w.id, hrSamples);
+    if (!zones) {
+      return res.status(400).json({ error: 'Could not compute zones (no athlete_zones set, or no samples in workout window)' });
+    }
+    await query('UPDATE workouts SET hr_zones = $1::jsonb, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(zones), w.id]);
+    await logActivity('update', 'workout', w.id, 'trainer', 'Recomputed HR zones');
+    res.json({ id: w.id, hr_zones: zones });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Stats / Summary ─────────────────────────────────────────
 router.get('/stats/summary', async (req, res) => {
   try {

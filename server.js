@@ -21,6 +21,8 @@ const bodyMetricsRoutes = require('./routes/body-metrics');
 const mealsRoutes = require('./routes/meals');
 const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
+const healthRoutes = require('./routes/health');
+const athleteRoutes = require('./routes/athlete');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -119,6 +121,8 @@ app.use('/api/body-metrics', bodyMetricsRoutes);
 app.use('/api/meals', mealsRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/training', trainingRoutes);
+app.use('/api/health', healthRoutes);
+app.use('/api/athlete', athleteRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
