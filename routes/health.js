@@ -317,6 +317,59 @@ function parseFormatB(body) {
   };
 }
 
+// Health Auto Export workouts (data.workouts[]) → workouts table rows.
+// HAE provides explicit workout type, so inferred_workout_type=false.
+function parseFormatDWorkouts(body) {
+  const out = [];
+  for (const w of body.data?.workouts || []) {
+    const startedAt = w.start;
+    const endedAt = w.end;
+    const durSec = Number(w.duration) || 0;
+    const workoutDate = (startedAt || endedAt || '').slice(0, 10);
+    if (!startedAt) continue;
+
+    const distQty = w.distance?.qty;
+    const distUnits = w.distance?.units;
+    const elevUpQty = w.elevationUp?.qty;
+    const elevUpUnits = w.elevationUp?.units;
+    const hrSummary = w.heartRate || {};
+    const avgHR = hrSummary.avg ?? w.avgHeartRate;
+    const maxHR = hrSummary.max ?? w.maxHeartRate;
+
+    out.push({
+      started_at: startedAt,
+      ended_at: endedAt,
+      workout_date: workoutDate,
+      workout_type: normalizeWorkoutType(w.name),
+      inferred_workout_type: false,
+      time_duration: durSec > 0 ? formatDuration(durSec) : null,
+      distance: distQty != null ? `${Number(distQty).toFixed(2)} ${distUnits || 'mi'}` : null,
+      elevation_gain: elevUpQty != null ? `${Math.round(Number(elevUpQty))} ${elevUpUnits || 'ft'}` : null,
+      heart_rate_avg: avgHR != null ? String(Math.round(Number(avgHR))) : null,
+      heart_rate_max: maxHR != null ? String(Math.round(Number(maxHR))) : null,
+      pace_avg: null,
+      active_calories: w.activeEnergyBurned?.qty != null ? String(Math.round(w.activeEnergyBurned.qty)) : null,
+      total_calories: w.totalEnergy?.qty != null ? String(Math.round(w.totalEnergy.qty)) : null,
+      location: typeof w.location === 'string' ? w.location.toLowerCase() : null,
+      source: 'apple_health',
+      ai_source: null,
+      metadata: {
+        hae_id: w.id,
+        hae_name: w.name,
+        avgSpeed: w.avgSpeed,
+        maxSpeed: w.maxSpeed,
+        intensity: w.intensity,
+        temperature: w.temperature,
+        humidity: w.humidity,
+        elevationDown: w.elevationDown,
+        heartRateData: w.heartRateData || [],
+        route: w.route || [],
+      },
+    });
+  }
+  return out;
+}
+
 function roundForCol(col, n) {
   if (isIntColumn(col)) return Math.round(n);
   if (col === 'distance_mi') return Math.round(n * 1000) / 1000;
@@ -366,9 +419,14 @@ const D_METRIC_MAP = {
   // (lb here). If we ever see metric.units === 'kg' we scale at parse time.
   body_fat_percentage: { col: 'body_fat_pct', agg: 'mean', target: 'body_metric' },
   body_mass:           { col: 'weight_lb',    agg: 'mean', target: 'body_metric' },
+  'weight_&_body_mass': { col: 'weight_lb',   agg: 'mean', target: 'body_metric' },
   weight_body_mass:    { col: 'weight_lb',    agg: 'mean', target: 'body_metric' },
   body_mass_index:     { col: 'bmi',          agg: 'mean', target: 'body_metric' },
   lean_body_mass:      { col: 'lean_mass_lb', agg: 'mean', target: 'body_metric' },
+
+  // Sleep analysis is special — has multiple fields per data point. Handled
+  // out-of-band in parseFormatD via a dedicated branch.
+  sleep_analysis: { target: 'sleep' },
 };
 
 function parseFormatD(body) {
@@ -382,6 +440,26 @@ function parseFormatD(body) {
     const map = D_METRIC_MAP[name];
     if (!map) { skippedMetrics.push(metric.name); continue; }
     mappedMetrics.push(metric.name);
+
+    // Sleep analysis has multiple fields per data point — handle separately
+    if (map.target === 'sleep') {
+      for (const dp of metric.data || []) {
+        const dateStr = dp.sleepEnd || dp.inBedEnd || dp.date;
+        if (!dateStr) continue;
+        const d = String(dateStr).slice(0, 10);
+        if (!byDate.has(d)) byDate.set(d, { activity_date: d });
+        const row = byDate.get(d);
+        if (dp.totalSleep != null) row.sleep_total_min = Math.round(dp.totalSleep * 60);
+        if (dp.deep != null) row.sleep_deep_min = Math.round(dp.deep * 60);
+        if (dp.rem != null) row.sleep_rem_min = Math.round(dp.rem * 60);
+        if (dp.core != null) row.sleep_core_min = Math.round(dp.core * 60);
+        if (dp.inBed != null && dp.asleep != null) {
+          row.sleep_awake_min = Math.round(Math.max(0, (dp.inBed - dp.asleep) * 60));
+          if (dp.inBed > 0) row.sleep_efficiency_pct = round1((dp.asleep / dp.inBed) * 100);
+        }
+      }
+      continue;
+    }
 
     // Unit-aware conversion for the few metrics where users may have non-imperial
     let scale = 1;
@@ -858,6 +936,14 @@ async function processPayload(body) {
         ? await upsertBodyMetricsFromHealth(bodyMetricRows)
         : { inserted: 0, updated: 0 };
 
+      const workouts = parseFormatDWorkouts(body);
+      const workoutStats = workouts.length
+        ? await upsertWorkouts(workouts)
+        : { inserted: 0, updated: 0, merged: 0 };
+      // After inserts, run auto-dedupe so any apple_health rows that overlap
+      // an existing manual workout get merged in rather than left as duplicates.
+      const dupesMerged = workouts.length ? await dedupeAppleWorkouts() : 0;
+
       result = {
         format: 'D',
         date_range: rangeFromDailyRows(dailyRows),
@@ -865,6 +951,9 @@ async function processPayload(body) {
         daily_updated: dailyStats.updated,
         body_metrics_inserted: bodyStats.inserted,
         body_metrics_updated: bodyStats.updated,
+        workouts_inserted: workoutStats.inserted,
+        workouts_updated: workoutStats.updated,
+        workouts_merged: workoutStats.merged + dupesMerged,
         mapped_metrics: mappedMetrics,
         skipped_metrics: skippedMetrics,
       };
