@@ -23,6 +23,7 @@ const nutritionRoutes = require('./routes/nutrition');
 const trainingRoutes = require('./routes/training');
 const healthRoutes = require('./routes/health');
 const athleteRoutes = require('./routes/athlete');
+const dropboxRoutes = require('./routes/dropbox');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -122,6 +123,7 @@ app.use('/api/meals', mealsRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/health', dropboxRoutes);
 app.use('/api/athlete', athleteRoutes);
 
 // Sync status
@@ -214,6 +216,9 @@ async function start() {
   } else {
     console.log('[cron] No sync sources configured (set BEE_API_TOKEN to enable)');
   }
+
+  // ─── Dropbox health-file poller ────────────────────────────────
+  dropboxRoutes.startPoller();
 }
 
 start();

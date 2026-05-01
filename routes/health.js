@@ -735,37 +735,44 @@ async function processPayload(body) {
   return { format, result };
 }
 
+// Full ingest pipeline: dedup, parse, upsert, log. Returns the same shape
+// as POST /ingest. Used by the HTTP route and the Dropbox poller.
+async function ingestPayload(body) {
+  if (!body || typeof body !== 'object') {
+    return { ok: false, status: 400, error: 'payload must be a JSON object' };
+  }
+  const hash = fileHash(body);
+  const dup = await query(
+    'SELECT id, source_format, ingested_at, parse_result FROM raw_health_imports WHERE file_hash = $1',
+    [hash]
+  );
+  if (dup.rows.length) {
+    return { ok: true, status: 200, body: { duplicate: true, file_hash: hash, ...dup.rows[0] } };
+  }
+
+  const { format, result } = await processPayload(body);
+  if (format === 'unknown') {
+    await logImport(hash, 'unknown', body, null, { error: 'unknown format' });
+    return { ok: false, status: 400, error: 'unknown payload format', file_hash: hash };
+  }
+
+  if (format === 'A') {
+    const merged = await dedupeAppleWorkouts();
+    if (merged) result.duplicates_merged = merged;
+  }
+
+  await logImport(hash, format, body, result, null);
+  await logActivity('create', 'health_import', hash.slice(0, 12), 'apple_health',
+    `Ingested ${format}: ${JSON.stringify(result)}`);
+
+  return { ok: true, status: 200, body: { duplicate: false, file_hash: hash, ...result } };
+}
+
 router.post('/ingest', async (req, res) => {
   try {
-    const body = req.body;
-    if (!body || typeof body !== 'object') {
-      return res.status(400).json({ error: 'Request body must be JSON' });
-    }
-
-    const hash = fileHash(body);
-    const dup = await query('SELECT id, source_format, ingested_at, parse_result FROM raw_health_imports WHERE file_hash = $1', [hash]);
-    if (dup.rows.length) {
-      return res.json({ duplicate: true, file_hash: hash, ...dup.rows[0] });
-    }
-
-    const { format, result } = await processPayload(body);
-    if (format === 'unknown') {
-      await logImport(hash, 'unknown', body, null, { error: 'unknown format' });
-      return res.status(400).json({ error: 'Unknown payload format', file_hash: hash });
-    }
-
-    // Format A creates apple_health workout rows; auto-merge any that overlap
-    // a manually-logged workout so the user never sees duplicates.
-    if (format === 'A') {
-      const merged = await dedupeAppleWorkouts();
-      if (merged) result.duplicates_merged = merged;
-    }
-
-    await logImport(hash, format, body, result, null);
-    await logActivity('create', 'health_import', hash.slice(0, 12), 'apple_health',
-      `Ingested ${format}: ${JSON.stringify(result)}`);
-
-    res.json({ duplicate: false, file_hash: hash, ...result });
+    const out = await ingestPayload(req.body);
+    if (!out.ok) return res.status(out.status).json({ error: out.error, file_hash: out.file_hash });
+    res.json(out.body);
   } catch (err) {
     console.error(`[health/ingest] failed: ${err.stack}`);
     res.status(500).json({ error: err.message });
@@ -947,3 +954,4 @@ module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
 module.exports.parseFormatB = parseFormatB;
 module.exports.normalizeMetricId = normalizeMetricId;
 module.exports.B_METRIC_MAP = B_METRIC_MAP;
+module.exports.ingestPayload = ingestPayload;
