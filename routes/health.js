@@ -393,15 +393,64 @@ function round3(n) { return Math.round(n * 1000) / 1000; }
 
 // ─── Workout upsert ─────────────────────────────────────────────
 
+// Window (seconds) for matching an Apple Health workout to an existing
+// manually-logged workout. Apple's clock and the user's manual log can drift
+// by a few minutes; 15min comfortably covers race starts and tap-to-end lag.
+const WORKOUT_MERGE_WINDOW_SEC = 900;
+
 async function upsertWorkouts(workouts) {
   let inserted = 0;
   let updated = 0;
+  let merged = 0;
   for (const w of workouts) {
     if (!w.started_at) {
-      // Cannot dedupe without started_at; skip
       console.warn(`[health/ingest] workout skipped (no started_at): date=${w.workout_date}`);
       continue;
     }
+
+    // 1) If a workout from another source already covers this start time,
+    //    enrich it with Apple's metrics rather than creating a duplicate row.
+    const nearby = await query(
+      `SELECT id, source FROM workouts
+       WHERE started_at IS NOT NULL
+         AND ABS(EXTRACT(EPOCH FROM (started_at - $1::timestamptz))) < $2
+       ORDER BY (source = 'apple_health') ASC, ABS(EXTRACT(EPOCH FROM (started_at - $1::timestamptz))) ASC
+       LIMIT 1`,
+      [w.started_at, WORKOUT_MERGE_WINDOW_SEC]
+    );
+    if (nearby.rows.length && nearby.rows[0].source !== 'apple_health') {
+      // Merge: only fill nulls on existing manual fields; always overwrite
+      // sensor-derived metrics where Apple is more authoritative.
+      try {
+        await query(
+          `UPDATE workouts SET
+             time_duration   = COALESCE($2, time_duration),
+             distance        = COALESCE($3, distance),
+             elevation_gain  = COALESCE($4, elevation_gain),
+             heart_rate_avg  = COALESCE($5, heart_rate_avg),
+             heart_rate_max  = COALESCE($6, heart_rate_max),
+             pace_avg        = COALESCE($7, pace_avg),
+             active_calories = COALESCE($8, active_calories),
+             total_calories  = COALESCE($9, total_calories),
+             ended_at        = COALESCE($10, ended_at),
+             metadata        = metadata || $11::jsonb,
+             updated_at      = NOW()
+           WHERE id = $1`,
+          [nearby.rows[0].id,
+           w.time_duration, w.distance, w.elevation_gain,
+           w.heart_rate_avg, w.heart_rate_max, w.pace_avg,
+           w.active_calories, w.total_calories, w.ended_at,
+           JSON.stringify({ apple_health: w.metadata || {} })]
+        );
+        merged++;
+      } catch (err) {
+        console.error(`[health/ingest] workout merge failed (${w.started_at}): ${err.message}`);
+      }
+      continue;
+    }
+
+    // 2) No nearby existing row — fall through to insert/upsert against the
+    //    apple_health partial unique index.
     const title = `${capitalize(w.workout_type)} – ${w.workout_date}`;
     const sql = `
       INSERT INTO workouts (
@@ -446,7 +495,7 @@ async function upsertWorkouts(workouts) {
       console.error(`[health/ingest] workout upsert failed (${w.started_at}): ${err.message}`);
     }
   }
-  return { inserted, updated };
+  return { inserted, updated, merged };
 }
 
 function capitalize(s) {
@@ -701,6 +750,13 @@ router.post('/ingest', async (req, res) => {
       return res.status(400).json({ error: 'Unknown payload format', file_hash: hash });
     }
 
+    // Format A creates apple_health workout rows; auto-merge any that overlap
+    // a manually-logged workout so the user never sees duplicates.
+    if (format === 'A') {
+      const merged = await dedupeAppleWorkouts();
+      if (merged) result.duplicates_merged = merged;
+    }
+
     await logImport(hash, format, body, result, null);
     await logActivity('create', 'health_import', hash.slice(0, 12), 'apple_health',
       `Ingested ${format}: ${JSON.stringify(result)}`);
@@ -743,7 +799,8 @@ router.post('/reparse', async (req, res) => {
         summary.push({ file_hash: row.file_hash, error: err.message });
       }
     }
-    res.json({ reparsed: summary.length, results: summary });
+    const duplicatesMerged = await dedupeAppleWorkouts();
+    res.json({ reparsed: summary.length, duplicates_merged: duplicatesMerged, results: summary });
   } catch (err) {
     console.error(`[health/reparse] failed: ${err.stack}`);
     res.status(500).json({ error: err.message });
@@ -825,6 +882,60 @@ router.get('/daily', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Find apple_health workout rows whose started_at overlaps an existing
+// manual workout (within WORKOUT_MERGE_WINDOW_SEC). Merge the apple row's
+// sensor data into the manual row, then delete the apple duplicate.
+async function dedupeAppleWorkouts() {
+  const pairs = await query(
+    `SELECT DISTINCT ON (a.id)
+            a.id AS apple_id, m.id AS manual_id,
+            a.distance AS apple_distance, a.heart_rate_avg AS apple_hr_avg,
+            a.heart_rate_max AS apple_hr_max, a.elevation_gain AS apple_elev,
+            a.pace_avg AS apple_pace, a.active_calories AS apple_active_cal,
+            a.total_calories AS apple_total_cal, a.time_duration AS apple_dur,
+            a.ended_at AS apple_end, a.metadata AS apple_meta
+       FROM workouts a
+       JOIN workouts m
+         ON m.id <> a.id
+        AND m.source <> 'apple_health'
+        AND m.started_at IS NOT NULL
+        AND ABS(EXTRACT(EPOCH FROM (m.started_at - a.started_at))) < $1
+      WHERE a.source = 'apple_health' AND a.started_at IS NOT NULL
+      ORDER BY a.id, ABS(EXTRACT(EPOCH FROM (m.started_at - a.started_at))) ASC`,
+    [WORKOUT_MERGE_WINDOW_SEC]
+  );
+
+  let merged = 0;
+  for (const p of pairs.rows) {
+    try {
+      await query(
+        `UPDATE workouts SET
+           time_duration   = COALESCE($2, time_duration),
+           distance        = COALESCE($3, distance),
+           elevation_gain  = COALESCE($4, elevation_gain),
+           heart_rate_avg  = COALESCE($5, heart_rate_avg),
+           heart_rate_max  = COALESCE($6, heart_rate_max),
+           pace_avg        = COALESCE($7, pace_avg),
+           active_calories = COALESCE($8, active_calories),
+           total_calories  = COALESCE($9, total_calories),
+           ended_at        = COALESCE($10, ended_at),
+           metadata        = metadata || $11::jsonb,
+           updated_at      = NOW()
+         WHERE id = $1`,
+        [p.manual_id, p.apple_dur, p.apple_distance, p.apple_elev,
+         p.apple_hr_avg, p.apple_hr_max, p.apple_pace,
+         p.apple_active_cal, p.apple_total_cal, p.apple_end,
+         JSON.stringify({ apple_health: p.apple_meta || {} })]
+      );
+      await query(`DELETE FROM workouts WHERE id = $1 AND source = 'apple_health'`, [p.apple_id]);
+      merged++;
+    } catch (err) {
+      console.error(`[dedupeAppleWorkouts] failed for apple=${p.apple_id} manual=${p.manual_id}: ${err.message}`);
+    }
+  }
+  return merged;
+}
 
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
