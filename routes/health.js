@@ -10,6 +10,10 @@ const { query, logActivity } = require('../db');
 const router = express.Router();
 
 const MILES_TO_KM = 1.609344;
+const KM_TO_MI = 0.621371;
+const M_TO_FT = 3.28084;
+const M_TO_IN = 39.3701;
+const MS_TO_MPH = 2.23694; // m/s → mph
 
 // ─── Format detection ───────────────────────────────────────────
 
@@ -61,33 +65,33 @@ function inferWorkoutType(w) {
 
 const FIELD_AUTHORITY = {
   A: {
-    authoritative: ['steps', 'distance_km', 'exercise_minutes', 'flights_climbed',
+    authoritative: ['steps', 'distance_mi', 'exercise_minutes', 'flights_climbed',
                     'active_energy_kcal', 'workout_count'],
     fill_only: [],
   },
   B: {
     authoritative: ['resting_hr_bpm', 'walking_hr_avg_bpm', 'hrv_sdnn_ms',
-                    'respiratory_rate_avg', 'walking_speed_kmh', 'walking_steadiness_pct',
-                    'walking_asymmetry_pct', 'heart_rate_avg_bpm', 'walking_step_length_cm'],
+                    'respiratory_rate_avg', 'walking_speed_mph', 'walking_steadiness_pct',
+                    'walking_asymmetry_pct', 'heart_rate_avg_bpm', 'walking_step_length_in'],
     fill_only: [],
   },
   C: {
     authoritative: ['vo2_max', 'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min',
                     'sleep_core_min', 'sleep_awake_min', 'sleep_efficiency_pct',
                     'basal_energy_kcal', 'stand_hours', 'stand_minutes'],
-    fill_only: ['steps', 'distance_km', 'exercise_minutes', 'flights_climbed',
+    fill_only: ['steps', 'distance_mi', 'exercise_minutes', 'flights_climbed',
                 'active_energy_kcal', 'workout_count', 'resting_hr_bpm',
                 'walking_hr_avg_bpm', 'hrv_sdnn_ms', 'respiratory_rate_avg',
-                'walking_speed_kmh', 'walking_steadiness_pct', 'walking_asymmetry_pct'],
+                'walking_speed_mph', 'walking_steadiness_pct', 'walking_asymmetry_pct'],
   },
 };
 
 const ALL_DAILY_COLS = [
-  'steps', 'distance_km', 'exercise_minutes', 'flights_climbed', 'active_energy_kcal',
+  'steps', 'distance_mi', 'exercise_minutes', 'flights_climbed', 'active_energy_kcal',
   'basal_energy_kcal', 'stand_hours', 'stand_minutes', 'workout_count',
   'resting_hr_bpm', 'walking_hr_avg_bpm', 'hrv_sdnn_ms', 'respiratory_rate_avg',
-  'vo2_max', 'walking_speed_kmh', 'walking_steadiness_pct', 'walking_asymmetry_pct',
-  'heart_rate_avg_bpm', 'walking_step_length_cm',
+  'vo2_max', 'walking_speed_mph', 'walking_steadiness_pct', 'walking_asymmetry_pct',
+  'heart_rate_avg_bpm', 'walking_step_length_in',
   'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min',
   'sleep_awake_min', 'sleep_efficiency_pct',
 ];
@@ -140,7 +144,7 @@ function parseFormatA(body) {
     dailyRows.push({
       activity_date: d.date,
       steps: d.steps ?? null,
-      distance_km: d.distanceKm ?? null,
+      distance_mi: d.distanceKm != null ? round3(d.distanceKm * KM_TO_MI) : null,
       exercise_minutes: d.exerciseMinutes ?? null,
       flights_climbed: d.flightsClimbed ?? null,
       active_energy_kcal: d.activeEnergyKcal ?? null,
@@ -164,12 +168,12 @@ function parseFormatA(body) {
       workout_date: workoutDate,
       workout_type: inferredType,
       inferred_workout_type: true,
-      distance: w.distanceKm != null ? `${w.distanceKm} km` : null,
+      distance: w.distanceKm != null ? `${(w.distanceKm * KM_TO_MI).toFixed(2)} mi` : null,
       time_duration: durSec > 0 ? formatDuration(durSec) : null,
-      elevation_gain: w.elevationAscendedM != null ? `${w.elevationAscendedM} m` : null,
+      elevation_gain: w.elevationAscendedM != null ? `${Math.round(w.elevationAscendedM * M_TO_FT)} ft` : null,
       heart_rate_avg: w.averageHeartRateBpm != null ? String(w.averageHeartRateBpm) : null,
       heart_rate_max: w.maxHeartRateBpm != null ? String(w.maxHeartRateBpm) : null,
-      pace_avg: w.averagePaceSecPerKm != null ? formatPace(w.averagePaceSecPerKm) : null,
+      pace_avg: w.averagePaceSecPerKm != null ? formatPace(w.averagePaceSecPerKm * MILES_TO_KM, 'mi') : null,
       active_calories: w.activeEnergyKcal != null ? String(Math.round(w.activeEnergyKcal)) : null,
       total_calories: (w.activeEnergyKcal != null && w.basalEnergyKcal != null)
         ? String(Math.round(w.activeEnergyKcal + w.basalEnergyKcal)) : null,
@@ -199,10 +203,10 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function formatPace(secPerKm) {
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
-  return `${m}:${String(s).padStart(2, '0')}/km`;
+function formatPace(secPerUnit, unit = 'mi') {
+  const m = Math.floor(secPerUnit / 60);
+  const s = Math.round(secPerUnit % 60);
+  return `${m}:${String(s).padStart(2, '0')}/${unit}`;
 }
 
 // ─── Format B parser (aggregate samples → per-day stats) ─────────
@@ -232,12 +236,12 @@ const B_METRIC_MAP = {
   vo2max:                   { col: 'vo2_max',             agg: 'mean', target: 'daily' },
 
   // gait / mobility → daily_activity (HealthKit walking_speed is m/s; asymmetry/steadiness are 0..1 fractions)
-  walkingspeed:                  { col: 'walking_speed_kmh',     agg: 'mean', scale: 3.6,  target: 'daily' },
+  walkingspeed:                  { col: 'walking_speed_mph',     agg: 'mean', scale: MS_TO_MPH, target: 'daily' }, // m/s → mph
   walkingsteadiness:             { col: 'walking_steadiness_pct', agg: 'mean', scale: 100, target: 'daily' },
   appwalkingsteadiness:          { col: 'walking_steadiness_pct', agg: 'mean', scale: 100, target: 'daily' },
   walkingasymmetrypercentage:    { col: 'walking_asymmetry_pct',  agg: 'mean', scale: 100, target: 'daily' },
   walkingasymmetry:              { col: 'walking_asymmetry_pct',  agg: 'mean', scale: 100, target: 'daily' },
-  walkingsteplength:             { col: 'walking_step_length_cm', agg: 'mean', scale: 100, target: 'daily' }, // m → cm
+  walkingsteplength:             { col: 'walking_step_length_in', agg: 'mean', scale: M_TO_IN, target: 'daily' }, // m → in
 
   // movement → daily_activity (B is fill-only; A remains authoritative when present)
   stepcount:               { col: 'steps',              agg: 'sum',  target: 'daily' },
@@ -246,7 +250,7 @@ const B_METRIC_MAP = {
   activeenergyburned:      { col: 'active_energy_kcal', agg: 'sum',  target: 'daily' },
   basalenergyburned:       { col: 'basal_energy_kcal',  agg: 'sum',  target: 'daily' },
   appleexercisetime:       { col: 'exercise_minutes',   agg: 'sum',  target: 'daily' },
-  distancewalkingrunning:  { col: 'distance_km',        agg: 'sum',  scale: 0.001, target: 'daily' }, // m → km
+  distancewalkingrunning:  { col: 'distance_mi',        agg: 'sum',  scale: 0.001 * KM_TO_MI, target: 'daily' }, // m → mi
 
   // body composition → body_metrics (HealthKit BodyFatPercentage is 0..1)
   bodyfatpercentage: { col: 'body_fat_pct',  agg: 'mean', scale: 100, target: 'body_metric' },
@@ -325,7 +329,7 @@ function parseFormatC(body) {
     if (day.activity) {
       const a = day.activity;
       if (a.steps != null) row.steps = a.steps;
-      if (a.walkingRunningDistance != null) row.distance_km = round3(a.walkingRunningDistance * MILES_TO_KM);
+      if (a.walkingRunningDistance != null) row.distance_mi = round3(a.walkingRunningDistance);
       if (a.flightsClimbed != null) row.flights_climbed = a.flightsClimbed;
       if (a.activeCalories != null) row.active_energy_kcal = a.activeCalories;
       if (a.basalEnergy != null) row.basal_energy_kcal = a.basalEnergy;
@@ -358,7 +362,7 @@ function parseFormatC(body) {
       if (day.respiratory.respiratoryRate != null) row.respiratory_rate_avg = round1(day.respiratory.respiratoryRate);
     }
     if (day.mobility) {
-      if (day.mobility.walkingSpeed != null) row.walking_speed_kmh = round1(day.mobility.walkingSpeed * MILES_TO_KM);
+      if (day.mobility.walkingSpeed != null) row.walking_speed_mph = round1(day.mobility.walkingSpeed);
       if (day.mobility.walkingSteadiness != null) row.walking_steadiness_pct = round1(day.mobility.walkingSteadiness);
     }
     if (day.exercise && day.exercise.vo2Max != null) row.vo2_max = round1(day.exercise.vo2Max);

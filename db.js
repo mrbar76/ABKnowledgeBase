@@ -459,7 +459,7 @@ async function initDB() {
 
       -- movement (authoritative source: format A; backfill: format C)
       steps INTEGER,
-      distance_km NUMERIC(7,3),
+      distance_mi NUMERIC(7,3),
       exercise_minutes INTEGER,
       flights_climbed INTEGER,
       active_energy_kcal NUMERIC(8,2),
@@ -474,7 +474,7 @@ async function initDB() {
       hrv_sdnn_ms NUMERIC(5,1),
       respiratory_rate_avg NUMERIC(4,1),
       vo2_max NUMERIC(4,1),
-      walking_speed_kmh NUMERIC(4,2),
+      walking_speed_mph NUMERIC(4,2),
       walking_steadiness_pct NUMERIC(4,1),
       walking_asymmetry_pct NUMERIC(4,1),
 
@@ -704,8 +704,21 @@ async function initDB() {
   // -- daily_activity migrations --
   await safeQuery('daily_activity +walking_asymmetry_pct', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_asymmetry_pct NUMERIC(4,1)`);
   await safeQuery('daily_activity +heart_rate_avg_bpm', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS heart_rate_avg_bpm INTEGER`);
-  await safeQuery('daily_activity +walking_step_length_cm', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_step_length_cm NUMERIC(5,1)`);
   await safeQuery('body_metrics +lean_mass_lb', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS lean_mass_lb NUMERIC(6,2)`);
+
+  // -- imperial unit conversion: rename km/kmh/cm columns to mi/mph/in --
+  // Add new columns
+  await safeQuery('daily_activity +distance_mi', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS distance_mi NUMERIC(7,3)`);
+  await safeQuery('daily_activity +walking_speed_mph', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_speed_mph NUMERIC(4,2)`);
+  await safeQuery('daily_activity +walking_step_length_in', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_step_length_in NUMERIC(5,1)`);
+  // Backfill new columns from old (km → mi, kmh → mph, cm → in)
+  await safeQuery('backfill distance_mi', `UPDATE daily_activity SET distance_mi = ROUND((distance_km * 0.621371)::numeric, 3) WHERE distance_mi IS NULL AND distance_km IS NOT NULL`);
+  await safeQuery('backfill walking_speed_mph', `UPDATE daily_activity SET walking_speed_mph = ROUND((walking_speed_kmh * 0.621371)::numeric, 2) WHERE walking_speed_mph IS NULL AND walking_speed_kmh IS NOT NULL`);
+  await safeQuery('backfill walking_step_length_in', `UPDATE daily_activity SET walking_step_length_in = ROUND((walking_step_length_cm / 2.54)::numeric, 1) WHERE walking_step_length_in IS NULL AND walking_step_length_cm IS NOT NULL`);
+  // Drop the metric columns
+  await safeQuery('daily_activity -distance_km', `ALTER TABLE daily_activity DROP COLUMN IF EXISTS distance_km`);
+  await safeQuery('daily_activity -walking_speed_kmh', `ALTER TABLE daily_activity DROP COLUMN IF EXISTS walking_speed_kmh`);
+  await safeQuery('daily_activity -walking_step_length_cm', `ALTER TABLE daily_activity DROP COLUMN IF EXISTS walking_step_length_cm`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
