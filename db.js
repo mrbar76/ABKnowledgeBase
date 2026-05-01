@@ -476,6 +476,7 @@ async function initDB() {
       vo2_max NUMERIC(4,1),
       walking_speed_kmh NUMERIC(4,2),
       walking_steadiness_pct NUMERIC(4,1),
+      walking_asymmetry_pct NUMERIC(4,1),
 
       -- sleep (authoritative source: format C)
       sleep_total_min INTEGER,
@@ -696,6 +697,12 @@ async function initDB() {
   await safeQuery('body_metrics +measurement_context', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS measurement_context TEXT`);
   await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
   await safeQuery('body_metrics +search_vector', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+  // Apple Health body-fat-only rows have no weight, so weight_lb cannot be NOT NULL
+  await safeQuery('body_metrics weight_lb nullable', `ALTER TABLE body_metrics ALTER COLUMN weight_lb DROP NOT NULL`);
+  await safeQuery('body_metrics apple_health unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_body_metrics_apple_date ON body_metrics(measurement_date) WHERE source = 'apple_health'`);
+
+  // -- daily_activity migrations --
+  await safeQuery('daily_activity +walking_asymmetry_pct', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_asymmetry_pct NUMERIC(4,1)`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
