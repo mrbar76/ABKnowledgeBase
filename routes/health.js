@@ -68,7 +68,7 @@ const FIELD_AUTHORITY = {
   B: {
     authoritative: ['resting_hr_bpm', 'walking_hr_avg_bpm', 'hrv_sdnn_ms',
                     'respiratory_rate_avg', 'walking_speed_kmh', 'walking_steadiness_pct',
-                    'walking_asymmetry_pct'],
+                    'walking_asymmetry_pct', 'heart_rate_avg_bpm', 'walking_step_length_cm'],
     fill_only: [],
   },
   C: {
@@ -87,6 +87,7 @@ const ALL_DAILY_COLS = [
   'basal_energy_kcal', 'stand_hours', 'stand_minutes', 'workout_count',
   'resting_hr_bpm', 'walking_hr_avg_bpm', 'hrv_sdnn_ms', 'respiratory_rate_avg',
   'vo2_max', 'walking_speed_kmh', 'walking_steadiness_pct', 'walking_asymmetry_pct',
+  'heart_rate_avg_bpm', 'walking_step_length_cm',
   'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min',
   'sleep_awake_min', 'sleep_efficiency_pct',
 ];
@@ -226,6 +227,7 @@ const B_METRIC_MAP = {
   hrv:                      { col: 'hrv_sdnn_ms',         agg: 'mean', target: 'daily' },
   restingheartrate:         { col: 'resting_hr_bpm',      agg: 'mean', target: 'daily' },
   walkingheartrateaverage:  { col: 'walking_hr_avg_bpm',  agg: 'mean', target: 'daily' },
+  heartrate:                { col: 'heart_rate_avg_bpm',  agg: 'mean', target: 'daily' },
   respiratoryrate:          { col: 'respiratory_rate_avg', agg: 'mean', target: 'daily' },
   vo2max:                   { col: 'vo2_max',             agg: 'mean', target: 'daily' },
 
@@ -235,6 +237,7 @@ const B_METRIC_MAP = {
   appwalkingsteadiness:          { col: 'walking_steadiness_pct', agg: 'mean', scale: 100, target: 'daily' },
   walkingasymmetrypercentage:    { col: 'walking_asymmetry_pct',  agg: 'mean', scale: 100, target: 'daily' },
   walkingasymmetry:              { col: 'walking_asymmetry_pct',  agg: 'mean', scale: 100, target: 'daily' },
+  walkingsteplength:             { col: 'walking_step_length_cm', agg: 'mean', scale: 100, target: 'daily' }, // m → cm
 
   // movement → daily_activity (B is fill-only; A remains authoritative when present)
   stepcount:               { col: 'steps',              agg: 'sum',  target: 'daily' },
@@ -246,9 +249,10 @@ const B_METRIC_MAP = {
   distancewalkingrunning:  { col: 'distance_km',        agg: 'sum',  scale: 0.001, target: 'daily' }, // m → km
 
   // body composition → body_metrics (HealthKit BodyFatPercentage is 0..1)
-  bodyfatpercentage: { col: 'body_fat_pct', agg: 'mean', scale: 100, target: 'body_metric' },
-  bodymassindex:     { col: 'bmi',          agg: 'mean',             target: 'body_metric' },
-  bodymass:          { col: 'weight_lb',    agg: 'mean', scale: 2.2046226218, target: 'body_metric' }, // kg → lb
+  bodyfatpercentage: { col: 'body_fat_pct',  agg: 'mean', scale: 100, target: 'body_metric' },
+  bodymassindex:     { col: 'bmi',           agg: 'mean',             target: 'body_metric' },
+  bodymass:          { col: 'weight_lb',     agg: 'mean', scale: 2.2046226218, target: 'body_metric' }, // kg → lb
+  leanbodymass:      { col: 'lean_mass_lb',  agg: 'mean', scale: 2.2046226218, target: 'body_metric' }, // kg → lb
 };
 
 function parseFormatB(body) {
@@ -302,7 +306,7 @@ function parseFormatB(body) {
 
 function isIntColumn(col) {
   return col === 'steps' || col === 'flights_climbed' || col === 'exercise_minutes'
-    || col === 'resting_hr_bpm' || col === 'walking_hr_avg_bpm';
+    || col === 'resting_hr_bpm' || col === 'walking_hr_avg_bpm' || col === 'heart_rate_avg_bpm';
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
@@ -452,7 +456,7 @@ function capitalize(s) {
 
 // ─── Body metric upsert (one row per day, partial unique on apple_health) ─
 
-const BODY_METRIC_COLS = ['weight_lb', 'bmi', 'body_fat_pct'];
+const BODY_METRIC_COLS = ['weight_lb', 'bmi', 'body_fat_pct', 'lean_mass_lb'];
 
 async function upsertBodyMetricsFromHealth(rows) {
   let inserted = 0;
@@ -588,12 +592,12 @@ async function getEffectiveZones(date) {
 function extractHrSamplesFromB(body) {
   const samples = [];
   for (const metric of body.metrics || []) {
-    if (metric.id === 'heartRate' || metric.id === 'heart_rate') {
-      for (const dp of metric.data_points || []) {
-        const t = dp.timestamp || dp.start_date;
-        const v = Number(dp.value);
-        if (t && isFinite(v)) samples.push({ t, value: v });
-      }
+    if (normalizeMetricId(metric.id) !== 'heartrate') continue;
+    for (const dp of metric.data_points || []) {
+      const t = dp.timestamp || dp.start_date || dp.date;
+      const raw = dp.value ?? dp.qty ?? dp.quantity;
+      const v = Number(raw);
+      if (t && isFinite(v)) samples.push({ t, value: v });
     }
   }
   samples.sort((a, b) => new Date(a.t) - new Date(b.t));

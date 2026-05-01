@@ -703,6 +703,9 @@ async function initDB() {
 
   // -- daily_activity migrations --
   await safeQuery('daily_activity +walking_asymmetry_pct', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_asymmetry_pct NUMERIC(4,1)`);
+  await safeQuery('daily_activity +heart_rate_avg_bpm', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS heart_rate_avg_bpm INTEGER`);
+  await safeQuery('daily_activity +walking_step_length_cm', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS walking_step_length_cm NUMERIC(5,1)`);
+  await safeQuery('body_metrics +lean_mass_lb', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS lean_mass_lb NUMERIC(6,2)`);
 
   // ===== SEARCH TRIGGERS =====
   await safeQuery('search triggers', `
