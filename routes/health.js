@@ -1081,6 +1081,19 @@ function rangeFromDailyRowsBody(body) {
   return { start: dates[0], end: dates[dates.length - 1] };
 }
 
+// ─── POST /api/health/merge-duplicate-workouts ────────────────
+// Comprehensive workout dedup. Body: { dry_run: true } previews; omit to apply.
+router.post('/merge-duplicate-workouts', async (req, res) => {
+  try {
+    const dryRun = req.body?.dry_run === true;
+    const summary = await mergeAllWorkoutDuplicates({ dryRun });
+    res.json({ dry_run: dryRun, ...summary });
+  } catch (err) {
+    console.error(`[health/merge-duplicate-workouts] failed: ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/health/imports — audit log ──────────────────────
 
 router.get('/imports', async (req, res) => {
@@ -1177,6 +1190,134 @@ async function dedupeAppleWorkouts() {
     }
   }
   return merged;
+}
+
+// ─── Comprehensive workout dedup ────────────────────────────────
+// Walks all workouts ordered by started_at, groups any whose start times are
+// within WORKOUT_DEDUP_WINDOW_SEC of each other, picks a single survivor per
+// group (manual > apple_health, more sensor data > less, more recent update >
+// older), merges sensor data from losers into survivor, and deletes losers.
+//
+// Catches three patterns at once:
+//   - Apple Health row duplicating a manually-logged workout
+//   - Format A and Format D both creating apple_health rows with slightly
+//     different started_at timestamps for the same activity
+//   - Format D sending the same workout in successive 15-min sync cycles
+
+const WORKOUT_DEDUP_WINDOW_SEC = 1800; // 30 min — slightly wider than the
+                                       // ingest-time merge window for cleanup
+
+const SENSOR_FIELDS = [
+  'time_duration', 'distance', 'elevation_gain',
+  'heart_rate_avg', 'heart_rate_max', 'pace_avg',
+  'active_calories', 'total_calories', 'ended_at',
+  'splits', 'cadence_avg',
+];
+
+function scoreWorkout(w) {
+  let score = 0;
+  for (const f of SENSOR_FIELDS) if (w[f] != null) score++;
+  return score;
+}
+
+function pickSurvivor(group) {
+  // 1. Manual entries always win — they have the user's title/notes/effort
+  const manuals = group.filter(w => w.source !== 'apple_health');
+  const candidates = manuals.length ? manuals : group.slice();
+  // 2. Among remaining, prefer the one with most sensor fields populated
+  // 3. Tiebreak by most recent updated_at (newer ingests usually have HAE's
+  //    richer payload)
+  candidates.sort((a, b) => {
+    const sd = scoreWorkout(b) - scoreWorkout(a);
+    if (sd !== 0) return sd;
+    const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+    const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+    return tb - ta;
+  });
+  return candidates[0];
+}
+
+async function mergeAllWorkoutDuplicates({ windowSec = WORKOUT_DEDUP_WINDOW_SEC, dryRun = false } = {}) {
+  const all = await query(
+    `SELECT * FROM workouts WHERE started_at IS NOT NULL
+     ORDER BY workout_date, started_at`
+  );
+
+  // Group consecutive workouts whose started_at delta is within window
+  const groups = [];
+  let current = [];
+  let lastTs = null;
+  let lastDate = null;
+  for (const w of all.rows) {
+    const t = new Date(w.started_at).getTime();
+    if (current.length && w.workout_date === lastDate && Math.abs(t - lastTs) < windowSec * 1000) {
+      current.push(w);
+    } else {
+      if (current.length > 1) groups.push(current);
+      current = [w];
+    }
+    lastTs = t;
+    lastDate = w.workout_date;
+  }
+  if (current.length > 1) groups.push(current);
+
+  const summary = { groups: groups.length, merged: 0, deleted: 0, pairs: [] };
+
+  for (const group of groups) {
+    const survivor = pickSurvivor(group);
+    const losers = group.filter(w => w.id !== survivor.id);
+
+    summary.pairs.push({
+      survivor: { id: survivor.id, source: survivor.source, title: survivor.title, started_at: survivor.started_at },
+      losers: losers.map(l => ({ id: l.id, source: l.source, title: l.title, started_at: l.started_at })),
+    });
+
+    if (dryRun) continue;
+
+    for (const loser of losers) {
+      try {
+        // Build COALESCE update for sensor fields where survivor is null
+        const updates = {};
+        for (const f of SENSOR_FIELDS) {
+          if (survivor[f] == null && loser[f] != null) updates[f] = loser[f];
+        }
+        // Adopt loser's explicit type if survivor's type is generic/inferred
+        const adoptType = survivor.inferred_workout_type === true
+          && loser.inferred_workout_type === false
+          && loser.workout_type;
+        if (adoptType) {
+          updates.workout_type = loser.workout_type;
+          updates.inferred_workout_type = false;
+        }
+
+        const setClauses = [];
+        const params = [survivor.id];
+        let i = 2;
+        for (const [k, v] of Object.entries(updates)) {
+          setClauses.push(`${k} = $${i++}`);
+          params.push(v);
+        }
+        // Always merge metadata regardless of other field updates
+        setClauses.push(`metadata = metadata || $${i++}::jsonb`);
+        params.push(JSON.stringify({ merged_from: { id: loser.id, source: loser.source, metadata: loser.metadata || {} } }));
+        setClauses.push(`updated_at = NOW()`);
+
+        if (setClauses.length) {
+          await query(
+            `UPDATE workouts SET ${setClauses.join(', ')} WHERE id = $1`,
+            params
+          );
+        }
+        await query(`DELETE FROM workouts WHERE id = $1`, [loser.id]);
+        summary.merged++;
+        summary.deleted++;
+      } catch (err) {
+        console.error(`[mergeAllWorkoutDuplicates] failed survivor=${survivor.id} loser=${loser.id}: ${err.message}`);
+      }
+    }
+  }
+
+  return summary;
 }
 
 module.exports = router;
