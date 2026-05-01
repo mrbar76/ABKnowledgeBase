@@ -602,27 +602,13 @@ function extractHrSamplesFromB(body) {
 
 // ─── POST /api/health/ingest ────────────────────────────────────
 
-router.post('/ingest', async (req, res) => {
-  try {
-    const body = req.body;
-    if (!body || typeof body !== 'object') {
-      return res.status(400).json({ error: 'Request body must be JSON' });
-    }
+// Parse + upsert a payload (no dedupe check). Used by /ingest and /reparse.
+async function processPayload(body) {
+  const format = detectFormat(body);
+  if (format === 'unknown') return { format, result: null };
 
-    const hash = fileHash(body);
-    const dup = await query('SELECT id, source_format, ingested_at, parse_result FROM raw_health_imports WHERE file_hash = $1', [hash]);
-    if (dup.rows.length) {
-      return res.json({ duplicate: true, file_hash: hash, ...dup.rows[0] });
-    }
-
-    const format = detectFormat(body);
-    if (format === 'unknown') {
-      await logImport(hash, 'unknown', body, null, { error: 'unknown format' });
-      return res.status(400).json({ error: 'Unknown payload format', file_hash: hash });
-    }
-
-    let result;
-    if (format === 'A') {
+  let result;
+  if (format === 'A') {
       const { dailyRows, workouts } = parseFormatA(body);
       const dailyStats = await upsertDailyActivity('A', dailyRows);
       const workoutStats = await upsertWorkouts(workouts);
@@ -687,6 +673,28 @@ router.post('/ingest', async (req, res) => {
         daily_updated: dailyStats.updated,
         workout_types_corrected: overridesApplied,
       };
+  }
+
+  return { format, result };
+}
+
+router.post('/ingest', async (req, res) => {
+  try {
+    const body = req.body;
+    if (!body || typeof body !== 'object') {
+      return res.status(400).json({ error: 'Request body must be JSON' });
+    }
+
+    const hash = fileHash(body);
+    const dup = await query('SELECT id, source_format, ingested_at, parse_result FROM raw_health_imports WHERE file_hash = $1', [hash]);
+    if (dup.rows.length) {
+      return res.json({ duplicate: true, file_hash: hash, ...dup.rows[0] });
+    }
+
+    const { format, result } = await processPayload(body);
+    if (format === 'unknown') {
+      await logImport(hash, 'unknown', body, null, { error: 'unknown format' });
+      return res.status(400).json({ error: 'Unknown payload format', file_hash: hash });
     }
 
     await logImport(hash, format, body, result, null);
@@ -696,6 +704,44 @@ router.post('/ingest', async (req, res) => {
     res.json({ duplicate: false, file_hash: hash, ...result });
   } catch (err) {
     console.error(`[health/ingest] failed: ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/health/reparse ─────────────────────────────────
+// Re-runs the current parser on stored payloads and overwrites parse_result.
+// Body: { file_hash } to reparse one; omit to reparse all imports.
+// Idempotent — all upserts use ON CONFLICT DO UPDATE.
+
+router.post('/reparse', async (req, res) => {
+  try {
+    const { file_hash } = req.body || {};
+    const params = file_hash ? [file_hash] : [];
+    const where = file_hash ? 'WHERE file_hash = $1' : '';
+    const stored = await query(
+      `SELECT file_hash, payload FROM raw_health_imports ${where} ORDER BY ingested_at ASC`,
+      params
+    );
+    if (!stored.rows.length) {
+      return res.status(404).json({ error: file_hash ? 'No import with that hash' : 'No imports stored' });
+    }
+
+    const summary = [];
+    for (const row of stored.rows) {
+      try {
+        const { format, result } = await processPayload(row.payload);
+        await query(
+          `UPDATE raw_health_imports SET source_format = $1, parse_result = $2::jsonb WHERE file_hash = $3`,
+          [format, JSON.stringify(result || { error: 'unknown format' }), row.file_hash]
+        );
+        summary.push({ file_hash: row.file_hash, format, ...(result || {}) });
+      } catch (err) {
+        summary.push({ file_hash: row.file_hash, error: err.message });
+      }
+    }
+    res.json({ reparsed: summary.length, results: summary });
+  } catch (err) {
+    console.error(`[health/reparse] failed: ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
