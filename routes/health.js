@@ -22,7 +22,10 @@ function detectFormat(body) {
   if (body.activity && Array.isArray(body.activity.daily)) return 'A';
   if (Array.isArray(body.metrics) && body.date_range) return 'B';
   if (body.days && body.summaries) return 'C';
-  if (body.data && Array.isArray(body.data.metrics)) return 'D';
+  // Health Auto Export native — accept any payload that has data.metrics OR
+  // data.workouts (the two top-level arrays we parse). HAE's per-data-type
+  // automations may send only one of them.
+  if (body.data && (Array.isArray(body.data.metrics) || Array.isArray(body.data.workouts))) return 'D';
   return 'unknown';
 }
 
