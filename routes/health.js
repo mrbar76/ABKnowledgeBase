@@ -22,6 +22,7 @@ function detectFormat(body) {
   if (body.activity && Array.isArray(body.activity.daily)) return 'A';
   if (Array.isArray(body.metrics) && body.date_range) return 'B';
   if (body.days && body.summaries) return 'C';
+  if (body.data && Array.isArray(body.data.metrics)) return 'D';
   return 'unknown';
 }
 
@@ -83,6 +84,14 @@ const FIELD_AUTHORITY = {
                 'active_energy_kcal', 'workout_count', 'resting_hr_bpm',
                 'walking_hr_avg_bpm', 'hrv_sdnn_ms', 'respiratory_rate_avg',
                 'walking_speed_mph', 'walking_steadiness_pct', 'walking_asymmetry_pct'],
+  },
+  // Format D = Health Auto Export. Same authority as B (recovery/mobility own;
+  // movement metrics are fill-only since A is canonical for those).
+  D: {
+    authoritative: ['resting_hr_bpm', 'walking_hr_avg_bpm', 'hrv_sdnn_ms',
+                    'respiratory_rate_avg', 'walking_speed_mph', 'walking_steadiness_pct',
+                    'walking_asymmetry_pct', 'heart_rate_avg_bpm', 'walking_step_length_in'],
+    fill_only: [],
   },
 };
 
@@ -295,7 +304,7 @@ function parseFormatB(body) {
         bodyByDate.get(date)[map.col] = round2(scaled);
       } else {
         if (!byDate.has(date)) byDate.set(date, { activity_date: date });
-        byDate.get(date)[map.col] = isIntColumn(map.col) ? Math.round(scaled) : round1(scaled);
+        byDate.get(date)[map.col] = roundForCol(map.col, scaled);
       }
     }
   }
@@ -308,12 +317,124 @@ function parseFormatB(body) {
   };
 }
 
+function roundForCol(col, n) {
+  if (isIntColumn(col)) return Math.round(n);
+  if (col === 'distance_mi') return Math.round(n * 1000) / 1000;
+  if (col === 'walking_step_length_in') return Math.round(n * 10) / 10;
+  return Math.round(n * 10) / 10;
+}
+
 function isIntColumn(col) {
   return col === 'steps' || col === 'flights_climbed' || col === 'exercise_minutes'
     || col === 'resting_hr_bpm' || col === 'walking_hr_avg_bpm' || col === 'heart_rate_avg_bpm';
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
+
+// ─── Format D parser (Health Auto Export native format) ──────────
+// Shape: { data: { metrics: [{ name, units, data: [{date, qty, source}, ...] }] } }
+// Health Auto Export respects iOS Health unit settings, so values are already
+// in whatever units the user has set (typically imperial here). Date format
+// is "2026-05-01 08:27:00 -0400" which still works with slice(0,10).
+
+const D_METRIC_MAP = {
+  // Movement (Format A is canonical; Format D fills nulls)
+  step_count:                 { col: 'steps',              agg: 'sum',  target: 'daily' },
+  walking_running_distance:   { col: 'distance_mi',        agg: 'sum',  target: 'daily' },
+  flights_climbed:            { col: 'flights_climbed',    agg: 'sum',  target: 'daily' },
+  apple_exercise_time:        { col: 'exercise_minutes',   agg: 'sum',  target: 'daily' },
+  apple_stand_hour:           { col: 'stand_hours',        agg: 'sum',  target: 'daily' },
+  apple_stand_time:           { col: 'stand_minutes',      agg: 'sum',  target: 'daily' },
+  active_energy:              { col: 'active_energy_kcal', agg: 'sum',  target: 'daily' },
+  basal_energy_burned:        { col: 'basal_energy_kcal',  agg: 'sum',  target: 'daily' },
+
+  // Recovery / readiness — Format D is authoritative
+  heart_rate_variability:     { col: 'hrv_sdnn_ms',          agg: 'mean', target: 'daily' },
+  resting_heart_rate:         { col: 'resting_hr_bpm',       agg: 'mean', target: 'daily' },
+  walking_heart_rate_average: { col: 'walking_hr_avg_bpm',   agg: 'mean', target: 'daily' },
+  heart_rate:                 { col: 'heart_rate_avg_bpm',   agg: 'mean', target: 'daily' },
+  respiratory_rate:           { col: 'respiratory_rate_avg', agg: 'mean', target: 'daily' },
+  vo2_max:                    { col: 'vo2_max',              agg: 'mean', target: 'daily' },
+
+  // Mobility (already imperial from Health Auto Export)
+  walking_speed:                { col: 'walking_speed_mph',     agg: 'mean', target: 'daily' },
+  walking_step_length:          { col: 'walking_step_length_in', agg: 'mean', target: 'daily' },
+  walking_asymmetry_percentage: { col: 'walking_asymmetry_pct',  agg: 'mean', target: 'daily' },
+  walking_steadiness:           { col: 'walking_steadiness_pct', agg: 'mean', target: 'daily' },
+
+  // Body composition. Health Auto Export emits weights in user's iOS unit
+  // (lb here). If we ever see metric.units === 'kg' we scale at parse time.
+  body_fat_percentage: { col: 'body_fat_pct', agg: 'mean', target: 'body_metric' },
+  body_mass:           { col: 'weight_lb',    agg: 'mean', target: 'body_metric' },
+  weight_body_mass:    { col: 'weight_lb',    agg: 'mean', target: 'body_metric' },
+  body_mass_index:     { col: 'bmi',          agg: 'mean', target: 'body_metric' },
+  lean_body_mass:      { col: 'lean_mass_lb', agg: 'mean', target: 'body_metric' },
+};
+
+function parseFormatD(body) {
+  const byDate = new Map();
+  const bodyByDate = new Map();
+  const skippedMetrics = [];
+  const mappedMetrics = [];
+
+  for (const metric of body.data.metrics || []) {
+    const name = String(metric.name || '').toLowerCase().trim();
+    const map = D_METRIC_MAP[name];
+    if (!map) { skippedMetrics.push(metric.name); continue; }
+    mappedMetrics.push(metric.name);
+
+    // Unit-aware conversion for the few metrics where users may have non-imperial
+    let scale = 1;
+    const u = String(metric.units || '').toLowerCase();
+    if (map.col === 'weight_lb' || map.col === 'lean_mass_lb') {
+      if (u === 'kg') scale = 2.2046226218;
+    } else if (map.col === 'distance_mi') {
+      if (u === 'km') scale = 0.621371;
+    } else if (map.col === 'walking_speed_mph') {
+      if (u === 'km/hr' || u === 'kmh' || u === 'km/h') scale = 0.621371;
+      else if (u === 'm/s') scale = 2.23694;
+    } else if (map.col === 'walking_step_length_in') {
+      if (u === 'cm') scale = 0.393701;
+      else if (u === 'm') scale = 39.3701;
+    }
+
+    const buckets = new Map();
+    for (const dp of metric.data || []) {
+      const dateStr = dp.date || dp.start_date || dp.timestamp;
+      if (!dateStr) continue;
+      const d = String(dateStr).slice(0, 10);
+      const raw = dp.Avg ?? dp.qty ?? dp.value ?? dp.quantity;
+      const v = Number(raw);
+      if (!isFinite(v)) continue;
+      if (!buckets.has(d)) buckets.set(d, []);
+      buckets.get(d).push(v);
+    }
+
+    for (const [date, vals] of buckets) {
+      const agg = map.agg === 'mean'
+        ? vals.reduce((a, b) => a + b, 0) / vals.length
+        : map.agg === 'max' ? Math.max(...vals)
+        : map.agg === 'min' ? Math.min(...vals)
+        : vals.reduce((a, b) => a + b, 0);
+      const scaled = agg * scale;
+
+      if (map.target === 'body_metric') {
+        if (!bodyByDate.has(date)) bodyByDate.set(date, { measurement_date: date });
+        bodyByDate.get(date)[map.col] = round2(scaled);
+      } else {
+        if (!byDate.has(date)) byDate.set(date, { activity_date: date });
+        byDate.get(date)[map.col] = roundForCol(map.col, scaled);
+      }
+    }
+  }
+
+  return {
+    dailyRows: Array.from(byDate.values()),
+    bodyMetricRows: Array.from(bodyByDate.values()),
+    mappedMetrics,
+    skippedMetrics,
+  };
+}
 
 function round1(n) { return Math.round(n * 10) / 10; }
 
@@ -730,6 +851,23 @@ async function processPayload(body) {
         daily_updated: dailyStats.updated,
         workout_types_corrected: overridesApplied,
       };
+    } else if (format === 'D') {
+      const { dailyRows, bodyMetricRows, mappedMetrics, skippedMetrics } = parseFormatD(body);
+      const dailyStats = await upsertDailyActivity('D', dailyRows);
+      const bodyStats = bodyMetricRows.length
+        ? await upsertBodyMetricsFromHealth(bodyMetricRows)
+        : { inserted: 0, updated: 0 };
+
+      result = {
+        format: 'D',
+        date_range: rangeFromDailyRows(dailyRows),
+        daily_inserted: dailyStats.inserted,
+        daily_updated: dailyStats.updated,
+        body_metrics_inserted: bodyStats.inserted,
+        body_metrics_updated: bodyStats.updated,
+        mapped_metrics: mappedMetrics,
+        skipped_metrics: skippedMetrics,
+      };
   }
 
   return { format, result };
@@ -829,6 +967,7 @@ async function logImport(hash, format, body, parseResult, errResult) {
     const dateRange = format === 'A' ? rangeFromDailyRowsBody(body)
       : format === 'B' ? body.date_range
       : format === 'C' ? body.metadata?.dateRange
+      : format === 'D' ? parseResult?.date_range
       : null;
     await query(
       `INSERT INTO raw_health_imports (source_format, filename, file_hash, file_bytes, date_range_start, date_range_end, payload, parse_result)
@@ -952,6 +1091,8 @@ module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
 module.exports.parseFormatB = parseFormatB;
+module.exports.parseFormatD = parseFormatD;
 module.exports.normalizeMetricId = normalizeMetricId;
 module.exports.B_METRIC_MAP = B_METRIC_MAP;
+module.exports.D_METRIC_MAP = D_METRIC_MAP;
 module.exports.ingestPayload = ingestPayload;
