@@ -30,6 +30,7 @@ const emailRoutes = require('./routes/email');
 const calendarRoutes = require('./routes/calendar');
 const healthRoutes = require('./routes/health');
 const athleteRoutes = require('./routes/athlete');
+const dropboxRoutes = require('./routes/dropbox');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -130,6 +131,11 @@ app.get('/privacy', (req, res) => {
     <p>AB Brain is a personal knowledge base backed by PostgreSQL. All data is stored in your own database and only accessible via authenticated API calls. No data is shared with third parties.</p>
     <p>Last updated: 2026</p></body></html>`);
 });
+
+// Dropbox auth bootstrap page — public HTML (no secrets in the markup, the
+// user pastes their API key into the form which posts to the auth-gated
+// /api/health/dropbox-auth with a Bearer header).
+app.get('/dropbox-auth', (req, res) => dropboxRoutes.renderAuthPage(req, res));
 
 // API key authentication for /api routes — header only.
 // Accepts `X-Api-Key: <key>` or `Authorization: Bearer <key>`. Query-string
@@ -249,6 +255,7 @@ app.use('/api/contacts', contactRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/health', dropboxRoutes);
 app.use('/api/athlete', athleteRoutes);
 
 // Sync status
@@ -634,6 +641,8 @@ async function start() {
     console.log('[cron] Calendar ingest disabled (set OPENAI_API_KEY + MCP_GMAIL_URL or CALENDAR_SYNC_ENABLED=true)');
   }
 
+  // ─── Dropbox health-file poller ────────────────────────────────
+  dropboxRoutes.startPoller();
 }
 
 start();
