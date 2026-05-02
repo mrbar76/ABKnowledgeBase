@@ -919,6 +919,7 @@ router.get('/trends', async (req, res) => {
               walking_speed_mph, walking_asymmetry_pct, walking_step_length_in,
               sleep_total_min, sleep_deep_min, sleep_rem_min,
               sleep_core_min, sleep_awake_min, sleep_efficiency_pct,
+              sleep_in_bed_start, sleep_in_bed_end,
               active_energy_kcal, basal_energy_kcal
          FROM daily_activity
          WHERE activity_date >= $1
@@ -964,10 +965,20 @@ router.get('/trends', async (req, res) => {
     const sleepWindows = splitWindows(daRows, 'sleep_total_min', today);
     const sleepDir = trendDirection(sleepWindows.m30, sleepWindows.l60);
 
-    // bedtime regularity is not yet tracked as a separate column on
-    // daily_activity (we store totals/stages but not start time). Placeholder
-    // for when sleep_in_bed_start is added; sleepScore tolerates [].
-    const last14Bedtimes = [];
+    // Bedtime regularity over the last 14 nights — minutes from midnight
+    // (24:00 = 0, so 23:30 → 1410, 00:30 → 30). Wraps cleanly because
+    // stddev cares about variance, not absolute scale, and we store the
+    // raw minute-of-day. Coach uses the stddev: <30min = consistent,
+    // 30-60min = variable, >60min = chaotic.
+    const last14Bedtimes = sleepRows.slice(-14)
+      .map(r => r.sleep_in_bed_start)
+      .filter(Boolean)
+      .map(t => {
+        const d = new Date(t);
+        if (isNaN(d.getTime())) return null;
+        return d.getHours() * 60 + d.getMinutes();
+      })
+      .filter(v => v != null);
 
     const lastNightForScore = lastNight ? {
       total_min: Number(lastNight.sleep_total_min),

@@ -106,6 +106,7 @@ const ALL_DAILY_COLS = [
   'heart_rate_avg_bpm', 'walking_step_length_in',
   'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min',
   'sleep_awake_min', 'sleep_efficiency_pct',
+  'sleep_in_bed_start', 'sleep_in_bed_end',
 ];
 
 async function upsertDailyActivity(format, dateRows) {
@@ -452,7 +453,25 @@ function parseFormatD(body) {
     //      "Awake" / "In Bed". qty is in metric.units (typically "hr").
     // Detect which form we have by inspecting the first data point with keys.
     if (map.target === 'sleep') {
-      const phaseAccum = new Map(); // date → { asleep, core, rem, deep, awake, inBed } in hours
+      // phaseAccum tracks per-night totals plus first-in-bed and last-out-of-
+      // bed timestamps. The latter two power Sleep Score consistency
+      // (bedtime stddev) and bedtime regularity in /insights/trends.sleep.
+      const phaseAccum = new Map(); // date → { asleep, core, rem, deep, awake, inBed, firstStart, lastEnd }
+      const recordTimestamps = (acc, startStr, endStr) => {
+        if (startStr) {
+          const t = new Date(startStr);
+          if (!isNaN(t.getTime()) && (acc.firstStart == null || t < acc.firstStart)) acc.firstStart = t;
+        }
+        if (endStr) {
+          const t = new Date(endStr);
+          if (!isNaN(t.getTime()) && (acc.lastEnd == null || t > acc.lastEnd)) acc.lastEnd = t;
+        }
+      };
+      const ensureAcc = (d) => {
+        if (!phaseAccum.has(d)) phaseAccum.set(d, { asleep: 0, core: 0, rem: 0, deep: 0, awake: 0, inBed: 0, firstStart: null, lastEnd: null });
+        return phaseAccum.get(d);
+      };
+
       for (const dp of metric.data || []) {
         // Aggregated branch (multi-field per row)
         if (dp.totalSleep != null || dp.asleep != null || dp.deep != null || dp.rem != null || dp.core != null) {
@@ -469,6 +488,10 @@ function parseFormatD(body) {
             row.sleep_awake_min = Math.round(Math.max(0, (dp.inBed - dp.asleep) * 60));
             if (dp.inBed > 0) row.sleep_efficiency_pct = round1((dp.asleep / dp.inBed) * 100);
           }
+          // Aggregated form sometimes carries inBedStart/sleepStart and
+          // inBedEnd/sleepEnd — capture the bedtime/wake-time window.
+          const acc = ensureAcc(d);
+          recordTimestamps(acc, dp.inBedStart || dp.sleepStart, dp.inBedEnd || dp.sleepEnd);
           continue;
         }
         // Unaggregated branch (one phase per row)
@@ -482,14 +505,16 @@ function parseFormatD(body) {
         // (HAE older builds). Convert everything to hours.
         const unitMul = String(metric.units || '').toLowerCase().startsWith('min') ? (1/60) : 1;
         const hrs = qty * unitMul;
-        if (!phaseAccum.has(d)) phaseAccum.set(d, { asleep: 0, core: 0, rem: 0, deep: 0, awake: 0, inBed: 0 });
-        const acc = phaseAccum.get(d);
+        const acc = ensureAcc(d);
         if (value === 'asleep' || value === 'asleepunspecified' || value === 'unspecified') acc.asleep += hrs;
         else if (value === 'core' || value === 'asleepcore') acc.core += hrs;
         else if (value === 'rem' || value === 'asleeprem') acc.rem += hrs;
         else if (value === 'deep' || value === 'asleepdeep') acc.deep += hrs;
         else if (value === 'awake') acc.awake += hrs;
         else if (value === 'inbed' || value === 'in_bed') acc.inBed += hrs;
+        // Capture timestamps from each phase row — earliest start = bedtime,
+        // latest end = wake time.
+        recordTimestamps(acc, dp.startDate || dp.start_date, dp.endDate || dp.end_date);
       }
       // Roll phaseAccum into daily_activity rows
       for (const [d, p] of phaseAccum) {
@@ -504,6 +529,8 @@ function parseFormatD(body) {
         if (p.awake > 0) row.sleep_awake_min = Math.round(p.awake * 60);
         const inBed = p.inBed > 0 ? p.inBed : (total + p.awake);
         if (inBed > 0 && total > 0) row.sleep_efficiency_pct = round1((total / inBed) * 100);
+        if (p.firstStart) row.sleep_in_bed_start = p.firstStart.toISOString();
+        if (p.lastEnd) row.sleep_in_bed_end = p.lastEnd.toISOString();
       }
       continue;
     }

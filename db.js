@@ -1132,6 +1132,24 @@ async function initDB() {
   await safeQuery('dc +sleep_hours', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS sleep_hours NUMERIC(3,1)`);
   await safeQuery('dc +sleep_quality', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS sleep_quality INTEGER CHECK(sleep_quality >= 1 AND sleep_quality <= 10)`);
 
+  // -- daily_context subjective check-in (re-added for morning-check-in Skill) --
+  // Captures the world-class-coach inputs the prior simplification dropped.
+  // Coach asks these in chat, POSTs the row; trends + alerts read them.
+  await safeQuery('dc +mood', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS mood INTEGER CHECK(mood >= 1 AND mood <= 10)`);
+  await safeQuery('dc +motivation', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS motivation INTEGER CHECK(motivation >= 1 AND motivation <= 10)`);
+  await safeQuery('dc +soreness_overall', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS soreness_overall INTEGER CHECK(soreness_overall >= 1 AND soreness_overall <= 10)`);
+  await safeQuery('dc +soreness_areas', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS soreness_areas JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('dc +life_stress', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS life_stress INTEGER CHECK(life_stress >= 1 AND life_stress <= 10)`);
+  await safeQuery('dc +illness_flag', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS illness_flag TEXT CHECK(illness_flag IN ('none','onset','active','resolving'))`);
+  await safeQuery('dc +travel_status', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS travel_status TEXT`);
+  await safeQuery('dc +bedtime', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS bedtime_self_report TIME`);
+
+  // -- daily_activity bedtime/wake (HAE Format B/D writes them; sleep score
+  // consistency + regularity stddev read them). Until populated, sleep score
+  // consistency component returns 0 and regularity stddev returns null --
+  await safeQuery('da +sleep_in_bed_start', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS sleep_in_bed_start TIMESTAMPTZ`);
+  await safeQuery('da +sleep_in_bed_end', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS sleep_in_bed_end TIMESTAMPTZ`);
+
   // -- simplify daily_context: drop unused fields (sleep + hydration + notes kept) --
   await safeQuery('dc drop day_type', `ALTER TABLE daily_context DROP COLUMN IF EXISTS day_type`);
   await safeQuery('dc drop energy_rating', `ALTER TABLE daily_context DROP COLUMN IF EXISTS energy_rating`);

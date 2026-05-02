@@ -5,19 +5,48 @@ const router = express.Router();
 function num(val) { if (val == null || val === '') return null; const n = Number(val); return isNaN(n) ? null : n; }
 function int(val) { if (val == null || val === '') return null; const n = Number(val); return isNaN(n) ? null : Math.round(n); }
 
+// Column registry: kind drives parsing + validation. Subjective 1-10 fields
+// were added in M.2 to support the morning-check-in Skill.
+const DC_COLS = {
+  date:               { kind: 'text', required: true },
+  sleep_hours:        { kind: 'num', range: [0, 24] },
+  sleep_quality:      { kind: 'int', range: [1, 10] },
+  hydration_liters:   { kind: 'num', range: [0, 20] },
+  mood:               { kind: 'int', range: [1, 10] },
+  motivation:         { kind: 'int', range: [1, 10] },
+  soreness_overall:   { kind: 'int', range: [1, 10] },
+  soreness_areas:     { kind: 'json' },
+  life_stress:        { kind: 'int', range: [1, 10] },
+  illness_flag:       { kind: 'enum', values: ['none','onset','active','resolving'] },
+  travel_status:      { kind: 'text' },
+  bedtime_self_report:{ kind: 'text' },
+  notes:              { kind: 'text' },
+};
+
+function castDc(key, val) {
+  const spec = DC_COLS[key];
+  if (!spec) return undefined;
+  if (val == null || val === '') return null;
+  if (spec.kind === 'num') return num(val);
+  if (spec.kind === 'int') return int(val);
+  if (spec.kind === 'json') return JSON.stringify(val);
+  if (spec.kind === 'enum') return spec.values.includes(val) ? val : null;
+  return val;
+}
+
 function validateContext(b) {
   const errors = [];
   if (!b.date) errors.push('date is required');
-  if (b.sleep_quality != null && b.sleep_quality !== '') {
-    const v = Number(b.sleep_quality);
-    if (!Number.isInteger(v) || v < 1 || v > 10) errors.push('sleep_quality must be an integer 1-10');
-  }
-  if (b.hydration_liters != null && b.hydration_liters !== '' && (isNaN(Number(b.hydration_liters)) || Number(b.hydration_liters) < 0)) {
-    errors.push('hydration_liters must be a non-negative number');
-  }
-  if (b.sleep_hours != null && b.sleep_hours !== '') {
-    const v = Number(b.sleep_hours);
-    if (isNaN(v) || v < 0 || v > 24) errors.push('sleep_hours must be 0-24');
+  for (const [key, spec] of Object.entries(DC_COLS)) {
+    if (b[key] == null || b[key] === '') continue;
+    if (spec.kind === 'num' || spec.kind === 'int') {
+      const v = Number(b[key]);
+      if (isNaN(v)) { errors.push(`${key} must be numeric`); continue; }
+      if (spec.kind === 'int' && !Number.isInteger(v)) errors.push(`${key} must be an integer`);
+      if (spec.range && (v < spec.range[0] || v > spec.range[1])) errors.push(`${key} must be ${spec.range[0]}-${spec.range[1]}`);
+    } else if (spec.kind === 'enum' && !spec.values.includes(b[key])) {
+      errors.push(`${key} must be one of: ${spec.values.join(', ')}`);
+    }
   }
   return errors;
 }
@@ -69,39 +98,45 @@ router.get('/daily-context/:id', async (req, res) => {
   }
 });
 
-// ─── Create daily context ────────────────────────────────────
+// ─── Upsert daily context ────────────────────────────────────
+// POST is upsert-on-date: morning-check-in Skill calls this repeatedly as
+// the user answers questions. Each call only writes the keys that were
+// passed; existing values for other keys are preserved via COALESCE.
 router.post('/daily-context', async (req, res) => {
   try {
     const b = req.body;
     const errors = validateContext(b);
     if (errors.length) return res.status(400).json({ error: 'Validation failed', details: errors });
 
-    const result = await query(
-      `INSERT INTO daily_context (
-        date, sleep_hours, sleep_quality, hydration_liters, notes
-      ) VALUES ($1,$2,$3,$4,$5)
-      RETURNING *`,
-      [
-        b.date,
-        num(b.sleep_hours),
-        int(b.sleep_quality),
-        num(b.hydration_liters),
-        b.notes || null,
-      ]
-    );
+    const cols = ['date'];
+    const values = [b.date];
+    for (const key of Object.keys(DC_COLS)) {
+      if (key === 'date') continue;
+      if (b[key] === undefined) continue;
+      cols.push(key);
+      values.push(castDc(key, b[key]));
+    }
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+    const updateClauses = cols
+      .filter(c => c !== 'date')
+      .map(c => `${c} = COALESCE(EXCLUDED.${c}, daily_context.${c})`)
+      .concat(['updated_at = NOW()']);
 
-    await logActivity('create', 'daily_context', result.rows[0].id, 'manual', `Daily context: ${b.date}`);
+    const sql = `
+      INSERT INTO daily_context (${cols.join(', ')})
+      VALUES (${placeholders})
+      ON CONFLICT (date) DO UPDATE SET ${updateClauses.join(', ')}
+      RETURNING *`;
+
+    const result = await query(sql, values);
+    await logActivity('upsert', 'daily_context', result.rows[0].id, 'manual', `Daily context: ${b.date}`);
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    // Handle unique constraint on date
-    if (err.code === '23505') {
-      return res.status(409).json({ error: `Daily context for ${req.body.date} already exists. Use PATCH to update.` });
-    }
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── Update daily context ────────────────────────────────────
+// ─── PATCH daily context (by id) ─────────────────────────────
 router.patch('/daily-context/:id', async (req, res) => {
   try {
     const b = req.body;
@@ -109,23 +144,11 @@ router.patch('/daily-context/:id', async (req, res) => {
     const params = [];
     let i = 1;
 
-    const allowed = ['date', 'sleep_hours', 'sleep_quality', 'hydration_liters', 'notes'];
-    const numericFields = ['hydration_liters', 'sleep_hours'];
-    const intFields = ['sleep_quality'];
-
-    for (const key of allowed) {
-      if (b[key] !== undefined) {
-        if (numericFields.includes(key)) {
-          fields.push(`${key} = $${i++}`);
-          params.push(num(b[key]));
-        } else if (intFields.includes(key)) {
-          fields.push(`${key} = $${i++}`);
-          params.push(int(b[key]));
-        } else {
-          fields.push(`${key} = $${i++}`);
-          params.push(b[key]);
-        }
-      }
+    for (const key of Object.keys(DC_COLS)) {
+      if (b[key] === undefined) continue;
+      const val = castDc(key, b[key]);
+      fields.push(`${key} = $${i++}`);
+      params.push(val);
     }
 
     if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
