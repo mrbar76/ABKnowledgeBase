@@ -6660,13 +6660,29 @@ const MACRO_GOALS = {
   rest:     { cal: [2000, 2200], p: [140, 150], c: [150, 200], f: [65, 80] },
 };
 
-function getMacroTarget(tier) {
+function getMacroTarget(tier, planTargets) {
   const g = MACRO_GOALS[tier] || MACRO_GOALS.moderate;
-  return {
+  const fromTier = {
     cal: Math.round((g.cal[0] + g.cal[1]) / 2), calRange: g.cal,
     p: Math.round((g.p[0] + g.p[1]) / 2), pRange: g.p,
     c: Math.round((g.c[0] + g.c[1]) / 2), cRange: g.c,
     f: Math.round((g.f[0] + g.f[1]) / 2), fRange: g.f,
+    source: 'tier',
+  };
+  if (!planTargets) return fromTier;
+  // Per-field override: use plan target where set, fall back to tier default.
+  // Macro grams get a ±10g band around the plan value for the in-zone bar.
+  const band = (v, w = 10) => v != null ? [Math.round(v - w), Math.round(v + w)] : null;
+  return {
+    cal: planTargets.calories != null ? Math.round(planTargets.calories) : fromTier.cal,
+    calRange: planTargets.calories_range || fromTier.calRange,
+    p: planTargets.protein_g != null ? Math.round(planTargets.protein_g) : fromTier.p,
+    pRange: band(planTargets.protein_g) || fromTier.pRange,
+    c: planTargets.carbs_g != null ? Math.round(planTargets.carbs_g) : fromTier.c,
+    cRange: band(planTargets.carbs_g, 15) || fromTier.cRange,
+    f: planTargets.fat_g != null ? Math.round(planTargets.fat_g) : fromTier.f,
+    fRange: band(planTargets.fat_g, 8) || fromTier.fRange,
+    source: planTargets.calories != null ? 'plan' : 'tier',
   };
 }
 
@@ -6695,7 +6711,12 @@ function buildMacroDashboard(summary, activityRow) {
   const tier = _currentTierOverride || summary.intensity_tier || 'moderate';
   const src = _currentTierOverride ? 'override' : (summary.intensity_source || 'default');
   const planned = summary.planned_type;
-  const goals = getMacroTarget(tier);
+  // Plan targets win over tier defaults when the Coach has prescribed them
+  // (race day at 5500 kcal, deload at 1900, etc.). Manual tier override
+  // bypasses both — the user pressed the badge to force a tier and expects
+  // the static tier numbers.
+  const planTargets = (_currentTierOverride || !summary.plan_targets) ? null : summary.plan_targets;
+  const goals = getMacroTarget(tier, planTargets);
 
   const calActual = summary.total_calories || 0;
   // Activity-aware energy balance. activityRow comes from /insights/nutrition
@@ -6720,7 +6741,12 @@ function buildMacroDashboard(summary, activityRow) {
 
   const badgeColors = { hard: '#ef4444', moderate: '#f59e0b', rest: '#10b981' };
   const badgeColor = badgeColors[tier] || '#f59e0b';
-  const sourceLabel = src === 'workout' ? `workout: ${planned}`
+  // Targets-from-plan wins the label even when the tier classification came
+  // from logged workouts — what matters to the athlete is "where did this
+  // 5500 kcal target come from?", not "how was hard-day detected?".
+  const targetsFromPlan = goals.source === 'plan';
+  const sourceLabel = targetsFromPlan ? `plan: ${planned || 'today'}`
+    : src === 'workout' ? `workout: ${planned}`
     : src === 'plan' ? `plan: ${planned}`
     : src === 'context' ? `set: ${planned}`
     : src === 'override' ? 'manual'

@@ -227,7 +227,7 @@ function classifyIntensity(dayType, workouts, planStructure, targetDate) {
 }
 
 async function buildDailySummary(targetDate) {
-  const [mealsResult, contextResult, workoutsResult] = await Promise.all([
+  const [mealsResult, contextResult, workoutsResult, planResult] = await Promise.all([
     query(
       `SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST, created_at ASC`,
       [targetDate]
@@ -240,11 +240,23 @@ async function buildDailySummary(targetDate) {
       `SELECT workout_type, effort FROM workouts WHERE workout_date = $1`,
       [targetDate]
     ),
+    // Pull the day's coaching plan so the dashboard targets follow what the
+    // Coach prescribed (e.g. race-day fueling at 5500 kcal) instead of the
+    // static MACRO_GOALS defaults (~2800 kcal hard-day fallback).
+    query(
+      `SELECT id, workout_type, intent_type, phase, target_calories,
+              target_protein_g, target_carbs_g, target_fat_g,
+              target_hydration_liters, target_sleep_hours, target_effort,
+              target_duration_min, goal, rationale
+         FROM daily_plans WHERE plan_date = $1`,
+      [targetDate]
+    ),
   ]);
 
   const meals = mealsResult.rows;
   const context = contextResult.rows[0] || null;
   const workouts = workoutsResult.rows;
+  const plan = planResult.rows[0] || null;
 
   const intensity = classifyIntensity(
     null, // day_type removed
@@ -280,16 +292,52 @@ async function buildDailySummary(targetDate) {
     if (k !== 'total_meals') totals[k] = Math.round(totals[k] * 10) / 10;
   }
 
+  // plan_targets surfaces the daily_plans row for client-side display.
+  // Calories range = ±5% if the Coach set a single target value; the
+  // dashboard uses range for the in-zone band. Macro grams default to ±10g.
+  const num = (v) => v == null ? null : Number(v);
+  const cal = num(plan?.target_calories);
+  const planTargets = plan ? {
+    calories: cal,
+    calories_range: cal ? [Math.round(cal * 0.95), Math.round(cal * 1.05)] : null,
+    protein_g: num(plan.target_protein_g),
+    carbs_g: num(plan.target_carbs_g),
+    fat_g: num(plan.target_fat_g),
+    hydration_liters: num(plan.target_hydration_liters),
+    sleep_hours: num(plan.target_sleep_hours),
+    effort: num(plan.target_effort),
+    duration_min: num(plan.target_duration_min),
+    intent_type: plan.intent_type,
+    phase: plan.phase,
+    workout_type: plan.workout_type,
+    goal: plan.goal,
+    rationale: plan.rationale,
+  } : null;
+
+  // If plan targets exist, prefer them over the workout-tier classification
+  // for the intensity_source label so the UI shows "from plan" provenance.
+  const finalIntensity = planTargets ? {
+    ...intensity,
+    intensity_source: 'plan',
+    planned_type: planTargets.workout_type || planTargets.intent_type || intensity.planned_type,
+  } : intensity;
+
   return {
     date: targetDate,
     ...totals,
-    ...intensity,
+    ...finalIntensity,
     workouts_today: workouts,
+    plan_targets: planTargets,
     context: context ? {
       id: context.id,
       sleep_hours: context.sleep_hours,
       sleep_quality: context.sleep_quality,
       hydration_liters: context.hydration_liters,
+      mood: context.mood,
+      motivation: context.motivation,
+      soreness_overall: context.soreness_overall,
+      illness_flag: context.illness_flag,
+      life_stress: context.life_stress,
       notes: context.notes,
     } : null,
     meals,
