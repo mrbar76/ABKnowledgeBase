@@ -28,6 +28,8 @@ const briefingRoutes = require('./routes/briefing');
 const contactRoutes = require('./routes/contacts');
 const emailRoutes = require('./routes/email');
 const calendarRoutes = require('./routes/calendar');
+const healthRoutes = require('./routes/health');
+const athleteRoutes = require('./routes/athlete');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -246,6 +248,8 @@ app.use('/api/briefing', briefingRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/health', healthRoutes);
+app.use('/api/athlete', athleteRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));

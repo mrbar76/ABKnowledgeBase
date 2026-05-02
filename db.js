@@ -1144,6 +1144,121 @@ async function initDB() {
 
   // (progress_checkins and progress_photos migrations removed)
 
+  // ===== APPLE HEALTH INGEST PIPELINE =====
+  // Three new tables to support the Format A/B/C/D ingest in routes/health.js,
+  // plus columns added to existing workouts and body_metrics. All migrations
+  // are additive and idempotent — safe to run on an existing master DB.
+
+  // Per-day aggregates from Apple Health / HAE / Lode. One row per date.
+  // Format A is canonical for movement metrics; Format B/D for recovery and
+  // mobility; Format C backfills historical sleep + workout-type overrides.
+  await safeQuery('daily_activity table', `
+    CREATE TABLE IF NOT EXISTS daily_activity (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      activity_date DATE NOT NULL UNIQUE,
+
+      -- movement (imperial: miles, feet, calories)
+      steps INTEGER,
+      distance_mi NUMERIC(7,3),
+      exercise_minutes INTEGER,
+      flights_climbed INTEGER,
+      active_energy_kcal NUMERIC(8,2),
+      basal_energy_kcal NUMERIC(8,2),
+      stand_hours INTEGER,
+      stand_minutes INTEGER,
+      workout_count INTEGER,
+
+      -- recovery / readiness
+      resting_hr_bpm INTEGER,
+      walking_hr_avg_bpm INTEGER,
+      heart_rate_avg_bpm INTEGER,
+      hrv_sdnn_ms NUMERIC(5,1),
+      respiratory_rate_avg NUMERIC(4,1),
+      vo2_max NUMERIC(4,1),
+
+      -- mobility / gait (imperial: mph, inches, percent)
+      walking_speed_mph NUMERIC(4,2),
+      walking_steadiness_pct NUMERIC(4,1),
+      walking_asymmetry_pct NUMERIC(4,1),
+      walking_step_length_in NUMERIC(5,1),
+
+      -- sleep (minutes per stage; canonical from Format C/D)
+      sleep_total_min INTEGER,
+      sleep_deep_min INTEGER,
+      sleep_rem_min INTEGER,
+      sleep_core_min INTEGER,
+      sleep_awake_min INTEGER,
+      sleep_efficiency_pct NUMERIC(4,1),
+
+      -- provenance per field group: which file format last wrote each block
+      sources JSONB DEFAULT '{}'::jsonb,
+      raw_payload JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('daily_activity index', `
+    CREATE INDEX IF NOT EXISTS idx_daily_activity_date ON daily_activity(activity_date DESC)`);
+
+  // File-level idempotency + reprocess log for raw exports
+  await safeQuery('raw_health_imports table', `
+    CREATE TABLE IF NOT EXISTS raw_health_imports (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source_format TEXT NOT NULL,
+      filename TEXT,
+      file_hash TEXT NOT NULL UNIQUE,
+      file_bytes INTEGER,
+      date_range_start DATE,
+      date_range_end DATE,
+      payload JSONB,
+      payload_path TEXT,
+      parse_result JSONB,
+      ingested_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('raw_health_imports indexes', `
+    CREATE INDEX IF NOT EXISTS idx_raw_health_imports_format ON raw_health_imports(source_format);
+    CREATE INDEX IF NOT EXISTS idx_raw_health_imports_ingested ON raw_health_imports(ingested_at DESC)`);
+
+  // HR zones config — versioned per athlete, set by trainer or computed
+  await safeQuery('athlete_zones table', `
+    CREATE TABLE IF NOT EXISTS athlete_zones (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      effective_from DATE NOT NULL,
+      effective_to DATE,
+      zone_type TEXT NOT NULL DEFAULT 'heart_rate',
+      max_hr INTEGER,
+      resting_hr INTEGER,
+      lthr INTEGER,
+      z1_max INTEGER,
+      z2_max INTEGER,
+      z3_max INTEGER,
+      z4_max INTEGER,
+      z5_max INTEGER,
+      method TEXT,
+      set_by TEXT DEFAULT 'trainer',
+      rationale TEXT,
+      source_data JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('athlete_zones indexes', `
+    CREATE INDEX IF NOT EXISTS idx_athlete_zones_effective ON athlete_zones(effective_from DESC);
+    CREATE INDEX IF NOT EXISTS idx_athlete_zones_active ON athlete_zones(effective_to) WHERE effective_to IS NULL`);
+
+  // Workouts: training-load and HR-zone-distribution columns
+  await safeQuery('workouts +tss', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS tss INTEGER`);
+  await safeQuery('workouts +intensity_factor', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS intensity_factor NUMERIC(4,2)`);
+  await safeQuery('workouts +hr_zones', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hr_zones JSONB`);
+  await safeQuery('workouts +inferred_workout_type', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS inferred_workout_type BOOLEAN DEFAULT false`);
+  // Partial unique index on (started_at) where source='apple_health' so
+  // re-ingests deduplicate at the row level.
+  await safeQuery('workouts unique apple_health started_at', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_apple_health_started_at ON workouts(started_at) WHERE source = 'apple_health' AND started_at IS NOT NULL`);
+
+  // body_metrics: lean mass + apple_health partial unique + nullable weight
+  await safeQuery('body_metrics +lean_mass_lb', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS lean_mass_lb NUMERIC(6,2)`);
+  // Apple Health may emit body-fat-only or BMI-only rows with no weight, so
+  // weight_lb cannot be NOT NULL in this schema.
+  await safeQuery('body_metrics weight_lb nullable', `ALTER TABLE body_metrics ALTER COLUMN weight_lb DROP NOT NULL`);
+  await safeQuery('body_metrics apple_health unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_body_metrics_apple_date ON body_metrics(measurement_date) WHERE source = 'apple_health'`);
+
   // ===== EMAIL INDEX =====
   // Stores pointers + summaries for email threads. Bodies are NOT stored;
   // they are fetched on demand from the source (Gmail/Outlook via MCP).
