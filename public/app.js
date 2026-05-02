@@ -5824,7 +5824,9 @@ async function loadWorkouts(searchQuery) {
               ${w.elevation_gain ? `<span>↑${esc(w.elevation_gain)}</span>` : ''}
               ${w.heart_rate_avg ? `<span>♥${esc(w.heart_rate_avg)}</span>` : ''}
               ${w.active_calories ? `<span>${esc(w.active_calories)}</span>` : ''}
+              ${w.tss ? `<span title="Training Stress Score">TSS ${w.tss}</span>` : ''}
             </div>
+            ${w.hr_zones && w.hr_zones.minutes ? `<div style="margin-top:6px">${renderHrZoneBar(w.hr_zones, { height: 4, labels: false })}</div>` : ''}
             ${w.tags && w.tags.length ? `<div class="transcript-speakers mt-sm">${w.tags.map(t => `<span class="speaker-tag" style="font-size:0.6rem">${esc(t)}</span>`).join('')}</div>` : ''}
           </div>`;
         }).join('') : '<div class="empty-state">No workouts yet. Tap "+ Log" to add one!</div>'}
@@ -5874,10 +5876,11 @@ async function showWorkoutDetail(id) {
         </div>
       </div>` : ''}
 
-      ${w.time_duration || w.distance || w.elevation_gain || w.heart_rate_avg || w.heart_rate_max || w.pace_avg || w.cadence_avg || w.active_calories || w.total_calories || w.splits ? `
+      ${w.time_duration || w.distance || w.elevation_gain || w.heart_rate_avg || w.heart_rate_max || w.pace_avg || w.cadence_avg || w.active_calories || w.total_calories || w.splits || w.tss ? `
       <div class="workout-detail-section">
         <div class="workout-detail-label">Metrics</div>
         <div class="workout-detail-value">
+          ${w.tss ? '<strong>TSS:</strong> ' + esc(String(w.tss)) + (w.intensity_factor ? ' (IF ' + esc(String(w.intensity_factor)) + ')' : '') + '<br>' : ''}
           ${w.time_duration ? '<strong>Duration:</strong> ' + esc(w.time_duration) + '<br>' : ''}
           ${w.distance ? '<strong>Distance:</strong> ' + esc(w.distance) + '<br>' : ''}
           ${w.elevation_gain ? '<strong>Elevation gain:</strong> ' + esc(w.elevation_gain) + '<br>' : ''}
@@ -5889,6 +5892,17 @@ async function showWorkoutDetail(id) {
           ${w.total_calories ? '<strong>Total cal:</strong> ' + esc(w.total_calories) + '<br>' : ''}
           ${w.splits ? '<strong>Splits:</strong><br>' + esc(w.splits).replace(/\n/g, '<br>') : ''}
         </div>
+      </div>` : ''}
+
+      ${w.hr_zones && w.hr_zones.minutes ? `
+      <div class="workout-detail-section">
+        <div class="workout-detail-label">Heart Rate Zones</div>
+        ${renderHrZoneBar(w.hr_zones, { height: 18 })}
+        ${renderHrZoneBreakdown(w.hr_zones)}
+        ${w.hr_zones.zones_used ? `<div style="font-size:0.65rem;color:var(--text-dim);margin-top:6px">
+          Computed against LTHR ${w.hr_zones.zones_used.lthr || '—'}, Max HR ${w.hr_zones.zones_used.max_hr || '—'}
+          ${w.hr_zones.method ? ' · method: ' + esc(w.hr_zones.method) : ''}
+        </div>` : ''}
       </div>` : ''}
 
       ${w.slowdown_notes || w.failure_first ? `
@@ -6633,6 +6647,48 @@ async function loadBodyMetrics(searchQuery) {
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
 }
 
+// HR zone visualizers. The data shape follows the routes/health.js format:
+//   { minutes: { z1, z2, z3, z4, z5 }, zones_used: { lthr, max_hr, ... } }
+// Returns '' when no zone data exists, so callers can chain it without checks.
+const HR_ZONE_COLORS = ['#9ca3af', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
+const HR_ZONE_KEYS = ['z1', 'z2', 'z3', 'z4', 'z5'];
+
+function _zoneTotal(zones) {
+  if (!zones || !zones.minutes) return 0;
+  return HR_ZONE_KEYS.reduce((s, k) => s + (Number(zones.minutes[k]) || 0), 0);
+}
+
+// Stacked horizontal bar — 5 segments proportional to time-in-zone
+function renderHrZoneBar(zones, opts = {}) {
+  const total = _zoneTotal(zones);
+  if (total < 0.1) return '';
+  const height = opts.height || 14;
+  const labels = opts.labels !== false;
+  const segs = HR_ZONE_KEYS.map((k, i) => {
+    const m = Number(zones.minutes[k]) || 0;
+    const pct = (m / total) * 100;
+    return pct > 0 ? `<div title="Z${i+1}: ${m.toFixed(1)} min" style="flex:${pct};background:${HR_ZONE_COLORS[i]};display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);font-size:${Math.max(8, height - 6)}px;font-weight:600">${labels && height >= 14 && pct > 8 ? 'Z' + (i+1) : ''}</div>` : '';
+  }).join('');
+  return `<div style="display:flex;height:${height}px;border-radius:${Math.min(4, height/3)}px;overflow:hidden;background:var(--bg-tertiary)">${segs}</div>`;
+}
+
+// Per-zone breakdown: 5 cells with minutes + percentage
+function renderHrZoneBreakdown(zones) {
+  const total = _zoneTotal(zones);
+  if (total < 0.1) return '';
+  return `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px;font-size:0.7rem">
+    ${HR_ZONE_KEYS.map((k, i) => {
+      const m = Number(zones.minutes[k]) || 0;
+      const pct = Math.round((m / total) * 100);
+      return `<div style="text-align:center;padding:6px 4px;background:${HR_ZONE_COLORS[i]}22;border-radius:4px;border-top:2px solid ${HR_ZONE_COLORS[i]}">
+        <div style="font-weight:600;color:${HR_ZONE_COLORS[i]}">Z${i+1}</div>
+        <div class="font-data">${m.toFixed(0)}<span style="color:var(--text-dim);font-size:0.6rem">min</span></div>
+        <div style="color:var(--text-dim);font-size:0.6rem">${pct}%</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 // HRV-based readiness card. Distinct from the muscle-group recovery hero
 // (different question: this answers "is my autonomic nervous system recovered
 // from yesterday's training?"). Shares /health/insights/today response shape
@@ -6692,25 +6748,42 @@ function renderCaloricBalanceStrip(d) {
   if (!d || !d.today) return '';
   const t = d.today;
   const wk = d.weekly_avg || {};
-  const balanceColor = t.balance == null ? 'var(--text-dim)'
-    : t.balance > 200 ? 'var(--orange)'
-    : t.balance < -200 ? 'var(--color-tactical)'
-    : 'var(--color-physical)';
   const sign = (n) => n == null ? '—' : (n > 0 ? '+' : '') + n;
-  const proteinTarget = 1.6;
-  const proteinPct = t.protein_per_kg != null ? Math.min(100, Math.round((t.protein_per_kg / proteinTarget) * 100)) : null;
-  const proteinColor = t.protein_per_kg == null ? 'var(--text-dim)'
-    : t.protein_per_kg >= proteinTarget ? 'var(--color-physical)'
-    : t.protein_per_kg >= 1.2 ? 'var(--orange)'
-    : 'var(--red)';
-
   const restFlag = d.rest_day_flag
     ? `<div style="margin:0 0 8px;padding:8px 12px;background:color-mix(in srgb, var(--orange) 12%, transparent);border-left:3px solid var(--orange);border-radius:6px;font-size:0.78rem">
          <strong>Recovery fueling:</strong> ${esc(d.rest_day_flag.message)}
        </div>`
     : '';
 
-  // 14-day balance bar sparkline (positive = surplus, negative = deficit)
+  // Macro deficit row helper
+  function macroRow(label, block, unit = 'g', perKg = null) {
+    if (!block || block.target == null) return `<div style="padding:6px 0;border-top:1px solid var(--bg-tertiary);font-size:0.78rem;color:var(--text-dim)">${label} target unknown — log meals to see deficit.</div>`;
+    const actual = block.actual || 0;
+    const target = block.target;
+    const deficit = block.deficit;  // target - actual
+    const pct = target > 0 ? Math.min(150, Math.round((actual / target) * 100)) : 0;
+    const color = pct >= 90 && pct <= 110 ? 'var(--color-physical)'
+      : pct < 70 ? 'var(--red)'
+      : 'var(--orange)';
+    const deficitLabel = deficit > 0 ? `−${deficit}${unit}` : `+${-deficit}${unit}`;
+    const deficitColor = deficit > 0 ? 'var(--red)' : 'var(--color-physical)';
+    const pkg = perKg != null ? ` <span style="color:var(--text-dim);font-size:0.65rem">(${perKg} g/kg)</span>` : '';
+    const sourceTag = block.source === 'plan' ? '' : ` <span style="font-size:0.55rem;color:var(--text-dim);text-transform:uppercase">est</span>`;
+    return `
+      <div style="padding:8px 0;border-top:1px solid var(--bg-tertiary)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:0.74rem;margin-bottom:3px">
+          <span style="font-weight:500">${label}${sourceTag}</span>
+          <span><span class="font-data" style="color:${color}">${actual}</span><span style="color:var(--text-dim)">${unit} / ${target}${unit}</span>${pkg} <span style="color:${deficitColor};font-size:0.7rem">(${deficitLabel})</span></span>
+        </div>
+        <div style="height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden;position:relative">
+          <div style="height:100%;width:${Math.min(100, pct)}%;background:${color}"></div>
+          ${pct > 100 ? `<div style="position:absolute;top:0;left:100%;height:100%;width:${Math.min(50, pct - 100)}%;background:var(--orange);opacity:0.5"></div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  // 14-day balance bars (deficit/surplus history)
   let bars = '';
   if (Array.isArray(d.history) && d.history.length >= 2) {
     const maxAbs = Math.max(...d.history.map(h => Math.abs(h.balance || 0)), 1);
@@ -6727,28 +6800,32 @@ function renderCaloricBalanceStrip(d) {
     </div>`;
   }
 
+  const balanceColor = t.balance == null ? 'var(--text-dim)'
+    : t.balance > 200 ? 'var(--orange)'
+    : t.balance < -200 ? 'var(--color-tactical)'
+    : 'var(--color-physical)';
+
+  const tg = t.targets || {};
+  const dayLabel = t.is_hard_day ? 'training day' : 'rest day';
+
   return `
     <div class="card mb-md">
-      <div class="card-title">Caloric Balance</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:baseline">
+        <span>Macros & Balance</span>
+        <span style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">${dayLabel}</span>
+      </div>
       ${restFlag}
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
-        <div><div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">In</div><div class="font-data">${t.calories_in != null ? t.calories_in : '—'}</div></div>
-        <div><div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">Out</div><div class="font-data">${t.calories_out != null ? t.calories_out : '—'}</div></div>
-        <div><div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">Balance</div><div class="font-data" style="color:${balanceColor}">${sign(t.balance)}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-bottom:6px">
+        <div><div style="font-size:0.6rem;color:var(--text-dim);text-transform:uppercase">In</div><div class="font-data">${t.calories_in != null ? t.calories_in : '—'}</div></div>
+        <div><div style="font-size:0.6rem;color:var(--text-dim);text-transform:uppercase">Out</div><div class="font-data">${t.calories_out != null ? t.calories_out : '—'}</div></div>
+        <div><div style="font-size:0.6rem;color:var(--text-dim);text-transform:uppercase">Balance</div><div class="font-data" style="color:${balanceColor}">${sign(t.balance)}</div></div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;font-size:0.76rem">
-        <div style="flex:1">
-          <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:2px">
-            <span>Protein</span>
-            <span><span class="font-data" style="color:${proteinColor}">${t.protein_per_kg != null ? t.protein_per_kg : '—'}</span> g/kg <span style="color:var(--text-dim)">(target ${proteinTarget})</span></span>
-          </div>
-          ${proteinPct != null ? `<div style="height:5px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden">
-            <div style="height:100%;width:${proteinPct}%;background:${proteinColor}"></div>
-          </div>` : ''}
-        </div>
-      </div>
+      ${macroRow('Calories', tg.calories, ' kcal')}
+      ${macroRow('Protein',  tg.protein,  'g', t.protein_per_kg)}
+      ${macroRow('Carbs',    tg.carbs,    'g', t.carbs_per_kg)}
+      ${macroRow('Fat',      tg.fat,      'g', t.fat_per_kg)}
       ${bars ? `<div style="margin-top:10px"><div style="font-size:0.62rem;color:var(--text-dim)">14-day balance</div>${bars}</div>` : ''}
-      ${wk.balance != null ? `<div style="margin-top:6px;font-size:0.7rem;color:var(--text-dim)">7-day avg balance: <span class="font-data" style="color:var(--text)">${sign(wk.balance)}</span> kcal</div>` : ''}
+      ${wk.balance != null ? `<div style="margin-top:6px;font-size:0.7rem;color:var(--text-dim)">7-day avg balance: <span class="font-data" style="color:var(--text)">${sign(wk.balance)}</span> kcal · protein ${wk.protein_g}g · carbs ${wk.carbs_g}g · fat ${wk.fat_g}g</div>` : ''}
     </div>
   `;
 }

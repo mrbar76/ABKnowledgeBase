@@ -451,7 +451,7 @@ router.get('/nutrition', async (req, res) => {
     const days = Math.min(Number(req.query.days) || 14, 90);
     const startDate = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
 
-    // Activity output
+    // Activity output (active + basal kcal)
     const a = await query(
       `SELECT activity_date, active_energy_kcal, basal_energy_kcal
        FROM daily_activity
@@ -460,10 +460,14 @@ router.get('/nutrition', async (req, res) => {
       [startDate]
     );
 
-    // Nutrition input — sum meals per day (calories & protein)
+    // Nutrition input — sum all macros per day
     const m = await query(
-      `SELECT meal_date, COALESCE(SUM(calories), 0) AS kcal,
-              COALESCE(SUM(protein_g), 0) AS protein_g
+      `SELECT meal_date,
+              COALESCE(SUM(calories), 0) AS kcal,
+              COALESCE(SUM(protein_g), 0) AS protein_g,
+              COALESCE(SUM(carbs_g), 0) AS carbs_g,
+              COALESCE(SUM(fat_g), 0) AS fat_g,
+              COALESCE(SUM(fiber_g), 0) AS fiber_g
        FROM meals
        WHERE meal_date >= $1
        GROUP BY meal_date
@@ -476,28 +480,80 @@ router.get('/nutrition', async (req, res) => {
       mealMap.set(row.meal_date, {
         kcal: Number(row.kcal) || 0,
         protein_g: Number(row.protein_g) || 0,
+        carbs_g: Number(row.carbs_g) || 0,
+        fat_g: Number(row.fat_g) || 0,
+        fiber_g: Number(row.fiber_g) || 0,
       });
     }
 
-    // Latest weight for protein/kg
+    // Per-day plan targets (when set)
+    const p = await query(
+      `SELECT plan_date, target_calories, target_protein_g, target_carbs_g, target_fat_g
+       FROM daily_plans
+       WHERE plan_date >= $1`,
+      [startDate]
+    ).catch(() => ({ rows: [] }));
+    const planMap = new Map();
+    for (const row of p.rows) {
+      planMap.set(row.plan_date.toISOString ? row.plan_date.toISOString().slice(0, 10) : String(row.plan_date).slice(0, 10), row);
+    }
+
+    // Hard-day detection per date — drives carb-target swing (workout day vs rest)
+    const wo = await query(
+      `SELECT workout_date, MAX(effort) AS max_effort
+       FROM workouts
+       WHERE workout_date >= $1
+       GROUP BY workout_date`,
+      [startDate]
+    ).catch(() => ({ rows: [] }));
+    const effortMap = new Map();
+    for (const row of wo.rows) effortMap.set(row.workout_date, Number(row.max_effort) || 0);
+
+    // Latest weight for per-kg targets
     const w = await query(
       `SELECT weight_lb FROM body_metrics
        WHERE weight_lb IS NOT NULL
        ORDER BY measurement_date DESC LIMIT 1`
     );
-    const weightKg = w.rows[0]?.weight_lb ? Number(w.rows[0].weight_lb) / 2.2046226218 : null;
+    const weightLb = w.rows[0]?.weight_lb ? Number(w.rows[0].weight_lb) : null;
+    const weightKg = weightLb ? weightLb / 2.2046226218 : null;
+
+    function macroBlock(actual, planTarget, fallback, sourceWhenPlan = 'plan', sourceWhenFallback = 'estimated') {
+      const target = planTarget != null ? Number(planTarget) : (fallback != null ? Math.round(fallback) : null);
+      const source = planTarget != null ? sourceWhenPlan : (fallback != null ? sourceWhenFallback : null);
+      const deficit = (target != null) ? Math.round(target - actual) : null;
+      return { actual: Math.round(actual), target, deficit, source };
+    }
 
     const history = a.rows.map(r => {
       const date = r.activity_date;
       const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
-      const meal = mealMap.get(date) || { kcal: 0, protein_g: 0 };
+      const meal = mealMap.get(date) || { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+      const plan = planMap.get(date);
+      const isHardDay = (effortMap.get(date) || 0) >= 5;
+      const fbCalories = weightLb ? weightLb * 14 : null;
+      const fbProtein = weightKg ? weightKg * 1.8 : null;
+      const fbCarbs = weightKg ? weightKg * (isHardDay ? 4.0 : 2.5) : null;
+      const fbFat = weightKg ? weightKg * 1.0 : null;
       return {
         date,
+        is_hard_day: isHardDay,
         calories_in: Math.round(meal.kcal),
         calories_out: Math.round(out),
         balance: Math.round(meal.kcal - out),
         protein_g: Math.round(meal.protein_g),
+        carbs_g: Math.round(meal.carbs_g),
+        fat_g: Math.round(meal.fat_g),
+        fiber_g: Math.round(meal.fiber_g),
         protein_per_kg: weightKg ? round1(meal.protein_g / weightKg) : null,
+        carbs_per_kg: weightKg ? round1(meal.carbs_g / weightKg) : null,
+        fat_per_kg: weightKg ? round1(meal.fat_g / weightKg) : null,
+        targets: {
+          calories: macroBlock(meal.kcal, plan?.target_calories, fbCalories),
+          protein:  macroBlock(meal.protein_g, plan?.target_protein_g, fbProtein),
+          carbs:    macroBlock(meal.carbs_g, plan?.target_carbs_g, fbCarbs),
+          fat:      macroBlock(meal.fat_g, plan?.target_fat_g, fbFat),
+        },
       };
     });
 
@@ -508,7 +564,11 @@ router.get('/nutrition', async (req, res) => {
       calories_out: Math.round(mean(week.map(d => d.calories_out))),
       balance: Math.round(mean(week.map(d => d.balance))),
       protein_g: Math.round(mean(week.map(d => d.protein_g))),
+      carbs_g: Math.round(mean(week.map(d => d.carbs_g))),
+      fat_g: Math.round(mean(week.map(d => d.fat_g))),
       protein_per_kg: weightKg ? round1(mean(week.map(d => d.protein_g)) / weightKg) : null,
+      carbs_per_kg: weightKg ? round1(mean(week.map(d => d.carbs_g)) / weightKg) : null,
+      fat_per_kg: weightKg ? round1(mean(week.map(d => d.fat_g)) / weightKg) : null,
     } : null;
 
     // ─── Rule C: rest-day underfueling (provenance: docs/coaching-rules.md) ──
