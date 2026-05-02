@@ -6229,9 +6229,11 @@ async function loadNutrition(date) {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = skeletonCards(3);
   try {
-    const [summary, balance] = await Promise.all([
+    const since30 = new Date(Date.now() - 30 * 86400_000).toLocaleDateString('en-CA');
+    const [summary, balance, mealHistory] = await Promise.all([
       api(`/nutrition/daily-summary?date=${nutritionDate}`),
       api('/health/insights/nutrition?days=14').catch(() => null),
+      api(`/meals?since=${since30}&limit=400`).catch(() => null),
     ]);
     const d = new Date(nutritionDate + 'T12:00:00');
     const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -6297,6 +6299,8 @@ async function loadNutrition(date) {
           </div>`;
         }).join('') : '<div class="empty-state">No meals logged. Tap "+ Meal" to add one!</div>'}
       </div>
+
+      ${renderMealFeedbackHistogram(mealHistory)}
     `;
     renderMacroChart(summary);
     if (window.lucide) lucide.createIcons();
@@ -6740,6 +6744,53 @@ function renderHrvReadinessCard(r) {
         </div>
         ${spark ? `<div style="flex-shrink:0">${spark}<div style="font-size:0.58rem;color:var(--text-dim);text-align:center;margin-top:2px">7d HRV</div></div>` : ''}
       </div>
+    </div>
+  `;
+}
+
+// 30-day meal feedback histograms — distributions of hunger_before /
+// fullness_after / energy_after (1-10 scales). Helps spot patterns like
+// "always over-eat at dinner" or "low energy after carb-heavy meals."
+function renderMealFeedbackHistogram(mealResp) {
+  const meals = mealResp?.meals || mealResp?.results || (Array.isArray(mealResp) ? mealResp : null);
+  if (!Array.isArray(meals) || meals.length < 5) return '';
+  const fields = [
+    { key: 'hunger_before',  label: 'Hunger before',  color: '#f59e0b' },
+    { key: 'fullness_after', label: 'Fullness after', color: '#22c55e' },
+    { key: 'energy_after',   label: 'Energy after',   color: '#3b82f6' },
+  ];
+  let anyData = false;
+  const rows = fields.map(f => {
+    const values = meals.map(m => Number(m[f.key])).filter(v => v >= 1 && v <= 10);
+    if (!values.length) return null;
+    anyData = true;
+    const buckets = new Array(10).fill(0);
+    for (const v of values) buckets[Math.max(1, Math.min(10, Math.round(v))) - 1]++;
+    const max = Math.max(...buckets) || 1;
+    const avg = (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+    return { ...f, buckets, max, avg, n: values.length };
+  }).filter(Boolean);
+  if (!anyData) return '';
+  return `
+    <div class="card mb-md" style="margin-top:12px">
+      <div class="card-title">Meal Feedback (30 days)</div>
+      ${rows.map(r => `
+        <div style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:4px">
+            <span>${r.label}</span>
+            <span style="color:var(--text-dim)">avg <span class="font-data" style="color:${r.color}">${r.avg}</span> · n=${r.n}</span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:1px;height:32px">
+            ${r.buckets.map((c, i) => {
+              const h = (c / r.max) * 100;
+              return `<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%" title="${i + 1}: ${c} meal${c !== 1 ? 's' : ''}">
+                <div style="background:${r.color};height:${h}%;border-radius:1px;min-height:${c > 0 ? 2 : 0}px"></div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.55rem;color:var(--text-dim);margin-top:2px"><span>1</span><span>5</span><span>10</span></div>
+        </div>
+      `).join('')}
     </div>
   `;
 }
@@ -7396,6 +7447,10 @@ async function loadRecovery(date) {
 
       ${renderHrvReadinessCard(readiness)}
 
+      ${renderDowPatternsCard(readiness)}
+
+      ${renderSleepStagesCard(readiness)}
+
       <!-- Explainer -->
       <details class="card mb-md" style="padding:12px">
         <summary style="font-size:0.75rem;color:var(--text-dim);cursor:pointer">What is the Recovery Score?</summary>
@@ -7515,9 +7570,111 @@ async function loadRecovery(date) {
       </div>
     `;
     if (window.lucide) lucide.createIcons();
+    drawSleepStagesChart(readiness);
   } catch (e) {
     main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
   }
+}
+
+let _sleepStagesChart = null;
+
+// Day-of-week patterns table — surfaces weekday-by-weekday averages of HRV,
+// effort, sleep, and caloric balance. Validates the user's prior finding
+// that Saturday HRV is typically suppressed.
+function renderDowPatternsCard(r) {
+  const dow = r && r.dow_patterns;
+  if (!dow) return '';
+  const order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // HRV-by-DOW for highlighting outliers (lowest = red, highest = green)
+  const hrvVals = order.map(d => dow[d]?.hrv).filter(v => v != null);
+  if (!hrvVals.length) return '';
+  const minHrv = Math.min(...hrvVals), maxHrv = Math.max(...hrvVals);
+  const fmtSleep = (m) => m == null ? '—' : (m / 60).toFixed(1) + 'h';
+  const fmtBalance = (n) => n == null ? '—' : (n > 0 ? '+' : '') + n;
+  return `
+    <div class="card mb-md">
+      <div class="card-title">Day-of-Week Patterns</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:0.75rem;border-collapse:collapse">
+          <thead>
+            <tr style="color:var(--text-dim);font-size:0.62rem;text-transform:uppercase;text-align:left">
+              <th style="padding:6px 4px">Day</th>
+              <th style="padding:6px 4px;text-align:right">HRV</th>
+              <th style="padding:6px 4px;text-align:right">Effort</th>
+              <th style="padding:6px 4px;text-align:right">Sleep</th>
+              <th style="padding:6px 4px;text-align:right">Cal Bal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${order.map(d => {
+              const v = dow[d] || {};
+              const hrvColor = v.hrv == null ? 'var(--text-dim)'
+                : v.hrv === minHrv ? 'var(--red)'
+                : v.hrv === maxHrv ? 'var(--color-physical)'
+                : 'var(--text)';
+              return `<tr style="border-top:1px solid var(--bg-tertiary)">
+                <td style="padding:6px 4px;font-weight:500">${d}</td>
+                <td style="padding:6px 4px;text-align:right" class="font-data"><span style="color:${hrvColor}">${v.hrv != null ? v.hrv : '—'}</span></td>
+                <td style="padding:6px 4px;text-align:right" class="font-data">${v.effort != null ? v.effort.toFixed(1) : '—'}</td>
+                <td style="padding:6px 4px;text-align:right" class="font-data">${fmtSleep(v.sleep_min)}</td>
+                <td style="padding:6px 4px;text-align:right" class="font-data">${fmtBalance(v.cals_balance)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:0.62rem;color:var(--text-dim);margin-top:6px">Lowest HRV day in red, highest in green. Effort is daily max workout effort (1-10).</div>
+    </div>
+  `;
+}
+
+// 30-day sleep stages stacked bar — Awake / Core / REM / Deep
+function renderSleepStagesCard(r) {
+  const hist = r && r.sleep_history_30d;
+  if (!Array.isArray(hist) || hist.length < 2) return '';
+  return `
+    <div class="card mb-md">
+      <div class="card-title">Sleep Stages (30 days)</div>
+      <canvas id="sleep-stages-chart" height="160" style="max-height:160px"></canvas>
+      <div style="font-size:0.62rem;color:var(--text-dim);margin-top:6px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#1e293b;border-radius:2px;vertical-align:middle"></span> Awake</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:2px;vertical-align:middle"></span> Core</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:2px;vertical-align:middle"></span> REM</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;vertical-align:middle"></span> Deep</span>
+      </div>
+    </div>
+  `;
+}
+
+function drawSleepStagesChart(r) {
+  if (_sleepStagesChart) { _sleepStagesChart.destroy(); _sleepStagesChart = null; }
+  const hist = r && r.sleep_history_30d;
+  if (!Array.isArray(hist) || hist.length < 2) return;
+  const el = document.getElementById('sleep-stages-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  const labels = hist.map(h => h.date);
+  const css = getComputedStyle(document.documentElement);
+  const fg = css.getPropertyValue('--text-dim').trim() || '#888';
+  _sleepStagesChart = new Chart(el, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Awake', data: hist.map(h => h.awake_min), backgroundColor: '#1e293b', stack: 's' },
+        { label: 'Core',  data: hist.map(h => h.core_min),  backgroundColor: '#06b6d4', stack: 's' },
+        { label: 'REM',   data: hist.map(h => h.rem_min),   backgroundColor: '#a855f7', stack: 's' },
+        { label: 'Deep',  data: hist.map(h => h.deep_min),  backgroundColor: '#22c55e', stack: 's' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { stacked: true, ticks: { color: fg, maxRotation: 0, autoSkipPadding: 18, font: { size: 9 } }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: fg, font: { size: 9 }, callback: v => (v / 60).toFixed(1) + 'h' }, grid: { color: 'rgba(128,128,128,0.1)' } },
+      },
+    },
+  });
 }
 
 async function saveSleepQuick() {
@@ -7582,12 +7739,19 @@ async function loadUnifiedPlans() {
   const sunStr = sunDate.toLocaleDateString('en-CA');
 
   // Fetch week plans + training plans + selected day data in parallel.
-  // training-load is best-effort — the strip degrades gracefully if it errors.
+  // training-load and upcomingRaces are best-effort — the strips degrade
+  // gracefully if either errors.
   try {
-    const [weekData, dayData, trainingLoad] = await Promise.all([
+    // Look 90 days ahead for upcoming races. Also pull last-365-day workouts
+    // for the calendar heatmap.
+    const raceTo = new Date(Date.now() + 90 * 86400_000).toLocaleDateString('en-CA');
+    const heatmapSince = new Date(Date.now() - 365 * 86400_000).toLocaleDateString('en-CA');
+    const [weekData, dayData, trainingLoad, upcomingPlans, heatmapWorkouts] = await Promise.all([
       api(`/daily-plans?from=${monStr}&to=${sunStr}`),
       api(`/training/day/${plansSelectedDate}`),
       api('/health/insights/training?days=90').catch(() => null),
+      api(`/daily-plans?from=${todayStr}&to=${raceTo}`).catch(() => ({ results: [] })),
+      api(`/workouts?since=${heatmapSince}&limit=500`).catch(() => null),
     ]);
 
     const weekPlans = weekData.results || [];
@@ -7602,6 +7766,9 @@ async function loadUnifiedPlans() {
       <div style="font-weight:600;font-size:0.9rem;color:var(--text-secondary)">plans</div>
       <button class="btn-submit" onclick="showCreateDailyPlanForm('${plansSelectedDate}')" style="padding:4px 14px;font-size:0.8rem">+ Plan</button>
     </div>`;
+
+    // ── Race countdown (above week strip when an upcoming race exists) ──
+    html += renderRaceCountdownCard(upcomingPlans?.results || [], trainingLoad);
 
     // ── Week strip with navigation ──
     html += `<div class="plans-week-strip">
@@ -7809,8 +7976,12 @@ async function loadUnifiedPlans() {
       html += `</div>`;
     }
 
+    // Year-long heatmap at the bottom of the Plans view
+    html += renderActivityHeatmap(heatmapWorkouts?.workouts || []);
+
     container.innerHTML = html;
     drawTrainingLoadChart(trainingLoad);
+    drawZ2WeeklyChart(trainingLoad);
   } catch (e) {
     container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
   }
@@ -7861,8 +8032,197 @@ function renderTrainingLoadStrip(d) {
         <div><span class="font-data" style="color:var(--text)">${wk.tss || 0}</span> TSS</div>
       </div>
       ${zoneBars ? `<div style="margin-top:8px"><div style="font-size:0.65rem;color:var(--text-dim)">7-day time in zone</div>${zoneBars}</div>` : ''}
+      ${Array.isArray(d.z2_minutes_by_week) && d.z2_minutes_by_week.some(w => w.minutes > 0) ? `
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bg-tertiary)">
+          <div style="font-size:0.65rem;color:var(--text-dim);margin-bottom:4px">Z2 endurance minutes — last 12 weeks</div>
+          <canvas id="z2-weekly-chart" height="80" style="max-height:80px"></canvas>
+        </div>
+      ` : ''}
     </div>
   `;
+}
+
+// Year-long calendar heatmap (53 weeks × 7 days). Each cell = one date,
+// colored by the maximum effort score logged that day. Tap a cell to
+// navigate the Plans view to that date.
+function renderActivityHeatmap(workouts) {
+  if (!Array.isArray(workouts) || !workouts.length) return '';
+  const today = new Date();
+  // Normalize to Sunday-start of the latest week (right edge of the grid)
+  const endOfWeek = new Date(today);
+  endOfWeek.setDate(today.getDate() + (6 - today.getDay()));
+  const start = new Date(endOfWeek);
+  start.setDate(endOfWeek.getDate() - 53 * 7 + 1);
+  // Map workouts → max effort per date
+  const effortByDate = new Map();
+  for (const w of workouts) {
+    const date = (w.workout_date || '').slice(0, 10);
+    if (!date) continue;
+    const e = Number(w.effort) || (w.heart_rate_avg ? 5 : 1); // any workout = 1 minimum
+    const cur = effortByDate.get(date) || 0;
+    if (e > cur) effortByDate.set(date, e);
+  }
+  // Build 7×53 grid columns
+  const cols = [];
+  let cursor = new Date(start);
+  // Move to Sunday
+  cursor.setDate(cursor.getDate() - cursor.getDay());
+  for (let c = 0; c < 53; c++) {
+    const col = [];
+    for (let r = 0; r < 7; r++) {
+      const d = new Date(cursor);
+      d.setDate(cursor.getDate() + r);
+      col.push(d);
+    }
+    cols.push(col);
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  // Color scale: 0 = bg-tertiary, 1-3 light, 4-6 medium, 7-8 heavy, 9-10 max
+  function color(eff) {
+    if (!eff) return 'var(--bg-tertiary)';
+    if (eff <= 3) return 'rgba(34,197,94,0.25)';
+    if (eff <= 5) return 'rgba(34,197,94,0.5)';
+    if (eff <= 7) return 'rgba(245,158,11,0.7)';
+    if (eff <= 9) return 'rgba(239,68,68,0.8)';
+    return '#ef4444';
+  }
+  const todayStr = today.toLocaleDateString('en-CA');
+  const months = [];
+  let lastMonth = -1;
+  cols.forEach((col, ci) => {
+    const m = col[0].getMonth();
+    if (m !== lastMonth) {
+      months.push({ ci, label: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m] });
+      lastMonth = m;
+    }
+  });
+  const cellSize = 11, gap = 2;
+  return `
+    <div class="card mb-md">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:baseline">
+        <span>Activity (last year)</span>
+        <span style="font-size:0.62rem;color:var(--text-dim)">${effortByDate.size} active days</span>
+      </div>
+      <div style="overflow-x:auto;padding:4px 0">
+        <div style="display:flex;gap:${gap}px;font-size:0;align-items:flex-start">
+          <div style="display:flex;flex-direction:column;justify-content:space-between;height:${(cellSize + gap) * 7 - gap}px;padding:0 4px 0 0;font-size:0.55rem;color:var(--text-dim)">
+            <span>S</span><span></span><span>T</span><span></span><span>T</span><span></span><span>S</span>
+          </div>
+          ${cols.map((col, ci) => `
+            <div style="display:flex;flex-direction:column;gap:${gap}px">
+              ${col.map(d => {
+                const ds = d.toLocaleDateString('en-CA');
+                const future = d > today;
+                const eff = effortByDate.get(ds) || 0;
+                const tipText = future ? '' : (eff ? `${ds}: effort ${eff}/10` : ds);
+                const isToday = ds === todayStr;
+                return `<div title="${tipText}" onclick="${future ? '' : `plansSelectedDate='${ds}';loadUnifiedPlans()`}"
+                  style="width:${cellSize}px;height:${cellSize}px;background:${future ? 'transparent' : color(eff)};border-radius:2px;cursor:${future ? 'default' : 'pointer'};box-shadow:${isToday ? 'inset 0 0 0 1.5px var(--text)' : 'none'}"></div>`;
+              }).join('')}
+            </div>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:${gap}px;margin-top:4px;font-size:0.55rem;color:var(--text-dim);padding-left:14px">
+          ${cols.map((col, ci) => {
+            const m = months.find(x => x.ci === ci);
+            return `<div style="width:${cellSize}px;text-align:left">${m && ci > 0 ? m.label : ''}</div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:6px;align-items:center;font-size:0.55rem;color:var(--text-dim);margin-top:4px">
+        <span>less</span>
+        <div style="width:10px;height:10px;background:var(--bg-tertiary);border-radius:2px"></div>
+        <div style="width:10px;height:10px;background:rgba(34,197,94,0.25);border-radius:2px"></div>
+        <div style="width:10px;height:10px;background:rgba(34,197,94,0.5);border-radius:2px"></div>
+        <div style="width:10px;height:10px;background:rgba(245,158,11,0.7);border-radius:2px"></div>
+        <div style="width:10px;height:10px;background:rgba(239,68,68,0.8);border-radius:2px"></div>
+        <div style="width:10px;height:10px;background:#ef4444;border-radius:2px"></div>
+        <span>more</span>
+      </div>
+    </div>
+  `;
+}
+
+// Find the next upcoming race in daily_plans. A race is identified by:
+//   - workout_type matching /race/i, or
+//   - tags array containing 'race' (case-insensitive)
+function renderRaceCountdownCard(plans, trainingLoad) {
+  if (!Array.isArray(plans) || !plans.length) return '';
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const races = plans
+    .filter(p => {
+      const planDate = (p.plan_date || '').slice(0, 10);
+      if (!planDate || planDate < todayStr) return false;
+      const wt = String(p.workout_type || '').toLowerCase();
+      const tags = Array.isArray(p.tags) ? p.tags.map(t => String(t).toLowerCase()) : [];
+      return /race/.test(wt) || tags.includes('race');
+    })
+    .sort((a, b) => (a.plan_date || '').localeCompare(b.plan_date || ''));
+  if (!races.length) return '';
+  const next = races[0];
+  const planDate = (next.plan_date || '').slice(0, 10);
+  const dt = new Date(planDate + 'T12:00:00');
+  const days = Math.round((dt - new Date(todayStr + 'T12:00:00')) / 86400_000);
+  const dayLabel = days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `in ${days} days`;
+  const tsb = trainingLoad?.current?.tsb;
+  // Taper guidance keyed off TSB and days-out (sports-science default ranges)
+  let tip = '';
+  if (days <= 7) {
+    tip = tsb != null && tsb >= 5 ? 'TSB looks good — you should be fresh by race day.'
+        : tsb != null && tsb < -10 ? 'TSB is negative — back off intensity now to flush fatigue.'
+        : 'Hold easy aerobic + race-pace primers; sleep > training this week.';
+  } else if (days <= 21) {
+    tip = 'Begin taper window: cut volume ~30% per week leading in, keep intensity.';
+  } else {
+    tip = 'Build phase still in play. Race-specific blocks come at T-3 weeks.';
+  }
+  const title = next.title || (next.workout_type || 'Race');
+  const moreCount = races.length - 1;
+  return `
+    <div class="card mb-md" style="border:1px solid var(--orange);background:color-mix(in srgb, var(--orange) 6%, var(--bg))">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div>
+          <div style="font-size:0.62rem;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px">Next race · ${dayLabel}</div>
+          <div style="font-weight:600;font-size:0.95rem;margin-top:2px">${esc(title)}</div>
+          <div style="font-size:0.7rem;color:var(--text-dim)">${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}${moreCount > 0 ? ` · +${moreCount} more upcoming` : ''}</div>
+        </div>
+        <button class="btn-action btn-compact-sm" onclick="plansSelectedDate='${planDate}';loadUnifiedPlans()" style="padding:4px 10px;font-size:0.7rem">View</button>
+      </div>
+      <div style="margin-top:8px;font-size:0.78rem;color:var(--text)">${esc(tip)}</div>
+      ${tsb != null ? `<div style="margin-top:6px;font-size:0.68rem;color:var(--text-dim)">Current TSB: <span class="font-data" style="color:var(--text)">${tsb >= 0 ? '+' : ''}${tsb}</span></div>` : ''}
+    </div>
+  `;
+}
+
+let _z2WeeklyChart = null;
+
+function drawZ2WeeklyChart(d) {
+  if (_z2WeeklyChart) { _z2WeeklyChart.destroy(); _z2WeeklyChart = null; }
+  if (!d || !Array.isArray(d.z2_minutes_by_week)) return;
+  const data = d.z2_minutes_by_week;
+  if (!data.some(w => w.minutes > 0)) return;
+  const el = document.getElementById('z2-weekly-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  const css = getComputedStyle(document.documentElement);
+  const fg = css.getPropertyValue('--text-dim').trim() || '#888';
+  _z2WeeklyChart = new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: data.map(w => w.week_start.slice(5)),
+      datasets: [{
+        label: 'Z2 min', data: data.map(w => w.minutes),
+        backgroundColor: '#22c55e', borderRadius: 2,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { ticks: { color: fg, font: { size: 9 }, maxRotation: 0 }, grid: { display: false } },
+        y: { ticks: { color: fg, font: { size: 9 } }, grid: { color: 'rgba(128,128,128,0.1)' }, beginAtZero: true },
+      },
+    },
+  });
 }
 
 function drawTrainingLoadChart(d) {

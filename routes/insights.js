@@ -179,6 +179,52 @@ function hrvByDayOfWeek(rows) {
   return out;
 }
 
+// Day-of-week patterns: HRV, max effort that day, sleep total, calories balance.
+// Bucket each daily_activity row by weekday, average the values. Validates
+// the user's "Saturday HRV is suppressed" finding and surfaces other patterns.
+function dowPatterns(activityRows, workoutRows, mealRows) {
+  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const buckets = Object.fromEntries(dows.map(d => [d, { hrv: [], effort: [], sleep: [], cals: [] }]));
+  // Index workouts by date (max effort per day)
+  const effortByDate = new Map();
+  for (const w of workoutRows || []) {
+    const e = Number(w.effort) || 0;
+    const cur = effortByDate.get(w.workout_date) || 0;
+    if (e > cur) effortByDate.set(w.workout_date, e);
+  }
+  // Index meals' calorie sum by date
+  const mealsByDate = new Map();
+  for (const m of mealRows || []) {
+    mealsByDate.set(m.meal_date, Number(m.kcal) || 0);
+  }
+  for (const r of activityRows) {
+    if (!r.activity_date) continue;
+    const d = new Date(r.activity_date + 'T12:00:00');
+    const key = dows[d.getDay()];
+    if (r.hrv_sdnn_ms != null) buckets[key].hrv.push(Number(r.hrv_sdnn_ms));
+    if (r.sleep_total_min != null) buckets[key].sleep.push(Number(r.sleep_total_min));
+    const ef = effortByDate.get(r.activity_date);
+    if (ef != null) buckets[key].effort.push(ef);
+    const inK = mealsByDate.get(r.activity_date);
+    if (inK != null) {
+      const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
+      buckets[key].cals.push(inK - out);
+    }
+  }
+  const out = {};
+  for (const d of dows) {
+    const b = buckets[d];
+    out[d] = {
+      hrv: b.hrv.length ? round1(mean(b.hrv)) : null,
+      effort: b.effort.length ? round1(mean(b.effort)) : null,
+      sleep_min: b.sleep.length ? Math.round(mean(b.sleep)) : null,
+      cals_balance: b.cals.length ? Math.round(mean(b.cals)) : null,
+      sample_size: b.hrv.length,
+    };
+  }
+  return out;
+}
+
 // ─── GET /api/health/insights/today — recovery readiness ────────
 
 router.get('/today', async (req, res) => {
@@ -190,13 +236,27 @@ router.get('/today', async (req, res) => {
     const r = await query(
       `SELECT activity_date, hrv_sdnn_ms, resting_hr_bpm,
               sleep_total_min, sleep_deep_min, sleep_rem_min,
-              sleep_efficiency_pct
+              sleep_core_min, sleep_awake_min, sleep_efficiency_pct,
+              active_energy_kcal, basal_energy_kcal
        FROM daily_activity
        WHERE activity_date >= $1
        ORDER BY activity_date ASC`,
       [startDate]
     );
     const rows = r.rows;
+    // For dow_patterns: workouts (effort) + meals (cals_in)
+    const dowWorkouts = await query(
+      `SELECT workout_date, MAX(effort) AS effort FROM workouts
+       WHERE workout_date >= $1
+       GROUP BY workout_date`,
+      [startDate]
+    ).catch(() => ({ rows: [] }));
+    const dowMeals = await query(
+      `SELECT meal_date, COALESCE(SUM(calories), 0) AS kcal FROM meals
+       WHERE meal_date >= $1
+       GROUP BY meal_date`,
+      [startDate]
+    ).catch(() => ({ rows: [] }));
 
     const hrvVals = lastN(rows, lookback, 'hrv_sdnn_ms');
     const rhrVals = lastN(rows, lookback, 'resting_hr_bpm');
@@ -288,6 +348,15 @@ router.get('/today', async (req, res) => {
       },
       trend_7d: trend7d,
       hrv_by_day_of_week: hrvByDayOfWeek(rows),
+      dow_patterns: dowPatterns(rows, dowWorkouts.rows, dowMeals.rows),
+      sleep_history_30d: rows.slice(-30).map(r => ({
+        date: r.activity_date,
+        total_min: r.sleep_total_min != null ? Number(r.sleep_total_min) : null,
+        deep_min: r.sleep_deep_min != null ? Number(r.sleep_deep_min) : null,
+        rem_min: r.sleep_rem_min != null ? Number(r.sleep_rem_min) : null,
+        core_min: r.sleep_core_min != null ? Number(r.sleep_core_min) : null,
+        awake_min: r.sleep_awake_min != null ? Number(r.sleep_awake_min) : null,
+      })).filter(r => r.total_min != null),
     });
   } catch (err) {
     console.error(`[insights/today] ${err.stack}`);
@@ -380,12 +449,49 @@ router.get('/training', async (req, res) => {
         ctl: round1(ctl[i]),
         tsb: round1(tsb[i]),
       })),
+      z2_minutes_by_week: z2MinutesByWeek(workouts, 12),
     });
   } catch (err) {
     console.error(`[insights/training] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
+
+// Aggregate Z2 minutes from each workout's hr_zones into ISO weeks for the
+// last `weeks` weeks. Returns [{ week_start, minutes }, ...] in chronological
+// order. Z2 is the aerobic-base zone; tracking weekly volume here is the key
+// long-term endurance KPI.
+function z2MinutesByWeek(workouts, weeks = 12) {
+  // Map each workout to its ISO-week-start (Monday)
+  function isoWeekStart(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    const dow = (d.getDay() + 6) % 7; // Mon = 0
+    d.setDate(d.getDate() - dow);
+    return d.toISOString().slice(0, 10);
+  }
+  const buckets = new Map();
+  // Initialize empty buckets for the last `weeks` weeks
+  const today = new Date();
+  const todayDow = (today.getDay() + 6) % 7;
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - todayDow);
+  for (let i = weeks - 1; i >= 0; i--) {
+    const m = new Date(thisMonday);
+    m.setDate(thisMonday.getDate() - i * 7);
+    buckets.set(m.toISOString().slice(0, 10), 0);
+  }
+  for (const w of workouts) {
+    if (!w.hr_zones || !w.hr_zones.minutes) continue;
+    const z2 = Number(w.hr_zones.minutes.z2) || 0;
+    if (z2 <= 0) continue;
+    const wk = isoWeekStart(w.workout_date);
+    if (buckets.has(wk)) buckets.set(wk, buckets.get(wk) + z2);
+  }
+  return Array.from(buckets.entries()).map(([week_start, minutes]) => ({
+    week_start,
+    minutes: Math.round(minutes),
+  }));
+}
 
 // ─── GET /api/health/insights/body — composition trends ────────
 
