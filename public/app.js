@@ -6805,7 +6805,7 @@ async function loadNutrition(date) {
     const since30 = new Date(Date.now() - 30 * 86400_000).toLocaleDateString('en-CA');
     const [summary, balance, mealHistory] = await Promise.all([
       api(`/nutrition/daily-summary?date=${nutritionDate}`),
-      api('/health/insights/nutrition?days=14').catch(() => null),
+      api(`/health/insights/nutrition?days=14&date=${nutritionDate}`).catch(() => null),
       api(`/meals?since=${since30}&limit=400`).catch(() => null),
     ]);
     const d = new Date(nutritionDate + 'T12:00:00');

@@ -594,6 +594,10 @@ router.get('/nutrition', async (req, res) => {
   try {
     const days = Math.min(Number(req.query.days) || 14, 90);
     const startDate = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+    // Optional ?date= picks the row to surface in `today`. If absent, the
+    // most-recent activity row is used (legacy behavior). The UI passes the
+    // selected nutritionDate so the card follows the date picker.
+    const targetDate = req.query.date || null;
 
     // Activity output (active + basal kcal)
     const a = await query(
@@ -619,9 +623,12 @@ router.get('/nutrition', async (req, res) => {
       [startDate]
     ).catch(() => ({ rows: [] }));
 
+    // Postgres returns DATE columns as JS Date objects. Map keys compare by
+    // identity, so two different Date instances representing the same day
+    // miss. Normalize every key to YYYY-MM-DD string before storing/lookup.
     const mealMap = new Map();
     for (const row of m.rows) {
-      mealMap.set(row.meal_date, {
+      mealMap.set(dateOnly(row.meal_date), {
         kcal: Number(row.kcal) || 0,
         protein_g: Number(row.protein_g) || 0,
         carbs_g: Number(row.carbs_g) || 0,
@@ -639,7 +646,7 @@ router.get('/nutrition', async (req, res) => {
     ).catch(() => ({ rows: [] }));
     const planMap = new Map();
     for (const row of p.rows) {
-      planMap.set(row.plan_date.toISOString ? row.plan_date.toISOString().slice(0, 10) : String(row.plan_date).slice(0, 10), row);
+      planMap.set(dateOnly(row.plan_date), row);
     }
 
     // Hard-day detection per date — drives carb-target swing (workout day vs rest)
@@ -651,7 +658,7 @@ router.get('/nutrition', async (req, res) => {
       [startDate]
     ).catch(() => ({ rows: [] }));
     const effortMap = new Map();
-    for (const row of wo.rows) effortMap.set(row.workout_date, Number(row.max_effort) || 0);
+    for (const row of wo.rows) effortMap.set(dateOnly(row.workout_date), Number(row.max_effort) || 0);
 
     // Latest weight for per-kg targets
     const w = await query(
@@ -670,7 +677,7 @@ router.get('/nutrition', async (req, res) => {
     }
 
     const history = a.rows.map(r => {
-      const date = r.activity_date;
+      const date = dateOnly(r.activity_date);
       const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
       const meal = mealMap.get(date) || { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
       const plan = planMap.get(date);
@@ -701,7 +708,18 @@ router.get('/nutrition', async (req, res) => {
       };
     });
 
-    const last = history[history.length - 1] || null;
+    // `today` follows the UI date selector when ?date= is passed. Falls back
+    // to the most-recent activity row otherwise.
+    let last = null;
+    let yesterdayIdx = -2;
+    if (targetDate) {
+      const idx = history.findIndex(h => h.date === targetDate);
+      if (idx >= 0) { last = history[idx]; yesterdayIdx = idx - 1; }
+    }
+    if (!last) {
+      last = history[history.length - 1] || null;
+      yesterdayIdx = history.length - 2;
+    }
     const week = history.slice(-7);
     const weekly_avg = week.length ? {
       calories_in: Math.round(mean(week.map(d => d.calories_in))),
@@ -719,8 +737,9 @@ router.get('/nutrition', async (req, res) => {
     // If yesterday was a rest day (no workout OR max effort < 5) AND
     // protein < 130g, flag underfueling. Tissue repair happens on rest days;
     // the athlete's data showed rest-day protein at 106g vs hard-day 138g —
-    // consistent recovery gap.
-    const yesterday = history[history.length - 2] || null;
+    // consistent recovery gap. "Yesterday" is relative to the displayed day,
+    // so navigating back in time still surfaces meaningful context.
+    const yesterday = (yesterdayIdx >= 0 ? history[yesterdayIdx] : null) || null;
     let rest_day_flag = null;
     if (yesterday) {
       const wo = await query(
