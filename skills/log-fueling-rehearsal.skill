@@ -1,0 +1,69 @@
+---
+name: log-fueling-rehearsal
+description: After a long session (≥ 60 min), capture fueling data — carbs/hr, sodium/hr, fluid/hr, products, gut response, energy response. Critical for race-day GI safety.
+when_to_use: Athlete logs a workout ≥ 60 min in length, OR mentions fueling/gel/drink in passing about a long session.
+---
+
+# log-fueling-rehearsal
+
+A great race-day fueling plan is only proven by repetition in training.
+Many DNFs trace back to "I ate something I'd never tried." This skill
+makes rehearsal logging a reflex.
+
+## Steps
+
+### 1. Confirm the session
+`GET /api/workouts?since=<today>` to find the workout. Confirm the
+`time_duration` is ≥ 60 min.
+
+### 2. Ask the fuel questions
+Direct, factual. Athlete answers in 30 seconds.
+
+- "Total carbs during the session?" (g)
+- "Sodium?" (mg, or "salt cap x2" → ~600mg)
+- "Fluids?" (ml or oz)
+- "Caffeine total?" (mg, optional)
+- "Products used?" (free text — Maurten, Skratch, gel, real food)
+- "Gut response 1-10? (1 = GI distress, 10 = no issues)"
+- "Energy response 1-10? (1 = bonked, 10 = strong throughout)"
+
+### 3. Compute per-hour rates
+duration_hr = time_duration / 60
+- g_carb_per_hr = total_carbs / duration_hr
+- g_sodium_per_hr = total_sodium_mg / duration_hr / 1000
+- ml_fluid_per_hr = total_fluid_ml / duration_hr
+
+### 4. Save it
+`POST /api/races/fueling`
+```json
+{
+  "rehearsal_date": "<today>",
+  "workout_id": "<id>",
+  "target_race_id": "<upcoming race id if any>",
+  "duration_min": 95,
+  "g_carb_per_hr": 65,
+  "g_sodium_per_hr": 0.7,
+  "ml_fluid_per_hr": 480,
+  "g_caffeine_total": 100,
+  "products": "Maurten 320 x1, gel x2, salt cap x1",
+  "gut_response": 8,
+  "energy_response": 7,
+  "notes": "Good first 70min, slight tightness final 25."
+}
+```
+
+### 5. Coaching feedback
+- If gut_response < 6 → name what to try differently next session.
+  Common interventions: drop carb rate by 10g/hr, switch to dual-source
+  carb (glucose + fructose), reduce caffeine, train the gut more
+  gradually.
+- If energy_response < 6 → check rate vs duration. For ≥ 90min, athletes
+  generally need 60-90 g_carb_per_hr.
+- If both ≥ 8 → mark this as the candidate race-day plan. Update
+  `races.fueling_plan` if a target race was linked.
+
+### 6. Pattern check across rehearsals
+`GET /api/races/fueling/list?limit=10` and surface 1 sentence:
+- "Your gut handles 60g/hr cleanly; haven't tested 75g/hr yet."
+- "Last 3 rehearsals all logged sodium under 500mg/hr — race day will
+  be hotter; consider 700+."

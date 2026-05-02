@@ -1,0 +1,63 @@
+---
+name: race-week-protocol
+description: Race-week and taper micro-cycle. Builds the 14-day window into race day with tapering volume, preserved intensity touches, fueling rehearsal review, gear list, travel logistics, mental rehearsal prompts.
+when_to_use: When `/insights/race` returns days_to_race ≤ 14, OR the user explicitly invokes race prep.
+---
+
+# race-week-protocol
+
+## Steps
+
+### 1. Pull race context
+`GET /api/health/insights/race?race_id=<id>` — returns the race entity
+(distance, terrain, target_time, fueling_plan, gear_list), days_to_race,
+taper_phase, taper_recommendation, fueling_rehearsals (last 5),
+build_summary_28d.
+
+### 2. Validate fueling rehearsals exist
+**Refuse to proceed if no rehearsal in the last 28 days for sessions
+≥ 60 min.** State plainly: "We have no fueling rehearsal in the last
+month. Before race day, do a key long session at race fueling rate
+and log it."
+
+### 3. Build the 14-day window
+Skill writes `POST /api/daily-plans/week` for the race-week and writes
+the prior week with M.taper guidance.
+
+**T-14 to T-7 (sharpen)**: race-pace touches in shorter sessions. Keep
+intensity, drop volume 20%. Strength → maintenance only.
+
+**T-7 to T-2 (taper)**: volume cut to 50% of normal. One short opener
+T-3 at race intensity (e.g. 4×3min @ race effort). Full rest T-1.
+Race-day fueling protocol practiced again at a smaller scale.
+
+**T-1 (day before)**: rest or 20min walk. Fuel & hydrate per race plan.
+Sleep mandatory.
+
+**Race day**: warm up to race intensity briefly (3-5 min @ race effort).
+Stick to fuel plan.
+
+### 4. Surface the gear + fueling plan
+Pull `race.gear_list` and `race.fueling_plan`. If either is empty,
+ask the user to fill them in (or POST new content).
+
+### 5. Travel logistics
+If `race.location` ≠ home base, prompt:
+- Travel day vs. race day delta?
+- Timezone shift?
+- Hotel sleep environment plan?
+- Race-morning meal portability?
+
+### 6. Mental rehearsal prompts
+3 short prompts the athlete answers in the days before:
+1. What does the toughest 10 minutes look like, and what do you do?
+2. What's the one thing you can control regardless of outcome?
+3. What process win would make this race a success even if the time
+   isn't?
+
+Save responses via `POST /api/training/coaching` with title
+"Race prep: <race name>".
+
+### 7. Post-race
+After `race.status` becomes `completed` (or `dnf`), invoke
+`race-debrief`.

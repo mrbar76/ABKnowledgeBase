@@ -1,0 +1,65 @@
+---
+name: amend-day
+description: Adjust today's daily_plan in response to a signal — HRV drop, soreness spike, alert fired, illness onset, sleep debt, life stress. Updates the plan with new intent + rationale.
+when_to_use: Whenever a hard rule fires (alert severity high, illness active, injury severity ≥ 7), OR the morning-check-in subjective answers diverge sharply from the plan.
+---
+
+# amend-day
+
+## Steps
+
+### 1. Identify the trigger
+What signal forced the amendment? Examples:
+- Chronic load alert fired.
+- Density alert fired (3 hard days).
+- HRV today is −1.5σ below baseline.
+- Soreness 7+ in a body area required for today's session.
+- Illness onset.
+- Sleep < 5h.
+- Life stress 8+.
+
+### 2. Decide the new intent_type
+From the triggering signal:
+- High alerts / HRV crash / illness → `recovery`.
+- Soreness in primary modality → `mobility` or `strength` (cross-train).
+- Acute injury → rest day; coach the athlete on what TO do (mobility,
+  walk, sleep).
+- Mild fatigue → drop intensity but keep volume: convert to
+  `aerobic_endurance` Z2.
+
+### 3. PUT the plan
+`PUT /api/daily-plans/<today_id>`
+```json
+{
+  "status": "amended",
+  "intent_type": "recovery",
+  "target_effort": 2,
+  "target_duration_min": 30,
+  "workout_type": "walk",
+  "rationale": "Amended because <signal>. <Coach reasoning>.",
+  "coaching_notes": "Original plan was X. Amended to Y because Z."
+}
+```
+
+### 4. Communicate
+One paragraph max:
+- Name the signal honestly.
+- Restate the new prescription with INTENT first.
+- Project the recovery window: "If HRV recovers tomorrow we resume
+  the build; if it doesn't, we shift to a recovery week."
+
+### 5. Log the decision
+`POST /api/training/coaching`
+```json
+{
+  "session_date": "<today>",
+  "title": "Amendment: <signal> → <new intent>",
+  "summary": "Brief reasoning.",
+  "key_decisions": "Override of planned <X> in favor of <Y>.",
+  "adjustments": "Tomorrow: <conditional>",
+  "next_steps": "Watch for <signal> in next morning-check-in."
+}
+```
+
+The amendment is part of the coaching record so weekly-review can detect
+patterns (e.g. "Wednesdays keep getting amended → underlying issue").

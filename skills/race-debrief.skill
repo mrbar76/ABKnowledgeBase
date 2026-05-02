@@ -1,0 +1,73 @@
+---
+name: race-debrief
+description: Post-race retro. Captures result, splits, HR data, fueling adherence, mental observations, body response. Marks race completed and writes a coaching session linked to it.
+when_to_use: User says "I finished", "raced today", "race recap", or `/insights/race` returns days_to_race < 0 with status still "scheduled".
+---
+
+# race-debrief
+
+## Steps
+
+### 1. Pull the race
+`GET /api/races/<id>` (or upcoming if recent).
+
+### 2. Capture result
+Ask:
+- Finish time (or DNF reason)?
+- How did pacing match the plan?
+- Three high points in one sentence each.
+- One thing that didn't go to plan.
+- Body response — anything sore, injured, depleted?
+- Mental — what mantra/strategy worked?
+
+### 3. Update the race
+`PUT /api/races/<id>`
+```json
+{
+  "status": "completed",
+  "result_time_seconds": 7350,
+  "result_notes": "<athlete's summary>"
+}
+```
+
+### 4. Capture fueling reality
+If athlete had a fueling plan but actual differed, log a fueling rehearsal
+for the race itself (`POST /api/races/fueling`):
+```json
+{
+  "rehearsal_date": "<race_date>",
+  "target_race_id": "<id>",
+  "duration_min": 122,
+  "g_carb_per_hr": 60,
+  "g_sodium_per_hr": 700,
+  "ml_fluid_per_hr": 500,
+  "products": "Maurten 320 x2, salt cap x2, gel x2",
+  "gut_response": 7,
+  "energy_response": 6,
+  "notes": "Fueled well first 90min, gut tightened in last 30."
+}
+```
+This becomes the new "what works" baseline for the next race.
+
+### 5. Coaching session
+`POST /api/training/coaching`
+```json
+{
+  "session_date": "<race_date>",
+  "title": "Race debrief: <race name>",
+  "summary": "Result, three high points, key lesson, body status.",
+  "key_decisions": "What worked: <…>. What to change: <…>.",
+  "next_steps": "Transition week structure; next race target."
+}
+```
+
+### 6. Plan the transition
+Push the user toward `plan-week` with a transition-phase thesis:
+- Week 1 post-race: pure aerobic + walking + mobility, 50% normal volume.
+- Week 2 post-race: rebuild base — Z2 + one strength + one easy long.
+
+### 7. Reinforce
+Process language:
+- "Whatever the time, here's what you proved you can hold for X minutes."
+- "The fueling experiment / pacing test gave us data we didn't have before."
+- "Recovery now is training for the next one."

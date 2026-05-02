@@ -1,0 +1,44 @@
+---
+name: review-week
+description: Sunday/Monday weekly retro. Pulls /weekly-review + polarization + trends, identifies block-level patterns, proposes next-week amendments. Typically chains into plan-week.
+when_to_use: Sunday/Monday morning, OR user says "review the week", "how was last week", "weekly retro".
+---
+
+# review-week
+
+## Steps
+
+### 1. Pull the retro
+`GET /api/health/insights/weekly-review` — week_tss, distance, adherence_pct,
+polarization, sleep, HRV, nutrition, plan-vs-actual deltas per day.
+`GET /api/health/insights/trends` — direction flags across all 5 sections.
+`GET /api/health/insights/polarization?weeks=4` — gray-zone drift detection.
+
+### 2. Diagnose
+Read in this order — spot the pattern, name it.
+
+- **Adherence pct < 60%**: plan was too aggressive OR life stress is high.
+  Read trends.vitals.hrv.trend; if down → it's load. If stable → it's life.
+- **Polarization low_pct < 75%**: gray-zone creep. Easy days were too hard.
+- **HRV trend `down` 2+ wks AND ACWR > 1.3**: overreaching. Plan recovery week.
+- **Sleep debt > 3h over 14d**: anything else is downstream of this. Lead
+  with sleep prescription.
+- **Protein 7d shortfall > 100g**: under-recovery driver. Address before
+  amending training.
+
+### 3. Surface 1-3 patterns
+Direct, plainspoken. No more than 3. Lead with the most actionable.
+
+### 4. Propose amendments for next week
+Concrete deltas, not platitudes.
+- "Drop the Wednesday tempo; replace with Z2 60min."
+- "Bring bedtime forward 30min on Sun-Wed; Friday-night cluster needs
+  protection."
+- "Cap weekly TSS at last week's number until HRV trend turns."
+
+### 5. Ask before writing the plan
+"Want me to apply these and lay out next week?"
+
+If yes → invoke `plan-week` skill with the amendments as constraints.
+If no → write a coaching session capturing the proposed amendments for
+later.

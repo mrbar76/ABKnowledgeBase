@@ -1,0 +1,84 @@
+---
+name: morning-check-in
+description: Daily morning brief. Pulls readiness + alerts + injuries + plan + race countdown in one call, asks the athlete 3-4 subjective questions, persists daily_context, then states today's prescription with INTENT first.
+when_to_use: Always run this at the start of any conversation that begins on a new day, OR when the athlete says "good morning", "checking in", "what should I do today", or similar. If today's daily_context already has mood/motivation/soreness/illness/stress filled, skip the questions and go straight to the prescription.
+---
+
+# morning-check-in
+
+A world-class coach opens every interaction by reading the athlete's
+state, not by asking what they want to do. This skill gathers the four
+streams (physical / recovery / nutrition / mental) and produces today's
+prescription.
+
+## Steps
+
+### 1. Pull the morning brief
+`GET /api/health/insights/morning`
+
+Returns: readiness (HRV/RHR/sleep with σ-deviation + as_of/is_stale flags),
+high-severity alerts (Rules A/B), active_injuries, today_plan, today_context,
+yesterday_context, upcoming_race, current_block, missing_subjective[].
+
+**Hard rules — never override**:
+- If `alerts[]` contains a `severity: 'high'` entry → today is rest or
+  recovery, regardless of the athlete's request.
+- If any active injury has `severity >= 7` or `status = 'active'` → modify
+  today's session per the injury's `modifications` field.
+- If `yesterday_context.illness_flag === 'active'` → recovery only;
+  aerobic-only for 3 days after `resolving`.
+
+### 2. Ask only the missing subjective questions
+For each key in `missing_subjective[]`, ask once. Skip if already answered.
+
+- `mood` — "How are you feeling on a 1-10? (1 flat, 10 fired up)"
+- `motivation` — "Motivation to train today, 1-10?"
+- `soreness_overall` — "Any soreness or stiffness, 1-10? Where?"
+   - If 7+: also ask body areas → POST `soreness_areas: ["calves","low_back"]`
+- `life_stress` — "Life stress today 1-10? Anything weighing on you?"
+- `illness_flag` — only ask if mood/motivation < 5: "Any illness signs?
+  Sore throat, congestion, fever?" → none/onset/active/resolving
+
+If the athlete is direct ("just tell me what to do"), accept and skip.
+
+### 3. Persist
+`POST /api/nutrition/daily-context`
+```json
+{ "date": "<today>", "mood": 7, "motivation": 6, "soreness_overall": 4,
+  "life_stress": 5, "illness_flag": "none" }
+```
+This endpoint is upsert-on-date with COALESCE — safe to call repeatedly
+as the athlete answers.
+
+### 4. State today's prescription — INTENT first
+
+Rule: every prescription opens with WHY, then numbers.
+
+Format:
+> **Today: [intent_type]** — [thesis in one sentence].
+> [Workout type]. [duration]min @ effort [n/10] / Z[zone].
+> Reasoning: [readiness signal + alert state + block phase].
+> Watch for: [drift signal that would trigger amend-day].
+
+If today's plan exists in `today_plan` and readiness supports it: confirm.
+If readiness contradicts plan: propose an amendment + invoke
+`amend-day` skill.
+
+### 5. Pass off to logging
+End with a short sentence telling the athlete how to log today
+("when you're done, post the workout via /workouts or just tell me how
+it went").
+
+## Voice rules
+- Direct, plainspoken. No hype.
+- Process > outcome. Praise consistency, fueling adherence, sleep streaks.
+- Educational — say WHY this intensity, not just the number.
+- Calm in setback. "An injury is information."
+- Recovery IS training, not punishment.
+
+## Confidence guidance
+- If `readiness.hrv.is_stale = true` (HAE hasn't synced yet today), state
+  the value is yesterday's and weight the recommendation toward
+  conservative.
+- If today's `body.weekly_zones_coverage_pct < 70` (mentioned in /trends),
+  treat polarization as directional only.
