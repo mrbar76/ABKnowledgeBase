@@ -224,8 +224,8 @@ router.delete('/blocks/:id', async (req, res) => {
 
 const FUEL_FIELDS = [
   'rehearsal_date','workout_id','target_race_id','duration_min',
-  'g_carb_per_hr','g_sodium_per_hr','ml_fluid_per_hr','g_caffeine_total',
-  'products','gut_response','energy_response','notes','tags',
+  'g_carb_per_hr','g_sodium_per_hr','ml_fluid_per_hr','mg_caffeine_total',
+  'products','gut_response','energy_response','notes','tags','ai_source',
 ];
 
 router.get('/fueling/list', async (req, res) => {
@@ -266,6 +266,40 @@ router.post('/fueling', async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(`[fueling/create] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/races/fueling/:id — corrections within the same session.
+// Hybrid update path: skill logs immediately (ADHD-friendly), then offers
+// a 5-minute window to PATCH if values were wrong.
+router.put('/fueling/:id', async (req, res) => {
+  try {
+    const fields = {};
+    for (const f of FUEL_FIELDS) if (f in (req.body || {})) fields[f] = req.body[f];
+    if (!Object.keys(fields).length) return res.status(400).json({ error: 'no editable fields' });
+    const cols = Object.keys(fields);
+    const setClauses = cols.map((c, i) => `${c} = $${i + 2}`);
+    const values = [req.params.id, ...cols.map(c => c === 'tags' ? JSON.stringify(fields[c]) : fields[c])];
+    setClauses.push(`updated_at = NOW()`);
+    const result = await query(
+      `UPDATE fueling_rehearsals SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+      values
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'rehearsal not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(`[fueling/update] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/fueling/:id', async (req, res) => {
+  try {
+    const result = await query(`DELETE FROM fueling_rehearsals WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'rehearsal not found' });
+    res.json({ deleted: result.rows[0].id });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

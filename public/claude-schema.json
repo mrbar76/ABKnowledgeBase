@@ -1934,8 +1934,22 @@
     "/races/fueling": {
       "post": {
         "operationId": "createFuelingRehearsal",
-        "summary": "Log a fueling rehearsal after a long session. Used by log-fueling-rehearsal Skill.",
+        "summary": "Log a fueling rehearsal after a long session. Used by log-fueling-rehearsal Skill. Caffeine field is mg_caffeine_total (mg, not g). ai_source field accepted for provenance.",
         "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/races/fueling/{id}": {
+      "put": {
+        "operationId": "updateFuelingRehearsal",
+        "summary": "Correct a fueling rehearsal's values. Used by log-fueling-rehearsal Skill within the 5-minute correction window after initial log.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "operationId": "deleteFuelingRehearsal",
+        "summary": "Delete a fueling rehearsal (e.g. test rows, mistaken duplicates).",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" }, "404": { "description": "Not found" } }
       }
     },
     "/athlete/profile": {

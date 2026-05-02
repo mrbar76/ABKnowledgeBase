@@ -1436,6 +1436,18 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
   await safeQuery('fueling_rehearsals index', `CREATE INDEX IF NOT EXISTS idx_fueling_rehearsals_date ON fueling_rehearsals(rehearsal_date DESC)`);
+  // Migration: rename g_caffeine_total → mg_caffeine_total. Field name
+  // claimed grams but every caller wrote mg. Skill-creator caught the
+  // unit mismatch (60mg dose stored as 60 in a g-named field would
+  // imply 60 grams = lethal). Rename, no conversion — existing values
+  // were always mg-semantic regardless of the column name.
+  await safeQuery('fueling_rehearsals add mg_caffeine_total', `ALTER TABLE fueling_rehearsals ADD COLUMN IF NOT EXISTS mg_caffeine_total NUMERIC(7,1)`);
+  await safeQuery('fueling_rehearsals copy g→mg caffeine', `
+    UPDATE fueling_rehearsals SET mg_caffeine_total = g_caffeine_total
+    WHERE mg_caffeine_total IS NULL AND g_caffeine_total IS NOT NULL`);
+  await safeQuery('fueling_rehearsals drop g_caffeine_total', `ALTER TABLE fueling_rehearsals DROP COLUMN IF EXISTS g_caffeine_total`);
+  // Add ai_source for provenance — was missing.
+  await safeQuery('fueling_rehearsals +ai_source', `ALTER TABLE fueling_rehearsals ADD COLUMN IF NOT EXISTS ai_source TEXT`);
 
   // ===== EMAIL INDEX =====
   // Stores pointers + summaries for email threads. Bodies are NOT stored;
