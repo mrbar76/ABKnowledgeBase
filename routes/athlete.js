@@ -150,4 +150,105 @@ router.patch('/zones/:id', async (req, res) => {
   }
 });
 
+// ═══ ATHLETE PROFILE (sweat rate, FTP, threshold pace, race weight) ═══
+// Versioned the same way as athlete_zones: each new row's effective_from
+// auto-closes the prior active row's effective_to so historical sessions
+// resolve to whatever was active at the time.
+
+const PROFILE_FIELDS = [
+  'effective_from','effective_to','lthr_bpm','max_hr_bpm','vo2_max',
+  'ftp_w','threshold_pace_sec_per_mi','sweat_rate_ml_per_hr',
+  'sodium_loss_mg_per_l','race_weight_lb','height_in','birth_date',
+  'sex','notes','set_by',
+];
+
+router.get('/profile', async (req, res) => {
+  try {
+    const on = req.query.on || new Date().toISOString().slice(0, 10);
+    const result = await query(
+      `SELECT * FROM athlete_profile
+       WHERE effective_from <= $1::date
+         AND (effective_to IS NULL OR effective_to >= $1::date)
+       ORDER BY effective_from DESC LIMIT 1`,
+      [on]
+    );
+    res.json(result.rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/profile/history', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT * FROM athlete_profile ORDER BY effective_from DESC LIMIT 50`
+    );
+    res.json({ count: result.rows.length, profiles: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST creates a new versioned profile row, auto-closes prior active row.
+router.post('/profile', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const effective_from = b.effective_from || new Date().toISOString().slice(0, 10);
+
+    // Auto-close prior active row
+    await query(
+      `UPDATE athlete_profile
+         SET effective_to = ($1::date - INTERVAL '1 day')::date, updated_at = NOW()
+       WHERE effective_to IS NULL AND effective_from < $1::date`,
+      [effective_from]
+    );
+
+    const cols = ['effective_from'];
+    const values = [effective_from];
+    for (const f of PROFILE_FIELDS) {
+      if (f === 'effective_from') continue;
+      if (!(f in b)) continue;
+      cols.push(f);
+      values.push(b[f]);
+    }
+    const placeholders = cols.map((_, i) => `$${i + 1}`);
+    const result = await query(
+      `INSERT INTO athlete_profile (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
+      values
+    );
+    if (typeof logActivity === 'function') {
+      try { await logActivity('create', 'athlete_profile', result.rows[0].id, b.set_by || 'user', 'Updated athlete profile'); } catch (_) {}
+    }
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(`[athlete/profile/create] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/profile/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const fields = [];
+    const params = [];
+    let i = 1;
+    for (const f of PROFILE_FIELDS) {
+      if (!(f in b)) continue;
+      fields.push(`${f} = $${i++}`);
+      params.push(b[f]);
+    }
+    if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
+    fields.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+    const result = await query(
+      `UPDATE athlete_profile SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

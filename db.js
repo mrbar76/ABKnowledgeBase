@@ -1324,6 +1324,35 @@ async function initDB() {
     `, [t.metric, t.target_value, t.target_value_max ?? null, t.comparison, t.timeframe, t.rationale]);
   }
 
+  // ===== ATHLETE PROFILE =====
+  // Versioned physiology snapshot. Sits alongside athlete_zones (which
+  // owns HR thresholds). Profile owns sweat rate, FTP, threshold pace,
+  // VO2 max history, race weight target, sodium loss. Each row has
+  // effective_from / effective_to so historical sessions can resolve to
+  // the values that were active at the time (same pattern as zones).
+  await safeQuery('athlete_profile table', `
+    CREATE TABLE IF NOT EXISTS athlete_profile (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      effective_from DATE NOT NULL DEFAULT CURRENT_DATE,
+      effective_to DATE,
+      lthr_bpm INTEGER,
+      max_hr_bpm INTEGER,
+      vo2_max NUMERIC(4,1),
+      ftp_w INTEGER,
+      threshold_pace_sec_per_mi INTEGER,
+      sweat_rate_ml_per_hr INTEGER,
+      sodium_loss_mg_per_l INTEGER,
+      race_weight_lb NUMERIC(5,1),
+      height_in NUMERIC(4,1),
+      birth_date DATE,
+      sex TEXT,
+      notes TEXT,
+      set_by TEXT DEFAULT 'user',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('athlete_profile index', `CREATE INDEX IF NOT EXISTS idx_athlete_profile_dates ON athlete_profile(effective_from DESC)`);
+
   // ===== RACES =====
   // First-class race calendar. Replaces the prior tag-inference pattern
   // (renderRaceCountdownCard scanning daily_plans for workout_type=/race/i).
