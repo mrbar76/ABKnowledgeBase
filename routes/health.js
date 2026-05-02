@@ -7,7 +7,42 @@
 const crypto = require('crypto');
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { computeTSS } = require('./insights');
 const router = express.Router();
+
+// Recompute workouts.tss for any rows missing tss within a date window.
+// Called automatically after /reparse and after Format A/D ingest so the
+// trends endpoints don't silently undercount load.
+async function recomputeMissingTss(startDate, endDate) {
+  const where = startDate && endDate
+    ? `WHERE workout_date BETWEEN $1::date AND $2::date AND tss IS NULL`
+    : `WHERE tss IS NULL`;
+  const params = startDate && endDate ? [startDate, endDate] : [];
+  const r = await query(
+    `SELECT id, workout_date, time_duration, heart_rate_avg, effort, tss FROM workouts ${where}`,
+    params
+  );
+  const dateZones = new Map();
+  let updated = 0;
+  for (const wo of r.rows) {
+    if (!dateZones.has(wo.workout_date)) {
+      const z = await query(
+        `SELECT * FROM athlete_zones
+         WHERE zone_type = 'heart_rate' AND effective_from <= $1
+           AND (effective_to IS NULL OR effective_to >= $1)
+         ORDER BY effective_from DESC LIMIT 1`,
+        [wo.workout_date]
+      );
+      dateZones.set(wo.workout_date, z.rows[0] || null);
+    }
+    const tss = computeTSS(wo, dateZones.get(wo.workout_date));
+    if (tss != null) {
+      await query(`UPDATE workouts SET tss = $1 WHERE id = $2`, [tss, wo.id]);
+      updated++;
+    }
+  }
+  return updated;
+}
 
 const MILES_TO_KM = 1.609344;
 const KM_TO_MI = 0.621371;
@@ -1122,7 +1157,10 @@ router.post('/reparse', async (req, res) => {
       }
     }
     const duplicatesMerged = await dedupeAppleWorkouts();
-    res.json({ reparsed: summary.length, duplicates_merged: duplicatesMerged, results: summary });
+    // Auto-recompute TSS so /trends.training stays current without the
+    // user having to remember to POST /insights/recompute-tss.
+    const tssUpdated = await recomputeMissingTss().catch(() => 0);
+    res.json({ reparsed: summary.length, duplicates_merged: duplicatesMerged, tss_recomputed: tssUpdated, results: summary });
   } catch (err) {
     console.error(`[health/reparse] failed: ${err.stack}`);
     res.status(500).json({ error: err.message });

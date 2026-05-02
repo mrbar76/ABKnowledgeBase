@@ -1785,6 +1785,178 @@
         "responses": { "200": { "description": "Deleted" } }
       }
     },
+    "/health/insights/morning": {
+      "get": {
+        "operationId": "getMorningBrief",
+        "summary": "Single morning brief for the morning-check-in Skill: readiness + alerts + active injuries + today_plan + today_context + yesterday_context + upcoming_race + current_block + missing_subjective[].",
+        "responses": { "200": { "description": "Morning bundle" } }
+      }
+    },
+    "/health/insights/race": {
+      "get": {
+        "operationId": "getRaceContext",
+        "summary": "Race-context bundle: race entity, days_to_race, taper_phase (build/sharpen/taper/race_week/race_day), recommendation, recent fueling rehearsals, last 28d build summary. Used by race-week-protocol Skill.",
+        "parameters": [{ "name": "race_id", "in": "query", "schema": { "type": "string" }, "description": "Optional. Defaults to next scheduled race." }],
+        "responses": { "200": { "description": "Race context" } }
+      }
+    },
+    "/health/insights/weekly-review": {
+      "get": {
+        "operationId": "getWeeklyReview",
+        "summary": "7-day retro: tss, distance, effort, adherence_pct, polarization (low/gray/high% + coverage_pct), sleep, hrv, nutrition, plan-vs-actual deltas. Used by review-week Skill.",
+        "parameters": [{ "name": "week_of", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Last day of window. Defaults to today." }],
+        "responses": { "200": { "description": "Weekly retro" } }
+      }
+    },
+    "/health/insights/polarization": {
+      "get": {
+        "operationId": "getPolarization",
+        "summary": "Standalone polarization breakdown by ISO week. Coach uses this to spot gray-zone drift over time.",
+        "parameters": [{ "name": "weeks", "in": "query", "schema": { "type": "integer", "default": 4, "minimum": 1, "maximum": 12 } }],
+        "responses": { "200": { "description": "Polarization series" } }
+      }
+    },
+    "/races": {
+      "get": {
+        "operationId": "listRaces",
+        "summary": "List races. Filter by status, priority, since, before.",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["scheduled","completed","dnf","withdrawn","cancelled"] } },
+          { "name": "priority", "in": "query", "schema": { "type": "string", "enum": ["A","B","C"] } },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Races" } }
+      },
+      "post": {
+        "operationId": "createRace",
+        "summary": "Add a race to the calendar.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["race_date", "name"],
+            "properties": {
+              "race_date": { "type": "string", "format": "date" },
+              "name": { "type": "string" },
+              "discipline": { "type": "string", "enum": ["run","trail_run","ultra","spartan","triathlon","swim","bike","duathlon","other"] },
+              "distance_value": { "type": "number" },
+              "distance_unit": { "type": "string", "enum": ["mi","km","m","laps","obstacles"] },
+              "elevation_gain_ft": { "type": "integer" },
+              "terrain": { "type": "string" },
+              "target_time_seconds": { "type": "integer" },
+              "priority": { "type": "string", "enum": ["A","B","C"], "default": "B" },
+              "location": { "type": "string" },
+              "course_notes": { "type": "string" },
+              "fueling_plan": { "type": "string" },
+              "gear_list": { "type": "string" },
+              "goal_outcome": { "type": "string" },
+              "goal_process": { "type": "string" }
+            }
+          }}}
+        },
+        "responses": { "201": { "description": "Race created" } }
+      }
+    },
+    "/races/upcoming": {
+      "get": {
+        "operationId": "getUpcomingRaces",
+        "summary": "Next 5 scheduled races with days_to_race. Powers the home race-countdown card.",
+        "responses": { "200": { "description": "Upcoming races" } }
+      }
+    },
+    "/races/{id}": {
+      "get": {
+        "operationId": "getRace",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Race" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "operationId": "updateRace",
+        "summary": "Update race. Used by race-debrief Skill to set status=completed, result_time_seconds, result_notes.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "operationId": "deleteRace",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/races/blocks/list": {
+      "get": {
+        "operationId": "listTrainingBlocks",
+        "summary": "Periodization blocks (offseason/base/build/peak/taper/race/transition/recovery) with optional target_race_id link.",
+        "responses": { "200": { "description": "Training blocks" } }
+      }
+    },
+    "/races/blocks/current": {
+      "get": {
+        "operationId": "getCurrentBlock",
+        "summary": "The training block covering today.",
+        "responses": { "200": { "description": "Current block or null" } }
+      }
+    },
+    "/races/blocks": {
+      "post": {
+        "operationId": "createTrainingBlock",
+        "summary": "Create a periodization block.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["start_date","end_date","phase"],
+            "properties": {
+              "start_date": { "type": "string", "format": "date" },
+              "end_date": { "type": "string", "format": "date" },
+              "phase": { "type": "string", "enum": ["offseason","base","build","peak","taper","race","transition","recovery"] },
+              "thesis": { "type": "string" },
+              "target_race_id": { "type": "string" },
+              "notes": { "type": "string" }
+            }
+          }}}
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/races/fueling/list": {
+      "get": {
+        "operationId": "listFuelingRehearsals",
+        "summary": "Race-day fueling rehearsal log (g_carb_per_hr, g_sodium_per_hr, fluid, products, gut/energy response 1-10).",
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "target_race_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Rehearsals" } }
+      }
+    },
+    "/races/fueling": {
+      "post": {
+        "operationId": "createFuelingRehearsal",
+        "summary": "Log a fueling rehearsal after a long session. Used by log-fueling-rehearsal Skill.",
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/athlete/profile": {
+      "get": {
+        "operationId": "getAthleteProfile",
+        "summary": "Current physiology snapshot: lthr_bpm, max_hr_bpm, vo2_max, ftp_w, threshold_pace_sec_per_mi, sweat_rate_ml_per_hr, sodium_loss_mg_per_l, race_weight_lb. Versioned via effective_from/effective_to like athlete_zones.",
+        "parameters": [{ "name": "on", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Defaults to today." }],
+        "responses": { "200": { "description": "Profile" } }
+      },
+      "post": {
+        "operationId": "createAthleteProfile",
+        "summary": "Create a new profile version. Auto-closes the prior active row's effective_to.",
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/athlete/profile/history": {
+      "get": {
+        "operationId": "getAthleteProfileHistory",
+        "responses": { "200": { "description": "All profiles" } }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",
