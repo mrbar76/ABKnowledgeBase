@@ -1207,6 +1207,16 @@ async function dedupeAppleWorkouts() {
 const WORKOUT_DEDUP_WINDOW_SEC = 1800; // 30 min — slightly wider than the
                                        // ingest-time merge window for cleanup
 
+// Parse 'h:mm:ss' or 'mm:ss' workout durations to seconds. Used by Rule D
+// (Apple Watch fragment cleanup) to identify <5min fragments.
+function durationToSeconds(s) {
+  if (!s) return 0;
+  const m = String(s).match(/^(?:(\d+):)?(\d+):(\d+)$/);
+  if (!m) return 0;
+  const [, h, mm, ss] = m;
+  return (Number(h) || 0) * 3600 + Number(mm) * 60 + Number(ss);
+}
+
 const SENSOR_FIELDS = [
   'time_duration', 'distance', 'elevation_gain',
   'heart_rate_avg', 'heart_rate_max', 'pace_avg',
@@ -1243,7 +1253,7 @@ async function mergeAllWorkoutDuplicates({ windowSec = WORKOUT_DEDUP_WINDOW_SEC,
      ORDER BY workout_date, started_at`
   );
 
-  // Group consecutive workouts whose started_at delta is within window
+  // Pass 1: Group consecutive workouts whose started_at delta is within window
   const groups = [];
   let current = [];
   let lastTs = null;
@@ -1260,6 +1270,34 @@ async function mergeAllWorkoutDuplicates({ windowSec = WORKOUT_DEDUP_WINDOW_SEC,
     lastDate = w.workout_date;
   }
   if (current.length > 1) groups.push(current);
+
+  // Pass 2 (Rule D — provenance: docs/coaching-rules.md): Apple Watch fragment
+  // cleanup. Apple sometimes splits a single session into many short
+  // apple_health rows scattered across the day (e.g. one workout becomes 6
+  // entries: 3:31, 3:27, 3:04, 45:00, 12:34, 36:35). Pass 1's started_at
+  // window catches close pairs but misses fragments separated by hours.
+  // Rule: on any date with multiple apple_health rows where AT LEAST ONE has
+  // duration < 5 min, treat the whole apple_health cluster on that date as
+  // fragments of a single session. Survivor = longest-duration row.
+  const byDate = new Map();
+  for (const w of all.rows) {
+    if (w.source !== 'apple_health') continue;
+    if (!byDate.has(w.workout_date)) byDate.set(w.workout_date, []);
+    byDate.get(w.workout_date).push(w);
+  }
+  const alreadyGrouped = new Set();
+  for (const g of groups) for (const w of g) alreadyGrouped.add(w.id);
+  for (const [date, dayWorkouts] of byDate) {
+    if (dayWorkouts.length < 2) continue;
+    // Skip if all members are already in a started_at-window group together
+    const remaining = dayWorkouts.filter(w => !alreadyGrouped.has(w.id));
+    const seedFragments = remaining.length >= 2
+      ? remaining.some(w => durationToSeconds(w.time_duration) > 0 && durationToSeconds(w.time_duration) < 300)
+      : false;
+    if (!seedFragments) continue;
+    groups.push(remaining);
+    for (const w of remaining) alreadyGrouped.add(w.id);
+  }
 
   const summary = { groups: groups.length, merged: 0, deleted: 0, pairs: [] };
 

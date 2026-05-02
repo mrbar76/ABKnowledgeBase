@@ -417,9 +417,17 @@ function renderReadinessSection(r) {
   if (!r || r.readiness_score == null) return '';
   const score = Math.round(r.readiness_score);
   const status = r.readiness_status || '';
-  const color = score >= 75 ? 'var(--color-physical)'
+  const hasAlert = Array.isArray(r.alerts) && r.alerts.some(a => a.severity === 'high');
+  const color = hasAlert ? 'var(--red)'
+    : score >= 75 ? 'var(--color-physical)'
     : score >= 55 ? 'var(--orange)'
     : 'var(--red)';
+  const alertBanner = hasAlert
+    ? `<div style="margin:0 0 8px;padding:10px 12px;background:color-mix(in srgb, var(--red) 12%, transparent);border-left:3px solid var(--red);border-radius:6px;font-size:0.82rem;color:var(--text)">
+         <strong>⚠ Coaching alert:</strong> ${esc(r.alerts[0].reason)}
+         ${r.alerts.length > 1 ? `<div style="font-size:0.75rem;color:var(--text-dim);margin-top:4px">+${r.alerts.length - 1} more</div>` : ''}
+       </div>`
+    : '';
   const c = r.components || {};
   const hrv = c.hrv || {};
   const rhr = c.rhr || {};
@@ -453,6 +461,7 @@ function renderReadinessSection(r) {
           Today's Readiness
         </div>
       </div>
+      ${alertBanner}
       <div style="display:flex;gap:16px;align-items:center;padding:12px 4px">
         <div style="text-align:center;flex-shrink:0">
           <div class="font-data" style="font-size:2.2rem;font-weight:700;color:${color};line-height:1">${score}</div>

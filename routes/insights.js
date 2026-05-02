@@ -84,6 +84,103 @@ function computeTSS(workout, zones) {
 
 // ─── GET /api/health/insights/today — recovery readiness ────────
 
+// ─── Coaching rules (provenance: docs/coaching-rules.md) ────────
+// Rule A: 7-day rolling effort sum > 50 for 5+ consecutive days OR ≥30%
+//         week-over-week jump → chronic load alarm.
+// Rule B: 3+ consecutive days with at least one workout effort ≥ 7 →
+//         density alarm.
+
+function lastNDates(n) {
+  const out = [];
+  const today = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function chronicLoadAlerts(workouts) {
+  const byDate = new Map();
+  for (const w of workouts) {
+    const e = Number(w.effort) || 0;
+    if (!e) continue;
+    byDate.set(w.workout_date, (byDate.get(w.workout_date) || 0) + e);
+  }
+  const days = lastNDates(14);
+  const efforts = days.map(d => byDate.get(d) || 0);
+  const rolling = efforts.map((_, i) => {
+    let sum = 0;
+    for (let j = Math.max(0, i - 6); j <= i; j++) sum += efforts[j];
+    return sum;
+  });
+  const alerts = [];
+  let trailingHigh = 0;
+  for (let i = rolling.length - 1; i >= 0; i--) {
+    if (rolling[i] > 50) trailingHigh++;
+    else break;
+  }
+  if (trailingHigh >= 5) {
+    alerts.push({
+      severity: 'high', type: 'chronic_load',
+      reason: `7-day load > 50 for ${trailingHigh} consecutive days — deload required`,
+    });
+  }
+  if (rolling.length >= 14) {
+    const thisWeek = rolling[rolling.length - 1];
+    const lastWeek = rolling[rolling.length - 8];
+    if (lastWeek > 0 && (thisWeek - lastWeek) / lastWeek >= 0.30) {
+      const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+      alerts.push({
+        severity: 'high', type: 'load_spike',
+        reason: `7-day load jumped ${pct}% week-over-week (${lastWeek} → ${thisWeek}) — deload recommended`,
+      });
+    }
+  }
+  return alerts;
+}
+
+function consecutiveHardDayAlerts(workouts) {
+  const maxEffortByDate = new Map();
+  for (const w of workouts) {
+    const e = Number(w.effort) || 0;
+    const cur = maxEffortByDate.get(w.workout_date) || 0;
+    if (e > cur) maxEffortByDate.set(w.workout_date, e);
+  }
+  const days = lastNDates(14);
+  const isHard = days.map(d => (maxEffortByDate.get(d) || 0) >= 7);
+  let trailing = 0;
+  for (let i = isHard.length - 1; i >= 0; i--) {
+    if (isHard[i]) trailing++;
+    else break;
+  }
+  if (trailing >= 3) {
+    return [{
+      severity: 'high', type: 'density',
+      reason: `${trailing} consecutive hard days (effort ≥ 7) — forced rest day required`,
+    }];
+  }
+  return [];
+}
+
+function hrvByDayOfWeek(rows) {
+  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const buckets = Object.fromEntries(dows.map(d => [d, []]));
+  for (const r of rows) {
+    if (r.hrv_sdnn_ms == null || !r.activity_date) continue;
+    const d = new Date(r.activity_date + 'T12:00:00');
+    buckets[dows[d.getDay()]].push(Number(r.hrv_sdnn_ms));
+  }
+  const out = {};
+  for (const d of dows) {
+    out[d] = buckets[d].length ? round1(mean(buckets[d])) : null;
+  }
+  return out;
+}
+
+// ─── GET /api/health/insights/today — recovery readiness ────────
+
 router.get('/today', async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -146,11 +243,27 @@ router.get('/today', async (req, res) => {
     }
     score = Math.max(0, Math.min(100, score));
 
-    const status = score >= 75 ? 'good' : score >= 55 ? 'moderate' : 'poor';
-    const recommendation = score >= 80 ? 'Push hard — your body is ready.'
+    let status = score >= 75 ? 'good' : score >= 55 ? 'moderate' : 'poor';
+    let recommendation = score >= 80 ? 'Push hard — your body is ready.'
       : score >= 65 ? 'Train as planned.'
       : score >= 45 ? 'Moderate intensity only. Skip the hardest sets.'
       : 'Recovery day. Sleep, walk, mobility only.';
+
+    // ─── Coaching rules: load + density alerts (override recommendation) ──
+    const recentWorkouts = await query(
+      `SELECT workout_date, effort FROM workouts
+       WHERE workout_date >= CURRENT_DATE - INTERVAL '14 days'
+         AND effort IS NOT NULL
+       ORDER BY workout_date ASC`
+    );
+    const alerts = [
+      ...chronicLoadAlerts(recentWorkouts.rows),
+      ...consecutiveHardDayAlerts(recentWorkouts.rows),
+    ];
+    if (alerts.some(a => a.severity === 'high')) {
+      status = 'deload';
+      recommendation = 'DELOAD — ' + alerts[0].reason;
+    }
 
     // Last 7 days for sparkline
     const trend7d = rows.slice(-7).map(r => ({
@@ -166,6 +279,7 @@ router.get('/today', async (req, res) => {
       readiness_status: status,
       recommendation,
       reasons,
+      alerts,
       components: {
         hrv: { today: hrvToday, baseline: hrvBase ? round1(hrvBase) : null, deviation_sd: hrvDevSd != null ? round1(hrvDevSd) : null, sample_size: hrvVals.length },
         rhr: { today: rhrToday, baseline: rhrBase ? round1(rhrBase) : null, deviation_sd: rhrDevSd != null ? round1(rhrDevSd) : null, sample_size: rhrVals.length },
@@ -173,6 +287,7 @@ router.get('/today', async (req, res) => {
         sleep_quality: { deep_min: deepToday, rem_min: remToday, deep_rem_pct: (deepToday != null && remToday != null && sleepToday) ? round1((deepToday + remToday) / sleepToday * 100) : null, efficiency_pct: todayRow.sleep_efficiency_pct != null ? Number(todayRow.sleep_efficiency_pct) : null },
       },
       trend_7d: trend7d,
+      hrv_by_day_of_week: hrvByDayOfWeek(rows),
     });
   } catch (err) {
     console.error(`[insights/today] ${err.stack}`);
@@ -396,10 +511,37 @@ router.get('/nutrition', async (req, res) => {
       protein_per_kg: weightKg ? round1(mean(week.map(d => d.protein_g)) / weightKg) : null,
     } : null;
 
+    // ─── Rule C: rest-day underfueling (provenance: docs/coaching-rules.md) ──
+    // If yesterday was a rest day (no workout OR max effort < 5) AND
+    // protein < 130g, flag underfueling. Tissue repair happens on rest days;
+    // the athlete's data showed rest-day protein at 106g vs hard-day 138g —
+    // consistent recovery gap.
+    const yesterday = history[history.length - 2] || null;
+    let rest_day_flag = null;
+    if (yesterday) {
+      const wo = await query(
+        `SELECT MAX(effort) AS max_effort, COUNT(*)::int AS n FROM workouts
+         WHERE workout_date = $1`,
+        [yesterday.date]
+      );
+      const maxEffort = wo.rows[0]?.max_effort != null ? Number(wo.rows[0].max_effort) : 0;
+      const isRestDay = wo.rows[0]?.n === 0 || maxEffort < 5;
+      if (isRestDay && yesterday.protein_g < 130) {
+        rest_day_flag = {
+          date: yesterday.date,
+          protein_g: yesterday.protein_g,
+          target_g: 130,
+          deficit_g: 130 - yesterday.protein_g,
+          message: `Rest day yesterday — protein at ${yesterday.protein_g}g, target 130g+ for tissue repair. ${130 - yesterday.protein_g}g short.`,
+        };
+      }
+    }
+
     res.json({
       today: last,
       weekly_avg,
       weight_kg: weightKg ? round1(weightKg) : null,
+      rest_day_flag,
       history,
     });
   } catch (err) {
