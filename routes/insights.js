@@ -155,13 +155,96 @@ function consecutiveHardDayAlerts(workouts) {
     if (isHard[i]) trailing++;
     else break;
   }
-  if (trailing >= 3) {
+  // Threshold lowered from 3 → 2 (Avi-specific): both spring 2026 injury
+  // cascades were preceded by 3-day clusters. By the time the 3rd day
+  // hits, accumulated damage is already in motion. 2-day cap gives one
+  // buffer day to interrupt before the cascade triggers.
+  if (trailing >= 2) {
     return [{
       severity: 'high', type: 'density',
       reason: `${trailing} consecutive hard days (effort ≥ 7) — forced rest day required`,
     }];
   }
   return [];
+}
+
+// Rule E (Avi-specific): TSB < -80 = automatic rest. Functional
+// overtraining indicator. Surfaces alongside ACWR > 1.5 since they
+// catch overlapping but not identical patterns (TSB integrates 6 weeks
+// of CTL; ACWR is sharper 7d/28d ratio). Caller passes today's TSB
+// from the load model.
+function tsbAlerts(todayTSB) {
+  if (todayTSB == null) return [];
+  if (todayTSB < -80) {
+    return [{
+      severity: 'high', type: 'tsb_crash',
+      reason: `TSB at ${Math.round(todayTSB)} — functional overtraining zone, forced rest`,
+    }];
+  }
+  if (todayTSB < -30) {
+    return [{
+      severity: 'medium', type: 'tsb_low',
+      reason: `TSB at ${Math.round(todayTSB)} — accumulated fatigue, hold or reduce volume`,
+    }];
+  }
+  return [];
+}
+
+// Rule F (Avi-specific): single night < 5h sleep = automatic effort
+// downgrade. Two consecutive nights < 5h = halve session intensity.
+// Coach reads this and drops one effort tier (planned hard → moderate;
+// moderate → easy/recovery).
+function sleepAlerts(daRows) {
+  if (!daRows || !daRows.length) return [];
+  const last = daRows[daRows.length - 1];
+  const prev = daRows[daRows.length - 2];
+  const lastSleep = last?.sleep_total_min;
+  const prevSleep = prev?.sleep_total_min;
+  const alerts = [];
+  if (lastSleep != null && lastSleep < 300 && prevSleep != null && prevSleep < 300) {
+    alerts.push({
+      severity: 'high', type: 'sleep_deprivation',
+      reason: `${(lastSleep/60).toFixed(1)}h + ${(prevSleep/60).toFixed(1)}h two nights running — halve intensity`,
+    });
+  } else if (lastSleep != null && lastSleep < 300) {
+    alerts.push({
+      severity: 'high', type: 'sleep_short',
+      reason: `${(lastSleep/60).toFixed(1)}h last night — drop one effort tier`,
+    });
+  }
+  return alerts;
+}
+
+// Quick TSB computation for alert composition. Pulls 90 days of daily
+// TSS, runs ATL (7d EWMA) and CTL (42d EWMA), returns today's TSB
+// (CTL - ATL). Used by tsbAlerts in /insights/today, morning, trends.
+async function computeTodayTSB() {
+  try {
+    const start = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await query(
+      `SELECT workout_date, COALESCE(SUM(tss), 0) AS daily_tss
+       FROM workouts WHERE workout_date >= $1 AND tss IS NOT NULL
+       GROUP BY workout_date ORDER BY workout_date ASC`,
+      [start]
+    );
+    const tssMap = new Map();
+    for (const row of r.rows) tssMap.set(dateOnly(row.workout_date), Number(row.daily_tss) || 0);
+    const startMs = new Date(start + 'T12:00:00').getTime();
+    const todayMs = new Date(today + 'T12:00:00').getTime();
+    const dailyTss = [];
+    for (let ms = startMs; ms <= todayMs; ms += 86400_000) {
+      const d = new Date(ms).toISOString().slice(0, 10);
+      dailyTss.push(tssMap.get(d) || 0);
+    }
+    const atlSeries = ewma(dailyTss, 7);
+    const ctlSeries = ewma(dailyTss, 42);
+    const todayATL = atlSeries[atlSeries.length - 1] || 0;
+    const todayCTL = ctlSeries[ctlSeries.length - 1] || 0;
+    return todayCTL - todayATL;
+  } catch (_) {
+    return null;
+  }
 }
 
 // Normalize a daily_activity / meals row's date column to YYYY-MM-DD,
@@ -347,16 +430,19 @@ router.get('/today', async (req, res) => {
       : score >= 45 ? 'Moderate intensity only. Skip the hardest sets.'
       : 'Recovery day. Sleep, walk, mobility only.';
 
-    // ─── Coaching rules: load + density alerts (override recommendation) ──
+    // ─── Coaching rules: load + density + TSB + sleep alerts ──
     const recentWorkouts = await query(
       `SELECT workout_date, effort FROM workouts
        WHERE workout_date >= CURRENT_DATE - INTERVAL '14 days'
          AND effort IS NOT NULL
        ORDER BY workout_date ASC`
     );
+    const todayTSB = await computeTodayTSB();
     const alerts = [
       ...chronicLoadAlerts(recentWorkouts.rows),
       ...consecutiveHardDayAlerts(recentWorkouts.rows),
+      ...tsbAlerts(todayTSB),
+      ...sleepAlerts(rows),
     ];
     if (alerts.some(a => a.severity === 'high')) {
       status = 'deload';
@@ -1254,15 +1340,21 @@ router.get('/trends', async (req, res) => {
       walking_asymmetry_pct: vitalSection('walking_asymmetry_pct'),
     };
 
-    // Composite alerts (Rules A/B from coaching-rules.md)
+    // Composite alerts: chronic load + density (Rules A/B) + TSB (Rule E,
+    // Avi-specific) + sleep (Rule F, Avi-specific). All fire as needed.
     const recentWorkouts = await query(
       `SELECT workout_date, effort FROM workouts
         WHERE workout_date >= CURRENT_DATE - INTERVAL '14 days'
           AND effort IS NOT NULL`
     );
+    // dailyTss is already in scope from the training section above; reuse
+    // for inline TSB rather than re-querying.
+    const trendsTodayTSB = todayCTL - todayATL;
     const alerts = [
       ...chronicLoadAlerts(recentWorkouts.rows),
       ...consecutiveHardDayAlerts(recentWorkouts.rows),
+      ...tsbAlerts(trendsTodayTSB),
+      ...sleepAlerts(daRows),
     ];
 
     res.json({
@@ -1326,9 +1418,12 @@ router.get('/morning', async (req, res) => {
         WHERE workout_date >= CURRENT_DATE - INTERVAL '14 days'
           AND effort IS NOT NULL`
     );
+    const todayTSB = await computeTodayTSB();
     const alerts = [
       ...chronicLoadAlerts(recentWorkouts.rows),
       ...consecutiveHardDayAlerts(recentWorkouts.rows),
+      ...tsbAlerts(todayTSB),
+      ...sleepAlerts(rows),
     ];
 
     // Active injuries

@@ -1,14 +1,12 @@
 ---
 name: amend-day
-description: Adjust today's daily plan when a signal warrants it — Avi reports soreness, low motivation, illness onset, sleep was bad, life stress is high, an alert fired, or he wants to swap the planned session for a different one. Use when Avi says any of "I'm sore today" / "feeling off" / "tired" / "didn't sleep" / "stressed" / "want to swap to Z2" / "skipping today" / "trade today's session for X" / "alert just fired."
+description: Adjust today's daily plan when a signal warrants it — Avi reports soreness, low motivation, illness onset, sleep was bad, life stress is high, an alert fired, or he wants to swap the planned session for a different one. Use when Avi says any of "I'm sore today" / "feeling off" / "tired" / "didn't sleep" / "stressed" / "want to swap to Z2" / "skipping today" / "trade today's session for X" / "alert just fired." Also handles "wait restore the original" undo.
 when_to_use: Mid-day or pre-session, when the morning brief's prescription no longer fits the current state. Don't use this Skill for normal end-of-day logging (the evening-review routine handles that).
 ---
 
 # amend-day
 
-## Steps
-
-### 1. Pull current state
+## Step 1 — pull current state
 
 ```
 GET /api/health/insights/morning
@@ -16,78 +14,257 @@ GET /api/training/injuries/active/summary
 GET /api/daily-plans?date={today}
 ```
 
-### 2. Identify the trigger
+If `/insights/morning` returns 404 (Railway deploy lag), fall back to:
+```
+GET /api/health/insights/today    (returns alerts + components.hrv/rhr/sleep)
+GET /api/recovery/score?date={today}
+GET /api/training/day/{today}
+```
 
-What signal forced the amendment? One of:
-- **Hard rule firing** (chronic_load, density, ACWR > 1.5, illness, sleep < 5h ×2) — non-negotiable
-- **HRV crash** (today's HRV ≤ -1σ from baseline)
-- **Soreness 7+ in a body area required for today's session**
-- **Acute injury** (severity ≥ 5)
-- **Illness onset**
-- **Life stress 8+**
-- **Avi-initiated swap** (no objective signal — he just wants something different)
+## Step 2 — detect Shabbat (Friday/Saturday only)
+
+If today is Friday or Saturday, fetch Shabbat times for **zip 10705**
+(unless Avi's `daily_context.travel_status` indicates he's elsewhere —
+then ask for the current zip):
+
+```
+GET https://www.hebcal.com/shabbat?cfg=json&zip=10705&geo=zip
+```
+
+Find candle-lighting (Friday) and Havdalah (Saturday) times. If `today
++ current local time` is between candle-lighting and Havdalah:
+
+- Set `shabbat_active = true`
+- **Legal amendments:** home-basement strength, mobility, walking
+  indoors, stretching, yoga, foam rolling. Indoor only.
+- **Illegal:** outdoor sessions, gym/Y, cycling outside, races,
+  anything that requires driving or screens-during.
+
+If `shabbat_active = true` and the original plan calls for any illegal
+modality, the amendment defaults to home-basement recovery regardless
+of Avi's preference.
+
+## Step 3 — identify the trigger
+
+What signal forced the amendment? Categorize:
+
+| Trigger | Severity |
+|---------|----------|
+| **Hard rule firing** (chronic_load, density, TSB < -80, ACWR > 1.5, illness, sleep < 5h) | non-negotiable |
+| **HRV crash** (today's `components.hrv.deviation_sd` ≤ -1.0) | strong |
+| **Sleep < 5h single night** (Rule F) | drop one effort tier |
+| **Soreness ≥ 3/10** in body area required for today's session | modify (severity 3 IS the gate) |
+| **Soreness ≥ 7/10** in any body area | rest day or full cross-train |
+| **Acute injury severity ≥ 5** | rest |
+| **Illness onset / active** | rest until resolving + 3 days aerobic-only |
+| **Life stress ≥ 8** | drop one tier, prioritize sleep |
+| **Avi-initiated swap** (no objective signal) | honor unless violates a hard rule |
+| **Hydration < 1L yesterday** | flag, correct before training |
 
 Name the trigger plainly in your response.
 
-### 3. Decide the new intent_type
+## Step 4 — left-side cascade prophylaxis
 
-| Trigger | New intent |
-|---------|------------|
-| High-severity alert / HRV crash / illness | `recovery` |
-| Soreness in primary modality | `mobility` or cross-train alternative |
-| Acute injury | rest day; coach what TO do (mobility, walk, sleep) |
-| Mild fatigue / low motivation | drop intensity, keep volume → `aerobic_endurance` Z2 |
-| Avi-initiated swap | honor the request unless it violates a hard rule |
+If the trigger is **left calf or left hamstring at any severity**:
 
-### 4. PUT the amended plan
+- Also reduce loaded forearm work today (the cascade pattern: calf →
+  hamstring → forearm fires within 48h historically)
+- No rope climbs, no heavy farmer carries, no pull-ups with weight
+- This applies even if the forearm isn't currently symptomatic
+
+If the trigger is left forearm: also reduce lower-body impact (the
+cascade can run in reverse during recovery weeks).
+
+## Step 5 — decide the new prescription
+
+| Trigger | New `intent_type` | New `workout_type` (canonical) | `workout_focus` (modality detail) |
+|---------|------------------|-------------------------------|-----------------------------------|
+| High alert / HRV crash / illness | `recovery` | `recovery` | "walk" or "mobility" |
+| Soreness in primary modality | `mobility` | `recovery` | "yoga" or "foam roll + stretch" |
+| Acute injury ≥ 5 | rest day (no plan modification — coach what TO do) | `recovery` | "rest + sleep" |
+| Mild fatigue / low motivation / sleep < 5h | `aerobic_endurance` | `run` or `hybrid` | "Z2 only, no surges" |
+| Life stress ≥ 8 | `aerobic_endurance` | `run` | "easy outdoor walk/run" |
+| Avi-initiated swap | honor request | match modality | from Avi |
+| Shabbat-active override | `mobility` or `strength` | `recovery` or `strength` | "home basement only" |
+
+**Canonical `workout_type` enum:** `hill | strength | run | hybrid | recovery | ruck`. Do not invent new types. Modality (walk, yoga, foam-roll, etc.) goes in `workout_focus`, not `workout_type`.
+
+## Step 6 — capture the original plan before overwriting
+
+Read the current plan first. Snapshot the original fields so retro
+analysis can compare what was scheduled vs what was done:
+
+```
+{
+  "original_plan": {
+    "workout_type": "{from current plan}",
+    "intent_type": "{from current plan}",
+    "target_effort": N,
+    "target_duration_min": N,
+    "target_calories": N,
+    "rationale": "{from current plan}"
+  }
+}
+```
+
+Stick this object into `coaching_notes` as JSON-stringified text, OR
+into `metadata.original_plan` if the plan has a metadata field.
+
+## Step 7 — PUT the amended plan
 
 ```
 PUT /api/daily-plans/{plan_id}
 {
   "status": "amended",
-  "intent_type": "recovery" | "mobility" | "aerobic_endurance" | etc.,
-  "workout_type": "walk" | "yoga" | "strength" | etc.,
-  "target_effort": N,
-  "target_duration_min": N,
-  "target_calories": N,    // adjust if intensity dropped significantly
-  "target_protein_g": N,
+  "intent_type": "recovery",
+  "workout_type": "recovery",
+  "workout_focus": "home basement: yoga + foam roll",
+  "target_effort": 2,
+  "target_duration_min": 30,
+  "target_calories": 2200,
+  "target_protein_g": 130,
+  "target_hydration_liters": 1.5,
   "rationale": "Amended because {trigger}. {1-sentence reasoning}.",
-  "coaching_notes": "Original plan was {X}. Amended to {Y} because {Z}.",
+  "coaching_notes": "Original plan was {snapshot above}. Amended to {new} because {why}. Watch-for: {signal that would change tomorrow}.",
   "ai_source": "claude"
 }
 ```
 
-### 5. Communicate the amendment
+**Hydration note:** target_hydration_liters must stay in 1.0–2.0 range.
+1.5 is the typical mid-band target. Do not exceed 2.0L (Avi's ceiling).
 
-One paragraph max. INTENT-first format from the Project Instructions.
+## Step 8 — feed forward to the morning brief
+
+The "watch for" signal needs to surface in tomorrow's morning brief.
+Add it explicitly to the coaching session's `next_steps` field — the
+morning brief routine reads coaching sessions tagged in the prior 24h
+and folds `next_steps` into its WATCH FOR section.
+
+## Step 9 — communicate the amendment
+
+One paragraph max. INTENT-first format:
 
 > **Amending today: {new intent}**
 > {prescription numbers}
-> Why: {trigger named honestly}
-> Watch for: {what would change tomorrow's plan}
+> Why: {trigger named honestly, alert names cited if firing}
+> Watch for: {signal that would change tomorrow}
 
-### 6. Save the coaching session
+## Step 10 — save the coaching session
 
 ```
 POST /api/training/coaching
 {
   "session_date": "{today}",
   "title": "Amendment: {trigger} → {new intent}",
-  "summary": "Brief reasoning for amendment.",
-  "key_decisions": ["Override of planned {X} in favor of {Y}"],
+  "summary": "Brief reasoning. Original was {X}, amended to {Y}.",
+  "key_decisions": ["Override of planned {X} in favor of {Y} — {why}"],
   "adjustments": ["Tomorrow: {conditional}"],
-  "next_steps": "Watch for {signal} in tomorrow's morning brief.",
+  "injury_notes": "{if injury-driven}",
+  "next_steps": "Watch for {signal} tomorrow. If {condition}, restore build; if not, deload further.",
   "ai_source": "claude",
   "tags": ["skill", "amend-day"]
 }
 ```
 
+## Step 11 — undo protocol
+
+If Avi says "wait, restore the original" / "I'm fine, put it back" /
+"undo the amendment" within the same day:
+
+1. Read the current `daily_plans` row
+2. Parse `coaching_notes` to find the `original_plan` snapshot
+3. PUT the original fields back, set `status: "planned"`
+4. Update the prior coaching session's `summary` to note the undo
+5. Confirm in one line: *"Restored original plan: {workout_type} @ effort {N}, {duration}min."*
+
+If no `original_plan` snapshot exists in `coaching_notes`, tell Avi
+honestly: *"I can't undo cleanly — original wasn't snapshotted. Tell me
+what to restore and I'll PUT it manually."*
+
+---
+
+## Worked example
+
+**Scenario:** It's Tuesday 7am. Morning brief prescribed a hill run at
+effort 8, 45min, target 2900 kcal. Avi messages: *"Slept 4.2h last
+night — feel like garbage. Don't think hills today is smart."*
+
+**Step 1 — pull state:**
+- `/insights/morning` returns `alerts: [{severity: 'high', type: 'sleep_short', reason: '4.2h last night — drop one effort tier'}]`
+- `daily_plans?date=2026-05-04` returns the planned hill run
+
+**Step 2 — Shabbat:** Tuesday, skip.
+
+**Step 3 — trigger:** sleep_short alert + Avi-initiated request. Both
+align: drop intensity.
+
+**Step 4 — cascade:** no left-side trigger; skip.
+
+**Step 5 — new prescription:** sleep < 5h single night = drop one tier.
+Hill (effort 8) → Z2 endurance (effort 4). Modality stays running but
+flat course only.
+
+**Step 6 — snapshot original:**
+```
+{
+  "workout_type": "hill",
+  "intent_type": "race_specific",
+  "target_effort": 8,
+  "target_duration_min": 45,
+  "target_calories": 2900,
+  "rationale": "Hill repeats for race-specific climbing strength."
+}
+```
+
+**Step 7 — PUT amendment:**
+```
+PUT /api/daily-plans/{id}
+{
+  "status": "amended",
+  "intent_type": "aerobic_endurance",
+  "workout_type": "run",
+  "workout_focus": "Z2 flat run, no surges",
+  "target_effort": 4,
+  "target_duration_min": 45,
+  "target_calories": 2400,
+  "target_protein_g": 140,
+  "target_hydration_liters": 1.5,
+  "rationale": "Amended: sleep_short alert (4.2h). Drop one effort tier per Rule F.",
+  "coaching_notes": "Original was hill @ effort 8 / 45min / 2900 kcal (race-specific). Amended to Z2 @ effort 4 / 45min / 2400 kcal (aerobic_endurance). Watch-for: HRV recovery tomorrow. If HRV deviation_sd > -0.5 → resume hills Wednesday. If still -1σ → second recovery day."
+}
+```
+
+**Step 9 — communicate:**
+
+> **Amending today: aerobic endurance**
+> Z2 flat run, 45min, effort 4/10. 2400 kcal / 140g protein.
+> Why: 4.2h sleep last night — Rule F (sleep < 5h) drops one tier.
+> Hills don't pay back when undercooked.
+> Watch for: HRV tomorrow. If it recovers, hills Wednesday.
+
+**Step 10 — coaching session:**
+```
+POST /api/training/coaching
+{
+  "session_date": "2026-05-04",
+  "title": "Amendment: sleep_short → aerobic endurance",
+  "summary": "Sleep 4.2h triggered Rule F. Hill run (race-specific) → Z2 flat run. One-tier downgrade.",
+  "key_decisions": ["Hill effort 8 → Z2 effort 4 due to sleep deficit"],
+  "adjustments": ["Tomorrow: if HRV recovers above -0.5σ, resume hills Wednesday"],
+  "next_steps": "Watch for HRV tomorrow morning. Sleep tonight — early bedtime, no screens after 9pm.",
+  "ai_source": "claude",
+  "tags": ["skill", "amend-day"]
+}
+```
+
+---
+
 ## ADHD-aware notes
 
-- Don't moralize about the trigger ("you should have slept more"). Just
-  adjust.
-- If the trigger is "I just don't feel like it," that's still valid
-  ADHD energy data. Don't push back. Adjust to a smaller-deposit
-  session and surface "the work still bankrolls."
+- Don't moralize about the trigger ("you should have slept more"). Just adjust.
+- If trigger is "I just don't feel like it" — that's still valid ADHD
+  energy data. Don't push back. Adjust to a smaller-deposit session and
+  surface "the work still bankrolls."
 - Tangible micro-win at the end: name what today's amended session
   *does* contribute, not what it failed to be.
+- Lead with the answer (the new prescription), not the analysis.
