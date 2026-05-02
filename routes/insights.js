@@ -1091,6 +1091,8 @@ router.get('/trends', async (req, res) => {
     const todayTSB = todayCTL - todayATL;
 
     let weeklyTss = 0, weeklyZ2 = 0, weeklyMiles = 0, weeklyHours = 0, weeklyWorkouts = 0;
+    let weeklyZ1 = 0, weeklyZ3 = 0, weeklyZ4 = 0, weeklyZ5 = 0, weeklyZ_total = 0;
+    let weeklyZonesCovered = 0;
     for (const w of woRes.rows) {
       if (dateOnly(w.workout_date) < start7) continue;
       weeklyWorkouts++;
@@ -1099,24 +1101,67 @@ router.get('/trends', async (req, res) => {
       const sec = durationToSeconds(w.time_duration);
       weeklyHours += sec / 3600;
       if (w.hr_zones && typeof w.hr_zones === 'object') {
-        const z2 = w.hr_zones.z2 || w.hr_zones.Z2 || 0;
-        weeklyZ2 += Number(z2) || 0;
+        weeklyZonesCovered++;
+        const z = w.hr_zones;
+        const z1 = Number(z.z1 || z.Z1 || 0);
+        const z2 = Number(z.z2 || z.Z2 || 0);
+        const z3 = Number(z.z3 || z.Z3 || 0);
+        const z4 = Number(z.z4 || z.Z4 || 0);
+        const z5 = Number(z.z5 || z.Z5 || 0);
+        weeklyZ1 += z1; weeklyZ2 += z2; weeklyZ3 += z3; weeklyZ4 += z4; weeklyZ5 += z5;
+        weeklyZ_total += z1 + z2 + z3 + z4 + z5;
       }
     }
 
     const tssDaily30 = dailyTss.slice(-30);
     const tssDaily60Prior = dailyTss.slice(-90, -30);
 
+    // ACWR (acute:chronic workload ratio) — Foster/Gabbett. 7d EWMA / 28d
+    // EWMA. Sweet spot 0.8–1.3; <0.8 detraining, >1.5 spike injury risk.
+    const acuteTss = atlSeries[atlSeries.length - 1] || 0;
+    const chronic28 = ewma(dailyTss, 28);
+    const chronicTss = chronic28[chronic28.length - 1] || 0;
+    const acwr = chronicTss > 0 ? acuteTss / chronicTss : null;
+
+    // Monotony & strain (Foster) over the last 7 days. Monotony =
+    // mean / stddev. Strain = monotony * weekly load. Monotony > 2 with
+    // high load = injury / illness window.
+    const last7 = dailyTss.slice(-7);
+    const meanLast7 = mean(last7);
+    const sdLast7 = stddev(last7);
+    const monotony = (sdLast7 && sdLast7 > 0) ? meanLast7 / sdLast7 : null;
+    const strain = monotony != null ? monotony * last7.reduce((a, b) => a + b, 0) : null;
+
+    // Polarization: % of weekly zone-time in low (Z1+Z2), gray (Z3),
+    // high (Z4+Z5). Seiler's polarized-training thesis: 80% low, ~5%
+    // gray, ~15% high. Coverage_pct flags how much of weekly load was
+    // included (zones come from Format B HR samples; manual workouts
+    // and Format-A-only workouts fall through with hr_zones=NULL).
+    const coverage_pct = weeklyWorkouts > 0
+      ? Math.round((weeklyZonesCovered / weeklyWorkouts) * 100)
+      : null;
+    const polarization = weeklyZ_total > 0 ? {
+      low_pct:  Math.round(((weeklyZ1 + weeklyZ2) / weeklyZ_total) * 100),
+      gray_pct: Math.round((weeklyZ3 / weeklyZ_total) * 100),
+      high_pct: Math.round(((weeklyZ4 + weeklyZ5) / weeklyZ_total) * 100),
+      total_min: Math.round(weeklyZ_total),
+      coverage_pct,
+    } : { low_pct: null, gray_pct: null, high_pct: null, total_min: 0, coverage_pct };
+
     const training = {
       current: {
         atl: round1(todayATL),
         ctl: round1(todayCTL),
         tsb: round1(todayTSB),
+        acwr: acwr != null ? round1(acwr) : null,
+        monotony: monotony != null ? round1(monotony) : null,
+        strain: strain != null ? Math.round(strain) : null,
         weekly_tss: Math.round(weeklyTss),
         weekly_workouts: weeklyWorkouts,
         weekly_miles: round1(weeklyMiles),
         weekly_hours: round1(weeklyHours),
         weekly_z2_min: Math.round(weeklyZ2),
+        weekly_zones_coverage_pct: coverage_pct,
       },
       targets: {
         weekly_z2: tget('weekly_z2_min', 180),
@@ -1124,6 +1169,7 @@ router.get('/trends', async (req, res) => {
         weekly_tss: tget('weekly_tss', 400),
       },
       load_trend: trendDirection(tssDaily30, tssDaily60Prior),
+      polarization,
       history: dailyTss.map((tss, i) => ({
         date: new Date(startMs + i * 86400_000).toISOString().slice(0, 10),
         tss: Math.round(tss),
@@ -1215,6 +1261,366 @@ router.get('/trends', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── GET /api/health/insights/morning ─────────────────────────
+// Single morning brief — bundles readiness + active injuries + today's
+// plan + upcoming race + current training block. The morning-check-in
+// Skill calls this first, then asks the user 3-4 subjective questions,
+// then POSTs daily_context. Replaces 4 separate Coach calls.
+router.get('/morning', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Today's readiness — reuse the same logic as /today
+    const lookback = 30;
+    const startDate = new Date(Date.now() - lookback * 86400_000).toISOString().slice(0, 10);
+    const da = await query(
+      `SELECT activity_date, hrv_sdnn_ms, resting_hr_bpm,
+              sleep_total_min, sleep_deep_min, sleep_rem_min, sleep_efficiency_pct
+         FROM daily_activity
+         WHERE activity_date >= $1
+         ORDER BY activity_date ASC`,
+      [startDate]
+    );
+    const rows = da.rows;
+    const hrvVals = lastN(rows, lookback, 'hrv_sdnn_ms');
+    const rhrVals = lastN(rows, lookback, 'resting_hr_bpm');
+    const hrvBase = mean(hrvVals);
+    const rhrBase = mean(rhrVals);
+    const hrvSd = stddev(hrvVals);
+    const rhrSd = stddev(rhrVals);
+    function latest(field) {
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (rows[i][field] != null) return { value: Number(rows[i][field]), as_of: dateOnly(rows[i].activity_date) };
+      }
+      return { value: null, as_of: null };
+    }
+    const hrvL = latest('hrv_sdnn_ms');
+    const rhrL = latest('resting_hr_bpm');
+    const sleepL = latest('sleep_total_min');
+    const hrvDevSd = (hrvL.value != null && hrvBase != null && hrvSd) ? (hrvL.value - hrvBase) / hrvSd : null;
+    const rhrDevSd = (rhrL.value != null && rhrBase != null && rhrSd) ? (rhrL.value - rhrBase) / rhrSd : null;
+
+    // Coaching alerts
+    const recentWorkouts = await query(
+      `SELECT workout_date, effort FROM workouts
+        WHERE workout_date >= CURRENT_DATE - INTERVAL '14 days'
+          AND effort IS NOT NULL`
+    );
+    const alerts = [
+      ...chronicLoadAlerts(recentWorkouts.rows),
+      ...consecutiveHardDayAlerts(recentWorkouts.rows),
+    ];
+
+    // Active injuries
+    const inj = await query(
+      `SELECT id, title, body_area, severity, status, modifications
+         FROM injuries
+        WHERE status IN ('active','monitoring','recovering')
+        ORDER BY severity DESC NULLS LAST LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+
+    // Today's plan
+    const plan = await query(
+      `SELECT * FROM daily_plans WHERE plan_date = $1`, [today]
+    ).catch(() => ({ rows: [] }));
+
+    // Yesterday's daily_context (what subjective fields are already filled)
+    const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+    const ctxRes = await query(
+      `SELECT * FROM daily_context WHERE date IN ($1, $2) ORDER BY date DESC`,
+      [today, yesterday]
+    ).catch(() => ({ rows: [] }));
+    const todayCtx = ctxRes.rows.find(r => dateOnly(r.date) === today) || null;
+    const yesterdayCtx = ctxRes.rows.find(r => dateOnly(r.date) === yesterday) || null;
+
+    // Upcoming race
+    const upcoming = await query(
+      `SELECT id, race_date, name, discipline, priority,
+              (race_date - CURRENT_DATE) AS days_to_race
+         FROM races
+        WHERE status = 'scheduled' AND race_date >= CURRENT_DATE
+        ORDER BY race_date ASC LIMIT 1`
+    ).catch(() => ({ rows: [] }));
+
+    // Current training block
+    const block = await query(
+      `SELECT b.*, r.name AS target_race_name
+         FROM training_blocks b
+         LEFT JOIN races r ON r.id = b.target_race_id
+        WHERE b.start_date <= CURRENT_DATE AND b.end_date >= CURRENT_DATE
+        ORDER BY b.start_date DESC LIMIT 1`
+    ).catch(() => ({ rows: [] }));
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      date: today,
+      readiness: {
+        hrv: { value: hrvL.value, as_of: hrvL.as_of, deviation_sd: hrvDevSd != null ? round1(hrvDevSd) : null, baseline: hrvBase ? round1(hrvBase) : null },
+        rhr: { value: rhrL.value, as_of: rhrL.as_of, deviation_sd: rhrDevSd != null ? round1(rhrDevSd) : null, baseline: rhrBase ? round1(rhrBase) : null },
+        sleep: { total_min: sleepL.value, as_of: sleepL.as_of },
+      },
+      alerts,
+      active_injuries: inj.rows,
+      today_plan: plan.rows[0] || null,
+      today_context: todayCtx,
+      yesterday_context: yesterdayCtx,
+      upcoming_race: upcoming.rows[0] || null,
+      current_block: block.rows[0] || null,
+      // Coach prompts: which subjective fields are missing for today.
+      // Skill iterates these and asks the user.
+      missing_subjective: ['mood','motivation','soreness_overall','life_stress','illness_flag']
+        .filter(k => !todayCtx || todayCtx[k] == null),
+    });
+  } catch (err) {
+    console.error(`[insights/morning] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/health/insights/race?race_id= ───────────────────
+// Race-context bundle for race-week-protocol Skill: countdown, taper
+// guidance, recent fueling rehearsals, last 4 weeks of build-summary,
+// gear+fueling text from the race row.
+router.get('/race', async (req, res) => {
+  try {
+    let race;
+    if (req.query.race_id) {
+      const r = await query(`SELECT * FROM races WHERE id = $1`, [req.query.race_id]);
+      race = r.rows[0];
+    } else {
+      const r = await query(
+        `SELECT * FROM races WHERE status = 'scheduled' AND race_date >= CURRENT_DATE
+         ORDER BY race_date ASC LIMIT 1`
+      );
+      race = r.rows[0];
+    }
+    if (!race) return res.json({ race: null, message: 'no upcoming race' });
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const days_to_race = Math.round((new Date(race.race_date) - today) / 86400000);
+
+    // Taper guidance: ≥21d build hard; 14-20d sharpen; 7-13d taper
+    // (volume −20%/wk, intensity preserved); 1-6d race week (volume
+    // −50%, opener day -3, full rest day -1).
+    let taper_phase = 'build';
+    let taper_recommendation = '';
+    if (days_to_race < 0) { taper_phase = 'past'; taper_recommendation = 'Race complete. Run race-debrief.'; }
+    else if (days_to_race === 0) { taper_phase = 'race_day'; taper_recommendation = 'Race day. Stick to fuel plan; warm up to race intensity briefly.'; }
+    else if (days_to_race <= 6) { taper_phase = 'race_week'; taper_recommendation = 'Race week — volume ~50% of normal, one short opener at race pace 3 days out, full rest day day-before.'; }
+    else if (days_to_race <= 13) { taper_phase = 'taper'; taper_recommendation = 'Taper — drop volume 20% week-over-week, keep intensity (race-pace touches), reinforce sleep & fueling.'; }
+    else if (days_to_race <= 20) { taper_phase = 'sharpen'; taper_recommendation = 'Sharpen — race-specific intervals, reduce non-specific volume, dial fueling rehearsals.'; }
+    else { taper_phase = 'build'; taper_recommendation = `Build — ${days_to_race} days out. Stay specific, train durability.`; }
+
+    // Recent fueling rehearsals linked to this race
+    const fuel = await query(
+      `SELECT * FROM fueling_rehearsals
+        WHERE target_race_id = $1 OR rehearsal_date >= $2
+        ORDER BY rehearsal_date DESC LIMIT 5`,
+      [race.id, new Date(Date.now() - 60 * 86400_000).toISOString().slice(0,10)]
+    ).catch(() => ({ rows: [] }));
+
+    // Last 4 weeks training summary
+    const startBuild = new Date(Date.now() - 28 * 86400_000).toISOString().slice(0, 10);
+    const buildSummary = await query(
+      `SELECT
+         COUNT(*)::int AS workouts,
+         COALESCE(SUM(tss), 0)::int AS tss,
+         COALESCE(SUM(distance), 0) AS distance,
+         AVG(effort) AS avg_effort
+       FROM workouts WHERE workout_date >= $1`, [startBuild]
+    ).catch(() => ({ rows: [{ workouts: 0, tss: 0, distance: 0, avg_effort: null }] }));
+
+    res.json({
+      race,
+      days_to_race,
+      taper_phase,
+      taper_recommendation,
+      fueling_rehearsals: fuel.rows,
+      build_summary_28d: buildSummary.rows[0],
+    });
+  } catch (err) {
+    console.error(`[insights/race] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/health/insights/weekly-review?week_of=YYYY-MM-DD ──
+// Structured retro for last 7 days. Skill review-week reads this then
+// proposes amendments. week_of defaults to today; returns the 7-day
+// window ending on that date.
+router.get('/weekly-review', async (req, res) => {
+  try {
+    const end = req.query.week_of || new Date().toISOString().slice(0, 10);
+    const start = new Date(new Date(end + 'T12:00:00').getTime() - 6 * 86400_000).toISOString().slice(0, 10);
+
+    const wo = await query(
+      `SELECT workout_date, workout_type, time_duration, distance, effort, tss, hr_zones
+         FROM workouts WHERE workout_date BETWEEN $1 AND $2
+         ORDER BY workout_date ASC`,
+      [start, end]
+    );
+    const plans = await query(
+      `SELECT plan_date, status, intent_type, target_effort, target_duration_min,
+              workout_type, goal, rationale
+         FROM daily_plans WHERE plan_date BETWEEN $1 AND $2
+         ORDER BY plan_date ASC`,
+      [start, end]
+    );
+    const da = await query(
+      `SELECT activity_date, hrv_sdnn_ms, sleep_total_min, sleep_efficiency_pct
+         FROM daily_activity WHERE activity_date BETWEEN $1 AND $2
+         ORDER BY activity_date ASC`,
+      [start, end]
+    );
+    const meals = await query(
+      `SELECT meal_date, COALESCE(SUM(calories),0) AS kcal, COALESCE(SUM(protein_g),0) AS protein
+         FROM meals WHERE meal_date BETWEEN $1 AND $2
+         GROUP BY meal_date ORDER BY meal_date ASC`,
+      [start, end]
+    );
+
+    // Adherence: of plans with status set, how many are completed?
+    const planByDate = new Map(plans.rows.map(p => [dateOnly(p.plan_date), p]));
+    const completed = plans.rows.filter(p => p.status === 'completed').length;
+    const adherence_pct = plans.rows.length ? Math.round((completed / plans.rows.length) * 100) : null;
+
+    // Time-in-zone aggregate over the week
+    let z = { z1:0, z2:0, z3:0, z4:0, z5:0, total:0, covered:0 };
+    let weekTss = 0, weekDist = 0, weekEffortSum = 0, weekEffortN = 0;
+    for (const w of wo.rows) {
+      weekTss += Number(w.tss) || 0;
+      weekDist += Number(w.distance) || 0;
+      if (w.effort != null) { weekEffortSum += Number(w.effort); weekEffortN++; }
+      if (w.hr_zones && typeof w.hr_zones === 'object') {
+        z.covered++;
+        for (const k of ['z1','z2','z3','z4','z5']) {
+          const v = Number(w.hr_zones[k] || w.hr_zones[k.toUpperCase()] || 0);
+          z[k] += v; z.total += v;
+        }
+      }
+    }
+    const polar = z.total > 0 ? {
+      low_pct: Math.round(((z.z1 + z.z2) / z.total) * 100),
+      gray_pct: Math.round((z.z3 / z.total) * 100),
+      high_pct: Math.round(((z.z4 + z.z5) / z.total) * 100),
+      total_min: Math.round(z.total),
+      coverage_pct: wo.rows.length ? Math.round((z.covered / wo.rows.length) * 100) : null,
+    } : null;
+
+    // Sleep + HRV summary
+    const sleepValues = da.rows.map(r => r.sleep_total_min).filter(v => v != null);
+    const hrvValues = da.rows.map(r => r.hrv_sdnn_ms).filter(v => v != null);
+
+    // Plan-vs-actual deltas (simple per-day comparison)
+    const deltas = wo.rows.map(w => {
+      const p = planByDate.get(dateOnly(w.workout_date));
+      return {
+        date: dateOnly(w.workout_date),
+        actual_effort: w.effort,
+        planned_effort: p?.target_effort ?? null,
+        intent_type: p?.intent_type ?? null,
+        actual_min: Math.round(durationToSeconds(w.time_duration) / 60),
+        planned_min: p?.target_duration_min ?? null,
+      };
+    });
+
+    res.json({
+      week_start: start,
+      week_end: end,
+      counts: { workouts: wo.rows.length, plans: plans.rows.length, meals_days: meals.rows.length },
+      week_tss: Math.round(weekTss),
+      week_distance: round1(weekDist),
+      week_avg_effort: weekEffortN ? round1(weekEffortSum / weekEffortN) : null,
+      adherence_pct,
+      polarization: polar,
+      sleep: {
+        avg_min: sleepValues.length ? Math.round(mean(sleepValues)) : null,
+        nights: sleepValues.length,
+      },
+      hrv: {
+        avg: hrvValues.length ? round1(mean(hrvValues)) : null,
+        readings: hrvValues.length,
+      },
+      nutrition: {
+        avg_kcal: meals.rows.length ? Math.round(mean(meals.rows.map(m => Number(m.kcal)))) : null,
+        avg_protein_g: meals.rows.length ? Math.round(mean(meals.rows.map(m => Number(m.protein)))) : null,
+      },
+      deltas,
+    });
+  } catch (err) {
+    console.error(`[insights/weekly-review] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/health/insights/polarization?weeks=4 ────────────
+// Standalone polarization breakdown over N weeks (default 4). Coach
+// uses this to spot drift toward gray-zone (Z3) which is the classic
+// over-trained-yet-undertrained pattern.
+router.get('/polarization', async (req, res) => {
+  try {
+    const weeks = Math.max(1, Math.min(12, Number(req.query.weeks) || 4));
+    const start = new Date(Date.now() - weeks * 7 * 86400_000).toISOString().slice(0, 10);
+    const wo = await query(
+      `SELECT workout_date, hr_zones FROM workouts
+        WHERE workout_date >= $1
+        ORDER BY workout_date ASC`,
+      [start]
+    );
+    const buckets = new Map();
+    let totalCovered = 0, totalWorkouts = 0;
+    for (const w of wo.rows) {
+      totalWorkouts++;
+      const wk = isoWeek(dateOnly(w.workout_date));
+      if (!buckets.has(wk)) buckets.set(wk, { z1:0, z2:0, z3:0, z4:0, z5:0, covered:0, total:0 });
+      const b = buckets.get(wk);
+      b.total++;
+      if (w.hr_zones && typeof w.hr_zones === 'object') {
+        b.covered++;
+        totalCovered++;
+        for (const k of ['z1','z2','z3','z4','z5']) {
+          b[k] += Number(w.hr_zones[k] || w.hr_zones[k.toUpperCase()] || 0);
+        }
+      }
+    }
+    const series = [];
+    for (const [wk, b] of buckets) {
+      const tot = b.z1 + b.z2 + b.z3 + b.z4 + b.z5;
+      series.push({
+        iso_week: wk,
+        low_pct: tot > 0 ? Math.round(((b.z1 + b.z2) / tot) * 100) : null,
+        gray_pct: tot > 0 ? Math.round((b.z3 / tot) * 100) : null,
+        high_pct: tot > 0 ? Math.round(((b.z4 + b.z5) / tot) * 100) : null,
+        total_min: Math.round(tot),
+        coverage_pct: b.total ? Math.round((b.covered / b.total) * 100) : null,
+      });
+    }
+    res.json({
+      weeks,
+      coverage_pct: totalWorkouts ? Math.round((totalCovered / totalWorkouts) * 100) : null,
+      series,
+    });
+  } catch (err) {
+    console.error(`[insights/polarization] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ISO-week label for a YYYY-MM-DD date (e.g. "2026-W18"). Used to bucket
+// workouts into polarization rows.
+function isoWeek(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T12:00:00');
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getUTCDay() + 6) % 7;
+  target.setUTCDate(target.getUTCDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setUTCMonth(0, 1);
+  if (target.getUTCDay() !== 4) target.setUTCMonth(0, 1 + ((4 - target.getUTCDay()) + 7) % 7);
+  const wk = 1 + Math.ceil((firstThursday - target) / 604800000);
+  return `${d.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
+}
 
 module.exports = router;
 module.exports.computeTSS = computeTSS;
