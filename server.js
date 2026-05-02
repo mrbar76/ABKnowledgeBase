@@ -31,6 +31,7 @@ const calendarRoutes = require('./routes/calendar');
 const healthRoutes = require('./routes/health');
 const athleteRoutes = require('./routes/athlete');
 const dropboxRoutes = require('./routes/dropbox');
+const insightsRoutes = require('./routes/insights');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -256,6 +257,7 @@ app.use('/api/email', emailRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/health', dropboxRoutes);
+app.use('/api/health/insights', insightsRoutes);
 app.use('/api/athlete', athleteRoutes);
 
 // Sync status
