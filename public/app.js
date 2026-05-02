@@ -6660,6 +6660,17 @@ const MACRO_GOALS = {
   rest:     { cal: [2000, 2200], p: [140, 150], c: [150, 200], f: [65, 80] },
 };
 
+// Map a 0-∞% value-vs-target to a 0-100% bar fill where target sits at 75%.
+// Bar 0-75% = under-to-at-target. 75-100% = the overshoot zone (capped at
+// 200% of target, anything beyond clips). Prevents bars from running off
+// the edge of the card while still surfacing "you went over."
+function targetFillPct(pct) {
+  if (!isFinite(pct) || pct <= 0) return 0;
+  if (pct <= 100) return Math.round(pct * 0.75);
+  return Math.round(75 + Math.min(25, (pct - 100) * 0.25));
+}
+const TARGET_MARKER_HTML = `<div style="position:absolute;left:75%;top:-1px;bottom:-1px;width:1px;background:rgba(255,255,255,0.45);z-index:2;pointer-events:none"></div>`;
+
 function getMacroTarget(tier, planTargets) {
   const g = MACRO_GOALS[tier] || MACRO_GOALS.moderate;
   const fromTier = {
@@ -6691,17 +6702,20 @@ let _currentTierOverride = null;
 
 function buildMacroBar(label, actual, goalRange, color) {
   const mid = Math.round((goalRange[0] + goalRange[1]) / 2);
-  const pct = mid > 0 ? Math.min((actual / mid) * 100, 115) : 0;
+  const rawPct = mid > 0 ? (actual / mid) * 100 : 0;
+  const fillW = targetFillPct(rawPct);
   const inRange = actual >= goalRange[0] && actual <= goalRange[1];
   const over = actual > goalRange[1];
   const fillColor = over ? '#ef4444' : color;
-  const zoneLeft = mid > 0 ? (goalRange[0] / mid * 100) : 0;
-  const zoneWidth = mid > 0 ? ((goalRange[1] - goalRange[0]) / mid * 100) : 0;
+  // Target zone shifted into the 0-75% region; the marker line sits at 75%.
+  const zoneLeft = mid > 0 ? (goalRange[0] / mid * 75) : 0;
+  const zoneWidth = mid > 0 ? ((goalRange[1] - goalRange[0]) / mid * 75) : 0;
   return `<div class="macro-bar-row">
     <div class="macro-bar-label">${label}</div>
-    <div class="macro-bar-track">
+    <div class="macro-bar-track" style="position:relative">
       <div class="macro-bar-zone" style="left:${zoneLeft}%;width:${zoneWidth}%"></div>
-      <div class="macro-bar-fill" style="width:${pct}%;background:${fillColor}"></div>
+      <div class="macro-bar-fill" style="width:${fillW}%;background:${fillColor}"></div>
+      ${TARGET_MARKER_HTML}
     </div>
     <div class="macro-bar-value font-data">${Math.round(actual)}/${mid}g</div>
   </div>`;
@@ -6782,14 +6796,16 @@ function buildMacroDashboard(summary, activityRow) {
       // actual energy demand, so a 4025 intake with 3574 burned no longer
       // overflows.
       const effectiveTarget = (calOut != null && calOut > goals.cal) ? calOut : goals.cal;
-      const barPct = effectiveTarget > 0 ? Math.min(115, Math.round((calActual / effectiveTarget) * 100)) : 0;
+      const rawPct = effectiveTarget > 0 ? (calActual / effectiveTarget) * 100 : 0;
+      const fillW = targetFillPct(rawPct);
       return `<div class="calorie-bar-wrap mb-sm">
         <div class="flex-between mb-xs">
           <span class="text-micro text-dim">Calories</span>
           <span class="font-data" style="font-size:0.85rem;color:${calColor}">${Math.round(calActual)} in / ${goals.cal} target</span>
         </div>
-        <div class="calorie-bar-track">
-          <div class="calorie-bar-fill" style="width:${barPct}%;background:${calColor}"></div>
+        <div class="calorie-bar-track" style="position:relative">
+          <div class="calorie-bar-fill" style="width:${fillW}%;background:${calColor}"></div>
+          ${TARGET_MARKER_HTML}
         </div>
         ${calOut != null ? `<div class="flex-between" style="margin-top:4px">
           <span class="text-micro text-dim">${Math.round(calOut)} burned (active + basal)</span>
@@ -7451,7 +7467,7 @@ function renderCaloricBalanceStrip(d) {
     const actual = block.actual || 0;
     const target = block.target;
     const deficit = block.deficit;  // target - actual
-    const pct = target > 0 ? Math.min(150, Math.round((actual / target) * 100)) : 0;
+    const pct = target > 0 ? Math.round((actual / target) * 100) : 0;
     const color = bidirectional
       ? (pct >= 90 && pct <= 110 ? 'var(--color-physical)'
          : pct < 70 || pct > 130 ? 'var(--red)'
@@ -7466,6 +7482,7 @@ function renderCaloricBalanceStrip(d) {
       : (deficit > 0 ? 'var(--red)' : 'var(--color-physical)');
     const pkg = perKg != null ? ` <span style="color:var(--text-dim);font-size:0.65rem">(${perKg} g/kg)</span>` : '';
     const sourceTag = block.source === 'plan' ? '' : ` <span style="font-size:0.55rem;color:var(--text-dim);text-transform:uppercase">est</span>`;
+    const fillW = targetFillPct(pct);
     return `
       <div style="padding:8px 0;border-top:1px solid var(--bg-tertiary)">
         <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:0.74rem;margin-bottom:3px">
@@ -7473,8 +7490,8 @@ function renderCaloricBalanceStrip(d) {
           <span><span class="font-data" style="color:${color}">${actual}</span><span style="color:var(--text-dim)">${unit} / ${target}${unit}</span>${pkg} <span style="color:${deficitColor};font-size:0.7rem">(${deficitLabel})</span></span>
         </div>
         <div style="height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden;position:relative">
-          <div style="height:100%;width:${Math.min(100, pct)}%;background:${color}"></div>
-          ${pct > 100 ? `<div style="position:absolute;top:0;left:100%;height:100%;width:${Math.min(50, pct - 100)}%;background:var(--orange);opacity:0.5"></div>` : ''}
+          <div style="height:100%;width:${fillW}%;background:${color}"></div>
+          ${TARGET_MARKER_HTML}
         </div>
       </div>
     `;

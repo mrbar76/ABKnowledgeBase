@@ -305,6 +305,11 @@ const B_METRIC_MAP = {
   bodymassindex:     { col: 'bmi',           agg: 'mean',             target: 'body_metric' },
   bodymass:          { col: 'weight_lb',     agg: 'mean', scale: 2.2046226218, target: 'body_metric' }, // kg → lb
   leanbodymass:      { col: 'lean_mass_lb',  agg: 'mean', scale: 2.2046226218, target: 'body_metric' }, // kg → lb
+
+  // Sleep analysis — handled out-of-band in parseFormatB via a dedicated
+  // branch (same pattern as parseFormatD). Without this entry, Format B
+  // exports silently skip sleep — every dashboard sleep panel reads null.
+  sleepanalysis: { target: 'sleep' },
 };
 
 function parseFormatB(body) {
@@ -318,6 +323,72 @@ function parseFormatB(body) {
     const map = B_METRIC_MAP[key];
     if (!map) { skippedMetrics.push(metric.id); continue; }
     mappedMetrics.push(metric.id);
+
+    // Sleep analysis is special — value is a category (asleep / core / rem /
+    // deep / awake / inBed) and minutes come from the start_date→end_date
+    // window, not from a numeric `value` field. Same dual-form handling as
+    // parseFormatD. Without this branch Format B exports silently dropped
+    // every sleep night.
+    if (map.target === 'sleep') {
+      const phaseAccum = new Map(); // date → { asleep, core, rem, deep, awake, inBed, firstStart, lastEnd }
+      const ensureAcc = (d) => {
+        if (!phaseAccum.has(d)) phaseAccum.set(d, { asleep: 0, core: 0, rem: 0, deep: 0, awake: 0, inBed: 0, firstStart: null, lastEnd: null });
+        return phaseAccum.get(d);
+      };
+      const recordTimestamps = (acc, startStr, endStr) => {
+        if (startStr) {
+          const t = new Date(startStr);
+          if (!isNaN(t.getTime()) && (acc.firstStart == null || t < acc.firstStart)) acc.firstStart = t;
+        }
+        if (endStr) {
+          const t = new Date(endStr);
+          if (!isNaN(t.getTime()) && (acc.lastEnd == null || t > acc.lastEnd)) acc.lastEnd = t;
+        }
+      };
+
+      for (const dp of metric.data_points || []) {
+        const startStr = dp.start_date || dp.startDate;
+        const endStr = dp.end_date || dp.endDate;
+        if (!startStr || !endStr) continue;
+        const startMs = new Date(startStr).getTime();
+        const endMs = new Date(endStr).getTime();
+        if (!isFinite(startMs) || !isFinite(endMs) || endMs <= startMs) continue;
+        const hrs = (endMs - startMs) / 3600000;
+        // Sleep stretching across midnight is filed under the wake date
+        // (typical Apple convention — match Format D so dashboards align).
+        const d = String(endStr).slice(0, 10);
+
+        // Normalize the category. HKCategoryValueSleepAnalysis prefix is
+        // sometimes present, sometimes already stripped by HAE.
+        const v = String(dp.value ?? '').toLowerCase()
+          .replace(/\s+/g, '')
+          .replace(/^hkcategoryvaluesleepanalysis/, '');
+        const acc = ensureAcc(d);
+        if (v === 'asleep' || v === 'unspecified' || v === 'asleepunspecified') acc.asleep += hrs;
+        else if (v === 'core' || v === 'asleepcore') acc.core += hrs;
+        else if (v === 'rem' || v === 'asleeprem') acc.rem += hrs;
+        else if (v === 'deep' || v === 'asleepdeep') acc.deep += hrs;
+        else if (v === 'awake') acc.awake += hrs;
+        else if (v === 'inbed' || v === 'in_bed') acc.inBed += hrs;
+        recordTimestamps(acc, startStr, endStr);
+      }
+
+      for (const [d, p] of phaseAccum) {
+        if (!byDate.has(d)) byDate.set(d, { activity_date: d });
+        const row = byDate.get(d);
+        const total = p.core + p.rem + p.deep + p.asleep;
+        if (total > 0) row.sleep_total_min = Math.round(total * 60);
+        if (p.deep > 0) row.sleep_deep_min = Math.round(p.deep * 60);
+        if (p.rem > 0) row.sleep_rem_min = Math.round(p.rem * 60);
+        if (p.core > 0) row.sleep_core_min = Math.round(p.core * 60);
+        if (p.awake > 0) row.sleep_awake_min = Math.round(p.awake * 60);
+        const inBed = p.inBed > 0 ? p.inBed : (total + p.awake);
+        if (inBed > 0 && total > 0) row.sleep_efficiency_pct = round1((total / inBed) * 100);
+        if (p.firstStart) row.sleep_in_bed_start = p.firstStart.toISOString();
+        if (p.lastEnd) row.sleep_in_bed_end = p.lastEnd.toISOString();
+      }
+      continue;
+    }
 
     const buckets = new Map(); // date → values[]
     for (const dp of metric.data_points || []) {
