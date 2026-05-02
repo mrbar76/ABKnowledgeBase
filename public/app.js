@@ -6759,7 +6759,7 @@ function buildMacroDashboard(summary) {
 function renderMacroChart(summary) {
   if (_macroChart) { _macroChart.destroy(); _macroChart = null; }
   const el = document.getElementById('macro-chart');
-  if (!el) return;
+  if (!el || typeof Chart === 'undefined') return;
   const p = (summary.total_protein_g || 0) * 4;
   const c = (summary.total_carbs_g || 0) * 4;
   const f = (summary.total_fat_g || 0) * 9;
@@ -6877,7 +6877,10 @@ async function loadNutrition(date) {
     `;
     renderMacroChart(summary);
     if (window.lucide) lucide.createIcons();
-  } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+  } catch (e) {
+    console.error('[loadNutrition] failed:', e);
+    main.innerHTML = `<div class="empty-state">Could not load nutrition: ${esc(e.message)}<div style="margin-top:8px;font-size:0.7rem;color:var(--text-dim)">Hard-refresh the app (close and reopen) if this persists — Chart.js may have failed to load from cache.</div></div>`;
+  }
 }
 
 function shiftDate(dateStr, days) {
