@@ -5054,6 +5054,7 @@ function loadFitness() {
     { key: 'log', label: 'Log', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>' },
     { key: 'nutrition', label: 'Macros', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg>' },
     { key: 'history', label: 'History', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>' },
+    { key: 'trends', label: 'Trends', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>' },
     { key: 'plans', label: 'Plans', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>' },
     { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
   ];
@@ -5068,6 +5069,7 @@ function loadFitness() {
   else if (fitnessSubTab === 'nutrition') loadNutrition();
   else if (fitnessSubTab === 'plans') loadUnifiedPlans();
   else if (fitnessSubTab === 'history') loadFitnessHistory();
+  else if (fitnessSubTab === 'trends') loadFitnessTrends();
   else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
 }
 
@@ -5756,6 +5758,340 @@ function debounceHistorySearch(q) {
   historySearchQuery = q;
   clearTimeout(historySearchTimer);
   historySearchTimer = setTimeout(() => loadFitnessHistory(), 300);
+}
+
+// ─── Trends sub-tab (Apple-inspired direction arrows + sparklines) ───
+// One render pass off /api/health/insights/trends. Each section card shows
+// current value, target band, direction arrow + delta, sparkline. Sleep is
+// the deep-dive (user-named #1 weakness): adds Sleep Score 0-100 composite,
+// rolling debt 7/14/30, stage breakdown, target line on duration chart.
+
+function dirArrow(direction) {
+  if (direction === 'up') return '<span style="color:var(--color-physical);font-weight:700">↑</span>';
+  if (direction === 'down') return '<span style="color:var(--orange);font-weight:700">↓</span>';
+  return '<span style="color:var(--text-dim)">→</span>';
+}
+
+function dirArrowInverted(direction) {
+  // For metrics where down is good (RHR, weight, body fat).
+  if (direction === 'down') return '<span style="color:var(--color-physical);font-weight:700">↓</span>';
+  if (direction === 'up') return '<span style="color:var(--orange);font-weight:700">↑</span>';
+  return '<span style="color:var(--text-dim)">→</span>';
+}
+
+function fmtDelta(n, unit, plus) {
+  if (n == null) return '';
+  const sign = n >= 0 ? (plus ? '+' : '') : '';
+  return `${sign}${n}${unit || ''}`;
+}
+
+function trendRow({ icon: iconName, label, current, currentUnit, target, targetText, trend, sparkValues, sparkColor, invert }) {
+  const arrow = invert ? dirArrowInverted(trend?.direction) : dirArrow(trend?.direction);
+  const delta = trend ? fmtDelta(trend.delta, currentUnit, true) : '';
+  const spark = renderSparkline(sparkValues || [], { color: sparkColor || 'var(--color-physical)', width: 90, height: 24 });
+  return `
+    <div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="color:var(--text-dim);width:18px">${iconName ? icon(iconName, 16) : ''}</div>
+      <div>
+        <div style="font-size:0.8rem">${esc(label)}</div>
+        <div style="font-size:0.66rem;color:var(--text-dim)">target: ${esc(targetText || (target?.value != null ? String(target.value) : '—'))}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="font-data" style="font-size:0.95rem;font-weight:600">${current != null ? current + (currentUnit || '') : '—'}</div>
+        <div style="font-size:0.66rem;color:var(--text-dim)">${arrow} ${delta}</div>
+      </div>
+      <div>${spark}</div>
+    </div>
+  `;
+}
+
+function trendSectionCard({ pillColor, pillIcon, title, body }) {
+  return `
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div class="dash-section-header" style="margin-bottom:8px">
+        <div class="dash-section-pill" style="background:color-mix(in srgb, ${pillColor} 10%, transparent);color:${pillColor}">
+          ${icon(pillIcon, 12)} ${esc(title)}
+        </div>
+      </div>
+      ${body}
+    </div>
+  `;
+}
+
+async function loadFitnessTrends() {
+  const el = document.getElementById('fitness-content');
+  if (!el) return;
+  el.innerHTML = skeletonCards(5);
+
+  let t;
+  try {
+    t = await api('/health/insights/trends');
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Could not load trends: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  const alertsBanner = Array.isArray(t.alerts) && t.alerts.length
+    ? `<div style="padding:10px 12px;background:color-mix(in srgb, var(--red) 12%, transparent);border-left:3px solid var(--red);border-radius:6px;margin-bottom:12px;font-size:0.82rem">
+         <strong>⚠ Coaching alerts:</strong>
+         <ul style="margin:4px 0 0 16px;padding:0">${t.alerts.map(a => `<li>${esc(a.reason)}</li>`).join('')}</ul>
+       </div>`
+    : '';
+
+  // ─── Sleep card (deep-dive — user's #1 weakness) ───
+  const sleep = t.sleep || {};
+  const sleepCurrent = sleep.current || {};
+  const score = sleep.score || {};
+  const targetMin = sleep.target?.value || 480;
+  const sleepHistDur = (sleep.history || []).map(r => r.sleep_total_min);
+  const sleepHistDates = (sleep.history || []).map(r => r.date);
+  const debt7 = sleep.debt?.rolling_7d?.debt_min ?? null;
+  const debt14 = sleep.debt?.rolling_14d?.debt_min ?? null;
+  const debt30 = sleep.debt?.rolling_30d?.debt_min ?? null;
+  const debtMessage = debt14 > 0
+    ? `You're <strong>${(debt14/60).toFixed(1)}h</strong> behind target over the last 14 days. Prioritize sleep tonight.`
+    : 'On target over the last 14 days.';
+
+  const stageRows = (sleep.history || []).slice(-30).filter(r => r.sleep_total_min);
+  const stageBars = stageRows.length ? stageRows.map(r => {
+    const total = r.sleep_total_min || 1;
+    const deepPct = ((r.sleep_deep_min || 0) / total) * 100;
+    const remPct = ((r.sleep_rem_min || 0) / total) * 100;
+    const corePct = ((r.sleep_core_min || 0) / total) * 100;
+    const awakePct = ((r.sleep_awake_min || 0) / total) * 100;
+    return `<div title="${esc(r.date)} • ${(total/60).toFixed(1)}h" style="flex:1;min-width:6px;display:flex;flex-direction:column-reverse;height:48px;border-radius:2px;overflow:hidden;background:#222">
+      <div style="height:${deepPct}%;background:#3b82f6"></div>
+      <div style="height:${corePct}%;background:#60a5fa"></div>
+      <div style="height:${remPct}%;background:#a78bfa"></div>
+      <div style="height:${awakePct}%;background:#f59e0b"></div>
+    </div>`;
+  }).join('') : '<div class="empty-state" style="padding:8px;font-size:0.78rem">No sleep stages recorded yet.</div>';
+
+  const sleepBody = `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;margin-bottom:12px">
+      <div style="text-align:center">
+        <div class="font-data" style="font-size:2.2rem;font-weight:700;color:${score.score >= 80 ? 'var(--color-physical)' : score.score >= 60 ? 'var(--orange)' : 'var(--red)'};line-height:1">${score.score ?? '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">sleep score</div>
+      </div>
+      <div style="font-size:0.78rem">
+        <div>Last night: <strong>${sleepCurrent.duration_min ? (sleepCurrent.duration_min/60).toFixed(1) + 'h' : '—'}</strong>
+          ${sleepCurrent.efficiency_pct ? ` • ${sleepCurrent.efficiency_pct}% efficient` : ''}
+        </div>
+        <div style="color:var(--text-dim);font-size:0.7rem;margin-top:2px">
+          Duration ${score.duration_pts ?? 0}/50 · Quality ${score.quality_pts ?? 0}/30 · Consistency ${score.consistency_pts ?? 0}/20
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size:0.78rem;margin-bottom:8px">${debtMessage}</div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      <div style="text-align:center;padding:6px;background:var(--surface);border-radius:6px">
+        <div class="font-data" style="font-size:1.05rem;font-weight:600;color:${debt7>0?'var(--orange)':'var(--color-physical)'}">${debt7 != null ? (debt7/60).toFixed(1) + 'h' : '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">7d debt</div>
+      </div>
+      <div style="text-align:center;padding:6px;background:var(--surface);border-radius:6px">
+        <div class="font-data" style="font-size:1.05rem;font-weight:600;color:${debt14>0?'var(--orange)':'var(--color-physical)'}">${debt14 != null ? (debt14/60).toFixed(1) + 'h' : '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">14d debt</div>
+      </div>
+      <div style="text-align:center;padding:6px;background:var(--surface);border-radius:6px">
+        <div class="font-data" style="font-size:1.05rem;font-weight:600;color:${debt30>0?'var(--orange)':'var(--color-physical)'}">${debt30 != null ? (debt30/60).toFixed(1) + 'h' : '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">30d debt</div>
+      </div>
+    </div>
+
+    <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">30-night stages (deep/core/REM/awake)</div>
+    <div style="display:flex;gap:1px;align-items:flex-end;margin-bottom:4px">${stageBars}</div>
+    <div style="display:flex;gap:10px;font-size:0.62rem;color:var(--text-dim);margin-bottom:14px">
+      <span><span style="display:inline-block;width:8px;height:8px;background:#3b82f6;border-radius:2px"></span> deep</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:#60a5fa;border-radius:2px"></span> core</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:#a78bfa;border-radius:2px"></span> REM</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:2px"></span> awake</span>
+    </div>
+
+    <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">90-night duration trend (target line ${(targetMin/60).toFixed(1)}h)</div>
+    ${renderSparkline(sleepHistDur.filter(v=>v!=null), { color: 'var(--color-physical)', width: 320, height: 50 }) || '<div class="empty-state" style="font-size:0.78rem;padding:8px">No history yet.</div>'}
+  `;
+
+  // ─── Nutrition ───
+  const n = t.nutrition || {};
+  const nToday = n.today || {};
+  const nTargets = n.targets || {};
+  const nutritionBody = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px;font-size:0.78rem">
+      <div style="padding:8px;background:var(--surface);border-radius:6px">
+        <div style="color:var(--text-dim);font-size:0.66rem">Today calories</div>
+        <div class="font-data" style="font-size:1.1rem">${nToday.calories_in ?? '—'} <span style="color:var(--text-dim);font-size:0.7rem">in</span> · ${nToday.calories_out ?? '—'} <span style="color:var(--text-dim);font-size:0.7rem">out</span></div>
+        <div style="font-size:0.66rem;color:${(nToday.balance ?? 0) > 0 ? 'var(--orange)' : 'var(--color-physical)'}">balance: ${fmtDelta(nToday.balance, ' kcal', true)}</div>
+      </div>
+      <div style="padding:8px;background:var(--surface);border-radius:6px">
+        <div style="color:var(--text-dim);font-size:0.66rem">Today macros (g)</div>
+        <div class="font-data" style="font-size:0.95rem">P ${nToday.protein_g ?? '—'} · C ${nToday.carbs_g ?? '—'} · F ${nToday.fat_g ?? '—'}</div>
+        <div style="font-size:0.66rem;color:var(--text-dim)">target: P ${nTargets.protein?.value ?? '—'} · C ${nTargets.carbs?.value ?? '—'} · F ${nTargets.fat?.value ?? '—'}</div>
+      </div>
+    </div>
+
+    ${trendRow({
+      icon: 'beef', label: '7-day protein',
+      current: n.rolling?.d7?.protein_g, currentUnit: 'g',
+      targetText: `${(nTargets.protein?.value ?? 0) * 7}g/wk`,
+      trend: n.protein_trend,
+      sparkValues: (n.history || []).slice(-30).map(d => d.protein_g),
+      sparkColor: 'var(--color-physical)',
+    })}
+    ${trendRow({
+      icon: 'flame', label: '7-day kcal balance',
+      current: n.rolling?.d7?.kcal_balance, currentUnit: ' kcal',
+      targetText: 'maintenance ±0',
+      trend: null,
+      sparkValues: (n.history || []).slice(-30).map(d => d.kcal - (d.kcal_out || 0)),
+    })}
+    ${trendRow({
+      icon: 'minus-circle', label: '7-day protein shortfall',
+      current: n.rolling?.d7?.protein_shortfall_g, currentUnit: 'g',
+      targetText: '0g',
+      trend: null,
+      sparkValues: [],
+    })}
+  `;
+
+  // ─── Training ───
+  const tr = t.training || {};
+  const trCurrent = tr.current || {};
+  const trTargets = tr.targets || {};
+  const tssHistory = (tr.history || []).map(r => r.tss);
+  const ctlHistory = (tr.history || []).map(r => r.ctl);
+  const trainingBody = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:0.78rem">
+      <div style="padding:8px;background:var(--surface);border-radius:6px;text-align:center">
+        <div class="font-data" style="font-size:1.1rem">${trCurrent.atl ?? '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim)">ATL (fatigue)</div>
+      </div>
+      <div style="padding:8px;background:var(--surface);border-radius:6px;text-align:center">
+        <div class="font-data" style="font-size:1.1rem">${trCurrent.ctl ?? '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim)">CTL (fitness)</div>
+      </div>
+      <div style="padding:8px;background:var(--surface);border-radius:6px;text-align:center">
+        <div class="font-data" style="font-size:1.1rem;color:${(trCurrent.tsb ?? 0) > 5 ? 'var(--color-physical)' : (trCurrent.tsb ?? 0) < -10 ? 'var(--red)' : 'var(--orange)'}">${trCurrent.tsb ?? '—'}</div>
+        <div style="font-size:0.62rem;color:var(--text-dim)">TSB (form)</div>
+      </div>
+    </div>
+
+    ${trendRow({
+      icon: 'dumbbell', label: 'Weekly workouts',
+      current: trCurrent.weekly_workouts, currentUnit: '',
+      targetText: `${trTargets.weekly_workouts?.value ?? '—'}/wk`,
+      trend: tr.load_trend,
+      sparkValues: tssHistory.slice(-30),
+      sparkColor: 'var(--color-physical)',
+    })}
+    ${trendRow({
+      icon: 'gauge', label: 'Weekly TSS',
+      current: trCurrent.weekly_tss, currentUnit: '',
+      targetText: `${trTargets.weekly_tss?.value ?? '—'}–${trTargets.weekly_tss?.value_max ?? '—'}`,
+      trend: tr.load_trend,
+      sparkValues: ctlHistory.slice(-30),
+    })}
+    ${trendRow({
+      icon: 'heart', label: 'Weekly Z2 minutes',
+      current: trCurrent.weekly_z2_min, currentUnit: 'min',
+      targetText: `${trTargets.weekly_z2?.value ?? '—'}/wk`,
+      trend: null,
+      sparkValues: [],
+    })}
+  `;
+
+  // ─── Body ───
+  const b = t.body || {};
+  const bCurrent = b.current || {};
+  const bTargets = b.targets || {};
+  const weightHist = (b.history || []).map(r => r.weight_lb).filter(v => v != null);
+  const bfHist = (b.history || []).map(r => r.body_fat_pct).filter(v => v != null);
+  const lmHist = (b.history || []).map(r => r.lean_mass_lb).filter(v => v != null);
+  const bodyCard = `
+    ${trendRow({
+      icon: 'scale', label: 'Weight',
+      current: bCurrent.weight_lb, currentUnit: ' lb',
+      targetText: `≤${bTargets.weight_lb?.value ?? '—'} lb`,
+      trend: b.weight_trend,
+      sparkValues: weightHist,
+      sparkColor: 'var(--color-body)',
+      invert: true,
+    })}
+    ${trendRow({
+      icon: 'percent', label: 'Body fat',
+      current: bCurrent.body_fat_pct, currentUnit: '%',
+      targetText: `≤${bTargets.body_fat_pct?.value ?? '—'}%`,
+      trend: null,
+      sparkValues: bfHist,
+      sparkColor: 'var(--orange)',
+      invert: true,
+    })}
+    ${trendRow({
+      icon: 'biceps-flexed', label: 'Lean mass',
+      current: bCurrent.lean_mass_lb, currentUnit: ' lb',
+      targetText: 'maintain',
+      trend: null,
+      sparkValues: lmHist,
+      sparkColor: 'var(--color-physical)',
+    })}
+  `;
+
+  // ─── Vitals ───
+  const v = t.vitals || {};
+  const vitalSparks = (key) => (v[key]?.history || []).map(r => r.value).filter(x => x != null);
+  const vitalsCard = `
+    ${trendRow({
+      icon: 'activity', label: 'HRV' + (v.hrv?.is_stale ? ' (yest)' : ''),
+      current: v.hrv?.today, currentUnit: 'ms',
+      targetText: `≥${v.hrv?.target?.value ?? '—'}ms`,
+      trend: v.hrv?.trend, invert: false,
+      sparkValues: vitalSparks('hrv'),
+      sparkColor: 'var(--color-physical)',
+    })}
+    ${trendRow({
+      icon: 'heart-pulse', label: 'Resting HR' + (v.rhr?.is_stale ? ' (yest)' : ''),
+      current: v.rhr?.today, currentUnit: 'bpm',
+      targetText: `≤${v.rhr?.target?.value ?? '—'}bpm`,
+      trend: v.rhr?.trend, invert: true,
+      sparkValues: vitalSparks('rhr'),
+      sparkColor: 'var(--color-body)',
+    })}
+    ${trendRow({
+      icon: 'zap', label: 'VO₂ max',
+      current: v.vo2_max?.today, currentUnit: '',
+      targetText: 'rising',
+      trend: v.vo2_max?.trend,
+      sparkValues: vitalSparks('vo2_max'),
+    })}
+    ${trendRow({
+      icon: 'footprints', label: 'Walking speed',
+      current: v.walking_speed_mph?.today, currentUnit: ' mph',
+      targetText: 'stable',
+      trend: v.walking_speed_mph?.trend,
+      sparkValues: vitalSparks('walking_speed_mph'),
+    })}
+    ${trendRow({
+      icon: 'scan-line', label: 'Walking asymmetry',
+      current: v.walking_asymmetry_pct?.today, currentUnit: '%',
+      targetText: '<5%',
+      trend: v.walking_asymmetry_pct?.trend, invert: true,
+      sparkValues: vitalSparks('walking_asymmetry_pct'),
+    })}
+  `;
+
+  el.innerHTML = `
+    ${alertsBanner}
+    ${trendSectionCard({ pillColor: '#a78bfa', pillIcon: 'moon', title: 'Sleep (deep dive)', body: sleepBody })}
+    ${trendSectionCard({ pillColor: 'var(--orange)', pillIcon: 'utensils', title: 'Nutrition', body: nutritionBody })}
+    ${trendSectionCard({ pillColor: 'var(--color-physical)', pillIcon: 'dumbbell', title: 'Training', body: trainingBody })}
+    ${trendSectionCard({ pillColor: 'var(--color-body)', pillIcon: 'ruler', title: 'Body composition', body: bodyCard })}
+    ${trendSectionCard({ pillColor: 'var(--color-tactical)', pillIcon: 'heart-pulse', title: 'Vitals', body: vitalsCard })}
+    <div style="font-size:0.66rem;color:var(--text-dim);text-align:center;padding:8px">
+      Generated ${new Date(t.generated_at).toLocaleString()}. Trends compute last 30 days vs prior 60 days; arrows trip when |Δ| > 0.5σ.
+    </div>
+  `;
+  renderIcons();
 }
 
 async function loadFitnessHistory() {
