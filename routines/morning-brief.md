@@ -54,7 +54,7 @@ https://claude.ai/code/routines with:
 - **Schedule:** `0 5 * * *` (cron — 5am daily, local timezone)
 - **Prompt:** the entire contents of this file from "## Steps" onward
 - **Repo:** `mrbar76/abknowledgebase`
-- **Env var:** `AB_BRAIN_API_KEY` set to the AB Brain key
+- **Env var:** ab-brain-x7kP9mQ2wR4tY8 set to the AB Brain key
 - **Permissions:** allow Bash + WebFetch (for Hebcal)
 
 The routine writes a `coaching_session` regardless of whether triggered
