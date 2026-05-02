@@ -649,6 +649,123 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('focus-overlay')) closeFocusMode();
 });
 
+// ─── Targets editor (Settings → Fitness → Targets) ───────────
+const TARGET_GROUPS = [
+  { title: 'Sleep', items: [
+    { metric: 'sleep_duration_min', label: 'Sleep duration', unit: 'min/night' },
+    { metric: 'sleep_deep_min',     label: 'Deep sleep',     unit: 'min/night' },
+    { metric: 'sleep_rem_min',      label: 'REM sleep',      unit: 'min/night' },
+  ]},
+  { title: 'Nutrition', items: [
+    { metric: 'protein_g',     label: 'Protein',  unit: 'g/day' },
+    { metric: 'calories_kcal', label: 'Calories', unit: 'kcal/day (range)' },
+    { metric: 'carbs_g',       label: 'Carbs',    unit: 'g/day' },
+    { metric: 'fat_g',         label: 'Fat',      unit: 'g/day' },
+  ]},
+  { title: 'Body', items: [
+    { metric: 'weight_lb',    label: 'Weight',  unit: 'lb (target ≤)' },
+    { metric: 'body_fat_pct', label: 'Body fat', unit: '% (target ≤)' },
+  ]},
+  { title: 'Training', items: [
+    { metric: 'weekly_z2_min',   label: 'Weekly Z2',       unit: 'min/week' },
+    { metric: 'weekly_workouts', label: 'Weekly workouts', unit: 'count' },
+    { metric: 'weekly_tss',      label: 'Weekly TSS',      unit: 'load (range)' },
+  ]},
+  { title: 'Vitals', items: [
+    { metric: 'hrv_ms',         label: 'HRV',          unit: 'ms (target ≥)' },
+    { metric: 'resting_hr_bpm', label: 'Resting HR',   unit: 'bpm (target ≤)' },
+  ]},
+];
+
+async function openTargetsEditor() {
+  closeSettingsMenu();
+  let targets = [];
+  try {
+    const r = await api('/targets');
+    targets = r.targets || [];
+  } catch (e) {
+    showToast(`Could not load targets: ${e.message}`, 'error');
+    return;
+  }
+  const byMetric = {};
+  for (const t of targets) byMetric[t.metric] = t;
+
+  const fmtCurrent = (t) => {
+    if (!t || t.current_value == null) return '<span style="color:var(--text-dim)">—</span>';
+    const colorMap = { on_track: 'var(--color-physical)', below: 'var(--orange)', above: 'var(--orange)' };
+    const c = colorMap[t.progress] || 'var(--text)';
+    return `<span style="color:${c};font-weight:600">${t.current_value}</span>`;
+  };
+
+  const groupHtml = TARGET_GROUPS.map(g => `
+    <div style="margin-bottom:18px">
+      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);margin-bottom:8px">${esc(g.title)}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${g.items.map(it => {
+          const t = byMetric[it.metric] || {};
+          const isBetween = t.comparison === 'between';
+          const v = t.target_value != null ? t.target_value : '';
+          const vMax = t.target_value_max != null ? t.target_value_max : '';
+          return `
+          <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:center;padding:8px;background:var(--surface);border-radius:6px">
+            <div>
+              <div style="font-size:0.85rem">${esc(it.label)}</div>
+              <div style="font-size:0.66rem;color:var(--text-dim)">${esc(it.unit)} · current: ${fmtCurrent(t)}</div>
+            </div>
+            <input type="number" step="0.01" data-target-metric="${esc(it.metric)}" data-target-comparison="${esc(t.comparison || 'gte')}" value="${esc(String(v))}" style="width:80px;padding:4px;font-size:0.85rem" placeholder="—">
+            ${isBetween ? `<span style="color:var(--text-dim);font-size:0.7rem">to</span><input type="number" step="0.01" data-target-metric-max="${esc(it.metric)}" value="${esc(String(vMax))}" style="width:80px;padding:4px;font-size:0.85rem" placeholder="max">` : `<span></span><span></span>`}
+            <button class="btn-action btn-action-secondary" style="font-size:0.7rem;padding:4px 8px" onclick="resetTarget('${esc(it.metric)}')" title="Revert to default">↻</button>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  openFocusMode('Targets', `
+    <div style="max-width:640px">
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
+        Long-term targets the Coach compares your current state against. Empty value = use default.
+      </div>
+      ${groupHtml}
+    </div>
+  `, async () => {
+    const inputs = document.querySelectorAll('[data-target-metric]');
+    const writes = [];
+    for (const el of inputs) {
+      const metric = el.dataset.targetMetric;
+      const cmp = el.dataset.targetComparison;
+      const raw = el.value.trim();
+      if (raw === '') continue;
+      const val = Number(raw);
+      if (isNaN(val)) continue;
+      let max = null;
+      if (cmp === 'between') {
+        const maxEl = document.querySelector(`[data-target-metric-max="${metric}"]`);
+        const maxRaw = maxEl?.value.trim() || '';
+        if (maxRaw === '' || isNaN(Number(maxRaw))) continue;
+        max = Number(maxRaw);
+      }
+      writes.push(api(`/targets/${encodeURIComponent(metric)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ target_value: val, target_value_max: max, comparison: cmp }),
+      }));
+    }
+    await Promise.all(writes);
+    showToast(`Saved ${writes.length} target${writes.length === 1 ? '' : 's'}`, 'success');
+  });
+}
+
+async function resetTarget(metric) {
+  if (!confirm(`Revert "${metric}" to default? (will reseed on next deploy)`)) return;
+  try {
+    await api(`/targets/${encodeURIComponent(metric)}`, { method: 'DELETE' });
+    closeFocusMode();
+    openTargetsEditor();
+  } catch (e) {
+    showToast(`Reset failed: ${e.message}`, 'error');
+  }
+}
+
 // ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
 
 const RING_COLORS = { train: '#10b981', fuel: '#f59e0b', recover: '#6366f1' };

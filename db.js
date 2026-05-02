@@ -1259,6 +1259,53 @@ async function initDB() {
   await safeQuery('body_metrics weight_lb nullable', `ALTER TABLE body_metrics ALTER COLUMN weight_lb DROP NOT NULL`);
   await safeQuery('body_metrics apple_health unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_body_metrics_apple_date ON body_metrics(measurement_date) WHERE source = 'apple_health'`);
 
+  // ===== USER TARGETS =====
+  // Single-user app, but row-per-target so the user can override any metric
+  // independently. Defaults seeded on first boot via INSERT WHERE NOT EXISTS.
+  await safeQuery('user_targets table', `
+    CREATE TABLE IF NOT EXISTS user_targets (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      metric TEXT NOT NULL UNIQUE,
+      target_value NUMERIC,
+      target_value_max NUMERIC,
+      comparison TEXT NOT NULL DEFAULT 'gte',
+      timeframe TEXT NOT NULL DEFAULT 'daily',
+      effective_from DATE DEFAULT CURRENT_DATE,
+      effective_to DATE,
+      set_by TEXT DEFAULT 'system',
+      rationale TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('user_targets metric idx', `CREATE INDEX IF NOT EXISTS idx_user_targets_metric ON user_targets(metric)`);
+
+  // Seed athlete-appropriate defaults. Idempotent: ON CONFLICT DO NOTHING.
+  // Numbers calibrated for a ~190lb endurance athlete; user overrides via
+  // Settings → Targets.
+  const targetSeed = [
+    { metric: 'sleep_duration_min',        target_value: 480,   comparison: 'gte',     timeframe: 'daily',     rationale: '8h sleep — recovery foundation' },
+    { metric: 'sleep_deep_min',            target_value: 60,    comparison: 'gte',     timeframe: 'daily',     rationale: '60+ min deep — physical repair' },
+    { metric: 'sleep_rem_min',             target_value: 90,    comparison: 'gte',     timeframe: 'daily',     rationale: '90+ min REM — cognitive consolidation' },
+    { metric: 'protein_g',                 target_value: 138,   comparison: 'gte',     timeframe: 'daily',     rationale: '1.6g/kg @ 190lb — muscle repair' },
+    { metric: 'calories_kcal',             target_value: 2400,  target_value_max: 2800, comparison: 'between', timeframe: 'daily',  rationale: '14 kcal/lb maintenance window' },
+    { metric: 'carbs_g',                   target_value: 280,   comparison: 'gte',     timeframe: 'daily',     rationale: 'Endurance fuel on training days' },
+    { metric: 'fat_g',                     target_value: 80,    comparison: 'gte',     timeframe: 'daily',     rationale: 'Hormone support floor' },
+    { metric: 'weight_lb',                 target_value: 185,   comparison: 'lte',     timeframe: 'long_term', rationale: 'Race weight target' },
+    { metric: 'body_fat_pct',              target_value: 15,    comparison: 'lte',     timeframe: 'long_term', rationale: 'Athletic body comp' },
+    { metric: 'weekly_z2_min',             target_value: 180,   comparison: 'gte',     timeframe: 'weekly',    rationale: 'Aerobic base maintenance' },
+    { metric: 'weekly_workouts',           target_value: 5,     comparison: 'gte',     timeframe: 'weekly',    rationale: 'Volume floor' },
+    { metric: 'weekly_tss',                target_value: 350,   target_value_max: 600, comparison: 'between', timeframe: 'weekly',   rationale: 'Productive load band' },
+    { metric: 'hrv_ms',                    target_value: 45,    comparison: 'gte',     timeframe: 'daily',     rationale: 'Parasympathetic baseline' },
+    { metric: 'resting_hr_bpm',            target_value: 55,    comparison: 'lte',     timeframe: 'daily',     rationale: 'Aerobic fitness signal' },
+  ];
+  for (const t of targetSeed) {
+    await safeQuery(`seed target ${t.metric}`, `
+      INSERT INTO user_targets (metric, target_value, target_value_max, comparison, timeframe, set_by, rationale)
+      VALUES ($1, $2, $3, $4, $5, 'system', $6)
+      ON CONFLICT (metric) DO NOTHING
+    `, [t.metric, t.target_value, t.target_value_max ?? null, t.comparison, t.timeframe, t.rationale]);
+  }
+
   // ===== EMAIL INDEX =====
   // Stores pointers + summaries for email threads. Bodies are NOT stored;
   // they are fetched on demand from the source (Gmail/Outlook via MCP).
