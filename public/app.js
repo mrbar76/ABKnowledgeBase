@@ -766,6 +766,120 @@ async function resetTarget(metric) {
   }
 }
 
+// ─── Races editor (Settings → Races) ─────────────────────────
+const RACE_DISCIPLINES = ['run','trail_run','ultra','spartan','triathlon','swim','bike','duathlon','other'];
+
+async function openRacesEditor() {
+  closeSettingsMenu();
+  let races = [];
+  try { races = (await api('/races?limit=100')).races || []; }
+  catch (e) { showToast(`Could not load races: ${e.message}`, 'error'); return; }
+
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const upcoming = races.filter(r => (r.race_date || '').slice(0, 10) >= todayStr).sort((a, b) => a.race_date.localeCompare(b.race_date));
+  const past = races.filter(r => (r.race_date || '').slice(0, 10) < todayStr).sort((a, b) => b.race_date.localeCompare(a.race_date));
+
+  const renderRow = (r) => `
+    <div style="padding:8px;background:var(--surface);border-radius:6px;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center">
+      <span style="font-size:0.6rem;padding:1px 6px;border-radius:8px;background:${r.priority==='A'?'var(--red)':r.priority==='B'?'var(--orange)':'var(--text-dim)'};color:#fff">${esc(r.priority || '?')}</span>
+      <div>
+        <div style="font-size:0.85rem">${esc(r.name)}</div>
+        <div style="font-size:0.66rem;color:var(--text-dim)">${fmtDate(r.race_date)} · ${esc(r.discipline || '—')}${r.distance_value ? ` · ${r.distance_value}${r.distance_unit || ''}` : ''}${r.status && r.status !== 'scheduled' ? ` · ${esc(r.status)}` : ''}</div>
+      </div>
+      <button class="btn-action btn-action-secondary" style="font-size:0.7rem;padding:4px 8px" onclick="deleteRace('${r.id}')">×</button>
+    </div>
+  `;
+
+  openFocusMode('Races', `
+    <div style="max-width:640px">
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
+        Race calendar. The Coach reads this for periodization, taper protocol, and race-week-protocol skill.
+      </div>
+
+      <div style="margin-bottom:18px;padding:12px;background:var(--surface);border-radius:8px">
+        <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px">Add a race</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.8rem">
+          <input id="race-name" placeholder="Race name *" style="grid-column:1/-1;padding:6px">
+          <input id="race-date" type="date" required style="padding:6px">
+          <select id="race-priority" style="padding:6px">
+            <option value="A">A — primary goal</option>
+            <option value="B" selected>B — important</option>
+            <option value="C">C — training race</option>
+          </select>
+          <select id="race-discipline" style="padding:6px">
+            <option value="">discipline</option>
+            ${RACE_DISCIPLINES.map(d => `<option value="${d}">${d}</option>`).join('')}
+          </select>
+          <input id="race-location" placeholder="Location" style="padding:6px">
+          <input id="race-distance" type="number" step="0.01" placeholder="Distance" style="padding:6px">
+          <select id="race-distance-unit" style="padding:6px">
+            <option value="">unit</option>
+            <option value="mi">mi</option><option value="km">km</option>
+            <option value="m">m</option><option value="laps">laps</option>
+            <option value="obstacles">obstacles</option>
+          </select>
+          <input id="race-elevation" type="number" placeholder="Elevation gain (ft)" style="padding:6px">
+          <input id="race-target" placeholder="Target time (HH:MM:SS)" style="padding:6px">
+          <textarea id="race-notes" placeholder="Course notes / fueling plan / gear list" style="grid-column:1/-1;padding:6px;min-height:60px"></textarea>
+        </div>
+        <button class="btn-submit" style="margin-top:8px;width:100%" onclick="saveNewRace()">Add race</button>
+      </div>
+
+      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);margin-bottom:8px">Upcoming (${upcoming.length})</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">
+        ${upcoming.length ? upcoming.map(renderRow).join('') : '<div class="empty-state" style="font-size:0.78rem">No upcoming races yet.</div>'}
+      </div>
+
+      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);margin-bottom:8px">Past (${past.length})</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${past.slice(0, 10).map(renderRow).join('') || '<div class="empty-state" style="font-size:0.78rem">—</div>'}
+      </div>
+    </div>
+  `, null);
+}
+
+async function saveNewRace() {
+  const name = document.getElementById('race-name').value.trim();
+  const race_date = document.getElementById('race-date').value;
+  if (!name || !race_date) { showToast('Name and date required', 'error'); return; }
+  const priority = document.getElementById('race-priority').value;
+  const discipline = document.getElementById('race-discipline').value || null;
+  const location = document.getElementById('race-location').value.trim() || null;
+  const distance_value = parseFloat(document.getElementById('race-distance').value) || null;
+  const distance_unit = document.getElementById('race-distance-unit').value || null;
+  const elevation_gain_ft = parseInt(document.getElementById('race-elevation').value, 10) || null;
+  const targetStr = document.getElementById('race-target').value.trim();
+  let target_time_seconds = null;
+  if (targetStr) {
+    const m = targetStr.match(/^(?:(\d+):)?(\d+):(\d+)$/);
+    if (m) target_time_seconds = (Number(m[1]) || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  }
+  const course_notes = document.getElementById('race-notes').value.trim() || null;
+  try {
+    await api('/races', {
+      method: 'POST',
+      body: JSON.stringify({ name, race_date, priority, discipline, location, distance_value, distance_unit, elevation_gain_ft, target_time_seconds, course_notes }),
+    });
+    showToast(`Added race: ${name}`, 'success');
+    closeFocusMode();
+    openRacesEditor();
+  } catch (e) {
+    showToast(`Failed: ${e.message}`, 'error');
+  }
+}
+
+async function deleteRace(id) {
+  if (!confirm('Delete this race?')) return;
+  try {
+    await api(`/races/${id}`, { method: 'DELETE' });
+    closeFocusMode();
+    openRacesEditor();
+  } catch (e) {
+    showToast(`Delete failed: ${e.message}`, 'error');
+  }
+}
+
 // ─── Gamification (Rings, Streaks, Badges, Nudges, Push) ─────
 
 const RING_COLORS = { train: '#10b981', fuel: '#f59e0b', recover: '#6366f1' };
@@ -8205,12 +8319,13 @@ async function loadUnifiedPlans() {
     // for the calendar heatmap.
     const raceTo = new Date(Date.now() + 90 * 86400_000).toLocaleDateString('en-CA');
     const heatmapSince = new Date(Date.now() - 365 * 86400_000).toLocaleDateString('en-CA');
-    const [weekData, dayData, trainingLoad, upcomingPlans, heatmapWorkouts] = await Promise.all([
+    const [weekData, dayData, trainingLoad, upcomingPlans, heatmapWorkouts, upcomingRaces] = await Promise.all([
       api(`/daily-plans?from=${monStr}&to=${sunStr}`),
       api(`/training/day/${plansSelectedDate}`),
       api('/health/insights/training?days=90').catch(() => null),
       api(`/daily-plans?from=${todayStr}&to=${raceTo}`).catch(() => ({ results: [] })),
       api(`/workouts?since=${heatmapSince}&limit=500`).catch(() => null),
+      api('/races/upcoming').catch(() => ({ races: [] })),
     ]);
 
     const weekPlans = weekData.results || [];
@@ -8227,7 +8342,14 @@ async function loadUnifiedPlans() {
     </div>`;
 
     // ── Race countdown (above week strip when an upcoming race exists) ──
-    html += renderRaceCountdownCard(upcomingPlans?.results || [], trainingLoad);
+    // Prefer the structured /races entity; fall back to daily_plans tag
+    // inference for backwards compatibility with users who haven't migrated
+    // their races to the races table yet.
+    html += renderRaceCountdownCard(
+      upcomingRaces?.races || [],
+      upcomingPlans?.results || [],
+      trainingLoad
+    );
 
     // ── Week strip with navigation ──
     html += `<div class="plans-week-strip">
@@ -8605,26 +8727,47 @@ function renderActivityHeatmap(workouts) {
 // Find the next upcoming race in daily_plans. A race is identified by:
 //   - workout_type matching /race/i, or
 //   - tags array containing 'race' (case-insensitive)
-function renderRaceCountdownCard(plans, trainingLoad) {
-  if (!Array.isArray(plans) || !plans.length) return '';
+function renderRaceCountdownCard(racesList, plans, trainingLoad) {
   const todayStr = new Date().toLocaleDateString('en-CA');
-  const races = plans
-    .filter(p => {
-      const planDate = (p.plan_date || '').slice(0, 10);
-      if (!planDate || planDate < todayStr) return false;
-      const wt = String(p.workout_type || '').toLowerCase();
-      const tags = Array.isArray(p.tags) ? p.tags.map(t => String(t).toLowerCase()) : [];
-      return /race/.test(wt) || tags.includes('race');
-    })
-    .sort((a, b) => (a.plan_date || '').localeCompare(b.plan_date || ''));
-  if (!races.length) return '';
-  const next = races[0];
-  const planDate = (next.plan_date || '').slice(0, 10);
-  const dt = new Date(planDate + 'T12:00:00');
+  // Prefer the structured /races feed; fall back to daily_plans tag inference.
+  let next = null, dateStr = null, title = null, moreCount = 0, priority = null, raceId = null;
+  if (Array.isArray(racesList) && racesList.length) {
+    const sorted = racesList
+      .filter(r => (r.race_date || '').slice(0, 10) >= todayStr)
+      .sort((a, b) => (a.race_date || '').localeCompare(b.race_date || ''));
+    if (sorted.length) {
+      next = sorted[0];
+      dateStr = next.race_date.slice(0, 10);
+      title = next.name;
+      priority = next.priority;
+      raceId = next.id;
+      moreCount = sorted.length - 1;
+    }
+  }
+  if (!next && Array.isArray(plans) && plans.length) {
+    const inferred = plans
+      .filter(p => {
+        const planDate = (p.plan_date || '').slice(0, 10);
+        if (!planDate || planDate < todayStr) return false;
+        const wt = String(p.workout_type || '').toLowerCase();
+        const tags = Array.isArray(p.tags) ? p.tags.map(t => String(t).toLowerCase()) : [];
+        return /race/.test(wt) || tags.includes('race');
+      })
+      .sort((a, b) => (a.plan_date || '').localeCompare(b.plan_date || ''));
+    if (inferred.length) {
+      next = inferred[0];
+      dateStr = (next.plan_date || '').slice(0, 10);
+      title = next.title || (next.workout_type || 'Race');
+      moreCount = inferred.length - 1;
+    }
+  }
+  if (!next) return '';
+
+  const dt = new Date(dateStr + 'T12:00:00');
   const days = Math.round((dt - new Date(todayStr + 'T12:00:00')) / 86400_000);
   const dayLabel = days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `in ${days} days`;
   const tsb = trainingLoad?.current?.tsb;
-  // Taper guidance keyed off TSB and days-out (sports-science default ranges)
+
   let tip = '';
   if (days <= 7) {
     tip = tsb != null && tsb >= 5 ? 'TSB looks good — you should be fresh by race day.'
@@ -8635,17 +8778,20 @@ function renderRaceCountdownCard(plans, trainingLoad) {
   } else {
     tip = 'Build phase still in play. Race-specific blocks come at T-3 weeks.';
   }
-  const title = next.title || (next.workout_type || 'Race');
-  const moreCount = races.length - 1;
+
+  const priorityBadge = priority
+    ? `<span style="font-size:0.6rem;padding:1px 6px;border-radius:8px;background:${priority==='A'?'var(--red)':priority==='B'?'var(--orange)':'var(--text-dim)'};color:#fff;margin-left:6px">${priority}</span>`
+    : '';
+
   return `
     <div class="card mb-md" style="border:1px solid var(--orange);background:color-mix(in srgb, var(--orange) 6%, var(--bg))">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div>
-          <div style="font-size:0.62rem;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px">Next race · ${dayLabel}</div>
+          <div style="font-size:0.62rem;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px">Next race · ${dayLabel}${priorityBadge}</div>
           <div style="font-weight:600;font-size:0.95rem;margin-top:2px">${esc(title)}</div>
           <div style="font-size:0.7rem;color:var(--text-dim)">${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}${moreCount > 0 ? ` · +${moreCount} more upcoming` : ''}</div>
         </div>
-        <button class="btn-action btn-compact-sm" onclick="plansSelectedDate='${planDate}';loadUnifiedPlans()" style="padding:4px 10px;font-size:0.7rem">View</button>
+        <button class="btn-action btn-compact-sm" onclick="${raceId ? `openRacesEditor()` : `plansSelectedDate='${dateStr}';loadUnifiedPlans()`}" style="padding:4px 10px;font-size:0.7rem">View</button>
       </div>
       <div style="margin-top:8px;font-size:0.78rem;color:var(--text)">${esc(tip)}</div>
       ${tsb != null ? `<div style="margin-top:6px;font-size:0.68rem;color:var(--text-dim)">Current TSB: <span class="font-data" style="color:var(--text)">${tsb >= 0 ? '+' : ''}${tsb}</span></div>` : ''}
