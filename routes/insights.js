@@ -788,6 +788,423 @@ function round1(n) {
   return Math.round(n * 10) / 10;
 }
 
+// ─── Trends helpers ────────────────────────────────────────────
+// Apple Trends-style direction flag. Compute medium-window mean
+// (last 30 days) and long-window mean (the prior 60 days, days 31-90).
+// Flag direction when |medium - long| > 0.5 × stddev_long.
+
+function trendDirection(values30, values60Prior) {
+  const m = values30.length ? mean(values30) : null;
+  const l = values60Prior.length ? mean(values60Prior) : null;
+  const sd = values60Prior.length >= 7 ? stddev(values60Prior) : null;
+  if (m == null || l == null || sd == null || sd === 0) {
+    return { direction: 'stable', medium: m, long: l, delta: m != null && l != null ? round1(m - l) : null };
+  }
+  const delta = m - l;
+  if (Math.abs(delta) <= 0.5 * sd) return { direction: 'stable', medium: round1(m), long: round1(l), delta: round1(delta) };
+  return { direction: delta > 0 ? 'up' : 'down', medium: round1(m), long: round1(l), delta: round1(delta) };
+}
+
+// Group an array of {date, value} rows into the last 30 vs prior 60 windows.
+function splitWindows(rows, key, today) {
+  const m30 = [];   // last 30 days (current)
+  const l60 = [];   // days 31-90 (prior)
+  const todayMs = new Date(today + 'T12:00:00').getTime();
+  for (const r of rows) {
+    const v = r[key];
+    if (v == null) continue;
+    const dStr = dateOnly(r.activity_date || r.date || r.measurement_date);
+    if (!dStr) continue;
+    const ageDays = Math.round((todayMs - new Date(dStr + 'T12:00:00').getTime()) / 86400_000);
+    if (ageDays < 0) continue;
+    if (ageDays < 30) m30.push(Number(v));
+    else if (ageDays < 90) l60.push(Number(v));
+  }
+  return { m30, l60 };
+}
+
+// Sleep debt: rolling deficit clamped to ≥0 per night (no banking surplus).
+// Returns total deficit in minutes over the last `windowDays` nights.
+function sleepDebtMin(rows, target, windowDays) {
+  let debt = 0;
+  let nights = 0;
+  for (const r of rows.slice(-windowDays)) {
+    if (r.sleep_total_min == null) continue;
+    const deficit = target - Number(r.sleep_total_min);
+    if (deficit > 0) debt += deficit;
+    nights++;
+  }
+  return { debt_min: Math.round(debt), nights, target_min: target };
+}
+
+// Sleep Score (Apple-style 0-100 composite):
+// - Duration (50 pts): linear 0 at <5h to 50 at 7h+
+// - Quality (30 pts): based on Deep+REM percentage (target 35%+)
+// - Consistency (20 pts): bedtime variance over last 14 nights (lower=better)
+function sleepScore(lastNight, last14Bedtimes) {
+  if (!lastNight || lastNight.total_min == null) return null;
+  const dur = Number(lastNight.total_min);
+  let durationPts = 0;
+  if (dur >= 420) durationPts = 50;
+  else if (dur <= 300) durationPts = 0;
+  else durationPts = Math.round(((dur - 300) / 120) * 50);
+
+  let qualityPts = 0;
+  if (lastNight.deep_min != null && lastNight.rem_min != null && dur > 0) {
+    const pct = (Number(lastNight.deep_min) + Number(lastNight.rem_min)) / dur;
+    qualityPts = Math.min(30, Math.round(pct / 0.35 * 30));
+  }
+
+  // Consistency: stddev of bedtime in minutes-from-midnight; <30min → 20pts,
+  // 30-60min → 10pts, >60min → 0pts. last14Bedtimes is array of minutes.
+  let consistencyPts = 0;
+  if (last14Bedtimes.length >= 5) {
+    const sd = stddev(last14Bedtimes);
+    if (sd != null) {
+      if (sd < 30) consistencyPts = 20;
+      else if (sd < 60) consistencyPts = 10;
+      else consistencyPts = 0;
+    }
+  }
+
+  return {
+    score: durationPts + qualityPts + consistencyPts,
+    duration_pts: durationPts,
+    quality_pts: qualityPts,
+    consistency_pts: consistencyPts,
+  };
+}
+
+// Build a fresh-daily history array, capped to 90 entries.
+function dailyHistory(rows, fields, days = 90) {
+  return rows.slice(-days).map(r => {
+    const out = { date: dateOnly(r.activity_date || r.date || r.measurement_date) };
+    for (const f of fields) out[f] = r[f] != null ? Number(r[f]) : null;
+    return out;
+  });
+}
+
+// ─── GET /api/health/insights/trends ───────────────────────────
+// Single aggregator that powers the Trends sub-tab AND the Coach. Returns
+// nested sleep/nutrition/training/body/vitals sections, each with current,
+// target (from user_targets, falling back to defaults), direction, history.
+
+router.get('/trends', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const start180 = new Date(Date.now() - 180 * 86400_000).toISOString().slice(0, 10);
+    const start90 = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+    const start30 = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+    const start7 = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
+
+    // Targets — single fetch, indexed by metric
+    const targetsRes = await query(
+      `SELECT metric, target_value, target_value_max, comparison, set_by FROM user_targets
+       WHERE effective_to IS NULL OR effective_to >= CURRENT_DATE`
+    );
+    const targets = {};
+    for (const t of targetsRes.rows) {
+      targets[t.metric] = {
+        value: t.target_value != null ? Number(t.target_value) : null,
+        value_max: t.target_value_max != null ? Number(t.target_value_max) : null,
+        comparison: t.comparison,
+        source: t.set_by === 'user' ? 'user' : 'default',
+      };
+    }
+    const tget = (m, fallback) => targets[m] || { value: fallback, source: 'default' };
+
+    // ─── daily_activity (90 days for sleep/vitals/calories) ──────
+    const da = await query(
+      `SELECT activity_date, hrv_sdnn_ms, resting_hr_bpm, vo2_max,
+              walking_speed_mph, walking_asymmetry_pct, walking_step_length_in,
+              sleep_total_min, sleep_deep_min, sleep_rem_min,
+              sleep_core_min, sleep_awake_min, sleep_efficiency_pct,
+              active_energy_kcal, basal_energy_kcal
+         FROM daily_activity
+         WHERE activity_date >= $1
+         ORDER BY activity_date ASC`,
+      [start90]
+    );
+    const daRows = da.rows;
+
+    // ─── meals (90 days) ─────────────────────────────────────────
+    const mealsRes = await query(
+      `SELECT meal_date,
+              COALESCE(SUM(calories), 0) AS kcal,
+              COALESCE(SUM(protein_g), 0) AS protein,
+              COALESCE(SUM(carbs_g), 0) AS carbs,
+              COALESCE(SUM(fat_g), 0) AS fat
+         FROM meals WHERE meal_date >= $1
+         GROUP BY meal_date ORDER BY meal_date ASC`,
+      [start90]
+    );
+
+    // ─── workouts (90 days) ──────────────────────────────────────
+    const woRes = await query(
+      `SELECT workout_date, time_duration, distance, effort, tss, hr_zones
+         FROM workouts WHERE workout_date >= $1
+         ORDER BY workout_date ASC`,
+      [start90]
+    );
+
+    // ─── body_metrics (180 days, weekly cadence) ─────────────────
+    const bmRes = await query(
+      `SELECT measurement_date, weight_lb, body_fat_pct, lean_mass_lb, bmi
+         FROM body_metrics WHERE measurement_date >= $1
+         ORDER BY measurement_date ASC`,
+      [start180]
+    );
+    const bmRows = bmRes.rows;
+
+    // ═══ SLEEP ═══════════════════════════════════════════════════
+    const sleepRows = daRows.filter(r => r.sleep_total_min != null);
+    const lastNight = sleepRows[sleepRows.length - 1] || null;
+    const sleepTarget = tget('sleep_duration_min', 480);
+
+    const sleepWindows = splitWindows(daRows, 'sleep_total_min', today);
+    const sleepDir = trendDirection(sleepWindows.m30, sleepWindows.l60);
+
+    // bedtime regularity is not yet tracked as a separate column on
+    // daily_activity (we store totals/stages but not start time). Placeholder
+    // for when sleep_in_bed_start is added; sleepScore tolerates [].
+    const last14Bedtimes = [];
+
+    const lastNightForScore = lastNight ? {
+      total_min: Number(lastNight.sleep_total_min),
+      deep_min: lastNight.sleep_deep_min != null ? Number(lastNight.sleep_deep_min) : null,
+      rem_min: lastNight.sleep_rem_min != null ? Number(lastNight.sleep_rem_min) : null,
+    } : null;
+
+    const sleep = {
+      current: lastNight ? {
+        date: dateOnly(lastNight.activity_date),
+        duration_min: Number(lastNight.sleep_total_min),
+        deep_min: lastNight.sleep_deep_min != null ? Number(lastNight.sleep_deep_min) : null,
+        rem_min: lastNight.sleep_rem_min != null ? Number(lastNight.sleep_rem_min) : null,
+        awake_min: lastNight.sleep_awake_min != null ? Number(lastNight.sleep_awake_min) : null,
+        efficiency_pct: lastNight.sleep_efficiency_pct != null ? Number(lastNight.sleep_efficiency_pct) : null,
+      } : null,
+      target: sleepTarget,
+      score: sleepScore(lastNightForScore, last14Bedtimes),
+      trend: sleepDir,
+      debt: {
+        rolling_7d: sleepDebtMin(daRows, sleepTarget.value || 480, 7),
+        rolling_14d: sleepDebtMin(daRows, sleepTarget.value || 480, 14),
+        rolling_30d: sleepDebtMin(daRows, sleepTarget.value || 480, 30),
+      },
+      regularity: {
+        bedtime_stddev_min: last14Bedtimes.length >= 5 ? round1(stddev(last14Bedtimes)) : null,
+        sample_size: last14Bedtimes.length,
+      },
+      history: dailyHistory(daRows, ['sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_awake_min', 'sleep_core_min'], 90),
+    };
+
+    // ═══ NUTRITION ═══════════════════════════════════════════════
+    const todayMeal = mealsRes.rows.find(m => dateOnly(m.meal_date) === today) || {};
+    const calBurnByDate = new Map();
+    for (const r of daRows) {
+      const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
+      if (out > 0) calBurnByDate.set(dateOnly(r.activity_date), out);
+    }
+    const calsTarget = tget('calories_kcal', 2600);
+    const proteinTarget = tget('protein_g', 138);
+
+    // 7d / 30d deficits
+    function rollingNutrition(days) {
+      const cutoff = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+      const recent = mealsRes.rows.filter(m => dateOnly(m.meal_date) >= cutoff);
+      const totalIn = recent.reduce((s, m) => s + Number(m.kcal), 0);
+      const totalOut = recent.reduce((s, m) => s + (calBurnByDate.get(dateOnly(m.meal_date)) || 0), 0);
+      const totalProtein = recent.reduce((s, m) => s + Number(m.protein), 0);
+      const proteinShortfall = recent.reduce((s, m) => s + Math.max(0, (proteinTarget.value || 138) - Number(m.protein)), 0);
+      return {
+        days_with_data: recent.length,
+        kcal_in: Math.round(totalIn),
+        kcal_out: Math.round(totalOut),
+        kcal_balance: Math.round(totalIn - totalOut),
+        protein_g: Math.round(totalProtein),
+        protein_shortfall_g: Math.round(proteinShortfall),
+      };
+    }
+
+    const proteinSeries = mealsRes.rows.map(m => Number(m.protein)).filter(v => v != null);
+    const protein30 = proteinSeries.slice(-30);
+    const protein60Prior = proteinSeries.slice(-90, -30);
+
+    const nutrition = {
+      today: {
+        calories_in: Math.round(Number(todayMeal.kcal) || 0),
+        calories_out: Math.round(calBurnByDate.get(today) || 0),
+        balance: Math.round((Number(todayMeal.kcal) || 0) - (calBurnByDate.get(today) || 0)),
+        protein_g: Math.round(Number(todayMeal.protein) || 0),
+        carbs_g: Math.round(Number(todayMeal.carbs) || 0),
+        fat_g: Math.round(Number(todayMeal.fat) || 0),
+      },
+      targets: {
+        calories: calsTarget,
+        protein: proteinTarget,
+        carbs: tget('carbs_g', 280),
+        fat: tget('fat_g', 80),
+      },
+      rolling: { d7: rollingNutrition(7), d30: rollingNutrition(30) },
+      protein_trend: trendDirection(protein30, protein60Prior),
+      history: mealsRes.rows.map(m => ({
+        date: dateOnly(m.meal_date),
+        kcal: Math.round(Number(m.kcal)),
+        protein_g: Math.round(Number(m.protein)),
+        carbs_g: Math.round(Number(m.carbs)),
+        fat_g: Math.round(Number(m.fat)),
+        kcal_out: Math.round(calBurnByDate.get(dateOnly(m.meal_date)) || 0),
+      })),
+    };
+
+    // ═══ TRAINING ═══════════════════════════════════════════════
+    // ATL/CTL/TSB on the 90-day daily TSS series
+    const dailyTssMap = new Map();
+    for (const w of woRes.rows) {
+      const d = dateOnly(w.workout_date);
+      if (!d) continue;
+      dailyTssMap.set(d, (dailyTssMap.get(d) || 0) + (Number(w.tss) || 0));
+    }
+    const startMs = new Date(start90 + 'T12:00:00').getTime();
+    const todayMs = new Date(today + 'T12:00:00').getTime();
+    const dailyTss = [];
+    for (let ms = startMs; ms <= todayMs; ms += 86400_000) {
+      const d = new Date(ms).toISOString().slice(0, 10);
+      dailyTss.push(dailyTssMap.get(d) || 0);
+    }
+    const atlSeries = ewma(dailyTss, 7);
+    const ctlSeries = ewma(dailyTss, 42);
+    const todayATL = atlSeries[atlSeries.length - 1] || 0;
+    const todayCTL = ctlSeries[ctlSeries.length - 1] || 0;
+    const todayTSB = todayCTL - todayATL;
+
+    let weeklyTss = 0, weeklyZ2 = 0, weeklyMiles = 0, weeklyHours = 0, weeklyWorkouts = 0;
+    for (const w of woRes.rows) {
+      if (dateOnly(w.workout_date) < start7) continue;
+      weeklyWorkouts++;
+      weeklyTss += Number(w.tss) || 0;
+      weeklyMiles += Number(w.distance) || 0;
+      const sec = durationToSeconds(w.time_duration);
+      weeklyHours += sec / 3600;
+      if (w.hr_zones && typeof w.hr_zones === 'object') {
+        const z2 = w.hr_zones.z2 || w.hr_zones.Z2 || 0;
+        weeklyZ2 += Number(z2) || 0;
+      }
+    }
+
+    const tssDaily30 = dailyTss.slice(-30);
+    const tssDaily60Prior = dailyTss.slice(-90, -30);
+
+    const training = {
+      current: {
+        atl: round1(todayATL),
+        ctl: round1(todayCTL),
+        tsb: round1(todayTSB),
+        weekly_tss: Math.round(weeklyTss),
+        weekly_workouts: weeklyWorkouts,
+        weekly_miles: round1(weeklyMiles),
+        weekly_hours: round1(weeklyHours),
+        weekly_z2_min: Math.round(weeklyZ2),
+      },
+      targets: {
+        weekly_z2: tget('weekly_z2_min', 180),
+        weekly_workouts: tget('weekly_workouts', 5),
+        weekly_tss: tget('weekly_tss', 400),
+      },
+      load_trend: trendDirection(tssDaily30, tssDaily60Prior),
+      history: dailyTss.map((tss, i) => ({
+        date: new Date(startMs + i * 86400_000).toISOString().slice(0, 10),
+        tss: Math.round(tss),
+        atl: round1(atlSeries[i]),
+        ctl: round1(ctlSeries[i]),
+        tsb: round1(ctlSeries[i] - atlSeries[i]),
+      })),
+    };
+
+    // ═══ BODY ═══════════════════════════════════════════════════
+    const latestBody = bmRows[bmRows.length - 1] || null;
+    const weightSeries = bmRows.map(r => r.weight_lb != null ? Number(r.weight_lb) : null).filter(v => v != null);
+    const w30 = weightSeries.slice(-30);
+    const w60Prior = weightSeries.slice(-90, -30);
+
+    const body = {
+      current: latestBody ? {
+        date: dateOnly(latestBody.measurement_date),
+        weight_lb: latestBody.weight_lb != null ? Number(latestBody.weight_lb) : null,
+        body_fat_pct: latestBody.body_fat_pct != null ? Number(latestBody.body_fat_pct) : null,
+        lean_mass_lb: latestBody.lean_mass_lb != null ? Number(latestBody.lean_mass_lb) : null,
+        bmi: latestBody.bmi != null ? Number(latestBody.bmi) : null,
+      } : null,
+      targets: {
+        weight_lb: tget('weight_lb', 185),
+        body_fat_pct: tget('body_fat_pct', 15),
+      },
+      weight_trend: trendDirection(w30, w60Prior),
+      history: bmRows.map(r => ({
+        date: dateOnly(r.measurement_date),
+        weight_lb: r.weight_lb != null ? Number(r.weight_lb) : null,
+        body_fat_pct: r.body_fat_pct != null ? Number(r.body_fat_pct) : null,
+        lean_mass_lb: r.lean_mass_lb != null ? Number(r.lean_mass_lb) : null,
+      })).filter(r => r.weight_lb != null || r.body_fat_pct != null),
+    };
+
+    // ═══ VITALS ══════════════════════════════════════════════════
+    function latest(key) {
+      for (let i = daRows.length - 1; i >= 0; i--) {
+        if (daRows[i][key] != null) return { value: Number(daRows[i][key]), as_of: dateOnly(daRows[i].activity_date) };
+      }
+      return { value: null, as_of: null };
+    }
+    function vitalSection(key, target30, target90) {
+      const latestRec = latest(key);
+      const w = splitWindows(daRows, key, today);
+      return {
+        today: latestRec.value,
+        as_of: latestRec.as_of,
+        is_stale: latestRec.as_of && latestRec.as_of !== today,
+        baseline_30d: w.m30.length ? round1(mean(w.m30)) : null,
+        baseline_90d: w.l60.length ? round1(mean(w.l60)) : null,
+        trend: trendDirection(w.m30, w.l60),
+        history: dailyHistory(daRows, [key], 90).map(r => ({ date: r.date, value: r[key] })),
+      };
+    }
+
+    const vitals = {
+      hrv: { ...vitalSection('hrv_sdnn_ms'), target: tget('hrv_ms', 45) },
+      rhr: { ...vitalSection('resting_hr_bpm'), target: tget('resting_hr_bpm', 55) },
+      vo2_max: vitalSection('vo2_max'),
+      walking_speed_mph: vitalSection('walking_speed_mph'),
+      walking_asymmetry_pct: vitalSection('walking_asymmetry_pct'),
+    };
+
+    // Composite alerts (Rules A/B from coaching-rules.md)
+    const recentWorkouts = await query(
+      `SELECT workout_date, effort FROM workouts
+        WHERE workout_date >= CURRENT_DATE - INTERVAL '14 days'
+          AND effort IS NOT NULL`
+    );
+    const alerts = [
+      ...chronicLoadAlerts(recentWorkouts.rows),
+      ...consecutiveHardDayAlerts(recentWorkouts.rows),
+    ];
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      windows: { short: 7, medium: 30, long: 90 },
+      sleep,
+      nutrition,
+      training,
+      body,
+      vitals,
+      alerts,
+    });
+  } catch (err) {
+    console.error(`[insights/trends] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeTSS = computeTSS;
 module.exports.durationToSeconds = durationToSeconds;
