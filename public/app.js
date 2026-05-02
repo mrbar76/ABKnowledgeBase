@@ -6728,11 +6728,14 @@ function buildMacroDashboard(summary, activityRow) {
   const net = calOut != null ? Math.round(calActual - calOut) : null;
   const calPct = goals.cal > 0 ? Math.min((calActual / goals.cal) * 100, 115) : 0;
   const calOverIntake = calActual > goals.calRange[1];
-  // Color the headline by NET when activity is known. Net > +400 = surplus,
-  // net < -400 = deficit, in-between = neutral. Falls back to the old
-  // intake-vs-target coloring when activity data is missing.
+  // Tiered band on net balance — 400 kcal/day ≈ 0.8 lb/wk drift. Inside
+  // ±400 reads green (on track), 400-800 amber (watch), beyond red/blue.
+  // Falls back to intake-vs-target coloring when activity data is missing.
+  const absNet = net != null ? Math.abs(net) : null;
   const calColor = net != null
-    ? (net > 400 ? '#ef4444' : net < -400 ? '#3b82f6' : '#10b981')
+    ? (absNet <= 400 ? '#10b981'
+       : absNet <= 800 ? '#f59e0b'
+       : net > 0 ? '#ef4444' : '#3b82f6')
     : (calOverIntake ? '#ef4444' : calActual >= goals.calRange[0] ? '#10b981' : '#f59e0b');
   const netLabel = net == null ? ''
     : net > 0 ? `+${net} surplus`
@@ -6771,19 +6774,29 @@ function buildMacroDashboard(summary, activityRow) {
       <span class="text-micro text-dim">${sourceLabel}</span>
     </div>
 
-    <div class="calorie-bar-wrap mb-sm">
-      <div class="flex-between mb-xs">
-        <span class="text-micro text-dim">Calories</span>
-        <span class="font-data" style="font-size:0.85rem;color:${calColor}">${Math.round(calActual)} in / ${goals.cal} target</span>
-      </div>
-      <div class="calorie-bar-track">
-        <div class="calorie-bar-fill" style="width:${calPct}%;background:${calColor}"></div>
-      </div>
-      ${calOut != null ? `<div class="flex-between" style="margin-top:4px">
-        <span class="text-micro text-dim">${Math.round(calOut)} burned (active + basal)</span>
-        <span class="text-micro" style="color:${calColor};font-weight:500">net ${netLabel}</span>
-      </div>` : ''}
-    </div>
+    ${(() => {
+      // When activity expenditure exceeds the static intake target (typical
+      // race / hard day), anchor the bar to "fueling adherence vs effective
+      // demand" instead of vs the static target. Effective target = max of
+      // (intake target, calories_out). The bar then fills proportionally to
+      // actual energy demand, so a 4025 intake with 3574 burned no longer
+      // overflows.
+      const effectiveTarget = (calOut != null && calOut > goals.cal) ? calOut : goals.cal;
+      const barPct = effectiveTarget > 0 ? Math.min(115, Math.round((calActual / effectiveTarget) * 100)) : 0;
+      return `<div class="calorie-bar-wrap mb-sm">
+        <div class="flex-between mb-xs">
+          <span class="text-micro text-dim">Calories</span>
+          <span class="font-data" style="font-size:0.85rem;color:${calColor}">${Math.round(calActual)} in / ${goals.cal} target</span>
+        </div>
+        <div class="calorie-bar-track">
+          <div class="calorie-bar-fill" style="width:${barPct}%;background:${calColor}"></div>
+        </div>
+        ${calOut != null ? `<div class="flex-between" style="margin-top:4px">
+          <span class="text-micro text-dim">${Math.round(calOut)} burned (active + basal)</span>
+          <span class="text-micro" style="color:${calColor};font-weight:500">net ${netLabel}</span>
+        </div>` : ''}
+      </div>`;
+    })()}
 
     <div class="macro-chart-row">
       <div class="macro-chart-wrap">
@@ -7430,18 +7443,27 @@ function renderCaloricBalanceStrip(d) {
        </div>`
     : '';
 
-  // Macro deficit row helper
-  function macroRow(label, block, unit = 'g', perKg = null) {
+  // Macro deficit row helper. `bidirectional` = both over and under target
+  // are concerning (calories on a non-race day). For protein/carbs/fat,
+  // over-target is generally fine — only under-target is flagged red.
+  function macroRow(label, block, unit = 'g', perKg = null, bidirectional = false) {
     if (!block || block.target == null) return `<div style="padding:6px 0;border-top:1px solid var(--bg-tertiary);font-size:0.78rem;color:var(--text-dim)">${label} target unknown — log meals to see deficit.</div>`;
     const actual = block.actual || 0;
     const target = block.target;
     const deficit = block.deficit;  // target - actual
     const pct = target > 0 ? Math.min(150, Math.round((actual / target) * 100)) : 0;
-    const color = pct >= 90 && pct <= 110 ? 'var(--color-physical)'
-      : pct < 70 ? 'var(--red)'
-      : 'var(--orange)';
+    const color = bidirectional
+      ? (pct >= 90 && pct <= 110 ? 'var(--color-physical)'
+         : pct < 70 || pct > 130 ? 'var(--red)'
+         : 'var(--orange)')
+      : (pct >= 90 && pct <= 110 ? 'var(--color-physical)'
+         : pct < 70 ? 'var(--red)'
+         : 'var(--orange)');
     const deficitLabel = deficit > 0 ? `−${deficit}${unit}` : `+${-deficit}${unit}`;
-    const deficitColor = deficit > 0 ? 'var(--red)' : 'var(--color-physical)';
+    const deficitColor = bidirectional
+      ? (Math.abs(deficit) <= target * 0.10 ? 'var(--color-physical)'
+         : 'var(--red)')
+      : (deficit > 0 ? 'var(--red)' : 'var(--color-physical)');
     const pkg = perKg != null ? ` <span style="color:var(--text-dim);font-size:0.65rem">(${perKg} g/kg)</span>` : '';
     const sourceTag = block.source === 'plan' ? '' : ` <span style="font-size:0.55rem;color:var(--text-dim);text-transform:uppercase">est</span>`;
     return `
@@ -7495,7 +7517,7 @@ function renderCaloricBalanceStrip(d) {
         <div><div style="font-size:0.6rem;color:var(--text-dim);text-transform:uppercase">Out</div><div class="font-data">${t.calories_out != null ? t.calories_out : '—'}</div></div>
         <div><div style="font-size:0.6rem;color:var(--text-dim);text-transform:uppercase">Balance</div><div class="font-data" style="color:${balanceColor}">${sign(t.balance)}</div></div>
       </div>
-      ${macroRow('Calories', tg.calories, ' kcal')}
+      ${macroRow('Calories', tg.calories, ' kcal', null, true)}
       ${macroRow('Protein',  tg.protein,  'g', t.protein_per_kg)}
       ${macroRow('Carbs',    tg.carbs,    'g', t.carbs_per_kg)}
       ${macroRow('Fat',      tg.fat,      'g', t.fat_per_kg)}
