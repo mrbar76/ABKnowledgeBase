@@ -435,6 +435,88 @@ function renderSparkline(values, opts = {}) {
   </svg>`;
 }
 
+// Today's Brief — surfaces the morning routine's coaching_session output
+// at the top of the home dashboard so Avi sees the day's prescription
+// the moment the app opens. Collapsed by default to one preview line +
+// "tap to expand"; full brief on tap. ADHD-friendly externalization of
+// the morning check-in.
+function renderTodaysBriefCard(brief) {
+  if (!brief) {
+    // No brief yet — show a tiny placeholder so the slot is visible. Fades
+    // when the user actually has briefs landing daily.
+    return `
+      <div class="dash-section fade-in stagger-0" style="opacity:0.7">
+        <div class="dash-section-header">
+          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--text-dim) 12%, transparent);color:var(--text-dim)">
+            ${icon('sun', 12)}
+            Today's Brief
+          </div>
+        </div>
+        <div style="padding:10px 4px;font-size:0.78rem;color:var(--text-dim)">
+          No brief yet — Coach hasn't run the morning routine for today. It will land at 5am once the routine is scheduled.
+        </div>
+      </div>
+    `;
+  }
+
+  const summary = brief.summary || '';
+  // Extract the TODAY'S SESSION block as a one-line preview if present;
+  // otherwise show the first 140 chars of summary.
+  const preview = (() => {
+    const m = summary.match(/TODAY'S SESSION[\s\S]*?\n- What:\s*([^\n]+)/i);
+    if (m) return m[1].trim().slice(0, 120);
+    return summary.replace(/\s+/g, ' ').slice(0, 140) + (summary.length > 140 ? '…' : '');
+  })();
+
+  // Color the pill by alert presence — extract from key_decisions or summary
+  const hasAlert = /alert|deload|forced|FORCED REST|DELOAD/i.test(summary);
+  const pillColor = hasAlert ? 'var(--red)' : 'var(--color-physical)';
+  const briefId = `brief-${brief.id || 'today'}`;
+
+  // Render the structured fields we know about (key_decisions, adjustments,
+  // injury_notes, nutrition_notes, recovery_notes, next_steps) inside the
+  // expanded view, plus the summary. Falls back gracefully when null.
+  const detailRow = (label, value) => {
+    if (!value) return '';
+    const text = Array.isArray(value) ? value.join(' · ') : String(value);
+    if (!text.trim()) return '';
+    return `
+      <div style="margin-top:8px">
+        <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">${esc(label)}</div>
+        <div style="font-size:0.78rem;color:var(--text);margin-top:2px;white-space:pre-wrap">${esc(text)}</div>
+      </div>
+    `;
+  };
+
+  return `
+    <div class="dash-section fade-in stagger-0">
+      <div class="dash-section-header" style="cursor:pointer" onclick="document.getElementById('${briefId}').classList.toggle('expanded')">
+        <div class="dash-section-pill" style="background:color-mix(in srgb, ${pillColor} 10%, transparent);color:${pillColor}">
+          ${icon('sun', 12)}
+          Today's Brief
+        </div>
+        <span style="font-size:0.65rem;color:var(--text-dim)">tap to expand</span>
+      </div>
+      <div id="${briefId}" class="brief-content" style="padding:10px 4px;font-size:0.82rem;color:var(--text)">
+        <div class="brief-preview" style="display:block">${esc(preview)}</div>
+        <div class="brief-full" style="display:none">
+          <div style="white-space:pre-wrap;font-size:0.78rem;color:var(--text)">${esc(summary)}</div>
+          ${detailRow('Key decisions', brief.key_decisions)}
+          ${detailRow('Adjustments', brief.adjustments)}
+          ${detailRow('Injury notes', brief.injury_notes)}
+          ${detailRow('Nutrition notes', brief.nutrition_notes)}
+          ${detailRow('Recovery notes', brief.recovery_notes)}
+          ${detailRow('Next steps', brief.next_steps)}
+        </div>
+      </div>
+    </div>
+    <style>
+      #${briefId}.expanded .brief-preview { display:none !important; }
+      #${briefId}.expanded .brief-full { display:block !important; }
+    </style>
+  `;
+}
+
 function renderReadinessSection(r) {
   if (!r || r.readiness_score == null) return '';
   const score = Math.round(r.readiness_score);
@@ -492,10 +574,16 @@ function renderReadinessSection(r) {
 
 async function loadDashboardStats() {
   try {
-    const [data, readiness] = await Promise.all([
+    const today = new Date().toLocaleDateString('en-CA');
+    const tomorrow = new Date(Date.now() + 86400_000).toLocaleDateString('en-CA');
+    const [data, readiness, briefResp] = await Promise.all([
       api('/dashboard'),
       fetchReadiness(),
+      // Today's morning brief from the routine, if it ran. Falls back to []
+      // if no brief was written today (routine offline, fresh deploy, etc.).
+      api(`/training/coaching?tag=morning_brief&since=${today}&before=${tomorrow}&limit=1`).catch(() => null),
     ]);
+    const todayBrief = briefResp?.sessions?.[0] || null;
     const totalTasks = Object.values(data.tasks.by_status).reduce((a, b) => a + b, 0);
     const inProgress = data.tasks.by_status.in_progress || 0;
     const container = document.getElementById('dash-content');
@@ -546,6 +634,7 @@ async function loadDashboardStats() {
     }
 
     container.innerHTML = `
+      ${renderTodaysBriefCard(todayBrief)}
       ${renderReadinessSection(readiness)}
       <div class="dash-section fade-in stagger-1" onclick="switchTab('tasks')" style="cursor:pointer">
         <div class="dash-section-header">
