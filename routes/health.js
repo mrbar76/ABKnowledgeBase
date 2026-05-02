@@ -931,6 +931,11 @@ async function processPayload(body) {
       const bodyStats = bodyMetricRows.length
         ? await upsertBodyMetricsFromHealth(bodyMetricRows)
         : { inserted: 0, updated: 0 };
+      // Auto-clean any apple_health body_metric rows that duplicate a RENPHO/
+      // manual entry on the same date.
+      const bodyDupes = bodyMetricRows.length
+        ? await mergeBodyMetricDuplicates({ dryRun: false })
+        : { merged: 0 };
 
       // If we have HR samples, recompute zones for any workouts in the window
       const hrSamples = extractHrSamplesFromB(body);
@@ -959,6 +964,7 @@ async function processPayload(body) {
         daily_updated: dailyStats.updated,
         body_metrics_inserted: bodyStats.inserted,
         body_metrics_updated: bodyStats.updated,
+        body_metrics_dupes_merged: bodyDupes.merged,
         mapped_metrics: mappedMetrics,
         skipped_metrics: skippedMetrics,
         zones_computed: zonesComputed,
@@ -982,6 +988,9 @@ async function processPayload(body) {
       const bodyStats = bodyMetricRows.length
         ? await upsertBodyMetricsFromHealth(bodyMetricRows)
         : { inserted: 0, updated: 0 };
+      const bodyDupes = bodyMetricRows.length
+        ? await mergeBodyMetricDuplicates({ dryRun: false })
+        : { merged: 0 };
 
       const workouts = parseFormatDWorkouts(body);
       const workoutStats = workouts.length
@@ -998,6 +1007,7 @@ async function processPayload(body) {
         daily_updated: dailyStats.updated,
         body_metrics_inserted: bodyStats.inserted,
         body_metrics_updated: bodyStats.updated,
+        body_metrics_dupes_merged: bodyDupes.merged,
         workouts_inserted: workoutStats.inserted,
         workouts_updated: workoutStats.updated,
         workouts_merged: workoutStats.merged + dupesMerged,
@@ -1134,6 +1144,24 @@ router.post('/merge-duplicate-workouts', async (req, res) => {
     res.json({ dry_run: dryRun, ...summary });
   } catch (err) {
     console.error(`[health/merge-duplicate-workouts] failed: ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/health/merge-duplicate-body-metrics ────────────
+// Same root cause as workouts: RENPHO writes to Apple Health AND a separate
+// manual import path; both rows end up in body_metrics for the same date,
+// e.g. 188.80lb renpho + 188.82lb apple_health on 2026-04-25. Survivor =
+// the non-apple_health row (RENPHO/manual is the original scale entry; the
+// apple_health row is just an echo of the same reading, often slightly
+// rounded by HealthKit). Sensor data merged via COALESCE; loser deleted.
+router.post('/merge-duplicate-body-metrics', async (req, res) => {
+  try {
+    const dryRun = req.body?.dry_run === true;
+    const summary = await mergeBodyMetricDuplicates({ dryRun });
+    res.json({ dry_run: dryRun, ...summary });
+  } catch (err) {
+    console.error(`[health/merge-duplicate-body-metrics] failed: ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1402,6 +1430,100 @@ async function mergeAllWorkoutDuplicates({ windowSec = WORKOUT_DEDUP_WINDOW_SEC,
   return summary;
 }
 
+// ─── Body-metric duplicate cleanup ─────────────────────────────
+// Group body_metrics rows by measurement_date. When >1 row for a date:
+//   1. Survivor priority: non-apple_health row (RENPHO/manual scale entry).
+//      The user's actual scale reading is the source of truth; HealthKit's
+//      copy is usually rounded by 0.02-0.05 lb and lacks all the body-comp
+//      fields beyond weight + body_fat_pct.
+//   2. Tiebreak by most recent updated_at.
+// Loser data is folded into survivor via COALESCE (e.g. apple's BMI fills
+// survivor's null BMI), then loser row is deleted. Survivor's metadata
+// (raw_payload) gets a `merged_from` annotation.
+
+const BODY_MERGE_FIELDS = [
+  'weight_lb', 'bmi', 'body_fat_pct', 'lean_mass_lb',
+  'skeletal_muscle_pct', 'fat_free_mass_lb', 'subcutaneous_fat_pct',
+  'visceral_fat', 'body_water_pct', 'muscle_mass_lb', 'bone_mass_lb',
+  'protein_pct', 'bmr_kcal', 'metabolic_age', 'measurement_time',
+  'measurement_context', 'vendor_user_mode', 'notes',
+];
+
+function pickBodySurvivor(group) {
+  const nonApple = group.filter(r => r.source !== 'apple_health');
+  const candidates = nonApple.length ? nonApple : group.slice();
+  candidates.sort((a, b) => {
+    const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+    const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+    return tb - ta;
+  });
+  return candidates[0];
+}
+
+async function mergeBodyMetricDuplicates({ dryRun = false } = {}) {
+  const all = await query(
+    `SELECT * FROM body_metrics ORDER BY measurement_date, source`
+  );
+
+  const byDate = new Map();
+  for (const r of all.rows) {
+    const key = String(r.measurement_date);
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key).push(r);
+  }
+
+  const summary = { groups: 0, merged: 0, deleted: 0, pairs: [] };
+
+  for (const [date, group] of byDate) {
+    if (group.length < 2) continue;
+    summary.groups++;
+    const survivor = pickBodySurvivor(group);
+    const losers = group.filter(r => r.id !== survivor.id);
+
+    summary.pairs.push({
+      date,
+      survivor: { id: survivor.id, source: survivor.source, weight_lb: survivor.weight_lb },
+      losers: losers.map(l => ({ id: l.id, source: l.source, weight_lb: l.weight_lb })),
+    });
+
+    if (dryRun) continue;
+
+    for (const loser of losers) {
+      try {
+        const updates = {};
+        for (const f of BODY_MERGE_FIELDS) {
+          if (survivor[f] == null && loser[f] != null) updates[f] = loser[f];
+        }
+
+        const setClauses = [];
+        const params = [survivor.id];
+        let i = 2;
+        for (const [k, v] of Object.entries(updates)) {
+          setClauses.push(`${k} = $${i++}`);
+          params.push(v);
+        }
+        setClauses.push(`raw_payload = COALESCE(raw_payload, '{}'::jsonb) || $${i++}::jsonb`);
+        params.push(JSON.stringify({
+          merged_from: { id: loser.id, source: loser.source, raw_payload: loser.raw_payload || null },
+        }));
+        setClauses.push(`updated_at = NOW()`);
+
+        await query(
+          `UPDATE body_metrics SET ${setClauses.join(', ')} WHERE id = $1`,
+          params
+        );
+        await query(`DELETE FROM body_metrics WHERE id = $1`, [loser.id]);
+        summary.merged++;
+        summary.deleted++;
+      } catch (err) {
+        console.error(`[mergeBodyMetricDuplicates] failed survivor=${survivor.id} loser=${loser.id}: ${err.message}`);
+      }
+    }
+  }
+
+  return summary;
+}
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
@@ -1411,3 +1533,4 @@ module.exports.normalizeMetricId = normalizeMetricId;
 module.exports.B_METRIC_MAP = B_METRIC_MAP;
 module.exports.D_METRIC_MAP = D_METRIC_MAP;
 module.exports.ingestPayload = ingestPayload;
+module.exports.mergeBodyMetricDuplicates = mergeBodyMetricDuplicates;

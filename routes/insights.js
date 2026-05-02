@@ -288,11 +288,31 @@ router.get('/today', async (req, res) => {
 
     // Most recent row for "today" snapshot
     const todayRow = rows[rows.length - 1] || {};
-    const hrvToday = todayRow.hrv_sdnn_ms ? Number(todayRow.hrv_sdnn_ms) : null;
-    const rhrToday = todayRow.resting_hr_bpm ? Number(todayRow.resting_hr_bpm) : null;
-    const sleepToday = todayRow.sleep_total_min ? Number(todayRow.sleep_total_min) : null;
-    const deepToday = todayRow.sleep_deep_min ? Number(todayRow.sleep_deep_min) : null;
-    const remToday = todayRow.sleep_rem_min ? Number(todayRow.sleep_rem_min) : null;
+    // HAE syncs HRV/RHR once per day after the watch records it, so today's
+    // row is often partially populated (steps yes, HRV null). Walk back to
+    // find the most recent non-null reading and tag it with as_of.
+    function mostRecentNonNull(field) {
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const v = rows[i][field];
+        if (v != null) return { value: Number(v), as_of: dateOnly(rows[i].activity_date) };
+      }
+      return { value: null, as_of: null };
+    }
+    const hrvLatest = mostRecentNonNull('hrv_sdnn_ms');
+    const rhrLatest = mostRecentNonNull('resting_hr_bpm');
+    const sleepLatest = mostRecentNonNull('sleep_total_min');
+    const deepLatest = mostRecentNonNull('sleep_deep_min');
+    const remLatest = mostRecentNonNull('sleep_rem_min');
+
+    const hrvToday = hrvLatest.value;
+    const rhrToday = rhrLatest.value;
+    const sleepToday = sleepLatest.value;
+    const deepToday = deepLatest.value;
+    const remToday = remLatest.value;
+    const todayDate = dateOnly(todayRow.activity_date) || today;
+    const hrvIsStale = hrvLatest.as_of && hrvLatest.as_of !== todayDate;
+    const rhrIsStale = rhrLatest.as_of && rhrLatest.as_of !== todayDate;
+    const sleepIsStale = sleepLatest.as_of && sleepLatest.as_of !== todayDate;
 
     const hrvDevSd = (hrvToday != null && hrvBase != null && hrvSd) ? (hrvToday - hrvBase) / hrvSd : null;
     const rhrDevSd = (rhrToday != null && rhrBase != null && rhrSd) ? (rhrToday - rhrBase) / rhrSd : null;
@@ -359,9 +379,9 @@ router.get('/today', async (req, res) => {
       reasons,
       alerts,
       components: {
-        hrv: { today: hrvToday, baseline: hrvBase ? round1(hrvBase) : null, deviation_sd: hrvDevSd != null ? round1(hrvDevSd) : null, sample_size: hrvVals.length },
-        rhr: { today: rhrToday, baseline: rhrBase ? round1(rhrBase) : null, deviation_sd: rhrDevSd != null ? round1(rhrDevSd) : null, sample_size: rhrVals.length },
-        sleep: { last_night_min: sleepToday, baseline_min: sleepBase ? Math.round(sleepBase) : null, target_min: 480, debt_min: sleepToday != null && sleepBase != null ? Math.max(0, Math.round(sleepBase - sleepToday)) : null },
+        hrv: { today: hrvToday, baseline: hrvBase ? round1(hrvBase) : null, deviation_sd: hrvDevSd != null ? round1(hrvDevSd) : null, sample_size: hrvVals.length, as_of: hrvLatest.as_of, is_stale: hrvIsStale || false },
+        rhr: { today: rhrToday, baseline: rhrBase ? round1(rhrBase) : null, deviation_sd: rhrDevSd != null ? round1(rhrDevSd) : null, sample_size: rhrVals.length, as_of: rhrLatest.as_of, is_stale: rhrIsStale || false },
+        sleep: { last_night_min: sleepToday, baseline_min: sleepBase ? Math.round(sleepBase) : null, target_min: 480, debt_min: sleepToday != null && sleepBase != null ? Math.max(0, Math.round(sleepBase - sleepToday)) : null, as_of: sleepLatest.as_of, is_stale: sleepIsStale || false },
         sleep_quality: { deep_min: deepToday, rem_min: remToday, deep_rem_pct: (deepToday != null && remToday != null && sleepToday) ? round1((deepToday + remToday) / sleepToday * 100) : null, efficiency_pct: todayRow.sleep_efficiency_pct != null ? Number(todayRow.sleep_efficiency_pct) : null },
       },
       trend_7d: trend7d,

@@ -477,9 +477,9 @@ function renderReadinessSection(r) {
         </div>
         <div style="flex:1;min-width:0">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;font-size:0.78rem">
-            <div><div style="color:var(--text-dim);font-size:0.68rem">HRV</div><div class="font-data">${hrv.today != null ? hrv.today + 'ms' : '—'} <span style="color:var(--text-dim);font-size:0.7rem">${fmtDev(hrv.deviation_sd)}</span></div></div>
-            <div><div style="color:var(--text-dim);font-size:0.68rem">Resting HR</div><div class="font-data">${rhr.today != null ? rhr.today + 'bpm' : '—'} <span style="color:var(--text-dim);font-size:0.7rem">${fmtDev(rhr.deviation_sd)}</span></div></div>
-            <div><div style="color:var(--text-dim);font-size:0.68rem">Sleep</div><div class="font-data">${fmtSleep(sleep.last_night_min)}</div></div>
+            <div><div style="color:var(--text-dim);font-size:0.68rem">HRV${hrv.is_stale ? ' <span style="color:var(--orange);font-size:0.6rem">(yest)</span>' : ''}</div><div class="font-data">${hrv.today != null ? hrv.today + 'ms' : '—'} <span style="color:var(--text-dim);font-size:0.7rem">${fmtDev(hrv.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.68rem">Resting HR${rhr.is_stale ? ' <span style="color:var(--orange);font-size:0.6rem">(yest)</span>' : ''}</div><div class="font-data">${rhr.today != null ? rhr.today + 'bpm' : '—'} <span style="color:var(--text-dim);font-size:0.7rem">${fmtDev(rhr.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.68rem">Sleep${sleep.is_stale ? ' <span style="color:var(--orange);font-size:0.6rem">(prev)</span>' : ''}</div><div class="font-data">${fmtSleep(sleep.last_night_min)}</div></div>
             <div><div style="color:var(--text-dim);font-size:0.68rem">Deep+REM</div><div class="font-data">${sq.deep_rem_pct != null ? sq.deep_rem_pct + '%' : '—'}</div></div>
           </div>
           ${r.recommendation ? `<div style="font-size:0.78rem;color:var(--text);margin-top:8px">${esc(r.recommendation)}</div>` : ''}
@@ -578,7 +578,13 @@ async function loadDashboardStats() {
       </div>
 
     `;
+    // Race condition: dashboard is rendered from awaited Promise.all, and on
+    // some browsers/PWA paths lucide.createIcons() runs before the inserted
+    // DOM is fully parented. Defer to next animation frame, plus a 50ms
+    // fallback for the slow path.
     renderIcons();
+    requestAnimationFrame(renderIcons);
+    setTimeout(renderIcons, 50);
     // Animate all stat values
     document.querySelectorAll('#dash-content [data-target]').forEach(el => {
       animateValue(el, parseInt(el.dataset.target) || 0);
@@ -6735,9 +6741,9 @@ function renderHrvReadinessCard(r) {
         </div>
         <div style="flex:1;min-width:0">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:6px;font-size:0.74rem">
-            <div><div style="color:var(--text-dim);font-size:0.62rem">HRV</div><div class="font-data">${hrv.today != null ? hrv.today + 'ms' : '—'} <span style="color:var(--text-dim);font-size:0.65rem">${fmtDev(hrv.deviation_sd)}</span></div></div>
-            <div><div style="color:var(--text-dim);font-size:0.62rem">RHR</div><div class="font-data">${rhr.today != null ? rhr.today : '—'} <span style="color:var(--text-dim);font-size:0.65rem">${fmtDev(rhr.deviation_sd)}</span></div></div>
-            <div><div style="color:var(--text-dim);font-size:0.62rem">Sleep</div><div class="font-data">${fmtSleep(sleep.last_night_min)}</div></div>
+            <div><div style="color:var(--text-dim);font-size:0.62rem">HRV${hrv.is_stale ? ' <span style="color:var(--orange);font-size:0.55rem">(yest)</span>' : ''}</div><div class="font-data">${hrv.today != null ? hrv.today + 'ms' : '—'} <span style="color:var(--text-dim);font-size:0.65rem">${fmtDev(hrv.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.62rem">RHR${rhr.is_stale ? ' <span style="color:var(--orange);font-size:0.55rem">(yest)</span>' : ''}</div><div class="font-data">${rhr.today != null ? rhr.today : '—'} <span style="color:var(--text-dim);font-size:0.65rem">${fmtDev(rhr.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.62rem">Sleep${sleep.is_stale ? ' <span style="color:var(--orange);font-size:0.55rem">(prev)</span>' : ''}</div><div class="font-data">${fmtSleep(sleep.last_night_min)}</div></div>
             <div><div style="color:var(--text-dim);font-size:0.62rem">D+R</div><div class="font-data">${sq.deep_rem_pct != null ? sq.deep_rem_pct + '%' : '—'}</div></div>
           </div>
           ${r.recommendation ? `<div style="font-size:0.74rem;color:var(--text);margin-top:6px">${esc(r.recommendation)}</div>` : ''}
