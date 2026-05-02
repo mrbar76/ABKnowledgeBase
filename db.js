@@ -1306,6 +1306,90 @@ async function initDB() {
     `, [t.metric, t.target_value, t.target_value_max ?? null, t.comparison, t.timeframe, t.rationale]);
   }
 
+  // ===== RACES =====
+  // First-class race calendar. Replaces the prior tag-inference pattern
+  // (renderRaceCountdownCard scanning daily_plans for workout_type=/race/i).
+  // A race is the central entity periodization revolves around — it owns
+  // the priority tier, course profile, fueling plan, and gear list.
+  await safeQuery('races table', `
+    CREATE TABLE IF NOT EXISTS races (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      race_date DATE NOT NULL,
+      name TEXT NOT NULL,
+      discipline TEXT CHECK(discipline IN ('run','trail_run','ultra','spartan','triathlon','swim','bike','duathlon','other')),
+      distance_value NUMERIC(7,2),
+      distance_unit TEXT CHECK(distance_unit IN ('mi','km','m','laps','obstacles')),
+      elevation_gain_ft INTEGER,
+      terrain TEXT,
+      target_time_seconds INTEGER,
+      priority TEXT CHECK(priority IN ('A','B','C')) DEFAULT 'B',
+      status TEXT CHECK(status IN ('scheduled','dnf','completed','withdrawn','cancelled')) DEFAULT 'scheduled',
+      location TEXT,
+      course_notes TEXT,
+      expected_weather TEXT,
+      fueling_plan TEXT,
+      gear_list TEXT,
+      goal_outcome TEXT,
+      goal_process TEXT,
+      result_time_seconds INTEGER,
+      result_notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('races index date', `CREATE INDEX IF NOT EXISTS idx_races_date ON races(race_date DESC)`);
+  await safeQuery('races index priority', `CREATE INDEX IF NOT EXISTS idx_races_priority ON races(priority, race_date)`);
+
+  // ===== TRAINING BLOCKS (mesocycle periodization) =====
+  // 3-6 week blocks that group daily_plans into a coherent thesis
+  // (e.g. "Build 2: raise LT2"). Each block can link to a target race.
+  await safeQuery('training_blocks table', `
+    CREATE TABLE IF NOT EXISTS training_blocks (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      phase TEXT NOT NULL CHECK(phase IN ('offseason','base','build','peak','taper','race','transition','recovery')),
+      thesis TEXT,
+      target_race_id UUID REFERENCES races(id) ON DELETE SET NULL,
+      notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('training_blocks index dates', `CREATE INDEX IF NOT EXISTS idx_training_blocks_dates ON training_blocks(start_date, end_date)`);
+
+  // daily_plans: structured periodization fields. `phase` mirrors
+  // training_blocks.phase for fast lookups; `intent_type` is the structured
+  // session purpose (rationale stays as free-text colour).
+  await safeQuery('daily_plans +phase', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS phase TEXT`);
+  await safeQuery('daily_plans +intent_type', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS intent_type TEXT`);
+  await safeQuery('daily_plans +block_id', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS training_block_id UUID REFERENCES training_blocks(id) ON DELETE SET NULL`);
+  await safeQuery('daily_plans +linked_race', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS linked_race_id UUID REFERENCES races(id) ON DELETE SET NULL`);
+
+  // ===== FUELING REHEARSALS =====
+  // Long-session fueling practice runs — what was eaten/drunk per hour,
+  // gut response. Critical for race-day GI safety.
+  await safeQuery('fueling_rehearsals table', `
+    CREATE TABLE IF NOT EXISTS fueling_rehearsals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      rehearsal_date DATE NOT NULL,
+      workout_id UUID REFERENCES workouts(id) ON DELETE SET NULL,
+      target_race_id UUID REFERENCES races(id) ON DELETE SET NULL,
+      duration_min INTEGER,
+      g_carb_per_hr NUMERIC(5,1),
+      g_sodium_per_hr NUMERIC(5,1),
+      ml_fluid_per_hr NUMERIC(5,1),
+      g_caffeine_total NUMERIC(5,1),
+      products TEXT,
+      gut_response INTEGER CHECK(gut_response >= 1 AND gut_response <= 10),
+      energy_response INTEGER CHECK(energy_response >= 1 AND energy_response <= 10),
+      notes TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('fueling_rehearsals index', `CREATE INDEX IF NOT EXISTS idx_fueling_rehearsals_date ON fueling_rehearsals(rehearsal_date DESC)`);
+
   // ===== EMAIL INDEX =====
   // Stores pointers + summaries for email threads. Bodies are NOT stored;
   // they are fetched on demand from the source (Gmail/Outlook via MCP).

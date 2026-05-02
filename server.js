@@ -33,6 +33,7 @@ const athleteRoutes = require('./routes/athlete');
 const dropboxRoutes = require('./routes/dropbox');
 const insightsRoutes = require('./routes/insights');
 const targetsRoutes = require('./routes/targets');
+const racesRoutes = require('./routes/races');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -261,6 +262,7 @@ app.use('/api/health', dropboxRoutes);
 app.use('/api/health/insights', insightsRoutes);
 app.use('/api/athlete', athleteRoutes);
 app.use('/api/targets', targetsRoutes);
+app.use('/api/races', racesRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
