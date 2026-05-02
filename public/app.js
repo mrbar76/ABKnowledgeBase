@@ -405,9 +405,80 @@ function renderActivityStream(items) {
   renderIcons();
 }
 
+// Readiness card — HRV-based daily readiness from /api/health/insights/today.
+// Distinct from master's muscle-group recovery (/api/recovery/score) which
+// answers a different question (when can I train this muscle again).
+async function fetchReadiness() {
+  try { return await api('/health/insights/today'); }
+  catch (e) { return null; }
+}
+
+function renderReadinessSection(r) {
+  if (!r || r.readiness_score == null) return '';
+  const score = Math.round(r.readiness_score);
+  const status = r.readiness_status || '';
+  const color = score >= 75 ? 'var(--color-physical)'
+    : score >= 55 ? 'var(--orange)'
+    : 'var(--red)';
+  const c = r.components || {};
+  const hrv = c.hrv || {};
+  const rhr = c.rhr || {};
+  const sleep = c.sleep || {};
+  const sq = c.sleep_quality || {};
+  const fmtDev = (s) => s == null ? '' : (s >= 0 ? `+${s}σ` : `${s}σ`);
+  const fmtSleep = (m) => m == null ? '—' : `${(m/60).toFixed(1)}h`;
+
+  // Inline SVG sparkline of last-7-day HRV
+  let spark = '';
+  const trend = (r.trend_7d || []).filter(d => d.hrv != null).map(d => d.hrv);
+  if (trend.length >= 2) {
+    const w = 120, h = 30, pad = 2;
+    const min = Math.min(...trend), max = Math.max(...trend);
+    const range = (max - min) || 1;
+    const pts = trend.map((v, i) => {
+      const x = pad + (i * (w - 2 * pad)) / (trend.length - 1);
+      const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    spark = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="display:block">
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/>
+    </svg>`;
+  }
+
+  return `
+    <div class="dash-section fade-in stagger-1" onclick="fitnessSubTab='today';switchTab('fitness')" style="cursor:pointer">
+      <div class="dash-section-header">
+        <div class="dash-section-pill" style="background:color-mix(in srgb, ${color} 10%, transparent);color:${color}">
+          ${icon('activity', 12)}
+          Today's Readiness
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:center;padding:12px 4px">
+        <div style="text-align:center;flex-shrink:0">
+          <div class="font-data" style="font-size:2.2rem;font-weight:700;color:${color};line-height:1">${score}</div>
+          <div style="font-size:0.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">${esc(status)}</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;font-size:0.78rem">
+            <div><div style="color:var(--text-dim);font-size:0.68rem">HRV</div><div class="font-data">${hrv.today != null ? hrv.today + 'ms' : '—'} <span style="color:var(--text-dim);font-size:0.7rem">${fmtDev(hrv.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.68rem">Resting HR</div><div class="font-data">${rhr.today != null ? rhr.today + 'bpm' : '—'} <span style="color:var(--text-dim);font-size:0.7rem">${fmtDev(rhr.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.68rem">Sleep</div><div class="font-data">${fmtSleep(sleep.last_night_min)}</div></div>
+            <div><div style="color:var(--text-dim);font-size:0.68rem">Deep+REM</div><div class="font-data">${sq.deep_rem_pct != null ? sq.deep_rem_pct + '%' : '—'}</div></div>
+          </div>
+          ${r.recommendation ? `<div style="font-size:0.78rem;color:var(--text);margin-top:8px">${esc(r.recommendation)}</div>` : ''}
+        </div>
+        ${spark ? `<div style="flex-shrink:0">${spark}<div style="font-size:0.6rem;color:var(--text-dim);text-align:center;margin-top:2px">7d HRV</div></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 async function loadDashboardStats() {
   try {
-    const data = await api('/dashboard');
+    const [data, readiness] = await Promise.all([
+      api('/dashboard'),
+      fetchReadiness(),
+    ]);
     const totalTasks = Object.values(data.tasks.by_status).reduce((a, b) => a + b, 0);
     const inProgress = data.tasks.by_status.in_progress || 0;
     const container = document.getElementById('dash-content');
@@ -458,6 +529,7 @@ async function loadDashboardStats() {
     }
 
     container.innerHTML = `
+      ${renderReadinessSection(readiness)}
       <div class="dash-section fade-in stagger-1" onclick="switchTab('tasks')" style="cursor:pointer">
         <div class="dash-section-header">
           <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-tactical) 10%, transparent);color:var(--color-tactical)">
