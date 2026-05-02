@@ -6691,16 +6691,32 @@ function buildMacroBar(label, actual, goalRange, color) {
   </div>`;
 }
 
-function buildMacroDashboard(summary) {
+function buildMacroDashboard(summary, activityRow) {
   const tier = _currentTierOverride || summary.intensity_tier || 'moderate';
   const src = _currentTierOverride ? 'override' : (summary.intensity_source || 'default');
   const planned = summary.planned_type;
   const goals = getMacroTarget(tier);
 
   const calActual = summary.total_calories || 0;
+  // Activity-aware energy balance. activityRow comes from /insights/nutrition
+  // for the displayed date and carries calories_out (active + basal). On hard
+  // / race days a flat intake-vs-target comparison is misleading — surface
+  // the net balance (intake − burned) so the athlete sees the actual energy
+  // reality. Intake target stays for fueling adherence (Sims-periodized).
+  const calOut = activityRow?.calories_out ?? null;
+  const net = calOut != null ? Math.round(calActual - calOut) : null;
   const calPct = goals.cal > 0 ? Math.min((calActual / goals.cal) * 100, 115) : 0;
-  const calOver = calActual > goals.calRange[1];
-  const calColor = calOver ? '#ef4444' : calActual >= goals.calRange[0] ? '#10b981' : '#f59e0b';
+  const calOverIntake = calActual > goals.calRange[1];
+  // Color the headline by NET when activity is known. Net > +400 = surplus,
+  // net < -400 = deficit, in-between = neutral. Falls back to the old
+  // intake-vs-target coloring when activity data is missing.
+  const calColor = net != null
+    ? (net > 400 ? '#ef4444' : net < -400 ? '#3b82f6' : '#10b981')
+    : (calOverIntake ? '#ef4444' : calActual >= goals.calRange[0] ? '#10b981' : '#f59e0b');
+  const netLabel = net == null ? ''
+    : net > 0 ? `+${net} surplus`
+    : net < 0 ? `${net} deficit`
+    : 'balanced';
 
   const badgeColors = { hard: '#ef4444', moderate: '#f59e0b', rest: '#10b981' };
   const badgeColor = badgeColors[tier] || '#f59e0b';
@@ -6730,11 +6746,15 @@ function buildMacroDashboard(summary) {
     <div class="calorie-bar-wrap mb-sm">
       <div class="flex-between mb-xs">
         <span class="text-micro text-dim">Calories</span>
-        <span class="font-data" style="font-size:0.85rem;color:${calColor}">${Math.round(calActual)} / ${goals.cal}</span>
+        <span class="font-data" style="font-size:0.85rem;color:${calColor}">${Math.round(calActual)} in / ${goals.cal} target</span>
       </div>
       <div class="calorie-bar-track">
         <div class="calorie-bar-fill" style="width:${calPct}%;background:${calColor}"></div>
       </div>
+      ${calOut != null ? `<div class="flex-between" style="margin-top:4px">
+        <span class="text-micro text-dim">${Math.round(calOut)} burned (active + basal)</span>
+        <span class="text-micro" style="color:${calColor};font-weight:500">net ${netLabel}</span>
+      </div>` : ''}
     </div>
 
     <div class="macro-chart-row">
@@ -6828,7 +6848,7 @@ async function loadNutrition(date) {
         <button class="btn-action btn-icon" onclick="loadNutrition(shiftDate(nutritionDate,1))">&gt;</button>
       </div>
 
-      ${buildMacroDashboard(summary)}
+      ${buildMacroDashboard(summary, balance?.today)}
 
       ${renderCaloricBalanceStrip(balance)}
 
