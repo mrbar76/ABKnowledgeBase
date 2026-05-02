@@ -17,7 +17,11 @@ every path (e.g., `/health/insights/morning` → `https://ab-brain.up.railway.ap
 
 **Auth:** Send the `X-Api-Key` header on every request. The API key is
 provided as the `AB_BRAIN_API_KEY` environment variable in this routine's
-configuration. If you can't find it, halt and report: do not proceed
+configuration. **The value is the same secret as the AB Brain server's
+`API_KEY` env var** (defined in `.env.example`); only the env-var name
+differs in scope (`API_KEY` server-side, `AB_BRAIN_API_KEY` in the
+routine's config to avoid colliding with other API keys the routine
+might use later). If you can't find it, halt and report: do not proceed
 without auth.
 
 ```

@@ -16,7 +16,9 @@ endpoint reference.
 
 **Auth:** Send `X-Api-Key: ${AB_BRAIN_API_KEY}` header on every request.
 The key is provided as the `AB_BRAIN_API_KEY` environment variable in
-this routine's configuration. Halt if not set.
+this routine's configuration. **The value is the same secret as the AB
+Brain server's `API_KEY` env var** (defined in `.env.example`); only
+the env-var name differs in scope. Halt if not set.
 
 ```
 curl -H "X-Api-Key: ${AB_BRAIN_API_KEY}" \
