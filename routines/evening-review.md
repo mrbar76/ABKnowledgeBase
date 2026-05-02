@@ -7,6 +7,24 @@ runs in the Sunday morning brief instead).
 
 ---
 
+## API access (read this first)
+
+**Base URL:** `https://ab-brain.up.railway.app/api`
+
+All paths below are relative to that base. Prepend the base URL to every
+endpoint reference.
+
+**Auth:** Send `X-Api-Key: ${AB_BRAIN_API_KEY}` header on every request.
+The key is provided as the `AB_BRAIN_API_KEY` environment variable in
+this routine's configuration. Halt if not set.
+
+```
+curl -H "X-Api-Key: ${AB_BRAIN_API_KEY}" \
+     https://ab-brain.up.railway.app/api/daily-plans/by-date/$(date +%Y-%m-%d)
+```
+
+---
+
 ## Purpose
 
 End-of-day debrief. Auto-checks if a workout was logged today, computes
@@ -18,11 +36,11 @@ morning brief. No human action required — Avi reads it next morning.
 ### 1. Pull today's data
 
 ```
-GET /api/daily-plans/by-date/{today}    (returns plan + actual + comparison + ring_progress)
-GET /api/workouts?date={today}
-GET /api/meals?date={today}
-GET /api/nutrition/daily-summary?date={today}
-GET /api/health/insights/today
+GET /daily-plans/by-date/{today}    (returns plan + actual + comparison + ring_progress)
+GET /workouts?date={today}
+GET /meals?date={today}
+GET /nutrition/daily-summary?date={today}
+GET /health/insights/today
 ```
 
 ### 2. Detect what kind of day it was
@@ -95,7 +113,7 @@ morning Coach chat (Skill: log-fueling-rehearsal)."
 ### 6. Save the coaching session
 
 ```
-POST /api/training/coaching
+POST /training/coaching
 {
   "session_date": "{today}",
   "title": "Evening review — {today}",
@@ -120,7 +138,7 @@ If `today_plan` exists, mark its status:
 - `amended` if Avi did a different session than planned
 
 ```
-PUT /api/daily-plans/{plan_id}
+PUT /daily-plans/{plan_id}
 {
   "status": "...",
   "completion_notes": "{1-2 sentences from the review above}",

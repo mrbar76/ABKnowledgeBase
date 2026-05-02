@@ -4,7 +4,64 @@
 **Output:** One `coaching_session` record tagged `morning_brief`
 **Conditional logic:** Sunday → fold in weekly scorecard. 1st of month →
 fold in monthly physiology check. days_to_race ≤ 14 → fold in race-week
-pulse.
+pulse. Saturday during Shabbat window → home-basement modalities only.
+
+---
+
+## API access (read this first)
+
+**Base URL:** `https://ab-brain.up.railway.app/api`
+
+All endpoints below are relative to that base. Prepend the base URL to
+every path (e.g., `/health/insights/morning` → `https://ab-brain.up.railway.app/api/health/insights/morning`).
+
+**Auth:** Send the `X-Api-Key` header on every request. The API key is
+provided as the `AB_BRAIN_API_KEY` environment variable in this routine's
+configuration. If you can't find it, halt and report: do not proceed
+without auth.
+
+```
+curl -H "X-Api-Key: ${AB_BRAIN_API_KEY}" \
+     https://ab-brain.up.railway.app/api/health/insights/morning
+```
+
+**Apple Health (freshness fallback):** If the AB Brain reading shows
+`is_stale: true`, fall back to the Apple Health MCP for today's HRV /
+RHR / steps. Note the source as "apple_health" in the brief.
+
+**Shabbat times (Saturdays only):** Free, no auth.
+```
+GET https://www.hebcal.com/shabbat?cfg=json&zip=10705&geo=zip
+```
+
+---
+
+## How to run this routine
+
+This document is the **prompt body** for both manual and scheduled
+execution. Same content either way.
+
+**Manual run (testing or one-off):** Just execute every step below in
+order against today's date. Output goes to AB Brain via the POST in
+Step 6, surfaces on the home dashboard's "Today's Brief" card.
+
+**Scheduled run (autonomous):** Set up a Cloud Routine at
+https://claude.ai/code/routines with:
+- **Schedule:** `0 5 * * *` (cron — 5am daily, local timezone)
+- **Prompt:** the entire contents of this file from "## Steps" onward
+- **Repo:** `mrbar76/abknowledgebase`
+- **Env var:** `AB_BRAIN_API_KEY` set to the AB Brain key
+- **Permissions:** allow Bash + WebFetch (for Hebcal)
+
+The routine writes a `coaching_session` regardless of whether triggered
+manually or via cron — the data path is the same. The Today's Brief
+card on the home dashboard reads the most recent `coaching_session`
+tagged `morning_brief` for today's date.
+
+**Today's date is whatever the day actually is.** Check today's day-of-week
+and date-of-month at the START of the routine to determine which
+conditional sections fire (Sunday → weekly scorecard, 1st → physiology
+check, race ≤ 14d → race-week pulse, Friday/Saturday → Shabbat check).
 
 ---
 
@@ -18,14 +75,16 @@ logs. ADHD-aware externalization.
 
 ### 1. Pull context (parallel)
 
+All paths are relative to `https://ab-brain.up.railway.app/api`.
+
 ```
-GET /api/health/insights/morning
-GET /api/training/injuries/active/summary
-GET /api/workouts?since={yesterday}&limit=5
-GET /api/meals?date={yesterday}
-GET /api/nutrition/daily-summary?date={yesterday}
-GET /api/recovery/score?date={today}
-GET /api/daily-plans?date={today}
+GET /health/insights/morning
+GET /training/injuries/active/summary
+GET /workouts?since={yesterday}&limit=5
+GET /meals?date={yesterday}
+GET /nutrition/daily-summary?date={yesterday}
+GET /recovery/score?date={today}
+GET /daily-plans?date={today}
 ```
 
 If `/insights/morning.readiness.hrv.is_stale` is true, fall back to
@@ -33,9 +92,29 @@ Apple Health for today's HRV. Note the source in the brief.
 
 ### 2. Conditional pulls
 
-- **If today is Sunday** → also pull `GET /api/health/insights/weekly-review?week_of={yesterday}`
-- **If today is the 1st of the month** → pull `GET /api/athlete/profile` and check `effective_from` ages of LTHR, max HR, sweat rate, VO2
-- **If `/insights/morning.upcoming_race.days_to_race ≤ 14`** → pull `GET /api/health/insights/race?race_id={upcoming.id}`
+- **If today is Sunday** → also pull `GET /health/insights/weekly-review?week_of={yesterday}`
+- **If today is the 1st of the month** → pull `GET /athlete/profile` and check `effective_from` ages of LTHR, max HR, sweat rate, VO2
+- **If `/insights/morning.upcoming_race.days_to_race ≤ 14`** → pull `GET /health/insights/race?race_id={upcoming.id}`
+- **If today is Friday or Saturday** → fetch Hebcal to determine if Shabbat is currently active:
+  ```
+  GET https://www.hebcal.com/shabbat?cfg=json&zip=10705&geo=zip
+  ```
+  Default zip 10705 unless `daily_context.travel_status` is set (then ask in
+  the brief for current zip). Find candle-lighting and Havdalah times.
+  If today + current local time is between them, set `shabbat_active = true`.
+
+### 2.5. Apply Shabbat constraint
+
+If `shabbat_active = true`:
+- **Legal modalities only:** home-basement strength, mobility, walking
+  indoors, stretching, yoga, foam rolling. Indoor only.
+- **Illegal:** outdoor sessions, gym/Y, cycling outside, races, anything
+  requiring driving or screens-during.
+- If today's `daily_plans` row calls for an illegal modality, the brief's
+  prescription defaults to home-basement recovery. State the swap honestly.
+
+If today is Saturday but Shabbat ended last night (or starts later
+tonight), proceed without the constraint.
 
 ### 3. Apply hard rules
 
@@ -138,7 +217,7 @@ RACE WEEK PULSE — {race_name}, T-{days}
 ### 6. Save the coaching session
 
 ```
-POST /api/training/coaching
+POST /training/coaching
 {
   "session_date": "{today}",
   "title": "Morning brief — {today}",
@@ -160,7 +239,7 @@ If `/insights/morning.today_plan` is null OR was created > 7 days ago,
 also write a fresh `daily_plans` row for today:
 
 ```
-POST /api/daily-plans
+POST /daily-plans
 {
   "plan_date": "{today}",
   "workout_type": "...",
