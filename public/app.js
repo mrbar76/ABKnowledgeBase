@@ -413,6 +413,28 @@ async function fetchReadiness() {
   catch (e) { return null; }
 }
 
+// Inline-SVG sparkline. Returns '' if fewer than 2 finite values.
+// Used by Readiness, Training Load weekly card, Body trends, etc.
+function renderSparkline(values, opts = {}) {
+  const finite = (values || []).map(Number).filter(v => Number.isFinite(v));
+  if (finite.length < 2) return '';
+  const w = opts.width || 120;
+  const h = opts.height || 30;
+  const pad = opts.pad || 2;
+  const color = opts.color || 'currentColor';
+  const stroke = opts.strokeWidth || 1.5;
+  const min = Math.min(...finite), max = Math.max(...finite);
+  const range = (max - min) || 1;
+  const pts = finite.map((v, i) => {
+    const x = pad + (i * (w - 2 * pad)) / (finite.length - 1);
+    const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="display:block" aria-hidden="true">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
 function renderReadinessSection(r) {
   if (!r || r.readiness_score == null) return '';
   const score = Math.round(r.readiness_score);
@@ -436,22 +458,8 @@ function renderReadinessSection(r) {
   const fmtDev = (s) => s == null ? '' : (s >= 0 ? `+${s}σ` : `${s}σ`);
   const fmtSleep = (m) => m == null ? '—' : `${(m/60).toFixed(1)}h`;
 
-  // Inline SVG sparkline of last-7-day HRV
-  let spark = '';
-  const trend = (r.trend_7d || []).filter(d => d.hrv != null).map(d => d.hrv);
-  if (trend.length >= 2) {
-    const w = 120, h = 30, pad = 2;
-    const min = Math.min(...trend), max = Math.max(...trend);
-    const range = (max - min) || 1;
-    const pts = trend.map((v, i) => {
-      const x = pad + (i * (w - 2 * pad)) / (trend.length - 1);
-      const y = h - pad - ((v - min) / range) * (h - 2 * pad);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-    spark = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="display:block">
-      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/>
-    </svg>`;
-  }
+  const hrvTrend = (r.trend_7d || []).filter(d => d.hrv != null).map(d => d.hrv);
+  const spark = renderSparkline(hrvTrend, { color });
 
   return `
     <div class="dash-section fade-in stagger-1" onclick="fitnessSubTab='today';switchTab('fitness')" style="cursor:pointer">
@@ -6324,7 +6332,10 @@ async function loadNutrition(date) {
   const main = document.getElementById('fitness-content') || document.getElementById('main-content');
   main.innerHTML = skeletonCards(3);
   try {
-    const summary = await api(`/nutrition/daily-summary?date=${nutritionDate}`);
+    const [summary, balance] = await Promise.all([
+      api(`/nutrition/daily-summary?date=${nutritionDate}`),
+      api('/health/insights/nutrition?days=14').catch(() => null),
+    ]);
     const d = new Date(nutritionDate + 'T12:00:00');
     const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const ctx = summary.context;
@@ -6346,6 +6357,8 @@ async function loadNutrition(date) {
       </div>
 
       ${buildMacroDashboard(summary)}
+
+      ${renderCaloricBalanceStrip(balance)}
 
       ${ctx && ctx.hydration_liters ? `
       <div class="card mb-md" style="padding:10px;font-size:0.8rem">
@@ -6696,9 +6709,13 @@ async function loadBodyMetrics(searchQuery) {
     for (const [k, v] of Object.entries(bodyMetricFilters)) {
       if (k !== '_q' && v) params.set(k, v);
     }
-    const data = await api('/body-metrics?' + params.toString());
+    const [data, bodyTrends] = await Promise.all([
+      api('/body-metrics?' + params.toString()),
+      api('/health/insights/body').catch(() => null),
+    ]);
 
     main.innerHTML = `
+      ${renderBodyTrendStrip(bodyTrends)}
       <div class="list-search-row">
         <input type="text" class="brain-search" placeholder="Search body metrics..." value="${esc(searchQuery || '')}"
           oninput="debounceBodyMetricSearch(this.value)">
@@ -6729,7 +6746,194 @@ async function loadBodyMetrics(searchQuery) {
         }).join('') : '<div class="empty-state">No body metrics yet. Tap "+ Log" to add one!</div>'}
       </div>
     `;
+    drawBodyTrendChart(bodyTrends);
   } catch (e) { main.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+}
+
+// HRV-based readiness card. Distinct from the muscle-group recovery hero
+// (different question: this answers "is my autonomic nervous system recovered
+// from yesterday's training?"). Shares /health/insights/today response shape
+// with the home dashboard's renderReadinessSection().
+function renderHrvReadinessCard(r) {
+  if (!r || r.readiness_score == null) return '';
+  const score = Math.round(r.readiness_score);
+  const status = r.readiness_status || '';
+  const hasAlert = Array.isArray(r.alerts) && r.alerts.some(a => a.severity === 'high');
+  const color = hasAlert ? 'var(--red)'
+    : score >= 75 ? 'var(--color-physical)'
+    : score >= 55 ? 'var(--orange)'
+    : 'var(--red)';
+  const c = r.components || {};
+  const hrv = c.hrv || {};
+  const rhr = c.rhr || {};
+  const sleep = c.sleep || {};
+  const sq = c.sleep_quality || {};
+  const fmtDev = (s) => s == null ? '' : (s >= 0 ? `+${s}σ` : `${s}σ`);
+  const fmtSleep = (m) => m == null ? '—' : `${(m/60).toFixed(1)}h`;
+  const hrvTrend = (r.trend_7d || []).filter(d => d.hrv != null).map(d => d.hrv);
+  const spark = renderSparkline(hrvTrend, { color });
+  const alertBanner = hasAlert
+    ? `<div style="margin:0 0 8px;padding:8px 12px;background:color-mix(in srgb, var(--red) 12%, transparent);border-left:3px solid var(--red);border-radius:6px;font-size:0.78rem">
+         <strong>⚠ ${esc(r.alerts[0].reason)}</strong>
+         ${r.alerts.length > 1 ? `<div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">+${r.alerts.length - 1} more</div>` : ''}
+       </div>`
+    : '';
+  return `
+    <div class="card mb-md">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:baseline">
+        <span>HRV Readiness</span>
+        <span style="font-size:0.62rem;color:${color};letter-spacing:0.5px;text-transform:uppercase">${esc(status)}</span>
+      </div>
+      ${alertBanner}
+      <div style="display:flex;gap:14px;align-items:center">
+        <div style="text-align:center;flex-shrink:0">
+          <div class="font-data" style="font-size:1.8rem;font-weight:700;color:${color};line-height:1">${score}</div>
+          <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">readiness</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:6px;font-size:0.74rem">
+            <div><div style="color:var(--text-dim);font-size:0.62rem">HRV</div><div class="font-data">${hrv.today != null ? hrv.today + 'ms' : '—'} <span style="color:var(--text-dim);font-size:0.65rem">${fmtDev(hrv.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.62rem">RHR</div><div class="font-data">${rhr.today != null ? rhr.today : '—'} <span style="color:var(--text-dim);font-size:0.65rem">${fmtDev(rhr.deviation_sd)}</span></div></div>
+            <div><div style="color:var(--text-dim);font-size:0.62rem">Sleep</div><div class="font-data">${fmtSleep(sleep.last_night_min)}</div></div>
+            <div><div style="color:var(--text-dim);font-size:0.62rem">D+R</div><div class="font-data">${sq.deep_rem_pct != null ? sq.deep_rem_pct + '%' : '—'}</div></div>
+          </div>
+          ${r.recommendation ? `<div style="font-size:0.74rem;color:var(--text);margin-top:6px">${esc(r.recommendation)}</div>` : ''}
+        </div>
+        ${spark ? `<div style="flex-shrink:0">${spark}<div style="font-size:0.58rem;color:var(--text-dim);text-align:center;margin-top:2px">7d HRV</div></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderCaloricBalanceStrip(d) {
+  if (!d || !d.today) return '';
+  const t = d.today;
+  const wk = d.weekly_avg || {};
+  const balanceColor = t.balance == null ? 'var(--text-dim)'
+    : t.balance > 200 ? 'var(--orange)'
+    : t.balance < -200 ? 'var(--color-tactical)'
+    : 'var(--color-physical)';
+  const sign = (n) => n == null ? '—' : (n > 0 ? '+' : '') + n;
+  const proteinTarget = 1.6;
+  const proteinPct = t.protein_per_kg != null ? Math.min(100, Math.round((t.protein_per_kg / proteinTarget) * 100)) : null;
+  const proteinColor = t.protein_per_kg == null ? 'var(--text-dim)'
+    : t.protein_per_kg >= proteinTarget ? 'var(--color-physical)'
+    : t.protein_per_kg >= 1.2 ? 'var(--orange)'
+    : 'var(--red)';
+
+  const restFlag = d.rest_day_flag
+    ? `<div style="margin:0 0 8px;padding:8px 12px;background:color-mix(in srgb, var(--orange) 12%, transparent);border-left:3px solid var(--orange);border-radius:6px;font-size:0.78rem">
+         <strong>Recovery fueling:</strong> ${esc(d.rest_day_flag.message)}
+       </div>`
+    : '';
+
+  // 14-day balance bar sparkline (positive = surplus, negative = deficit)
+  let bars = '';
+  if (Array.isArray(d.history) && d.history.length >= 2) {
+    const maxAbs = Math.max(...d.history.map(h => Math.abs(h.balance || 0)), 1);
+    bars = `<div style="display:flex;align-items:center;gap:1px;height:32px;margin-top:6px">
+      ${d.history.map(h => {
+        const b = h.balance || 0;
+        const pct = (Math.abs(b) / maxAbs) * 100;
+        const c = b > 0 ? 'var(--orange)' : b < 0 ? 'var(--color-tactical)' : 'var(--text-dim)';
+        const align = b >= 0 ? 'flex-end' : 'flex-start';
+        return `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;height:100%" title="${h.date}: ${sign(b)} kcal">
+          <div style="height:50%;display:flex;align-items:${align}"><div style="width:100%;background:${c};height:${pct/2}%;border-radius:1px"></div></div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  return `
+    <div class="card mb-md">
+      <div class="card-title">Caloric Balance</div>
+      ${restFlag}
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
+        <div><div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">In</div><div class="font-data">${t.calories_in != null ? t.calories_in : '—'}</div></div>
+        <div><div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">Out</div><div class="font-data">${t.calories_out != null ? t.calories_out : '—'}</div></div>
+        <div><div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase">Balance</div><div class="font-data" style="color:${balanceColor}">${sign(t.balance)}</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:0.76rem">
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:2px">
+            <span>Protein</span>
+            <span><span class="font-data" style="color:${proteinColor}">${t.protein_per_kg != null ? t.protein_per_kg : '—'}</span> g/kg <span style="color:var(--text-dim)">(target ${proteinTarget})</span></span>
+          </div>
+          ${proteinPct != null ? `<div style="height:5px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${proteinPct}%;background:${proteinColor}"></div>
+          </div>` : ''}
+        </div>
+      </div>
+      ${bars ? `<div style="margin-top:10px"><div style="font-size:0.62rem;color:var(--text-dim)">14-day balance</div>${bars}</div>` : ''}
+      ${wk.balance != null ? `<div style="margin-top:6px;font-size:0.7rem;color:var(--text-dim)">7-day avg balance: <span class="font-data" style="color:var(--text)">${sign(wk.balance)}</span> kcal</div>` : ''}
+    </div>
+  `;
+}
+
+let _bodyTrendChart = null;
+
+function renderBodyTrendStrip(d) {
+  if (!d || !d.current) return '';
+  const cur = d.current;
+  const t = d.trends || {};
+  const fmtDelta = (v, suffix = '') => {
+    if (v == null) return '<span style="color:var(--text-dim)">—</span>';
+    const sign = v > 0 ? '+' : '';
+    const color = v < 0 ? 'var(--color-physical)' : v > 0 ? 'var(--orange)' : 'var(--text-dim)';
+    return `<span style="color:${color}">${sign}${v}${suffix}</span>`;
+  };
+  const card = (label, value, unit, deltas, suffix = '') => `
+    <div style="background:var(--bg-tertiary);padding:10px 12px;border-radius:8px">
+      <div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">${label}</div>
+      <div class="font-data" style="font-size:1.05rem;margin:2px 0">${value != null ? value : '—'}<span style="font-size:0.7rem;color:var(--text-dim)">${unit}</span></div>
+      <div style="font-size:0.7rem;display:flex;gap:8px">
+        <span>7d ${fmtDelta(deltas?.d7, suffix)}</span>
+        <span>30d ${fmtDelta(deltas?.d30, suffix)}</span>
+        <span>90d ${fmtDelta(deltas?.d90, suffix)}</span>
+      </div>
+    </div>`;
+  return `
+    <div class="card mb-md">
+      <div class="card-title">Trends</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+        ${card('Weight',       cur.weight_lb,    ' lb', t.weight,        ' lb')}
+        ${card('Body Fat',     cur.body_fat_pct, ' %',  t.body_fat_pct,  '%')}
+        ${card('Lean Mass',    cur.lean_mass_lb, ' lb', t.lean_mass_lb,  ' lb')}
+      </div>
+      ${Array.isArray(d.history) && d.history.length >= 2 ? `<canvas id="body-trend-chart" height="140" style="max-height:140px;margin-top:10px"></canvas>` : ''}
+    </div>
+  `;
+}
+
+function drawBodyTrendChart(d) {
+  if (_bodyTrendChart) { _bodyTrendChart.destroy(); _bodyTrendChart = null; }
+  if (!d || !Array.isArray(d.history) || d.history.length < 2) return;
+  const el = document.getElementById('body-trend-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  const labels = d.history.map(h => h.date);
+  const css = getComputedStyle(document.documentElement);
+  const fg = css.getPropertyValue('--text-dim').trim() || '#888';
+  _bodyTrendChart = new Chart(el, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Weight (lb)',    data: d.history.map(h => h.weight_lb),    borderColor: '#06b6d4', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y' },
+        { label: 'Lean Mass (lb)', data: d.history.map(h => h.lean_mass_lb), borderColor: '#22c55e', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y' },
+        { label: 'Body Fat (%)',   data: d.history.map(h => h.body_fat_pct), borderColor: '#f59e0b', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y1' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, color: fg } }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { ticks: { color: fg, maxRotation: 0, autoSkipPadding: 24, font: { size: 9 } }, grid: { display: false } },
+        y:  { position: 'left',  ticks: { color: fg, font: { size: 9 } }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        y1: { position: 'right', ticks: { color: fg, font: { size: 9 } }, grid: { display: false } },
+      },
+    },
+  });
 }
 
 let bodyMetricSearchTimer = null;
@@ -7177,9 +7381,10 @@ async function loadRecovery(date) {
   main.innerHTML = skeletonCards(3);
   try {
     const today = recoveryDate;
-    const [scoreData, trendData] = await Promise.all([
+    const [scoreData, trendData, readiness] = await Promise.all([
       api(`/recovery/score?date=${today}`),
       api(`/recovery/trend?date=${today}&days=7`),
+      api('/health/insights/today').catch(() => null),
     ]);
 
     const s = scoreData;
@@ -7228,6 +7433,8 @@ async function loadRecovery(date) {
           <div class="recovery-score-label">${s.label}</div>
         </div>
       </div>
+
+      ${renderHrvReadinessCard(readiness)}
 
       <!-- Explainer -->
       <details class="card mb-md" style="padding:12px">
@@ -7414,11 +7621,13 @@ async function loadUnifiedPlans() {
   sunDate.setDate(monday.getDate() + 6);
   const sunStr = sunDate.toLocaleDateString('en-CA');
 
-  // Fetch week plans + training plans + selected day data in parallel
+  // Fetch week plans + training plans + selected day data in parallel.
+  // training-load is best-effort — the strip degrades gracefully if it errors.
   try {
-    const [weekData, dayData] = await Promise.all([
+    const [weekData, dayData, trainingLoad] = await Promise.all([
       api(`/daily-plans?from=${monStr}&to=${sunStr}`),
       api(`/training/day/${plansSelectedDate}`),
+      api('/health/insights/training?days=90').catch(() => null),
     ]);
 
     const weekPlans = weekData.results || [];
@@ -7459,6 +7668,9 @@ async function loadUnifiedPlans() {
     if (plansWeekOffset !== 0) {
       html += `<div style="text-align:center;margin-bottom:8px"><button class="btn-action" style="font-size:0.7rem;padding:2px 10px" onclick="plansWeekOffset=0;plansSelectedDate='${todayStr}';loadUnifiedPlans()">Back to today</button></div>`;
     }
+
+    // ── Training load strip (ATL/CTL/TSB + weekly volume) ──
+    html += renderTrainingLoadStrip(trainingLoad);
 
     // ── Hero plan card ──
     const dp = dayData.daily_plan;
@@ -7638,9 +7850,89 @@ async function loadUnifiedPlans() {
     }
 
     container.innerHTML = html;
+    drawTrainingLoadChart(trainingLoad);
   } catch (e) {
     container.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
   }
+}
+
+// Holds the Chart.js instance so we can destroy() before re-render
+let _trainingLoadChart = null;
+
+function renderTrainingLoadStrip(d) {
+  if (!d || !d.current) return '';
+  const cur = d.current;
+  const wk = d.weekly || {};
+  const statusColor = cur.status === 'fresh' ? 'var(--color-physical)'
+    : cur.status === 'neutral' ? 'var(--color-tactical)'
+    : cur.status === 'fatigued' ? 'var(--orange)'
+    : 'var(--red)';
+  const statusLabel = (cur.status || '').replace('_', ' ').toUpperCase();
+  const tsbSign = (cur.tsb >= 0 ? '+' : '') + (cur.tsb != null ? cur.tsb : '—');
+
+  const z = wk.time_in_zone_min || {};
+  const zTotal = ['z1','z2','z3','z4','z5'].reduce((s, k) => s + (z[k] || 0), 0);
+  const zoneBars = zTotal > 0
+    ? `<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--bg-tertiary);margin-top:4px">
+        ${['z1','z2','z3','z4','z5'].map((zk, i) => {
+          const pct = ((z[zk] || 0) / zTotal) * 100;
+          const c = ['#9ca3af','#3b82f6','#22c55e','#f59e0b','#ef4444'][i];
+          return pct > 0 ? `<div style="width:${pct}%;background:${c}" title="${zk.toUpperCase()}: ${Math.round(z[zk] || 0)} min"></div>` : '';
+        }).join('')}
+      </div>`
+    : '';
+
+  return `
+    <div class="card mb-md">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:baseline">
+        <span>Training Load</span>
+        <span style="font-size:0.65rem;color:${statusColor};letter-spacing:0.5px">${statusLabel}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px">
+        <div><div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase">Fitness (CTL)</div><div class="font-data" style="font-size:1.1rem">${cur.ctl != null ? cur.ctl : '—'}</div></div>
+        <div><div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase">Fatigue (ATL)</div><div class="font-data" style="font-size:1.1rem">${cur.atl != null ? cur.atl : '—'}</div></div>
+        <div><div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase">Form (TSB)</div><div class="font-data" style="font-size:1.1rem;color:${statusColor}">${tsbSign}</div></div>
+      </div>
+      <canvas id="training-load-chart" height="120" style="max-height:120px;margin-top:4px"></canvas>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px;font-size:0.72rem;color:var(--text-dim)">
+        <div><span class="font-data" style="color:var(--text)">${wk.workouts || 0}</span> workouts</div>
+        <div><span class="font-data" style="color:var(--text)">${wk.miles != null ? wk.miles : 0}</span> mi</div>
+        <div><span class="font-data" style="color:var(--text)">${wk.hours != null ? wk.hours : 0}</span> hrs</div>
+        <div><span class="font-data" style="color:var(--text)">${wk.tss || 0}</span> TSS</div>
+      </div>
+      ${zoneBars ? `<div style="margin-top:8px"><div style="font-size:0.65rem;color:var(--text-dim)">7-day time in zone</div>${zoneBars}</div>` : ''}
+    </div>
+  `;
+}
+
+function drawTrainingLoadChart(d) {
+  if (_trainingLoadChart) { _trainingLoadChart.destroy(); _trainingLoadChart = null; }
+  if (!d || !Array.isArray(d.history) || d.history.length < 2) return;
+  const el = document.getElementById('training-load-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  const labels = d.history.map(h => h.date);
+  const css = getComputedStyle(document.documentElement);
+  const fg = css.getPropertyValue('--text-dim').trim() || '#888';
+  _trainingLoadChart = new Chart(el, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'CTL (Fitness)', data: d.history.map(h => h.ctl), borderColor: '#3b82f6', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+        { label: 'ATL (Fatigue)', data: d.history.map(h => h.atl), borderColor: '#ef4444', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+        { label: 'TSB (Form)', data: d.history.map(h => h.tsb), borderColor: '#22c55e', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2, borderDash: [4, 3] },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, color: fg } }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { ticks: { color: fg, maxRotation: 0, autoSkipPadding: 18, font: { size: 9 } }, grid: { display: false } },
+        y: { ticks: { color: fg, font: { size: 9 } }, grid: { color: 'rgba(128,128,128,0.1)' } },
+      },
+    },
+  });
 }
 
 async function quickUpdatePlanStatus(id, status) {
