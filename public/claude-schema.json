@@ -1707,6 +1707,84 @@
         }
       }
     },
+    "/health/insights/today": {
+      "get": {
+        "operationId": "getInsightsToday",
+        "summary": "Today's recovery readiness (HRV/RHR/sleep with σ-deviation, score 0-100, coaching alerts)",
+        "description": "Recovery readiness for the most recent day. HRV/RHR/sleep automatically fall back to the most recent non-null reading when today's row is partially populated; check `components.<metric>.is_stale` and `as_of` to detect the fallback.",
+        "responses": { "200": { "description": "Readiness snapshot + 7d trend + dow_patterns + sleep_history_30d + alerts (Rules A/B from coaching-rules.md)" } }
+      }
+    },
+    "/health/insights/training": {
+      "get": {
+        "operationId": "getInsightsTraining",
+        "summary": "Training load: ATL/CTL/TSB + weekly volume + Z2 trend",
+        "responses": { "200": { "description": "Load metrics" } }
+      }
+    },
+    "/health/insights/body": {
+      "get": {
+        "operationId": "getInsightsBody",
+        "summary": "Body composition trends (weight, body-fat %, lean mass)",
+        "responses": { "200": { "description": "Body trend" } }
+      }
+    },
+    "/health/insights/nutrition": {
+      "get": {
+        "operationId": "getInsightsNutrition",
+        "summary": "Caloric balance + macro deficits + rest-day underfueling flag (Rule C)",
+        "responses": { "200": { "description": "Nutrition trend" } }
+      }
+    },
+    "/health/insights/trends": {
+      "get": {
+        "operationId": "getInsightsTrends",
+        "summary": "Single aggregator powering Trends UI and Coach. Returns sleep/nutrition/training/body/vitals each with current, target, direction, history.",
+        "description": "Apple-Trends-style direction flags (`up`/`down`/`stable`) trip when the last 30 days deviate from the prior 60 by more than 0.5σ. Sleep section also includes Sleep Score 0-100, rolling debt over 7/14/30 nights (clamped to ≥0, no banking surplus), and a 90-night history. Each section's `target` carries `value`, `comparison` (`gte`/`lte`/`between`), and `source` (`user` or `default`). When recommending changes the Coach should compare current values to targets and reference direction flags as evidence.",
+        "responses": { "200": { "description": "Aggregator payload" } }
+      }
+    },
+    "/targets": {
+      "get": {
+        "operationId": "listTargets",
+        "summary": "List all active user targets enriched with current observed values + on_track/below/above flag",
+        "responses": { "200": { "description": "Targets array" } }
+      }
+    },
+    "/targets/{metric}": {
+      "get": {
+        "operationId": "getTarget",
+        "summary": "Get one target by metric name",
+        "parameters": [{ "name": "metric", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Target" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "operationId": "setTarget",
+        "summary": "Set or update a target. Valid metrics include: sleep_duration_min, protein_g, calories_kcal, carbs_g, fat_g, weight_lb, body_fat_pct, weekly_z2_min, weekly_workouts, weekly_tss, hrv_ms, resting_hr_bpm.",
+        "parameters": [{ "name": "metric", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["target_value"],
+            "properties": {
+              "target_value": { "type": "number" },
+              "target_value_max": { "type": "number", "description": "Required when comparison is 'between'" },
+              "comparison": { "type": "string", "enum": ["gte", "lte", "between"] },
+              "timeframe": { "type": "string", "enum": ["daily", "weekly", "monthly", "long_term"] },
+              "rationale": { "type": "string" }
+            }
+          }}}
+        },
+        "responses": { "200": { "description": "Saved target" } }
+      },
+      "delete": {
+        "operationId": "deleteTarget",
+        "summary": "Revert a target to default (deletes the user's override).",
+        "parameters": [{ "name": "metric", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
     "/dashboard": {
       "get": {
         "operationId": "getDashboard",

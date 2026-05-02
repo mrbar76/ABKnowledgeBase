@@ -83,3 +83,39 @@ counts double the real volume.
   the score when any alerts are present.
 - `routes/health.js mergeAllWorkoutDuplicates()` — Rule D runs every time
   workouts ingest from Format A or D, automatically.
+
+## Trends endpoint (Coach API)
+
+The Coach should fetch `GET /api/health/insights/trends` for the user's full
+state in a single call. Shape:
+
+```
+{
+  generated_at: ISO,
+  windows: { short: 7, medium: 30, long: 90 },
+  sleep:     { current, target, score, trend, debt: { rolling_7d, rolling_14d, rolling_30d }, regularity, history },
+  nutrition: { today, targets: { calories, protein, carbs, fat }, rolling: { d7, d30 }, protein_trend, history },
+  training:  { current: { atl, ctl, tsb, weekly_tss, weekly_z2_min, weekly_workouts, weekly_miles, weekly_hours }, targets, load_trend, history },
+  body:      { current, targets, weight_trend, history },
+  vitals:    { hrv, rhr, vo2_max, walking_speed_mph, walking_asymmetry_pct },
+  alerts:    [...]    // composite — same Rules A/B as /insights/today
+}
+```
+
+### How the Coach should use it
+
+1. **Check `alerts` first.** If any have `severity: 'high'`, override training
+   recommendations with rest/deload regardless of HRV.
+2. **Compare current vs target per section.** Each section has `target`
+   (with `value`, optional `value_max`, `comparison`, `source`). When `source
+   === 'user'` the target is athlete-set and should be respected over defaults.
+3. **Use `direction` to spot drift early.** Direction is set when the 30d mean
+   deviates from the prior-60d mean by > 0.5σ. `up`/`down`/`stable`. For sleep
+   duration `up` is good, for RHR/weight `down` is good — the UI inverts the
+   color but the raw flag is uncolored.
+4. **Sleep is the user's named #1 weakness.** Lead with it. Reference the
+   Sleep Score (0-100), the rolling debt in hours, and the stage breakdown.
+   When debt > 2h over 14 days, recommend earlier bedtime tonight.
+5. **Targets editor.** Coach can guide the user to Settings → Fitness & Gym →
+   Targets to adjust any goal. Default targets are athlete-appropriate but the
+   user can override.
