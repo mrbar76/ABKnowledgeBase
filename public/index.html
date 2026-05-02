@@ -125,6 +125,12 @@
               <div id="misordered-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
+              <div class="sm-card-label">Reparse Health Imports</div>
+              <div class="sm-card-desc">Re-runs the parser on every stored HAE/LODE payload. Use after parser changes (e.g. new sleep handling) to backfill columns that were previously skipped. Idempotent.</div>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="reparseHealthImports()" id="btn-reparse-health">Reparse All</button>
+              <div id="sm-reparse-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
               <div class="sm-card-label">ChatGPT Import</div>
               <div class="sm-card-desc">Import exported conversations.json &mdash; duplicates auto-skipped.</div>
               <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">

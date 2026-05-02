@@ -2295,6 +2295,25 @@ async function fixMisorderedTranscripts() {
   }
 }
 
+async function reparseHealthImports() {
+  const btn = document.getElementById('btn-reparse-health');
+  const out = document.getElementById('sm-reparse-result');
+  if (!confirm('Reparse every stored HAE / LODE payload? Idempotent — safe but may take 10–60 seconds for large histories.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Reparsing…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Running…'; }
+  try {
+    const data = await api('/health/reparse', { method: 'POST', body: '{}' });
+    if (out) {
+      out.style.color = 'var(--green)';
+      out.textContent = `✓ Reparsed ${data.reparsed} files · ${data.duplicates_merged ?? 0} duplicates merged · ${data.tss_recomputed ?? 0} TSS rows updated`;
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Reparse All'; }
+  }
+}
+
 // ─── Contacts Management ────────────────────────────────────
 async function loadContactsList() {
   const list = document.getElementById('contacts-list');
