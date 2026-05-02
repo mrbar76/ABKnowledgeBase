@@ -314,9 +314,17 @@ async function buildDailySummary(targetDate) {
     rationale: plan.rationale,
   } : null;
 
-  // If plan targets exist, prefer them over the workout-tier classification
-  // for the intensity_source label so the UI shows "from plan" provenance.
-  const finalIntensity = planTargets ? {
+  // Only flip intensity_source to 'plan' when the plan actually carries
+  // macro targets — not just because a plan row exists. Otherwise the UI
+  // misleadingly says "plan: hybrid" while the calorie number still came
+  // from the static MACRO_GOALS hard-day fallback.
+  const planHasMacroTargets = planTargets && (
+    planTargets.calories != null
+    || planTargets.protein_g != null
+    || planTargets.carbs_g != null
+    || planTargets.fat_g != null
+  );
+  const finalIntensity = planHasMacroTargets ? {
     ...intensity,
     intensity_source: 'plan',
     planned_type: planTargets.workout_type || planTargets.intent_type || intensity.planned_type,

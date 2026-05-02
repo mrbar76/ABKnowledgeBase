@@ -6743,11 +6743,13 @@ function buildMacroDashboard(summary, activityRow) {
   const badgeColor = badgeColors[tier] || '#f59e0b';
   // Targets-from-plan wins the label even when the tier classification came
   // from logged workouts — what matters to the athlete is "where did this
-  // 5500 kcal target come from?", not "how was hard-day detected?".
+  // 5500 kcal target come from?", not "how was hard-day detected?". When a
+  // plan exists but didn't set target_calories, fall through to the tier
+  // labelling so the badge doesn't lie about target provenance.
   const targetsFromPlan = goals.source === 'plan';
   const sourceLabel = targetsFromPlan ? `plan: ${planned || 'today'}`
     : src === 'workout' ? `workout: ${planned}`
-    : src === 'plan' ? `plan: ${planned}`
+    : src === 'plan' ? `plan: ${planned} (no macro targets)`
     : src === 'context' ? `set: ${planned}`
     : src === 'override' ? 'manual'
     : 'default';
