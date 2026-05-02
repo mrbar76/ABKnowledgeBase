@@ -164,12 +164,24 @@ function consecutiveHardDayAlerts(workouts) {
   return [];
 }
 
+// Normalize a daily_activity / meals row's date column to YYYY-MM-DD,
+// regardless of whether pg returned it as a Date object, ISO string, or
+// already-stripped date string. Avoids invalid-date crashes downstream.
+function dateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
 function hrvByDayOfWeek(rows) {
   const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const buckets = Object.fromEntries(dows.map(d => [d, []]));
   for (const r of rows) {
     if (r.hrv_sdnn_ms == null || !r.activity_date) continue;
-    const d = new Date(r.activity_date + 'T12:00:00');
+    const ds = dateOnly(r.activity_date);
+    if (!ds) continue;
+    const d = new Date(ds + 'T12:00:00');
+    if (isNaN(d.getTime())) continue;
     buckets[dows[d.getDay()]].push(Number(r.hrv_sdnn_ms));
   }
   const out = {};
@@ -185,27 +197,33 @@ function hrvByDayOfWeek(rows) {
 function dowPatterns(activityRows, workoutRows, mealRows) {
   const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const buckets = Object.fromEntries(dows.map(d => [d, { hrv: [], effort: [], sleep: [], cals: [] }]));
-  // Index workouts by date (max effort per day)
+  // Index workouts by date (max effort per day) — normalize date keys
   const effortByDate = new Map();
   for (const w of workoutRows || []) {
     const e = Number(w.effort) || 0;
-    const cur = effortByDate.get(w.workout_date) || 0;
-    if (e > cur) effortByDate.set(w.workout_date, e);
+    const ds = dateOnly(w.workout_date);
+    if (!ds) continue;
+    const cur = effortByDate.get(ds) || 0;
+    if (e > cur) effortByDate.set(ds, e);
   }
   // Index meals' calorie sum by date
   const mealsByDate = new Map();
   for (const m of mealRows || []) {
-    mealsByDate.set(m.meal_date, Number(m.kcal) || 0);
+    const ds = dateOnly(m.meal_date);
+    if (ds) mealsByDate.set(ds, Number(m.kcal) || 0);
   }
   for (const r of activityRows) {
-    if (!r.activity_date) continue;
-    const d = new Date(r.activity_date + 'T12:00:00');
+    const ds = dateOnly(r.activity_date);
+    if (!ds) continue;
+    const d = new Date(ds + 'T12:00:00');
+    if (isNaN(d.getTime())) continue;
     const key = dows[d.getDay()];
+    if (!buckets[key]) continue;
     if (r.hrv_sdnn_ms != null) buckets[key].hrv.push(Number(r.hrv_sdnn_ms));
     if (r.sleep_total_min != null) buckets[key].sleep.push(Number(r.sleep_total_min));
-    const ef = effortByDate.get(r.activity_date);
+    const ef = effortByDate.get(ds);
     if (ef != null) buckets[key].effort.push(ef);
-    const inK = mealsByDate.get(r.activity_date);
+    const inK = mealsByDate.get(ds);
     if (inK != null) {
       const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
       buckets[key].cals.push(inK - out);
@@ -327,14 +345,14 @@ router.get('/today', async (req, res) => {
 
     // Last 7 days for sparkline
     const trend7d = rows.slice(-7).map(r => ({
-      date: r.activity_date,
+      date: dateOnly(r.activity_date),
       hrv: r.hrv_sdnn_ms != null ? Number(r.hrv_sdnn_ms) : null,
       rhr: r.resting_hr_bpm != null ? Number(r.resting_hr_bpm) : null,
       sleep_min: r.sleep_total_min != null ? Number(r.sleep_total_min) : null,
     }));
 
     res.json({
-      date: todayRow.activity_date || today,
+      date: dateOnly(todayRow.activity_date) || today,
       readiness_score: score,
       readiness_status: status,
       recommendation,
@@ -350,7 +368,7 @@ router.get('/today', async (req, res) => {
       hrv_by_day_of_week: hrvByDayOfWeek(rows),
       dow_patterns: dowPatterns(rows, dowWorkouts.rows, dowMeals.rows),
       sleep_history_30d: rows.slice(-30).map(r => ({
-        date: r.activity_date,
+        date: dateOnly(r.activity_date),
         total_min: r.sleep_total_min != null ? Number(r.sleep_total_min) : null,
         deep_min: r.sleep_deep_min != null ? Number(r.sleep_deep_min) : null,
         rem_min: r.sleep_rem_min != null ? Number(r.sleep_rem_min) : null,

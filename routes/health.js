@@ -444,22 +444,66 @@ function parseFormatD(body) {
     if (!map) { skippedMetrics.push(metric.name); continue; }
     mappedMetrics.push(metric.name);
 
-    // Sleep analysis has multiple fields per data point — handle separately
+    // Sleep analysis ships in two shapes from HAE:
+    //   1. Aggregated: one row per night with totalSleep / deep / rem / core /
+    //      asleep / inBed (in hours).
+    //   2. Unaggregated: one row per sleep PHASE with startDate / endDate /
+    //      qty / value where value is "Asleep" / "Core" / "REM" / "Deep" /
+    //      "Awake" / "In Bed". qty is in metric.units (typically "hr").
+    // Detect which form we have by inspecting the first data point with keys.
     if (map.target === 'sleep') {
+      const phaseAccum = new Map(); // date → { asleep, core, rem, deep, awake, inBed } in hours
       for (const dp of metric.data || []) {
-        const dateStr = dp.sleepEnd || dp.inBedEnd || dp.date;
+        // Aggregated branch (multi-field per row)
+        if (dp.totalSleep != null || dp.asleep != null || dp.deep != null || dp.rem != null || dp.core != null) {
+          const dateStr = dp.sleepEnd || dp.inBedEnd || dp.date;
+          if (!dateStr) continue;
+          const d = String(dateStr).slice(0, 10);
+          if (!byDate.has(d)) byDate.set(d, { activity_date: d });
+          const row = byDate.get(d);
+          if (dp.totalSleep != null) row.sleep_total_min = Math.round(dp.totalSleep * 60);
+          if (dp.deep != null) row.sleep_deep_min = Math.round(dp.deep * 60);
+          if (dp.rem != null) row.sleep_rem_min = Math.round(dp.rem * 60);
+          if (dp.core != null) row.sleep_core_min = Math.round(dp.core * 60);
+          if (dp.inBed != null && dp.asleep != null) {
+            row.sleep_awake_min = Math.round(Math.max(0, (dp.inBed - dp.asleep) * 60));
+            if (dp.inBed > 0) row.sleep_efficiency_pct = round1((dp.asleep / dp.inBed) * 100);
+          }
+          continue;
+        }
+        // Unaggregated branch (one phase per row)
+        const dateStr = dp.endDate || dp.end_date || dp.date || dp.startDate;
         if (!dateStr) continue;
         const d = String(dateStr).slice(0, 10);
+        const value = String(dp.value || '').toLowerCase().replace(/\s+/g, '');
+        const qty = Number(dp.qty ?? dp.value_qty ?? dp.duration);
+        if (!isFinite(qty) || qty <= 0) continue;
+        // qty unit normalization. metric.units typically "hr"; sometimes "min"
+        // (HAE older builds). Convert everything to hours.
+        const unitMul = String(metric.units || '').toLowerCase().startsWith('min') ? (1/60) : 1;
+        const hrs = qty * unitMul;
+        if (!phaseAccum.has(d)) phaseAccum.set(d, { asleep: 0, core: 0, rem: 0, deep: 0, awake: 0, inBed: 0 });
+        const acc = phaseAccum.get(d);
+        if (value === 'asleep' || value === 'asleepunspecified' || value === 'unspecified') acc.asleep += hrs;
+        else if (value === 'core' || value === 'asleepcore') acc.core += hrs;
+        else if (value === 'rem' || value === 'asleeprem') acc.rem += hrs;
+        else if (value === 'deep' || value === 'asleepdeep') acc.deep += hrs;
+        else if (value === 'awake') acc.awake += hrs;
+        else if (value === 'inbed' || value === 'in_bed') acc.inBed += hrs;
+      }
+      // Roll phaseAccum into daily_activity rows
+      for (const [d, p] of phaseAccum) {
         if (!byDate.has(d)) byDate.set(d, { activity_date: d });
         const row = byDate.get(d);
-        if (dp.totalSleep != null) row.sleep_total_min = Math.round(dp.totalSleep * 60);
-        if (dp.deep != null) row.sleep_deep_min = Math.round(dp.deep * 60);
-        if (dp.rem != null) row.sleep_rem_min = Math.round(dp.rem * 60);
-        if (dp.core != null) row.sleep_core_min = Math.round(dp.core * 60);
-        if (dp.inBed != null && dp.asleep != null) {
-          row.sleep_awake_min = Math.round(Math.max(0, (dp.inBed - dp.asleep) * 60));
-          if (dp.inBed > 0) row.sleep_efficiency_pct = round1((dp.asleep / dp.inBed) * 100);
-        }
+        // Total = Core + REM + Deep + (any plain Asleep that wasn't classified)
+        const total = p.core + p.rem + p.deep + p.asleep;
+        if (total > 0) row.sleep_total_min = Math.round(total * 60);
+        if (p.deep > 0) row.sleep_deep_min = Math.round(p.deep * 60);
+        if (p.rem > 0) row.sleep_rem_min = Math.round(p.rem * 60);
+        if (p.core > 0) row.sleep_core_min = Math.round(p.core * 60);
+        if (p.awake > 0) row.sleep_awake_min = Math.round(p.awake * 60);
+        const inBed = p.inBed > 0 ? p.inBed : (total + p.awake);
+        if (inBed > 0 && total > 0) row.sleep_efficiency_pct = round1((total / inBed) * 100);
       }
       continue;
     }
