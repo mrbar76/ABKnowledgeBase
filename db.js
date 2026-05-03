@@ -6,17 +6,22 @@ const { Pool } = require('pg');
 
 const APP_TIMEZONE = process.env.TZ || process.env.APP_TIMEZONE || 'America/New_York';
 
+// Set timezone via the PG protocol startup options. This avoids the
+// deprecated `pool.on('connect', client => client.query(...))` pattern
+// which fires the warning:
+//   "Calling client.query() when the client is already executing a
+//    query is deprecated and will be removed in pg@9.0"
+// because the connect handler doesn't await the SET, leaving the
+// client in an indeterminate state when subsequent queries arrive.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
     ? { rejectUnauthorized: false }
     : false,
   max: 20,
-});
-
-// Set timezone on every new connection so CURRENT_DATE, NOW(), etc. use the user's local time
-pool.on('connect', (client) => {
-  client.query(`SET timezone = '${APP_TIMEZONE}'`).catch(() => {});
+  // -c key=value sets a server parameter at connection startup; no
+  // separate SQL roundtrip required.
+  options: `-c timezone=${APP_TIMEZONE}`,
 });
 
 async function query(text, params) {
@@ -396,7 +401,6 @@ async function initDB() {
     )`);
   await safeQuery('coaching_sessions indexes', `
     CREATE INDEX IF NOT EXISTS idx_coaching_sessions_date ON coaching_sessions(session_date DESC);
-    CREATE INDEX IF NOT EXISTS idx_coaching_sessions_plan ON coaching_sessions(training_plan_id);
     CREATE INDEX IF NOT EXISTS idx_coaching_sessions_tags ON coaching_sessions USING gin(tags);
     CREATE INDEX IF NOT EXISTS idx_coaching_sessions_search ON coaching_sessions USING gin(search_vector);
     CREATE INDEX IF NOT EXISTS idx_coaching_sessions_trgm ON coaching_sessions USING gin(
@@ -433,7 +437,6 @@ async function initDB() {
     )`);
   await safeQuery('daily_plans indexes', `
     CREATE INDEX IF NOT EXISTS idx_daily_plans_date ON daily_plans(plan_date DESC);
-    CREATE INDEX IF NOT EXISTS idx_daily_plans_training_plan ON daily_plans(training_plan_id);
     CREATE INDEX IF NOT EXISTS idx_daily_plans_status ON daily_plans(status);
     CREATE INDEX IF NOT EXISTS idx_daily_plans_tags ON daily_plans USING gin(tags)
   `);
@@ -717,7 +720,18 @@ async function initDB() {
   await safeQuery('meals +updated_at', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
   // -- daily_context migrations (renamed from daily_nutrition_context) --
-  await safeQuery('rename dnc→dc', `ALTER TABLE IF EXISTS daily_nutrition_context RENAME TO daily_context`);
+  // Only rename if source exists AND target does NOT — otherwise the
+  // RENAME errors with "relation 'daily_context' already exists" on
+  // every restart after the rename succeeds.
+  await safeQuery('rename dnc→dc', `
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'daily_nutrition_context')
+         AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'daily_context') THEN
+        ALTER TABLE daily_nutrition_context RENAME TO daily_context;
+      END IF;
+    END $$;
+  `);
   await safeQuery('dc +day_type', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS day_type TEXT`);
   await safeQuery('dc +hydration_liters', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS hydration_liters NUMERIC(4,2)`);
   await safeQuery('dc +energy_rating', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS energy_rating INTEGER`);
@@ -1603,9 +1617,19 @@ async function initDB() {
   // imply 60 grams = lethal). Rename, no conversion — existing values
   // were always mg-semantic regardless of the column name.
   await safeQuery('fueling_rehearsals add mg_caffeine_total', `ALTER TABLE fueling_rehearsals ADD COLUMN IF NOT EXISTS mg_caffeine_total NUMERIC(7,1)`);
+  // Only copy if the source column still exists. After the DROP below
+  // succeeds, this UPDATE would fail with "column g_caffeine_total
+  // does not exist" on every restart.
   await safeQuery('fueling_rehearsals copy g→mg caffeine', `
-    UPDATE fueling_rehearsals SET mg_caffeine_total = g_caffeine_total
-    WHERE mg_caffeine_total IS NULL AND g_caffeine_total IS NOT NULL`);
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'fueling_rehearsals' AND column_name = 'g_caffeine_total') THEN
+        UPDATE fueling_rehearsals SET mg_caffeine_total = g_caffeine_total
+        WHERE mg_caffeine_total IS NULL AND g_caffeine_total IS NOT NULL;
+      END IF;
+    END $$;
+  `);
   await safeQuery('fueling_rehearsals drop g_caffeine_total', `ALTER TABLE fueling_rehearsals DROP COLUMN IF EXISTS g_caffeine_total`);
   // Add ai_source for provenance — was missing.
   await safeQuery('fueling_rehearsals +ai_source', `ALTER TABLE fueling_rehearsals ADD COLUMN IF NOT EXISTS ai_source TEXT`);

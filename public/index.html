@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.5 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Naming is Coach&rsquo;s job, not the system&rsquo;s.</strong> v1.8.4 silently disambiguated colliding titles. Removed &mdash; the system now surfaces collisions via <code>warnings.title_collisions[]</code> in the push response so Coach learns to set <code>title_suffix</code>. Skill updated: REQUIRED when block_labels collide.</p>
+                  <p><strong>Deploy log noise.</strong> Three already-applied migrations were erroring on every restart (training_plan_id index, dnc&rarr;dc rename, g&rarr;mg caffeine copy). Wrapped each in <code>DO $$ ... END $$</code> conditionals or removed the dead index entirely.</p>
+                  <p><strong>pg client.query() DeprecationWarning.</strong> Replaced <code>pool.on(&lsquo;connect&rsquo;, client =&gt; client.query(SET timezone))</code> with <code>Pool({ options: &lsquo;-c timezone=&hellip;&rsquo; })</code>. Timezone now set during the PG protocol handshake; no client.query() needed.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.4 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -699,7 +712,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.4</span>
+          AB Brain <span id="sm-version">v1.8.5</span>
         </div>
 
       </div>

@@ -804,24 +804,29 @@ async function pushPlanToHevy(planRow, _unused, folderId) {
   const hevySegments = segR.rows.filter(s => s.logging_target === 'hevy');
 
   if (hevySegments.length > 0) {
-    // Auto-disambiguate titles when multiple Hevy segments share a
-    // block_label and Coach didn't supply title_suffix. Without this,
-    // two strength segments both produce "<plan.title> (Strength)" and
-    // collide in the AB Brain Plans folder. We mutate a copy so the
-    // DB row stays untouched.
-    const labelCounts = {};
-    for (const s of hevySegments) labelCounts[s.block_label] = (labelCounts[s.block_label] || 0) + 1;
-    const labelSeen = {};
-    const segsWithSuffix = hevySegments.map(s => {
-      if (s.title_suffix) return s;
-      if (labelCounts[s.block_label] <= 1) return s;
-      labelSeen[s.block_label] = (labelSeen[s.block_label] || 0) + 1;
-      const cap = s.block_label.charAt(0).toUpperCase() + s.block_label.slice(1);
-      return { ...s, title_suffix: `${cap} ${labelSeen[s.block_label]}` };
-    });
+    // Naming is Coach's responsibility. If two segments share a
+    // block_label and Coach didn't set title_suffix on each, the Hevy
+    // routine titles will collide. We don't auto-fix — that hides
+    // Coach mistakes. Instead we surface the collision in the response
+    // so the caller (and the user) sees what went wrong.
+    const titleCollisions = [];
+    const titlesSeen = new Map();
+    for (const s of hevySegments) {
+      const titleKey = (s.title_suffix || s.block_label || '').toLowerCase();
+      if (titlesSeen.has(titleKey)) {
+        titleCollisions.push({
+          block_label: s.block_label,
+          first_segment_id: titlesSeen.get(titleKey),
+          colliding_segment_id: s.id,
+          fix: `Set segment.title_suffix on each colliding segment (e.g. "Main Lift" / "Grip"). See morning-check-in skill §8a.`,
+        });
+      } else {
+        titlesSeen.set(titleKey, s.id);
+      }
+    }
 
     const results = [];
-    for (const seg of segsWithSuffix) {
+    for (const seg of hevySegments) {
       try {
         const r = await pushSegmentToHevy(planRow, seg, folderId);
         results.push(r);
@@ -833,11 +838,15 @@ async function pushPlanToHevy(planRow, _unused, folderId) {
     if (typeof logActivity === 'function') {
       try { await logActivity('hevy_push', 'daily_plan', planRow.id, null, `Pushed ${okCount}/${hevySegments.length} segments for ${planRow.plan_date}`); } catch (_) {}
     }
+    if (titleCollisions.length) {
+      console.warn(`[hevy/push] plan ${planRow.id} has ${titleCollisions.length} routine title collision(s) — Coach forgot to set title_suffix on segments sharing a block_label.`);
+    }
     return {
       ok: okCount > 0,
       segments_pushed: okCount,
       total_hevy_segments: hevySegments.length,
       results,
+      ...(titleCollisions.length ? { warnings: { title_collisions: titleCollisions } } : {}),
     };
   }
 

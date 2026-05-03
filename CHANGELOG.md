@@ -4,6 +4,25 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.5] — 2026-05-03
+
+### Changed — naming is Coach's job, not the system's
+v1.8.4 quietly auto-disambiguated colliding routine titles by appending "Strength 1" / "Strength 2". That hid Coach mistakes. Removed: now the system pushes whatever Coach gave it, and surfaces title collisions in the push response so Coach learns to set `title_suffix` properly.
+- `pushPlanToHevy()` returns `warnings.title_collisions[]` when two segments share a label without explicit `title_suffix`. Each warning includes the colliding segment IDs and a fix hint pointing at the morning-check-in skill.
+- `morning-check-in.skill` updated: `title_suffix` is now documented as REQUIRED when block_labels collide. No silent system rescue.
+
+### Fixed — deploy log noise
+Three already-applied migrations were logging errors on every restart because they referenced columns/tables that no longer exist:
+- `daily_plans indexes failed: column "training_plan_id" does not exist` — removed the index migration (column was DROPped in v1.8.x cleanup; the index is dead).
+- `coaching_sessions indexes failed: column "training_plan_id" does not exist` — same fix.
+- `rename dnc→dc failed: relation "daily_context" already exists` — wrapped in a `DO $$ ... END $$` block that checks `information_schema.tables` first.
+- `fueling_rehearsals copy g→mg caffeine failed: column "g_caffeine_total" does not exist` — same `DO $$` guard, only runs the UPDATE if the source column is still present.
+
+### Fixed — pg `client.query()` DeprecationWarning
+`pool.on('connect', client => client.query('SET timezone...'))` doesn't await the SET, leaving the client in an indeterminate state. Pg 9.0 will reject it. Replaced with `Pool({ options: '-c timezone=...' })` so timezone is set during the protocol startup — no `client.query()` needed, no warning, no race.
+
+---
+
 ## [1.8.4] — 2026-05-03
 
 ### Fixed — Hevy routine title collisions on multi-segment days
