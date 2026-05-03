@@ -207,12 +207,16 @@ router.get('/exercise-templates', async (req, res) => {
     if (!global._hevyTemplateCache) {
       const all = [];
       let page = 1;
-      while (page < 20) {
-        const resp = await hevyFetch(`/exercise_templates?page=${page}&pageSize=100`);
+      // Hevy's max pageSize is 10 (verified via Coach dry-run May 3 2026
+      // — pageSize=20+ returns validation error). Catalog has hundreds of
+      // exercises, so we need many pages. Cap at page 200 to prevent
+      // runaway loops if Hevy returns non-empty pages forever.
+      while (page < 200) {
+        const resp = await hevyFetch(`/exercise_templates?page=${page}&pageSize=10`);
         const items = resp.exercise_templates || resp.data || resp;
         if (!Array.isArray(items) || !items.length) break;
         all.push(...items);
-        if (items.length < 100) break;
+        if (items.length < 10) break;
         page++;
       }
       global._hevyTemplateCache = all;
@@ -373,7 +377,7 @@ router.post('/sync', async (req, res) => {
 router.get('/routines', async (req, res) => {
   if (!requireKey(res)) return;
   try {
-    const data = await hevyFetch('/routines?page=1&pageSize=20');
+    const data = await hevyFetch('/routines?page=1&pageSize=10');
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
