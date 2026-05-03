@@ -4,6 +4,16 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.2] — 2026-05-03
+
+### Fixed
+- **Settings/Plans `Invalid input syntax for type uuid: "gym-profiles"` toast** — frontend was calling `/api/exercises/gym-profiles*` but the route is mounted at `/api/gym-profiles`. The wrong path fell through to `/exercises/:id` which tried to parse `"gym-profiles"` as a UUID and 500'd. Fixed all four call sites + the Coach init prompt + claude-schema.yaml so Coach won't write the broken path either. Active endpoint is `/gym-profiles/primary` (not `/active`).
+- **`HR NaN`** rendering on logged-workout chips — coerced non-numeric HR values via `Number.isFinite()` so the chip hides when HR is null or NaN.
+- **`⚠ Hevy queued` badge on plans with no Hevy segments** — e.g. race day. Badge now hides when (a) plan status is completed/skipped, (b) plan has zero segments with `logging_target='hevy'`. Removed the legacy `daily_plans.hevy_routine_id` fallback path entirely.
+- **Redundant Completed/Partial/Missed buttons on already-completed plans** — auto-rollup is the primary path now. When `plan.status === 'completed'`, only "Mark Partial" + Edit show, not the full triplet.
+
+---
+
 ## [1.8.1] — 2026-05-03
 
 ### Removed — legacy code paths that confused Coach

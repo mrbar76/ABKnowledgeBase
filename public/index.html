@@ -395,6 +395,20 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.2 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Fixed Settings/Plans &ldquo;Invalid input syntax for type uuid: gym-profiles&rdquo; toast.</strong> Frontend was calling <code>/api/exercises/gym-profiles*</code> but the route lives at <code>/api/gym-profiles</code>. The bad path fell through to <code>/exercises/:id</code> which tried to parse the literal string as a UUID. Fixed four frontend call sites + Coach prompt + YAML schema.</p>
+                  <p><strong>HR NaN</strong> on logged-workout chips &mdash; hides when value is null or non-finite.</p>
+                  <p><strong>Hevy queued badge</strong> &mdash; no longer shows on race days or completed plans. Now strictly: at least one <code>plan_segment</code> with <code>logging_target=hevy</code> AND no <code>hevy_routine_id</code>.</p>
+                  <p><strong>Completed/Partial/Missed buttons</strong> &mdash; auto-rollup is the primary path. When the plan is already completed, only &ldquo;Mark Partial&rdquo; shows.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.1 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -656,7 +670,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.1</span>
+          AB Brain <span id="sm-version">v1.8.2</span>
         </div>
 
       </div>

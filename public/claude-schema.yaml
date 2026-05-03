@@ -20,7 +20,7 @@ info:
     - GET /recovery/score — today's recovery readiness
 
     ### 2. PLAN — Set daily plans with structured exercises
-    - GET /exercises/gym-profiles/active — check active gym profile FIRST
+    - GET /gym-profiles/primary — check active gym profile FIRST
     - GET /exercises/available — get exercises for that profile's equipment
     - POST /daily-plans — create plan with planned_exercises JSONB array (use exact Fitbod exercise names)
     - POST /daily-plans/week — create 7 daily plans at once
@@ -910,7 +910,7 @@ paths:
         '200':
           description: Import results (total, imported, already_existed)
 
-  /exercises/gym-profiles:
+  /gym-profiles:
     get:
       operationId: listGymProfiles
       summary: List all gym profiles
@@ -938,7 +938,7 @@ paths:
         '201':
           description: Created profile
 
-  /exercises/gym-profiles/active:
+  /gym-profiles/primary:
     get:
       operationId: getActiveGymProfile
       summary: Get the currently active gym profile (check this before planning workouts)
@@ -946,7 +946,7 @@ paths:
         '200':
           description: Active profile or null
 
-  /exercises/gym-profiles/{id}:
+  /gym-profiles/{id}:
     put:
       operationId: updateGymProfile
       summary: Update gym profile (set active, change equipment)

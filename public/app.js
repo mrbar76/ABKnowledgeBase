@@ -1965,15 +1965,15 @@ USE THESE ENDPOINT PATTERNS
 EXERCISE LIBRARY & GYM PROFILES
 - \`GET /exercises/available\` — exercises matching the active gym profile's equipment
 - \`GET /exercises?muscle=chest&equipment=dumbbell\` — filter by muscle/equipment
-- \`GET /exercises/gym-profiles/active\` — current gym profile + equipment list
-- \`POST /exercises/import-fitbod\` — import from Fitbod CSV export
-- \`POST /exercises/gym-profiles\` — create profile (name, equipment[], is_active)
-- \`PUT /exercises/gym-profiles/:id\` — update profile
+- \`GET /gym-profiles\` — list all profiles
+- \`GET /gym-profiles/primary\` — current/active gym profile + equipment list
+- \`POST /gym-profiles\` — create profile (name, equipment[], is_active)
+- \`PUT /gym-profiles/:id\` — update profile
 - \`GET /exercises/equipment\` — full equipment catalog for picker
 
 WORKOUT PLANNING (segments-based, v1.8.1+)
 When planning workouts, ALWAYS:
-1. Check the active gym profile: \`GET /exercises/gym-profiles/active\`
+1. Check the active gym profile: \`GET /gym-profiles/primary\`
 2. Only suggest exercises available for that profile's equipment: \`GET /exercises/available\`
 3. Use EXACT exercise names. For Hevy segments these names get resolved to Hevy exercise_template_ids via /api/hevy/exercise-templates?q= and the persistent hevy_exercise_map table.
 4. ALWAYS include specific weight targets. Look up Avi's recent history to set appropriate weights. Numbers, not "moderate-heavy". For bodyweight: say "bodyweight". For bands: say the band level (Light/Medium/Heavy/X-Heavy) — these don't convert to lb.
@@ -5675,21 +5675,19 @@ function shiftFitnessToday(delta) {
 //   (nothing) — workout_type isn't pushable (run, recovery, ruck, rest, etc.)
 function renderHevyBadge(plan) {
   if (!plan) return '';
-  // Prefer segment-aware status when segments exist.
+  // Segments-only path (legacy daily_plans.hevy_routine_id retired in
+  // v1.8.1). Badge logic:
+  //   - 0 hevy segments  → no badge (nothing to push, e.g. race day)
+  //   - all pushed       → green ✓ Hevy
+  //   - some unpushed    → amber ⚠ Hevy queued
+  //   - completed plan   → no badge regardless (the plan is done)
+  if (plan.status === 'completed' || plan.status === 'skipped') return '';
   const segs = Array.isArray(plan.segments) ? plan.segments : [];
   const hevySegs = segs.filter(s => s.logging_target === 'hevy');
-  if (hevySegs.length > 0) {
-    const allPushed = hevySegs.every(s => s.hevy_routine_id);
-    if (allPushed) return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="${hevySegs.length} Hevy routine${hevySegs.length === 1 ? '' : 's'} pushed">✓ Hevy</span>`;
-    return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="${hevySegs.length} segment${hevySegs.length === 1 ? '' : 's'} routed to Hevy but not all pushed yet">⚠ Hevy queued</span>`;
-  }
-  // Legacy fallback
-  const PUSHABLE = new Set(['strength', 'hybrid', 'hill']);
-  if (!PUSHABLE.has(plan.workout_type)) return '';
-  if (plan.hevy_routine_id) {
-    return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="Routine ${plan.hevy_routine_id} pushed to Hevy">✓ Hevy</span>`;
-  }
-  return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="Pushable workout but no Hevy routine yet — try editing the plan to trigger auto-push, or push via Coach">⚠ Hevy queued</span>`;
+  if (hevySegs.length === 0) return '';
+  const allPushed = hevySegs.every(s => s.hevy_routine_id);
+  if (allPushed) return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="${hevySegs.length} Hevy routine${hevySegs.length === 1 ? '' : 's'} pushed">✓ Hevy</span>`;
+  return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="${hevySegs.length} segment${hevySegs.length === 1 ? '' : 's'} routed to Hevy but not all pushed yet">⚠ Hevy queued</span>`;
 }
 
 // Format a single planned exercise as one line. The legacy renderer
@@ -5780,7 +5778,11 @@ function renderSegmentBlock(seg) {
   const actualLines = workouts.map(w => {
     const dur = w.time_duration ? esc(w.time_duration) : '';
     const dist = w.distance ? esc(w.distance) : '';
-    const hr = w.hr_avg || w.heart_rate_avg ? `HR ${esc(w.hr_avg || w.heart_rate_avg)}` : '';
+    // hr_avg may be a string from Hevy (rare) or null/NaN from HAE when
+    // the watch didn't capture HR. Only render when it's a finite number.
+    const hrRaw = w.hr_avg ?? w.heart_rate_avg;
+    const hrNum = hrRaw != null ? Number(hrRaw) : NaN;
+    const hr = Number.isFinite(hrNum) && hrNum > 0 ? `HR ${hrNum}` : '';
     const meta = [dur, dist, hr].filter(Boolean).join(' · ');
     const notes = w.body_notes
       ? `<div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;font-style:italic">${esc(w.body_notes)}</div>`
@@ -6045,7 +6047,9 @@ async function loadFitnessToday() {
           ${plan.completion_notes ? `<div style="margin-top:6px;padding:6px 8px;background:${statusColor}11;border-radius:6px;font-size:0.72rem;color:var(--text-dim)"><strong style="color:${statusColor}">Coach:</strong> ${esc(plan.completion_notes)}</div>` : ''}
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             ${canWrap ? `<button class="btn-submit btn-compact-sm" style="font-size:0.65rem;background:#10b981" onclick="wrapDay('${plan.id}')">Wrap Day</button>` : ''}
-            ${['completed','partial','missed'].map(s => `<button class="btn-submit btn-compact-sm ${plan.status === s ? '' : 'btn-secondary'}" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','${s}')">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
+            ${plan.status === 'completed'
+              ? `<button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','partial')">Mark Partial</button>`
+              : ['completed','partial','missed'].map(s => `<button class="btn-submit btn-compact-sm ${plan.status === s ? '' : 'btn-secondary'}" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','${s}')">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
             <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="editDailyPlan('${plan.id}')">Edit</button>
           </div>
         </div>`;
@@ -9407,7 +9411,7 @@ async function quickUpdatePlanStatus(id, status) {
 async function showGymProfilePicker() {
   try {
     const [profiles, catalog] = await Promise.all([
-      api('/exercises/gym-profiles'),
+      api('/gym-profiles'),
       api('/exercises/equipment'),
     ]);
 
@@ -9466,7 +9470,7 @@ async function showGymProfilePicker() {
 
 async function switchGymProfile(id) {
   try {
-    await api(`/exercises/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ is_active: true }) });
+    await api(`/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ is_active: true }) });
     closeModal();
     showGymProfilePicker();
   } catch (e) { showToast(e.message); }
@@ -9476,7 +9480,7 @@ async function createGymProfile() {
   const name = prompt('Profile name (e.g. Home, Gym, Travel):');
   if (!name) return;
   try {
-    await api('/exercises/gym-profiles', { method: 'POST', body: JSON.stringify({ name, is_active: true, equipment: ['bodyweight'] }) });
+    await api('/gym-profiles', { method: 'POST', body: JSON.stringify({ name, is_active: true, equipment: ['bodyweight'] }) });
     closeModal();
     showGymProfilePicker();
   } catch (e) { showToast(e.message); }
@@ -9487,7 +9491,7 @@ async function saveGymProfileEquipment(id) {
   const equipment = [];
   checkboxes.forEach(cb => { if (cb.checked) equipment.push(cb.value); });
   try {
-    await api(`/exercises/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ equipment }) });
+    await api(`/gym-profiles/${id}`, { method: 'PUT', body: JSON.stringify({ equipment }) });
     showToast('Equipment saved');
     closeModal();
     if (fitnessSubTab === 'today') loadFitnessToday();
