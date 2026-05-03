@@ -1266,6 +1266,12 @@ async function initDB() {
   await safeQuery('workouts +intensity_factor', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS intensity_factor NUMERIC(4,2)`);
   await safeQuery('workouts +hr_zones', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hr_zones JSONB`);
   await safeQuery('workouts +inferred_workout_type', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS inferred_workout_type BOOLEAN DEFAULT false`);
+  // Hevy integration — link AB Brain workouts to their Hevy origin so
+  // the sync is idempotent and can match completed workouts back to the
+  // routine the Coach pushed.
+  await safeQuery('workouts +hevy_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hevy_id TEXT`);
+  await safeQuery('workouts hevy_id unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_hevy_id ON workouts(hevy_id) WHERE hevy_id IS NOT NULL`);
+  await safeQuery('daily_plans +hevy_routine_id', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_routine_id TEXT`);
   // Partial unique index on (started_at) where source='apple_health' so
   // re-ingests deduplicate at the row level.
   await safeQuery('workouts unique apple_health started_at', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_apple_health_started_at ON workouts(started_at) WHERE source = 'apple_health' AND started_at IS NOT NULL`);
