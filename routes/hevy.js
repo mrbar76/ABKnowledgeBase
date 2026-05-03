@@ -49,7 +49,7 @@
 // duration_seconds, rpe, custom_metric }] }]
 
 const express = require('express');
-const { query, logActivity } = require('../db');
+const { query, withTransaction, logActivity } = require('../db');
 const router = express.Router();
 
 const HEVY_BASE = 'https://api.hevyapp.com/v1';
@@ -287,36 +287,46 @@ async function fetchAllHevyTemplates() {
 
 async function refreshTemplateCache() {
   const templates = await fetchAllHevyTemplates();
-  // Wipe-and-rewrite. Hevy may delete templates (custom-made by us or
-  // others), so an upsert-only approach would leave stale rows.
-  await query(`TRUNCATE hevy_template_cache`);
-  for (const t of templates) {
-    await query(
-      `INSERT INTO hevy_template_cache (
-         hevy_id, title, type, primary_muscle_group,
-         secondary_muscle_groups, equipment, is_custom, raw, cached_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-       ON CONFLICT (hevy_id) DO UPDATE SET
-         title = EXCLUDED.title,
-         type = EXCLUDED.type,
-         primary_muscle_group = EXCLUDED.primary_muscle_group,
-         secondary_muscle_groups = EXCLUDED.secondary_muscle_groups,
-         equipment = EXCLUDED.equipment,
-         is_custom = EXCLUDED.is_custom,
-         raw = EXCLUDED.raw,
-         cached_at = NOW()`,
-      [
-        t.id || t.exercise_template_id,
-        t.title || t.name || '',
-        t.type || t.exercise_type || 'weight_reps',
-        t.primary_muscle_group || null,
-        Array.isArray(t.secondary_muscle_groups) ? t.secondary_muscle_groups : null,
-        t.equipment || null,
-        Boolean(t.is_custom),
-        JSON.stringify(t),
-      ]
-    );
-  }
+  // Wipe-and-rewrite inside a transaction. Hevy may delete templates
+  // (custom-made by us or others), so an upsert-only approach would
+  // leave stale rows. Batch the INSERT in chunks of ~200 to avoid the
+  // pg parameter limit (max 65535) — at 8 params per row that's ~8000
+  // rows safely.
+  await withTransaction(async (client) => {
+    await client.query(`TRUNCATE hevy_template_cache`);
+    const COLS = 8;
+    const BATCH = 200;
+    for (let i = 0; i < templates.length; i += BATCH) {
+      const slice = templates.slice(i, i + BATCH);
+      const vals = [];
+      const placeholders = [];
+      slice.forEach((t, idx) => {
+        const base = idx * COLS;
+        placeholders.push(
+          `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8}::jsonb)`
+        );
+        vals.push(
+          t.id || t.exercise_template_id,
+          t.title || t.name || '',
+          t.type || t.exercise_type || 'weight_reps',
+          t.primary_muscle_group || null,
+          Array.isArray(t.secondary_muscle_groups) ? t.secondary_muscle_groups : null,
+          t.equipment || null,
+          Boolean(t.is_custom),
+          JSON.stringify(t),
+        );
+      });
+      if (!placeholders.length) continue;
+      await client.query(
+        `INSERT INTO hevy_template_cache (
+           hevy_id, title, type, primary_muscle_group,
+           secondary_muscle_groups, equipment, is_custom, raw
+         ) VALUES ${placeholders.join(',')}
+         ON CONFLICT (hevy_id) DO NOTHING`,
+        vals
+      );
+    }
+  });
   return templates.length;
 }
 
@@ -328,12 +338,22 @@ router.get('/exercise-templates', async (req, res) => {
     const q = String(req.query.q || '').toLowerCase().trim();
     const limit = Math.min(Number(req.query.limit) || 25, 100);
 
-    let { rows: countRows } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
-    if (!countRows[0].n) {
+    // Lazy-refresh on:
+    //   1. Empty cache (first ever call)
+    //   2. Cache older than 7 days (Hevy templates change rarely; weekly is plenty)
+    //   3. Caller passed ?refresh=1
+    const force = String(req.query.refresh || '') === '1';
+    let { rows: stat } = await query(
+      `SELECT COUNT(*)::int AS n,
+              COALESCE(MAX(cached_at), NOW() - INTERVAL '999 days') AS newest
+         FROM hevy_template_cache`
+    );
+    const ageDays = (Date.now() - new Date(stat[0].newest).getTime()) / 86400_000;
+    if (force || !stat[0].n || ageDays > 7) {
       await refreshTemplateCache();
-      ({ rows: countRows } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`));
+      ({ rows: stat } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`));
     }
-    const total = countRows[0].n;
+    const total = stat[0].n;
 
     let rows;
     if (q) {
@@ -544,16 +564,25 @@ router.delete('/exercise-map/:id', async (req, res) => {
 
 // POST /api/hevy/exercise-map/auto-populate
 //
+// Body: { auto_create_custom?: boolean }
+//
 // For every distinct exercise name referenced in plan_segments
 // .planned_exercises[].name (or daily_plans.planned_exercises) that
 // isn't already mapped, look up a Hevy template via the cache. Three
 // outcome buckets:
 //   mapped:    confident match auto-inserted
-//   ambiguous: multiple cache hits, awaiting manual review
-//   unmapped:  no match — Coach should propose creating a custom template
+//   ambiguous: fuzzy match, awaiting manual review
+//   unmapped:  no match
+//
+// If `auto_create_custom: true`, unmapped names get a custom Hevy
+// exercise_template POSTed to the user's library (with sensible
+// defaults), then mapped. Use sparingly — Coach should normally
+// confirm with the user before creating customs.
 router.post('/exercise-map/auto-populate', async (req, res) => {
   if (!requireKey(res)) return;
   try {
+    const autoCreateCustom = Boolean(req.body?.auto_create_custom);
+
     // Ensure cache has data — auto-populate is useless without it.
     const { rows: cacheCount } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
     if (!cacheCount[0].n) await refreshTemplateCache();
@@ -576,32 +605,76 @@ router.post('/exercise-map/auto-populate', async (req, res) => {
     const mapped = [];
     const ambiguous = [];
     const unmapped = [];
+    const customCreated = [];
 
     for (const name of names) {
       if (have.has(name)) continue;
       const hit = await lookupHevyTemplateByName(name);
-      if (!hit) { unmapped.push(name); continue; }
-      if (hit.source === 'cache_fuzzy') {
-        // Don't auto-commit fuzzy. Surface for review.
+      if (hit && hit.source === 'cache_fuzzy') {
         ambiguous.push({ name, suggestion: hit });
         continue;
       }
-      // Exact cache match — confident enough to auto-insert.
-      await query(
-        `INSERT INTO hevy_exercise_map (
-           ab_brain_exercise_name, hevy_exercise_template_id, hevy_title, hevy_type, confidence
-         ) VALUES ($1, $2, $3, $4, 'auto')
-         ON CONFLICT (lower(ab_brain_exercise_name)) DO NOTHING`,
-        [name, hit.id, hit.title, hit.type]
-      );
-      mapped.push({ name, hevy_id: hit.id, hevy_title: hit.title });
+      if (hit) {
+        // Exact map or cache match.
+        await query(
+          `INSERT INTO hevy_exercise_map (
+             ab_brain_exercise_name, hevy_exercise_template_id, hevy_title, hevy_type, confidence
+           ) VALUES ($1, $2, $3, $4, 'auto')
+           ON CONFLICT (lower(ab_brain_exercise_name)) DO NOTHING`,
+          [name, hit.id, hit.title, hit.type]
+        );
+        mapped.push({ name, hevy_id: hit.id, hevy_title: hit.title });
+        continue;
+      }
+      // No match anywhere.
+      if (!autoCreateCustom) { unmapped.push(name); continue; }
+
+      // Auto-create custom Hevy template + map. Title-cases the AB
+      // Brain name for Hevy display ("cat cow" → "Cat Cow").
+      const titled = name.replace(/\b\w/g, c => c.toUpperCase());
+      try {
+        const data = await hevyFetch('/exercise_templates', {
+          method: 'POST',
+          body: JSON.stringify({
+            exercise_template: {
+              title: titled,
+              primary_muscle_group: 'other',
+              equipment: 'none',
+            },
+          }),
+        });
+        const tpl = data.exercise_template || data;
+        const newId = tpl.id || tpl.exercise_template_id;
+        if (!newId) { unmapped.push(name); continue; }
+
+        // Map immediately and add to cache so future passes find it.
+        await query(
+          `INSERT INTO hevy_exercise_map (
+             ab_brain_exercise_name, hevy_exercise_template_id, hevy_title, hevy_type, is_custom, confidence
+           ) VALUES ($1, $2, $3, $4, TRUE, 'auto')
+           ON CONFLICT (lower(ab_brain_exercise_name)) DO NOTHING`,
+          [name, newId, titled, tpl.type || 'weight_reps']
+        );
+        await query(
+          `INSERT INTO hevy_template_cache (hevy_id, title, type, is_custom, raw)
+           VALUES ($1, $2, $3, TRUE, $4::jsonb)
+           ON CONFLICT (hevy_id) DO NOTHING`,
+          [newId, titled, tpl.type || 'weight_reps', JSON.stringify(tpl)]
+        );
+        customCreated.push({ name, hevy_id: newId, hevy_title: titled });
+        mapped.push({ name, hevy_id: newId, hevy_title: titled, custom: true });
+      } catch (err) {
+        unmapped.push(name);
+        console.error(`[hevy/auto-populate] custom create failed for "${name}": ${err.message}`);
+      }
     }
 
     res.json({
       mapped: mapped.length,
       ambiguous: ambiguous.length,
       unmapped: unmapped.length,
-      details: { mapped, ambiguous, unmapped },
+      custom_created: customCreated.length,
+      details: { mapped, ambiguous, unmapped, customCreated },
     });
   } catch (err) {
     console.error(`[hevy/exercise-map/auto-populate] ${err.stack}`);
@@ -847,17 +920,22 @@ async function syncHevyWorkouts(since) {
         const placeholders = cols.map((_, i) => `$${i + 1}`);
         const values = cols.map(c => row[c]);
         values.push(JSON.stringify(row.metadata));
+        // Conflict resolution (per spec §6.2): Hevy is the source of
+        // execution truth, so its sets/reps/weight/timing/volume
+        // OVERWRITE on each sync. AB Brain owns the coaching context
+        // (body_notes, daily_plan_id, plan_segment_id) — those are
+        // preserved if Hevy returns null.
         const upsert = await query(
           `INSERT INTO workouts (${cols.join(', ')}, metadata)
            VALUES (${placeholders.join(', ')}, $${cols.length + 1}::jsonb)
            ON CONFLICT (hevy_id) WHERE hevy_id IS NOT NULL DO UPDATE SET
              title = EXCLUDED.title,
-             time_duration = COALESCE(EXCLUDED.time_duration, workouts.time_duration),
-             started_at = COALESCE(EXCLUDED.started_at, workouts.started_at),
-             ended_at = COALESCE(EXCLUDED.ended_at, workouts.ended_at),
-             body_notes = COALESCE(EXCLUDED.body_notes, workouts.body_notes),
-             total_volume_lb = COALESCE(EXCLUDED.total_volume_lb, workouts.total_volume_lb),
-             total_sets = COALESCE(EXCLUDED.total_sets, workouts.total_sets),
+             time_duration = EXCLUDED.time_duration,
+             started_at = EXCLUDED.started_at,
+             ended_at = EXCLUDED.ended_at,
+             total_volume_lb = EXCLUDED.total_volume_lb,
+             total_sets = EXCLUDED.total_sets,
+             body_notes = COALESCE(workouts.body_notes, EXCLUDED.body_notes),
              metadata = workouts.metadata || EXCLUDED.metadata,
              updated_at = NOW()
            RETURNING id`,
@@ -966,16 +1044,24 @@ function lbToKg(lb) {
   return Math.round(Number(lb) * 0.453592 * 100) / 100;
 }
 
+// Convert AB Brain body_metrics row to Hevy body_measurements payload.
+//
+// Hevy's actual schema (verified against api.hevyapp.com OAS spec
+// May 2026): three numeric fields plus 14 tape-measurement fields.
+// AB Brain (RENPHO) only fills the three numerics; tape data flows
+// through `notes` if at all. We DO NOT send invented fields like bmi,
+// water_percent, bone_mass_kg, etc. — Hevy's PUT validates strictly
+// and would reject the payload.
+//
+//   weight_kg     ← weight_lb × 0.453592
+//   lean_mass_kg  ← fat_free_mass_lb × 0.453592 (RENPHO's lean mass
+//                                                approximation)
+//   fat_percent   ← body_fat_pct (already a %)
 function abMetricsToHevy(row) {
   return {
     weight_kg: lbToKg(row.weight_lb),
+    lean_mass_kg: lbToKg(row.fat_free_mass_lb),
     fat_percent: row.body_fat_pct != null ? Number(row.body_fat_pct) : null,
-    muscle_mass_kg: lbToKg(row.muscle_mass_lb),
-    bone_mass_kg: lbToKg(row.bone_mass_lb),
-    water_percent: row.body_water_pct != null ? Number(row.body_water_pct) : null,
-    bmi: row.bmi != null ? Number(row.bmi) : null,
-    bmr_kcal: row.bmr_kcal != null ? Number(row.bmr_kcal) : null,
-    visceral_fat_rating: row.visceral_fat != null ? Number(row.visceral_fat) : null,
   };
 }
 
@@ -997,15 +1083,15 @@ router.post('/body-measurements/sync', async (req, res) => {
     // morning + evening RENPHO scans collapse cleanly.
     const { rows } = await query(
       `SELECT DISTINCT ON (measurement_date)
-              measurement_date, weight_lb, body_fat_pct, muscle_mass_lb,
-              bone_mass_lb, body_water_pct, bmi, bmr_kcal, visceral_fat
+              measurement_date, weight_lb, fat_free_mass_lb, body_fat_pct
          FROM body_metrics
         WHERE measurement_date >= $1
         ORDER BY measurement_date DESC, measurement_time DESC NULLS LAST, created_at DESC`,
       [since]
     );
 
-    let pushed = 0;
+    let created = 0;
+    let updated = 0;
     let merged = 0;
     let skipped = 0;
     const errors = [];
@@ -1018,41 +1104,56 @@ router.post('/body-measurements/sync', async (req, res) => {
       if (!Object.values(ab).some(v => v != null)) { skipped++; continue; }
 
       // Merge with existing Hevy record so PUT doesn't null fields we
-      // didn't supply but Hevy already had (e.g. user edited fat % on
-      // their phone).
-      let payload = ab;
+      // didn't supply but Hevy already had (e.g. user edited tape
+      // measurements on their phone). Hevy's PUT validates strictly:
+      //   - PutBodyMeasurement schema = no `date` field (it's in the URL)
+      //   - 404 if no measurement exists for the date — so use POST
+      //     in that case (POST takes BodyMeasurement which DOES include
+      //     `date`).
+      let existing = null;
       try {
-        const existing = await getHevyMeasurement(date);
-        if (existing) {
-          merged++;
-          payload = { ...existing, ...Object.fromEntries(Object.entries(ab).filter(([_, v]) => v != null)) };
-          // Strip server-managed fields Hevy will reject on PUT.
-          delete payload.id;
-          delete payload.date;
-          delete payload.created_at;
-          delete payload.updated_at;
-        }
+        existing = await getHevyMeasurement(date);
       } catch (err) {
         errors.push({ date, phase: 'get', error: err.message });
         continue;
       }
 
-      try {
-        await hevyFetch(`/body_measurements/${date}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
-        pushed++;
-      } catch (err) {
-        errors.push({ date, phase: 'put', error: err.message });
+      const abNonNull = Object.fromEntries(Object.entries(ab).filter(([_, v]) => v != null));
+
+      if (existing) {
+        // PUT path: merge onto existing, strip URL-bound `date`.
+        merged++;
+        const payload = { ...existing, ...abNonNull };
+        delete payload.date;
+        try {
+          await hevyFetch(`/body_measurements/${date}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          });
+          updated++;
+        } catch (err) {
+          errors.push({ date, phase: 'put', error: err.message });
+        }
+      } else {
+        // POST path: brand-new record. POST schema requires `date`.
+        const payload = { date, ...abNonNull };
+        try {
+          await hevyFetch(`/body_measurements`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+          created++;
+        } catch (err) {
+          errors.push({ date, phase: 'post', error: err.message });
+        }
       }
     }
 
     if (typeof logActivity === 'function') {
-      try { await logActivity('hevy_body_sync', null, null, null, `Pushed ${pushed} body measurements (${merged} merged, ${skipped} empty)`); } catch (_) {}
+      try { await logActivity('hevy_body_sync', null, null, null, `Body measurements: ${created} created, ${updated} updated (${merged} merged), ${skipped} empty`); } catch (_) {}
     }
 
-    res.json({ ok: true, considered: rows.length, pushed, merged, skipped, errors });
+    res.json({ ok: true, considered: rows.length, created, updated, merged, skipped, errors });
   } catch (err) {
     console.error(`[hevy/body-measurements/sync] ${err.stack}`);
     res.status(500).json({ error: err.message });

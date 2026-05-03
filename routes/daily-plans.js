@@ -749,9 +749,12 @@ router.put('/segments/:segment_id', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Segment not found' });
 
-    // Roll up: if any segment is now in_progress/completed, plan
-    // status follows. (The /wrap endpoint still owns the final
-    // 'completed' transition for the day as a whole.)
+    // Roll up plan status from segments:
+    //   - Any segment in_progress/completed → plan in_progress
+    //   - All segments completed/skipped (and at least one completed)
+    //     → plan completed (the /wrap endpoint still exists for
+    //     manual end-of-day notes, but doesn't have to fire for
+    //     status to flip)
     const seg = rows[0];
     if (seg.status === 'in_progress') {
       await query(
@@ -759,6 +762,22 @@ router.put('/segments/:segment_id', async (req, res) => {
          WHERE id = $1 AND status = 'planned'`,
         [seg.daily_plan_id]
       );
+    } else if (seg.status === 'completed' || seg.status === 'skipped') {
+      const { rows: agg } = await query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'completed')::int AS done,
+           COUNT(*) FILTER (WHERE status NOT IN ('completed','skipped'))::int AS pending
+         FROM plan_segments
+         WHERE daily_plan_id = $1`,
+        [seg.daily_plan_id]
+      );
+      if (agg[0].pending === 0 && agg[0].done > 0) {
+        await query(
+          `UPDATE daily_plans SET status = 'completed', updated_at = NOW()
+           WHERE id = $1 AND status <> 'completed'`,
+          [seg.daily_plan_id]
+        );
+      }
     }
 
     res.json(seg);

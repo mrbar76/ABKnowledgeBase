@@ -2429,20 +2429,97 @@ async function testHevyConnection() {
 async function syncHevyWorkouts() {
   const btn = document.getElementById('btn-hevy-sync');
   const out = document.getElementById('sm-hevy-result');
-  if (!confirm('Pull last 30 days of Hevy workouts into AB Brain? Idempotent.')) return;
+  if (!confirm('Pull recent Hevy workouts into AB Brain? Idempotent. Picks up from last sync cursor.')) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
   if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Pulling Hevy workouts…'; }
   try {
-    const since = new Date(Date.now() - 30 * 86400_000).toLocaleDateString('en-CA');
-    const data = await api(`/hevy/sync?since=${since}`, { method: 'POST', body: '{}' });
+    // No `since` param — server uses durable cursor from sync_state.
+    const data = await api(`/hevy/sync`, { method: 'POST', body: '{}' });
     if (out) {
       out.style.color = 'var(--green)';
-      out.textContent = `✓ Inserted ${data.inserted} · skipped ${data.skipped} · since ${data.since}`;
+      out.textContent = `✓ Inserted ${data.inserted} · linked ${data.linked} · skipped ${data.skipped} · since ${data.since}${data.cursor_advanced_to ? ' · cursor → ' + data.cursor_advanced_to.slice(0,10) : ''}`;
     }
   } catch (e) {
     if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Sync Workouts (30d)'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Sync Workouts'; }
+  }
+}
+
+async function checkHevyHealth() {
+  const btn = document.getElementById('btn-hevy-health');
+  const out = document.getElementById('sm-hevy-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Hitting /v1/user/info…'; }
+  try {
+    const data = await api('/hevy/health');
+    if (data.ok) {
+      if (out) { out.style.color = 'var(--green)'; out.textContent = `✓ API key valid · user ${data.user?.username || data.user?.id || 'OK'}`; }
+    } else {
+      if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${data.error}`; }
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Health Check'; }
+  }
+}
+
+async function refreshHevyTemplates() {
+  const btn = document.getElementById('btn-hevy-refresh-templates');
+  const out = document.getElementById('sm-hevy-result');
+  if (!confirm('Re-fetch Hevy\'s full exercise template catalog? Takes 10-30s; runs in a transaction so partial failure is safe.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Fetching ~4,300 templates from Hevy (paginated, 10/page)…'; }
+  try {
+    const data = await api('/hevy/templates/refresh', { method: 'POST', body: '{}' });
+    if (out) { out.style.color = 'var(--green)'; out.textContent = `✓ Cached ${data.cached} templates`; }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Refresh Template Cache'; }
+  }
+}
+
+async function autoPopulateHevyMap() {
+  const btn = document.getElementById('btn-hevy-auto-populate');
+  const out = document.getElementById('sm-hevy-result');
+  const autoCustom = confirm('Auto-create Hevy custom templates for unmapped exercises? OK = yes (Coach\'s prescribed names appear in your Hevy library), Cancel = no (leave unmapped for manual review).');
+  if (btn) { btn.disabled = true; btn.textContent = 'Mapping…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Resolving exercise names against Hevy cache…'; }
+  try {
+    const data = await api('/hevy/exercise-map/auto-populate', {
+      method: 'POST',
+      body: JSON.stringify({ auto_create_custom: autoCustom }),
+    });
+    if (out) {
+      out.style.color = 'var(--green)';
+      out.textContent = `✓ Mapped ${data.mapped} · ambiguous ${data.ambiguous} · unmapped ${data.unmapped}${data.custom_created ? ' · custom ' + data.custom_created : ''}`;
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Auto-Map Exercises'; }
+  }
+}
+
+async function syncHevyBodyMeasurements() {
+  const btn = document.getElementById('btn-hevy-body-sync');
+  const out = document.getElementById('sm-hevy-result');
+  if (!confirm('Push last 30 days of body metrics (weight, lean mass, body fat %) to Hevy? Merges with existing Hevy data so tape measurements you set in the Hevy app are preserved.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Pushing body metrics to Hevy…'; }
+  try {
+    const data = await api('/hevy/body-measurements/sync', { method: 'POST', body: '{}' });
+    if (out) {
+      out.style.color = 'var(--green)';
+      const errs = data.errors?.length ? ` · ${data.errors.length} errors` : '';
+      out.textContent = `✓ Created ${data.created} · updated ${data.updated} (${data.merged} merged) · skipped ${data.skipped}${errs}`;
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sync Body Measurements'; }
   }
 }
 
@@ -5682,16 +5759,23 @@ function renderSegmentBlock(seg) {
 
   const exerciseLines = exercises.map(ex => {
     const metric = formatExerciseLine(ex);
-    const missingHevy = seg.logging_target === 'hevy' && !ex.hevy_exercise_template_id;
-    const missingChip = missingHevy
-      ? `<span style="color:#f59e0b;font-size:0.6rem;margin-left:4px" title="Not in Hevy library">⚠ not in Hevy</span>`
+    const isHevy = seg.logging_target === 'hevy';
+    const hasTemplate = Boolean(ex.hevy_exercise_template_id);
+    // Three states for hevy-target exercises:
+    //   green pill — template id resolved (push will work)
+    //   amber pill — no id, will try resolver at push time but may fail
+    //   no pill   — non-hevy segment, irrelevant
+    const hevyChip = isHevy
+      ? (hasTemplate
+        ? `<span style="color:#10b981;font-size:0.58rem;margin-left:4px;background:#10b98115;padding:1px 5px;border-radius:6px" title="Hevy template ${ex.hevy_exercise_template_id}${ex.hevy_resolved_title ? ': ' + ex.hevy_resolved_title : ''}">→ Hevy${ex.hevy_resolved_title ? ': ' + esc(ex.hevy_resolved_title) : ''}</span>`
+        : `<span style="color:#f59e0b;font-size:0.6rem;margin-left:4px" title="No Hevy template id — resolver will try at push time, but may not find a match">⚠ unresolved</span>`)
       : '';
     const noteRow = ex.notes
       ? `<div style="font-size:0.62rem;color:var(--text-dim);margin-left:18px;font-style:italic">${esc(ex.notes)}</div>`
       : '';
     return `<div style="display:flex;align-items:baseline;gap:6px;font-size:0.74rem;padding:1px 0">
         <span style="color:var(--text-dim)">·</span>
-        <span style="flex:1;font-weight:500">${esc(ex.name || ex.title || '—')}${missingChip}</span>
+        <span style="flex:1;font-weight:500">${esc(ex.name || ex.title || '—')}${hevyChip}</span>
         ${metric ? `<span style="color:var(--text-dim);font-size:0.66rem;white-space:nowrap">${esc(metric)}</span>` : ''}
       </div>${noteRow}`;
   }).join('');

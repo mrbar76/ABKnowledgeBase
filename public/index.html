@@ -132,10 +132,16 @@
             </div>
             <div class="sm-card">
               <div class="sm-card-label">Hevy Sync</div>
-              <div class="sm-card-desc">Strength workouts from Hevy. Test the connection first, then sync to pull recent workouts into AB Brain. Coach pushes daily plans as routines via the morning-check-in skill.</div>
+              <div class="sm-card-desc">Strength workouts from Hevy. Health-check the API key, sync workouts (uses durable cursor), refresh the local exercise template cache, auto-map AB Brain exercise names to Hevy templates, and push body metrics to Hevy's body_measurements API. Coach pushes daily plans as routines via the morning-check-in skill.</div>
               <div class="sm-btn-row">
-                <button class="btn-action btn-action-secondary" onclick="testHevyConnection()" id="btn-hevy-test">Test Connection</button>
-                <button class="btn-action btn-action-secondary" onclick="syncHevyWorkouts()" id="btn-hevy-sync">Sync Workouts (30d)</button>
+                <button class="btn-action btn-action-secondary" onclick="checkHevyHealth()" id="btn-hevy-health">Health Check</button>
+                <button class="btn-action btn-action-secondary" onclick="testHevyConnection()" id="btn-hevy-test">Sample Catalog</button>
+                <button class="btn-action btn-action-secondary" onclick="syncHevyWorkouts()" id="btn-hevy-sync">Sync Workouts</button>
+              </div>
+              <div class="sm-btn-row">
+                <button class="btn-action btn-action-secondary" onclick="refreshHevyTemplates()" id="btn-hevy-refresh-templates">Refresh Template Cache</button>
+                <button class="btn-action btn-action-secondary" onclick="autoPopulateHevyMap()" id="btn-hevy-auto-populate">Auto-Map Exercises</button>
+                <button class="btn-action btn-action-secondary" onclick="syncHevyBodyMeasurements()" id="btn-hevy-body-sync">Sync Body Measurements</button>
               </div>
               <div id="sm-hevy-result" class="sm-result"></div>
             </div>

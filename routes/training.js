@@ -325,6 +325,33 @@ router.get('/day/:date', async (req, res) => {
         [plan.id]
       ).catch(() => ({ rows: [] }));
       plan.segments = segR.rows;
+
+      // For Hevy segments, enrich each planned exercise with
+      // `hevy_resolved_title` from hevy_template_cache so the Today
+      // card chip shows "→ Hevy: Standing Calf Raise" instead of just
+      // "→ Hevy". Best-effort — non-fatal if cache empty.
+      try {
+        const ids = new Set();
+        for (const s of plan.segments) {
+          for (const e of (s.planned_exercises || [])) {
+            if (e.hevy_exercise_template_id) ids.add(e.hevy_exercise_template_id);
+          }
+        }
+        if (ids.size) {
+          const titlesR = await query(
+            `SELECT hevy_id, title FROM hevy_template_cache WHERE hevy_id = ANY($1::text[])`,
+            [Array.from(ids)]
+          );
+          const map = new Map(titlesR.rows.map(r => [r.hevy_id, r.title]));
+          for (const s of plan.segments) {
+            for (const e of (s.planned_exercises || [])) {
+              if (e.hevy_exercise_template_id && map.has(e.hevy_exercise_template_id)) {
+                e.hevy_resolved_title = map.get(e.hevy_exercise_template_id);
+              }
+            }
+          }
+        }
+      } catch (_) { /* cache may not exist on first deploy; chip falls back to id-only */ }
     }
 
     res.json({

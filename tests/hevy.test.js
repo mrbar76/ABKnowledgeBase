@@ -116,25 +116,34 @@ test('weight_lb in routine sets converts to weight_kg', () => {
   assert.equal(r.exercises[0].sets[0].reps, 5);
 });
 
-test('abMetricsToHevy converts all known fields', () => {
+test('abMetricsToHevy maps to real Hevy schema (3 fields, no invented ones)', () => {
+  // Hevy's actual body_measurements schema (verified from
+  // api.hevyapp.com OAS, May 2026): only weight_kg, lean_mass_kg,
+  // fat_percent are numeric metrics — the rest are tape measurements
+  // we don't track in RENPHO. Sending invented fields (bmi,
+  // visceral_fat_rating, etc.) would 400 from Hevy's strict validator.
   const out = abMetricsToHevy({
     weight_lb: 200,
+    fat_free_mass_lb: 165,
     body_fat_pct: 18.5,
-    muscle_mass_lb: 165,
-    bone_mass_lb: 8,
-    body_water_pct: 55,
-    bmi: 24.1,
-    bmr_kcal: 1800,
-    visceral_fat: 7,
   });
   assert.equal(out.weight_kg, 90.72);
+  assert.equal(out.lean_mass_kg, 74.84);
   assert.equal(out.fat_percent, 18.5);
-  assert.equal(out.muscle_mass_kg, 74.84);
-  assert.equal(out.bone_mass_kg, 3.63);
-  assert.equal(out.water_percent, 55);
-  assert.equal(out.bmi, 24.1);
-  assert.equal(out.bmr_kcal, 1800);
-  assert.equal(out.visceral_fat_rating, 7);
+  // Negative assertions — invented fields must NOT be present.
+  assert.ok(!('muscle_mass_kg' in out));
+  assert.ok(!('bone_mass_kg' in out));
+  assert.ok(!('water_percent' in out));
+  assert.ok(!('bmi' in out));
+  assert.ok(!('bmr_kcal' in out));
+  assert.ok(!('visceral_fat_rating' in out));
+});
+
+test('abMetricsToHevy returns nulls for missing inputs', () => {
+  const out = abMetricsToHevy({ weight_lb: 180 });
+  assert.equal(out.weight_kg, 81.65);
+  assert.equal(out.lean_mass_kg, null);
+  assert.equal(out.fat_percent, null);
 });
 
 test('mapHevyWorkoutToAB produces row with hevy_id, source=hevy, total_volume_lb', () => {
