@@ -1,6 +1,7 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
-const { pushPlanToHevy } = require('./hevy');
+const { pushPlanToHevy, syncHevyWorkouts } = require('./hevy');
+const { buildSegmentsFromExercises, inferLoggingTarget } = require('../utils/exerciseTaxonomy');
 const router = express.Router();
 
 // Fire-and-forget Hevy push on plan create/update. Never blocks the
@@ -15,6 +16,138 @@ function autoPushToHevy(planRow) {
       else if (r?.skipped) console.log(`[auto-hevy-push] plan ${planRow.id} skipped: ${r.skipped}`);
     })
     .catch(err => console.error(`[auto-hevy-push] plan ${planRow.id} failed: ${err.message}`));
+}
+
+// Segment writable fields. The Coach (or UI) can supply these directly
+// inside the `segments` array on POST/PUT; we also auto-derive from
+// flat planned_exercises for backwards compatibility.
+const SEGMENT_FIELDS = [
+  'block_order', 'block_label', 'logging_target', 'planned_exercises',
+  'target_duration_min', 'target_effort', 'time_window_start', 'time_window_end',
+  'hevy_routine_id', 'status', 'notes',
+];
+const SEGMENT_JSONB = new Set(['planned_exercises']);
+
+// Replace all segments for a plan with the supplied list. Idempotent.
+// Each segment in the input may carry an `id` to preserve identity (so
+// hevy_routine_id stays attached on update). If `segments` is empty
+// and `legacyPlannedExercises` is non-empty, synth segments via the
+// taxonomy helper so legacy callers still work.
+async function syncSegmentsForPlan(planId, segments, legacyPlannedExercises, defaultWorkoutType) {
+  let working = Array.isArray(segments) && segments.length > 0
+    ? segments
+    : (Array.isArray(legacyPlannedExercises) && legacyPlannedExercises.length > 0
+        ? buildSegmentsFromExercises(legacyPlannedExercises, defaultWorkoutType)
+        : []);
+
+  if (working.length === 0) {
+    // Nothing to write; leave existing segments alone (callers update
+    // metadata only). Return current state.
+    const { rows } = await query(
+      `SELECT * FROM plan_segments WHERE daily_plan_id = $1 ORDER BY block_order`,
+      [planId]
+    );
+    return rows;
+  }
+
+  // Normalize: assign block_order if missing, fill logging_target.
+  working = working.map((seg, idx) => {
+    const block_label = String(seg.block_label || 'strength').toLowerCase();
+    const logging_target = seg.logging_target ||
+      (Array.isArray(seg.planned_exercises) && seg.planned_exercises[0]
+        ? inferLoggingTarget(seg.planned_exercises[0].name || seg.planned_exercises[0].title || '', block_label)
+        : 'manual');
+    return {
+      ...seg,
+      block_label,
+      logging_target,
+      block_order: seg.block_order ?? idx,
+      status: seg.status || 'planned',
+    };
+  });
+
+  // Strategy: fetch existing segments, match by id when supplied or by
+  // (block_order, block_label) when not. Insert new, update matched,
+  // delete unmatched. Preserves hevy_routine_id when block_order +
+  // block_label survive across updates.
+  const existingR = await query(
+    `SELECT * FROM plan_segments WHERE daily_plan_id = $1`,
+    [planId]
+  );
+  const existing = existingR.rows;
+  const seenIds = new Set();
+  const written = [];
+
+  for (const seg of working) {
+    let match = null;
+    if (seg.id) match = existing.find(e => e.id === seg.id);
+    if (!match) match = existing.find(e =>
+      e.block_order === seg.block_order && e.block_label === seg.block_label && !seenIds.has(e.id)
+    );
+
+    if (match) {
+      seenIds.add(match.id);
+      const fields = [];
+      const vals = [];
+      let i = 1;
+      for (const field of SEGMENT_FIELDS) {
+        if (seg[field] === undefined) continue;
+        fields.push(SEGMENT_JSONB.has(field) ? `${field} = $${i++}::jsonb` : `${field} = $${i++}`);
+        vals.push(SEGMENT_JSONB.has(field) ? JSON.stringify(seg[field]) : seg[field]);
+      }
+      if (fields.length === 0) {
+        written.push(match);
+        continue;
+      }
+      fields.push('updated_at = NOW()');
+      vals.push(match.id);
+      const { rows } = await query(
+        `UPDATE plan_segments SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+        vals
+      );
+      written.push(rows[0]);
+    } else {
+      const cols = ['daily_plan_id'];
+      const vals = [planId];
+      const placeholders = ['$1'];
+      let i = 2;
+      for (const field of SEGMENT_FIELDS) {
+        if (seg[field] === undefined) continue;
+        cols.push(field);
+        vals.push(SEGMENT_JSONB.has(field) ? JSON.stringify(seg[field]) : seg[field]);
+        placeholders.push(SEGMENT_JSONB.has(field) ? `$${i++}::jsonb` : `$${i++}`);
+      }
+      const { rows } = await query(
+        `INSERT INTO plan_segments (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
+        vals
+      );
+      written.push(rows[0]);
+    }
+  }
+
+  // Delete segments that weren't kept.
+  const writtenIds = new Set(written.map(s => s.id));
+  for (const ex of existing) {
+    if (!writtenIds.has(ex.id)) {
+      await query(`DELETE FROM plan_segments WHERE id = $1`, [ex.id]);
+    }
+  }
+
+  return written.sort((a, b) => a.block_order - b.block_order);
+}
+
+async function loadSegments(planId) {
+  const { rows } = await query(
+    `SELECT ps.*, COALESCE(
+       (SELECT json_agg(w.* ORDER BY w.started_at NULLS LAST, w.created_at)
+        FROM workouts w WHERE w.plan_segment_id = ps.id), '[]'::json
+     ) AS workouts
+     FROM plan_segments ps
+     WHERE ps.daily_plan_id = $1
+     ORDER BY ps.block_order`,
+    [planId]
+  );
+  return rows;
 }
 
 // Writable fields for daily_plans
@@ -81,6 +214,8 @@ router.get('/by-date/:date', async (req, res) => {
     ]);
 
     const plan = planR.rows[0] || null;
+    const segments = plan ? await loadSegments(plan.id) : [];
+    if (plan) plan.segments = segments;
     const workouts = workoutsR.rows;
     const meals = mealsR.rows;
     const ctx = ctxR.rows[0] || {};
@@ -181,7 +316,9 @@ router.get('/:id', async (req, res) => {
   try {
     const { rows } = await query('SELECT * FROM daily_plans WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Daily plan not found' });
-    res.json(rows[0]);
+    const plan = rows[0];
+    plan.segments = await loadSegments(plan.id);
+    res.json(plan);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -199,13 +336,25 @@ router.get('/:id/review', async (req, res) => {
     const plan = planRows[0];
     const date = plan.plan_date;
 
+    // Workouts: prefer FK match (daily_plan_id) and fall back to date
+    // for legacy rows that haven't been backfilled. Coaching sessions
+    // already use FK with date fallback.
     const [workoutsR, mealsR, ctxR, coachingR, injuriesR] = await Promise.all([
-      query('SELECT * FROM workouts WHERE workout_date = $1 ORDER BY created_at', [date]),
+      query(
+        `SELECT * FROM workouts
+         WHERE daily_plan_id = $1
+            OR (daily_plan_id IS NULL AND workout_date = $2)
+         ORDER BY started_at NULLS LAST, created_at`,
+        [plan.id, date]
+      ),
       query('SELECT * FROM meals WHERE meal_date = $1 ORDER BY meal_time ASC NULLS LAST', [date]),
       query('SELECT * FROM daily_context WHERE date = $1', [date]),
       query('SELECT * FROM coaching_sessions WHERE (session_date = $1 OR daily_plan_id = $2) ORDER BY created_at DESC', [date, plan.id]),
       query(`SELECT * FROM injuries WHERE status IN ('active','monitoring') AND (onset_date IS NULL OR onset_date <= $1) AND (resolved_date IS NULL OR resolved_date >= $1)`, [date]),
     ]);
+
+    const segments = await loadSegments(plan.id);
+    plan.segments = segments;
 
     const workouts = workoutsR.rows;
     const meals = mealsR.rows;
@@ -213,6 +362,37 @@ router.get('/:id/review', async (req, res) => {
     const maxEffort = Math.max(0, ...workouts.map(w => w.effort || 0));
     const totalCal = meals.reduce((s, m) => s + (parseFloat(m.calories) || 0), 0);
     const totalProtein = meals.reduce((s, m) => s + (parseFloat(m.protein_g) || 0), 0);
+
+    // Per-segment plan-vs-actual: which segments have logged workouts,
+    // which are still 'planned'. Built from segments + workouts, so it
+    // survives cross-day moves and multi-session days cleanly.
+    const segmentDiffs = segments.map(seg => {
+      const segWorkouts = (seg.workouts || []).filter(Boolean);
+      const completed = segWorkouts.length > 0 || seg.status === 'completed';
+      const segEffort = Math.max(0, ...segWorkouts.map(w => w.effort || 0));
+      const segDuration = segWorkouts.reduce((s, w) => {
+        if (!w.time_duration) return s;
+        const parts = String(w.time_duration).split(':').map(n => Number(n) || 0);
+        const secs = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts.length === 2 ? parts[0] * 60 + parts[1] : Number(w.time_duration) || 0;
+        return s + secs;
+      }, 0);
+      return {
+        segment_id: seg.id,
+        block_label: seg.block_label,
+        logging_target: seg.logging_target,
+        status: completed ? 'completed' : (seg.status === 'skipped' ? 'skipped' : 'planned'),
+        target_effort: seg.target_effort,
+        target_duration_min: seg.target_duration_min,
+        actual_effort: segEffort || null,
+        actual_duration_min: segDuration ? Math.round(segDuration / 60) : null,
+        workout_count: segWorkouts.length,
+        workouts: segWorkouts.map(w => ({
+          id: w.id, title: w.title, source: w.source,
+          effort: w.effort, time_duration: w.time_duration,
+          distance: w.distance, hr_avg: w.hr_avg, body_notes: w.body_notes,
+        })),
+      };
+    });
 
     res.json({
       plan,
@@ -222,6 +402,7 @@ router.get('/:id/review', async (req, res) => {
         nutrition_context: ctx,
         active_injuries: injuriesR.rows,
       },
+      segment_diffs: segmentDiffs,
       summary: {
         workout_completed: workouts.length > 0,
         workout_type_match: workouts.some(w => w.workout_type === plan.workout_type),
@@ -273,11 +454,19 @@ router.post('/', async (req, res) => {
       vals
     );
 
-    await logActivity('daily_plan_created', 'daily_plan', rows[0].id, null,
-      `Daily plan for ${rows[0].plan_date}: ${rows[0].workout_type || rows[0].status || 'planned'}`);
+    const plan = rows[0];
+    plan.segments = await syncSegmentsForPlan(
+      plan.id,
+      req.body.segments,
+      req.body.planned_exercises,
+      plan.workout_type
+    );
 
-    autoPushToHevy(rows[0]);
-    res.status(201).json(rows[0]);
+    await logActivity('daily_plan_created', 'daily_plan', plan.id, null,
+      `Daily plan for ${plan.plan_date}: ${plan.workout_type || plan.status || 'planned'}`);
+
+    autoPushToHevy(plan);
+    res.status(201).json(plan);
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A daily plan already exists for this date. Use PUT to amend it.' });
@@ -327,7 +516,14 @@ router.post('/week', async (req, res) => {
            RETURNING *`,
           vals
         );
-        results.push(rows[0]);
+        const planRow = rows[0];
+        planRow.segments = await syncSegmentsForPlan(
+          planRow.id,
+          dayPlan.segments,
+          dayPlan.planned_exercises,
+          planRow.workout_type
+        );
+        results.push(planRow);
       } catch (e) {
         errors.push({ date: dateStr, error: e.message });
       }
@@ -359,24 +555,150 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
+    const segmentsSupplied = req.body.segments !== undefined || req.body.planned_exercises !== undefined;
+    if (!fields.length && !segmentsSupplied) return res.status(400).json({ error: 'No fields to update' });
 
-    fields.push('updated_at = NOW()');
-    vals.push(req.params.id);
+    let plan;
+    if (fields.length) {
+      fields.push('updated_at = NOW()');
+      vals.push(req.params.id);
+      const { rows } = await query(
+        `UPDATE daily_plans SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+        vals
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Daily plan not found' });
+      plan = rows[0];
+    } else {
+      const { rows } = await query(`SELECT * FROM daily_plans WHERE id = $1`, [req.params.id]);
+      if (!rows.length) return res.status(404).json({ error: 'Daily plan not found' });
+      plan = rows[0];
+    }
 
-    const { rows } = await query(
-      `UPDATE daily_plans SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
-      vals
+    if (segmentsSupplied) {
+      plan.segments = await syncSegmentsForPlan(
+        plan.id,
+        req.body.segments,
+        req.body.planned_exercises,
+        plan.workout_type
+      );
+    } else {
+      plan.segments = await loadSegments(plan.id);
+    }
+
+    await logActivity('daily_plan_updated', 'daily_plan', plan.id, null,
+      `Amended plan for ${plan.plan_date}`);
+
+    autoPushToHevy(plan);
+    res.json(plan);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  WRAP DAY — sync Hevy, auto-link actuals, flip status to completed
+// ══════════════════════════════════════════════════════════════════
+//
+// Idempotent. Safe to call from the "Wrap Day" UI button AND the
+// end-of-day-review skill. Returns the unified payload (plan + segments
+// with actuals + summary) for the client to render the diff.
+
+router.post('/:id/wrap', async (req, res) => {
+  try {
+    const { rows: planRows } = await query('SELECT * FROM daily_plans WHERE id = $1', [req.params.id]);
+    if (!planRows.length) return res.status(404).json({ error: 'Daily plan not found' });
+    const plan = planRows[0];
+
+    // Step 1: pull recent Hevy workouts so anything logged at the gym
+    // lands in `workouts` before we mark up the day. Best-effort — if
+    // Hevy is down we still wrap. Returns { ok, inserted, skipped }.
+    let hevySync = null;
+    try {
+      if (typeof syncHevyWorkouts === 'function') {
+        const since = new Date(plan.plan_date);
+        since.setDate(since.getDate() - 1);
+        hevySync = await syncHevyWorkouts(since.toISOString().slice(0, 10));
+      }
+    } catch (err) {
+      hevySync = { ok: false, error: err.message };
+    }
+
+    // Step 2: auto-link any same-date workouts that don't have a
+    // daily_plan_id yet (manual or HAE rows that arrived before this
+    // plan existed). Then attach to the first segment of the right
+    // logging_target so per-segment status rolls up.
+    await query(
+      `UPDATE workouts SET daily_plan_id = $1
+       WHERE workout_date = $2 AND daily_plan_id IS NULL`,
+      [plan.id, plan.plan_date]
     );
 
-    if (!rows.length) return res.status(404).json({ error: 'Daily plan not found' });
+    // For each segment, link orphan workouts of the matching source.
+    const { rows: segs } = await query(
+      `SELECT * FROM plan_segments WHERE daily_plan_id = $1 ORDER BY block_order`,
+      [plan.id]
+    );
+    for (const seg of segs) {
+      const sourceMatch = seg.logging_target === 'hevy' ? 'hevy'
+        : seg.logging_target === 'apple_health' ? 'apple_health'
+        : 'manual';
+      await query(
+        `UPDATE workouts
+         SET plan_segment_id = $1
+         WHERE daily_plan_id = $2
+           AND plan_segment_id IS NULL
+           AND (source = $3 OR source IS NULL)`,
+        [seg.id, plan.id, sourceMatch]
+      );
+    }
 
-    await logActivity('daily_plan_updated', 'daily_plan', rows[0].id, null,
-      `Amended plan for ${rows[0].plan_date}`);
+    // Step 3: roll up segment statuses. Any segment with at least one
+    // linked workout → completed. Anything left 'planned' → 'skipped'.
+    await query(
+      `UPDATE plan_segments ps
+       SET status = 'completed', updated_at = NOW()
+       WHERE ps.daily_plan_id = $1
+         AND EXISTS (SELECT 1 FROM workouts w WHERE w.plan_segment_id = ps.id)
+         AND ps.status IN ('planned','in_progress')`,
+      [plan.id]
+    );
+    await query(
+      `UPDATE plan_segments
+       SET status = 'skipped', updated_at = NOW()
+       WHERE daily_plan_id = $1
+         AND status IN ('planned','in_progress')`,
+      [plan.id]
+    );
 
-    autoPushToHevy(rows[0]);
-    res.json(rows[0]);
+    // Step 4: flip the plan's status. Idempotent — only flips if not
+    // already 'completed'.
+    await query(
+      `UPDATE daily_plans SET status = 'completed', updated_at = NOW() WHERE id = $1 AND status <> 'completed'`,
+      [plan.id]
+    );
+
+    await logActivity('daily_plan_wrapped', 'daily_plan', plan.id, null,
+      `Day wrapped for ${plan.plan_date}`);
+
+    // Step 5: return the same shape as /:id/review so the client renders
+    // the diff in one card.
+    const reviewReq = { params: { id: plan.id } };
+    let reviewBody = null;
+    const captureRes = {
+      json: (b) => { reviewBody = b; },
+      status: () => captureRes,
+    };
+    // Reuse the review handler logic by re-querying directly here so
+    // we don't recursively invoke the route.
+    const refreshed = (await query('SELECT * FROM daily_plans WHERE id = $1', [plan.id])).rows[0];
+    refreshed.segments = await loadSegments(refreshed.id);
+    res.json({
+      ok: true,
+      plan: refreshed,
+      hevy_sync: hevySync,
+    });
   } catch (err) {
+    console.error(`[daily-plans/wrap] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });

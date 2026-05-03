@@ -178,104 +178,185 @@ POST /api/training/coaching
 }
 ```
 
-## Step 8 — If today's plan is missing or stale
+## Step 8 — Build today's plan as segments
 
-If `today_plan` is null OR > 7 days old, also POST `/api/daily-plans`
-with the prescription you decided. Include `target_calories`, `target_protein_g`,
-etc. so the Macros card respects your plan. Also include
-`planned_exercises` JSONB array (see Step 9 for shape).
+Whether today's plan is missing, stale, or just being refined, write
+it as `segments[]` not flat `planned_exercises[]`. The unified Today
+card and the auto-link logic both depend on segments to know which
+modality each portion of the day belongs to.
 
-## Step 9 — Push the workout to Hevy (only if it's a strength/hybrid day)
+### 8a — Group prescribed exercises into segments
 
-If today's `workout_type IN ('strength', 'hybrid', 'hill')` AND you've
-prescribed specific exercises, push the routine to Hevy so Avi opens
-the Hevy app at the gym and follows it.
+A "day" has 1..N segments. Each segment carries:
+- `block_label` — warmup / cardio / strength / mobility / cooldown
+- `logging_target` — `hevy` (strength), `apple_health` (run/ride/swim
+  via Apple Watch), or `manual` (mobility, PT, walks, anything not in
+  Hevy or Apple Fitness)
+- `target_duration_min`, `target_effort`
+- `planned_exercises[]` — the same shape as before (see Step 9a)
 
-### 9a — Decide the structured exercise list
+Routing rules:
+- Run / treadmill / spin / row / swim → `apple_health`
+- Squat / press / deadlift / curl / bench / sled / carry → `hevy`
+- Cat Cow / spine rotation / ankle alphabet / foam roll / cool-down walk → `manual`
 
-For each exercise in your prescription, build an object:
+A typical mixed-modality day:
 ```
 {
-  "name": "Barbell Squat",            // human-readable, exact name
-  "sets": [
-    { "type": "warmup",  "reps": 8,  "weight_lb": 95  },
-    { "type": "normal",  "reps": 5,  "weight_lb": 135 },
-    { "type": "normal",  "reps": 5,  "weight_lb": 155 },
-    { "type": "normal",  "reps": 5,  "weight_lb": 175 }
-  ],
-  "notes": "Keep the back tight on top set"
+  "segments": [
+    {
+      "block_order": 0,
+      "block_label": "warmup",
+      "logging_target": "manual",
+      "target_duration_min": 6,
+      "planned_exercises": [
+        { "name": "Treadmill Walk-to-Jog Progression", "notes": "build from walk to easy jog" },
+        { "name": "Walking Lunge", "planned_sets": 1, "planned_reps": 10 },
+        { "name": "Cat Cow" }
+      ]
+    },
+    {
+      "block_order": 1,
+      "block_label": "cardio",
+      "logging_target": "apple_health",
+      "target_duration_min": 33,
+      "target_effort": 4,
+      "planned_exercises": [
+        { "name": "Treadmill Z2 Run", "notes": "conversational pace, HR ceiling 145" }
+      ]
+    },
+    {
+      "block_order": 2,
+      "block_label": "strength",
+      "logging_target": "hevy",
+      "target_duration_min": 30,
+      "target_effort": 6,
+      "planned_exercises": [
+        { "name": "Sled Push", "sets": [{ "reps": 1, "weight_lb": 25 }, { "reps": 1, "weight_lb": 25 }, { "reps": 1, "weight_lb": 25 }, { "reps": 1, "weight_lb": 25 }], "notes": "30m per rep" },
+        { "name": "Eccentric Heel Drop - Straight Knee", "sets": [{ "reps": 15 }, { "reps": 15 }, { "reps": 15 }] }
+      ]
+    }
+  ]
 }
 ```
 
-Pull the user's prior weights via:
-```
-GET /api/exercises/history?name=Barbell+Squat&limit=5
-```
-to choose appropriate working weights. Don't sandbag, don't lie about
-what they hit last time.
+### 8b — Save segments on the plan
 
-### 9b — Resolve each exercise name to a Hevy template_id
-
-For each exercise, search Hevy's catalog:
-```
-GET /api/hevy/exercise-templates?q=barbell+squat&limit=5
-```
-
-Pick the closest match (Hevy uses canonical names like "Barbell Squat",
-"Bench Press (Barbell)", "Deadlift (Romanian)"). Add the matched
-`hevy_exercise_template_id` to each exercise object:
+POST (or PUT) `/api/daily-plans` with the `segments` array. Backwards
+compat: if you only send flat `planned_exercises`, the server will
+auto-group via the taxonomy helper, but you should send segments
+explicitly so routing is deterministic.
 
 ```
+POST /api/daily-plans
 {
-  "name": "Barbell Squat",
-  "hevy_exercise_template_id": "<id from search result>",
-  "sets": [...],
-  "notes": "..."
+  "plan_date": "{today}",
+  "title": "...",
+  "workout_type": "hybrid",
+  "target_calories": 2400,
+  "target_protein_g": 140,
+  "segments": [...the array from 8a]
 }
 ```
 
-If no good match exists, skip that exercise from the Hevy push (still
-include it in the brief so Avi knows to add it manually) — the
-push-plan endpoint silently skips entries without a hevy_exercise_template_id.
+The auto-push hook fires after this; only `logging_target='hevy'`
+segments push to Hevy. The cardio segment stays in AB Brain only and
+will be matched to Apple Watch data when HAE imports it.
 
-### 9c — Save the structured exercises on the daily_plan
+## Step 9 — Resolve Hevy template IDs for hevy-target segments
 
+For each segment with `logging_target='hevy'`, pull the user's prior
+weights and resolve each exercise name to a Hevy template_id.
+
+### 9a — Pull recent weights
+
+```
+GET /api/exercises/history?name=Sled+Push&limit=5
+```
+
+Use the response to pick honest working weights. Don't sandbag.
+
+### 9b — Resolve each exercise to a Hevy template_id
+
+```
+GET /api/hevy/exercise-templates?q=sled+push&limit=5
+```
+
+Pick the closest match. Add `hevy_exercise_template_id` to the
+exercise object.
+
+### 9c — Flag exercises that don't map cleanly
+
+If an exercise name has no good match in the Hevy catalog (e.g., "Cat
+Cow", "Ankle Alphabet"), keep a `pending_custom[]` list. **DON'T
+silently drop them — the push endpoint already skips entries without
+a template_id, but you must surface the gap to the user.**
+
+### 9d — Re-PUT the plan with template IDs
+
+After resolving, PUT the plan back with the updated segments:
 ```
 PUT /api/daily-plans/{plan_id}
 {
-  "planned_exercises": [...the array from 9a/9b]
+  "segments": [...same segments, now with hevy_exercise_template_id on each Hevy exercise]
 }
 ```
 
-This makes the structured exercise list available for end-of-day-review's
-plan-vs-actual comparison.
+The auto-push hook will refresh the Hevy routines.
 
-### 9d — Push the routine to Hevy
+### 9e — Ask Avi about pending_custom
 
+For each entry in `pending_custom[]`, surface in the morning brief:
+
+> Two exercises aren't in your Hevy library yet: **Cat Cow**, **Ankle
+> Alphabet**. Want me to add them as custom exercises so the routine
+> is complete? (Y / skip)
+
+If Avi says yes, POST each one:
 ```
-POST /api/hevy/push-plan
+POST /api/hevy/exercise-templates
 {
-  "plan_id": "<the daily_plan id>",
-  "planned_exercises": [...the array from 9a/9b]
+  "title": "Cat Cow",
+  "muscle_group": "back",
+  "equipment": "none",
+  "notes": "spinal mobility flow"
 }
 ```
+Then re-PUT the plan with the new template_ids and let the auto-push
+hook re-push.
 
-The endpoint looks at `daily_plans.hevy_routine_id` — if set, it
-PUTs (updates the existing Hevy routine). If null, it POSTs a new
-routine and persists the new `hevy_routine_id` back to the plan. Either
-way, idempotent.
+If skip: the routine is pushed without those exercises, and the Today
+card shows them with a `[⚠ not in Hevy]` chip so Avi remembers to do
+them outside Hevy.
 
-### 9e — Surface in the brief
+## Step 10 — Surface routing in the brief
 
-Add a line at the end of the TODAY'S SESSION section:
+For multi-modality days, list per-segment where each portion is logged.
+Lead with the most-coaching-relevant block (usually strength or the
+race-specific session); end with the smallest blocks.
 
-> Routine pushed to Hevy as "🏋 Strength 2026-05-03". Open Hevy on
-> your phone at the gym; everything's pre-loaded.
+> Today's session — three blocks:
+>
+> 🧘 **Warmup (manual, 6 min)** — walk-to-jog ramp, lunge, cat cow.
+>   Just open the timer when you start.
+>
+> ⌚ **Cardio (Apple Fitness, 33 min Z2)** — 2.5mi @ ~13:00/mi, HR
+>   ceiling 145. Apple Watch will auto-log; nothing for you to do
+>   except start the workout.
+>
+> 🏋 **Strength (Hevy, 30 min)** — routine pushed as "🏋 Strength
+>   2026-05-03 (Strength)". Open Hevy at the gym; everything's
+>   pre-loaded except Cat Cow and Ankle Alphabet (not in your library).
 
-If push failed for any reason, state that honestly:
+If any segment's Hevy push failed, state that honestly per segment:
 
-> Hevy push failed: {error message}. Falling back to manual — see exercise
-> list above.
+> Strength segment Hevy push failed: {error message}. Use the exercise
+> list above and log manually in Hevy.
+
+If the unified Today card auto-syncs Hevy on app open, mention it once:
+
+> Heads up — AB Brain pulls your Hevy logs automatically when you
+> open the app. Tap "Wrap Day" on the Today card when you're done.
 
 ## Voice rules
 

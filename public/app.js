@@ -5601,12 +5601,163 @@ function shiftFitnessToday(delta) {
 //   (nothing) — workout_type isn't pushable (run, recovery, ruck, rest, etc.)
 function renderHevyBadge(plan) {
   if (!plan) return '';
+  // Prefer segment-aware status when segments exist.
+  const segs = Array.isArray(plan.segments) ? plan.segments : [];
+  const hevySegs = segs.filter(s => s.logging_target === 'hevy');
+  if (hevySegs.length > 0) {
+    const allPushed = hevySegs.every(s => s.hevy_routine_id);
+    if (allPushed) return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="${hevySegs.length} Hevy routine${hevySegs.length === 1 ? '' : 's'} pushed">✓ Hevy</span>`;
+    return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="${hevySegs.length} segment${hevySegs.length === 1 ? '' : 's'} routed to Hevy but not all pushed yet">⚠ Hevy queued</span>`;
+  }
+  // Legacy fallback
   const PUSHABLE = new Set(['strength', 'hybrid', 'hill']);
   if (!PUSHABLE.has(plan.workout_type)) return '';
   if (plan.hevy_routine_id) {
     return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="Routine ${plan.hevy_routine_id} pushed to Hevy">✓ Hevy</span>`;
   }
   return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="Pushable workout but no Hevy routine yet — try editing the plan to trigger auto-push, or push via Coach">⚠ Hevy queued</span>`;
+}
+
+// Format a single planned exercise as one line. The legacy renderer
+// emitted "1× undefined" when planned_sets existed but planned_reps
+// did not — common for mobility moves like "Cat Cow". This version
+// returns notes-only for those, duration when set, or the sets×reps
+// summary when reps are present.
+function formatExerciseLine(ex) {
+  if (!ex) return '';
+  const notes = ex.notes || '';
+  const name = ex.name || ex.title || '';
+
+  // Set-level detail (Fitbod / structured Hevy push)
+  if (ex.sets && Array.isArray(ex.sets) && ex.sets.length > 0) {
+    const setStrs = ex.sets.map(s => {
+      if (s.duration) return s.duration;
+      if (s.reps != null) return `${s.reps}${s.weight ? ' × ' + s.weight : (s.weight_lb ? ' × ' + s.weight_lb + 'lb' : '')}`;
+      return s.duration_seconds ? `${s.duration_seconds}s` : '';
+    }).filter(Boolean);
+    if (setStrs.length === 0) return '';
+    const unique = [...new Set(setStrs)];
+    if (unique.length === 1) return `${ex.sets.length}× ${unique[0]}`;
+    return setStrs.join(' · ');
+  }
+
+  // Summary-level — only show "N×R" when reps exist; never "1× undefined"
+  const sets = ex.planned_sets ?? ex.sets;
+  const reps = ex.planned_reps ?? ex.reps;
+  const weight = ex.planned_weight ?? ex.weight ?? ex.highest_weight ?? '';
+  if (sets != null && reps != null) {
+    return `${sets}×${reps}${weight ? ' @ ' + weight : ''}`;
+  }
+  if (ex.total_reps) return `${ex.total_reps} reps`;
+  if (ex.duration) return ex.duration;
+  if (ex.duration_min) return `${ex.duration_min} min`;
+  if (ex.total_time) return `${ex.total_time}`;
+  if (sets != null && reps == null && (ex.duration_seconds || ex.duration_min)) {
+    const t = ex.duration_min ? `${ex.duration_min} min` : `${ex.duration_seconds}s`;
+    return `${sets} round${sets > 1 ? 's' : ''} (${t})`;
+  }
+  // Mobility / note-only — render nothing as the metric, name + notes carry the info.
+  return '';
+}
+
+// Render a single plan_segment as an inset block inside the Today card.
+function renderSegmentBlock(seg) {
+  if (!seg) return '';
+  const STATUS_DOT = {
+    completed: { color: '#10b981', icon: '✓' },
+    in_progress: { color: '#f59e0b', icon: '◐' },
+    skipped: { color: '#ef4444', icon: '✗' },
+    planned: { color: '#9ca3af', icon: '○' },
+  };
+  const dot = STATUS_DOT[seg.status] || STATUS_DOT.planned;
+  const TARGET_LABEL = {
+    hevy: '🏋 Hevy',
+    apple_health: '⌚ Apple Fitness',
+    manual: '✍ Manual',
+  };
+  const block = (seg.block_label || 'session').toUpperCase();
+  const target = TARGET_LABEL[seg.logging_target] || seg.logging_target || '';
+  const exercises = Array.isArray(seg.planned_exercises) ? seg.planned_exercises : [];
+  const workouts = Array.isArray(seg.workouts) ? seg.workouts : [];
+
+  const exerciseLines = exercises.map(ex => {
+    const metric = formatExerciseLine(ex);
+    const missingHevy = seg.logging_target === 'hevy' && !ex.hevy_exercise_template_id;
+    const missingChip = missingHevy
+      ? `<span style="color:#f59e0b;font-size:0.6rem;margin-left:4px" title="Not in Hevy library">⚠ not in Hevy</span>`
+      : '';
+    const noteRow = ex.notes
+      ? `<div style="font-size:0.62rem;color:var(--text-dim);margin-left:18px;font-style:italic">${esc(ex.notes)}</div>`
+      : '';
+    return `<div style="display:flex;align-items:baseline;gap:6px;font-size:0.74rem;padding:1px 0">
+        <span style="color:var(--text-dim)">·</span>
+        <span style="flex:1;font-weight:500">${esc(ex.name || ex.title || '—')}${missingChip}</span>
+        ${metric ? `<span style="color:var(--text-dim);font-size:0.66rem;white-space:nowrap">${esc(metric)}</span>` : ''}
+      </div>${noteRow}`;
+  }).join('');
+
+  const actualLines = workouts.map(w => {
+    const dur = w.time_duration ? esc(w.time_duration) : '';
+    const dist = w.distance ? esc(w.distance) : '';
+    const hr = w.hr_avg || w.heart_rate_avg ? `HR ${esc(w.hr_avg || w.heart_rate_avg)}` : '';
+    const meta = [dur, dist, hr].filter(Boolean).join(' · ');
+    const notes = w.body_notes
+      ? `<div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;font-style:italic">${esc(w.body_notes)}</div>`
+      : '';
+    return `<div style="margin-top:4px;padding:4px 6px;background:#10b98109;border-radius:4px;font-size:0.7rem">
+      <span style="color:#10b981">✓ logged</span> ${esc(w.title || 'Workout')}${meta ? ' — ' + meta : ''}
+      ${notes}
+    </div>`;
+  }).join('');
+
+  return `<div style="margin-top:6px;padding:6px 8px;background:var(--bg-tertiary);border-left:3px solid ${dot.color};border-radius:4px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:700;color:${dot.color};text-transform:uppercase;letter-spacing:0.5px">
+      <span>${dot.icon}</span>
+      <span>${esc(block)}</span>
+      <span style="color:var(--text-dim);font-weight:400">·</span>
+      <span style="color:var(--text-dim);font-weight:400">${esc(target)}</span>
+      ${seg.target_duration_min ? `<span style="color:var(--text-dim);font-weight:400">· ${seg.target_duration_min}m</span>` : ''}
+      ${seg.target_effort ? `<span style="color:var(--text-dim);font-weight:400">· E${seg.target_effort}</span>` : ''}
+      <span style="flex:1"></span>
+      <span style="color:var(--text-dim);font-weight:500;font-size:0.6rem">${seg.status}</span>
+    </div>
+    ${exerciseLines || '<div style="font-size:0.7rem;color:var(--text-dim);padding:2px 0">no exercises listed</div>'}
+    ${actualLines}
+  </div>`;
+}
+
+// Wrap Day button handler — calls /api/daily-plans/:id/wrap, refreshes
+// the today view, and offers to open the Coach end-of-day-review skill.
+async function wrapDay(planId) {
+  if (!planId) return;
+  if (!confirm('Wrap day? This syncs Hevy, links workouts to today\'s plan, and marks the day completed.')) return;
+  try {
+    const result = await api(`/daily-plans/${planId}/wrap`, { method: 'POST' });
+    showToast(`Day wrapped${result.hevy_sync?.inserted ? ` — ${result.hevy_sync.inserted} Hevy workout${result.hevy_sync.inserted === 1 ? '' : 's'} synced` : ''}`, 'success');
+    if (typeof loadFitnessToday === 'function' && fitnessSubTab === 'today') loadFitnessToday();
+  } catch (err) {
+    showToast('Wrap failed: ' + err.message, 'error');
+  }
+}
+
+// Background Hevy auto-sync. Called once per app load. Throttled to
+// once per 15 minutes via localStorage. No toast unless something new
+// landed. Safe to call when HEVY_API_KEY isn't configured — server
+// returns { skipped: 'no_api_key' } and we no-op.
+async function autoSyncHevy() {
+  try {
+    const stamp = parseInt(localStorage.getItem('hevy_last_autosync') || '0', 10);
+    if (Date.now() - stamp < 15 * 60 * 1000) return;
+    localStorage.setItem('hevy_last_autosync', String(Date.now()));
+    const today = localDateStr();
+    const yest = new Date();
+    yest.setDate(yest.getDate() - 1);
+    const since = yest.toLocaleDateString('en-CA');
+    const r = await api(`/hevy/sync?since=${since}`, { method: 'POST' });
+    if (r && r.inserted > 0) {
+      showToast(`Hevy: ${r.inserted} workout${r.inserted === 1 ? '' : 's'} synced`, 'info');
+    }
+  } catch (_) { /* silent */ }
 }
 
 async function loadFitnessToday() {
@@ -5664,85 +5815,56 @@ async function loadFitnessToday() {
     const dateLabel = sel.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     const isToday = fitnessTodayDate === today;
 
-    // Plan section (with structured exercises support)
+    // Plan section (segment-aware, with legacy fallback for plans
+    // that haven't been migrated to plan_segments yet).
     let planHtml = '';
     if (plan) {
-      const statusColors = { planned: '#3b82f6', completed: '#10b981', partial: '#f59e0b', missed: '#ef4444', rest: '#8b5cf6', amended: '#6366f1' };
+      const statusColors = { planned: '#3b82f6', completed: '#10b981', partial: '#f59e0b', missed: '#ef4444', rest: '#8b5cf6', amended: '#6366f1', in_progress: '#f59e0b' };
       const statusColor = statusColors[plan.status] || '#6b7280';
-      const statusIcons = { planned: '○', completed: '✓', partial: '~', missed: '✗', rest: '◇', amended: '◆' };
+      const statusIcons = { planned: '○', completed: '✓', partial: '~', missed: '✗', rest: '◇', amended: '◆', in_progress: '◐' };
       const statusIcon = statusIcons[plan.status] || '○';
 
-      // Build exercise list from planned_exercises or actual_exercises
-      const showActual = plan.actual_exercises && plan.actual_exercises.length > 0;
-      const exercises = showActual ? plan.actual_exercises : (plan.planned_exercises || []);
-      let exerciseHtml = '';
-      if (exercises.length > 0) {
-        let currentGroup = '';
-        exerciseHtml = exercises.map(ex => {
-          let groupHeader = '';
-          const group = (ex.group || 'main').toLowerCase();
-          if (group !== currentGroup) {
-            currentGroup = group;
-            const groupLabels = { warmup: 'WARMUP', main: 'MAIN', superset: 'SUPERSET', circuit: 'CIRCUIT', finisher: 'FINISHER' };
-            groupHeader = `<div style="font-size:0.6rem;font-weight:700;color:var(--text-dim);margin-top:8px;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">${groupLabels[group] || group.toUpperCase()}</div>`;
-          }
-
-          // Status icon for actual exercises
-          const exStatus = ex.status || (ex.completed === false ? 'skipped' : ex.completed === true ? 'completed' : '');
-          const exIcon = exStatus === 'completed' ? '<span style="color:#10b981">✓</span>' :
-                         exStatus === 'partial' ? '<span style="color:#f59e0b">~</span>' :
-                         exStatus === 'skipped' ? '<span style="color:#ef4444">✗</span>' :
-                         '<span style="color:var(--text-dim)">·</span>';
-
-          // Format sets info
-          let setsInfo = '';
-          if (ex.sets && Array.isArray(ex.sets)) {
-            // Set-level detail from Fitbod
-            const setStrs = ex.sets.map(s => {
-              if (s.duration) return s.duration;
-              return `${s.reps}${s.weight ? ' × ' + s.weight : ''}`;
-            });
-            // Collapse identical sets: "5×50, 5×50, 5×50" → "3×5 @ 50 lb"
-            const unique = [...new Set(setStrs)];
-            if (unique.length === 1) {
-              setsInfo = `${ex.sets.length}× ${unique[0]}`;
-            } else {
-              setsInfo = setStrs.join(' · ');
+      const segments = Array.isArray(plan.segments) ? plan.segments : [];
+      let bodyHtml = '';
+      if (segments.length > 0) {
+        // New unified rendering: one nested block per segment.
+        bodyHtml = segments.map(renderSegmentBlock).join('');
+      } else {
+        // Legacy fallback for plans without segments. Use the new
+        // formatExerciseLine() so we never emit "1× undefined".
+        const exercises = (plan.actual_exercises && plan.actual_exercises.length)
+          ? plan.actual_exercises
+          : (plan.planned_exercises || []);
+        if (exercises.length > 0) {
+          let currentGroup = '';
+          bodyHtml = '<div style="margin-top:8px">' + exercises.map(ex => {
+            const group = (ex.group || 'main').toLowerCase();
+            let groupHeader = '';
+            if (group !== currentGroup) {
+              currentGroup = group;
+              const groupLabels = { warmup: 'WARMUP', main: 'MAIN', superset: 'SUPERSET', circuit: 'CIRCUIT', finisher: 'FINISHER' };
+              groupHeader = `<div style="font-size:0.6rem;font-weight:700;color:var(--text-dim);margin-top:8px;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">${groupLabels[group] || group.toUpperCase()}</div>`;
             }
-          } else {
-            // Summary-level data
-            const parts = [];
-            if (ex.planned_sets && !showActual) parts.push(`${ex.planned_sets}×${ex.planned_reps || '?'}${ex.planned_weight ? ' @ ' + ex.planned_weight : ''}`);
-            else if (ex.actual_sets) parts.push(`${ex.actual_sets}×${ex.actual_reps || '?'}${ex.actual_weight ? ' @ ' + ex.actual_weight : ''}`);
-            else if (ex.total_reps) parts.push(`${ex.total_reps} reps`);
-            else if (ex.duration) parts.push(ex.duration);
-            else if (ex.total_time) parts.push(`${ex.sets || '?'}× ${ex.total_time}`);
-            if (ex.highest_weight) parts.push(ex.highest_weight);
-            if (ex.volume && ex.volume !== ex.highest_weight) parts.push(ex.volume + ' vol');
-            setsInfo = parts.join(' · ');
-          }
-
-          // PR indicator
-          const prBadge = ex.pr || ex.notes?.includes('PR') ? ' <span style="color:#eab308;font-size:0.6rem">🏆</span>' : '';
-
-          // Notes
-          const notesHtml = ex.notes && !ex.notes.includes('PR') ? `<div style="font-size:0.6rem;color:var(--text-dim);margin-left:20px;font-style:italic">${esc(ex.notes)}</div>` : '';
-
-          return groupHeader + `<div style="display:flex;align-items:baseline;gap:6px;font-size:0.75rem;padding:2px 0">
-            ${showActual ? exIcon : '<span style="color:var(--text-dim)">·</span>'}
-            <span style="flex:1;font-weight:500">${esc(ex.name)}${prBadge}</span>
-            <span style="color:var(--text-dim);font-size:0.68rem;white-space:nowrap">${setsInfo}</span>
-          </div>${notesHtml}`;
-        }).join('');
+            const metric = formatExerciseLine(ex);
+            const noteRow = ex.notes ? `<div style="font-size:0.6rem;color:var(--text-dim);margin-left:20px;font-style:italic">${esc(ex.notes)}</div>` : '';
+            return groupHeader + `<div style="display:flex;align-items:baseline;gap:6px;font-size:0.75rem;padding:2px 0">
+              <span style="color:var(--text-dim)">·</span>
+              <span style="flex:1;font-weight:500">${esc(ex.name || ex.title || '—')}</span>
+              ${metric ? `<span style="color:var(--text-dim);font-size:0.68rem;white-space:nowrap">${esc(metric)}</span>` : ''}
+            </div>${noteRow}`;
+          }).join('') + '</div>';
+        }
       }
 
-      // Planned vs actual comparison line
-      let vsLine = '';
-      if (showActual && plan.planned_exercises && plan.planned_exercises.length > 0) {
-        const plannedCount = plan.planned_exercises.length;
-        const actualCount = plan.actual_exercises.filter(e => e.status !== 'skipped' && e.completed !== false).length;
-        vsLine = `<div style="font-size:0.65rem;color:var(--text-dim);margin-top:4px">${actualCount}/${plannedCount} exercises completed</div>`;
+      // Per-segment rollup count
+      let segRollup = '';
+      if (segments.length > 0) {
+        const done = segments.filter(s => s.status === 'completed').length;
+        segRollup = `<div style="font-size:0.65rem;color:var(--text-dim);margin-top:6px">${done}/${segments.length} segment${segments.length === 1 ? '' : 's'} completed</div>`;
       }
+
+      // Wrap Day button — primary CTA when day is in flight.
+      const canWrap = plan.status !== 'completed' && plan.status !== 'rest';
 
       planHtml = `
         <div class="card mb-md" style="border-left:3px solid ${statusColor}">
@@ -5755,11 +5877,11 @@ async function loadFitnessToday() {
           </div>
           ${plan.title ? `<div style="font-weight:600;font-size:0.85rem">${esc(plan.title)}</div>` : ''}
           ${plan.workout_type ? `<div style="font-size:0.75rem;color:var(--text-dim)">${esc(plan.workout_type)}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}${plan.target_effort ? ' · effort ' + plan.target_effort : ''}${plan.target_duration_min ? ' · ' + plan.target_duration_min + 'min' : ''}</div>` : ''}
-          ${exerciseHtml ? `<div style="margin-top:8px">${exerciseHtml}</div>` : ''}
-          ${!exerciseHtml && plan.workout_notes ? `
+          ${bodyHtml}
+          ${!bodyHtml && plan.workout_notes ? `
             <div style="margin-top:8px;padding:8px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:0.75rem;line-height:1.6;white-space:pre-line;font-family:var(--font-mono, monospace)">${esc(plan.workout_notes)}</div>
           ` : ''}
-          ${vsLine}
+          ${segRollup}
           ${plan.target_calories || plan.target_protein_g || plan.target_hydration_liters || plan.target_sleep_hours ? `
             <div class="list-item-meta" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg-tertiary)">
               ${plan.target_calories ? 'Cal: ' + plan.target_calories + ' ' : ''}
@@ -5771,6 +5893,7 @@ async function loadFitnessToday() {
           ${plan.coaching_notes ? `<div class="transcript-summary mt-sm">${esc(plan.coaching_notes)}</div>` : ''}
           ${plan.completion_notes ? `<div style="margin-top:6px;padding:6px 8px;background:${statusColor}11;border-radius:6px;font-size:0.72rem;color:var(--text-dim)"><strong style="color:${statusColor}">Coach:</strong> ${esc(plan.completion_notes)}</div>` : ''}
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            ${canWrap ? `<button class="btn-submit btn-compact-sm" style="font-size:0.65rem;background:#10b981" onclick="wrapDay('${plan.id}')">Wrap Day</button>` : ''}
             ${['completed','partial','missed'].map(s => `<button class="btn-submit btn-compact-sm ${plan.status === s ? '' : 'btn-secondary'}" style="font-size:0.65rem" onclick="quickUpdatePlanStatus('${plan.id}','${s}')">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
             <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.65rem" onclick="editDailyPlan('${plan.id}')">Edit</button>
           </div>
@@ -5838,12 +5961,17 @@ async function loadFitnessToday() {
       </div>`;
     }
 
-    // Workouts section
+    // Workouts section — only show workouts that are NOT already
+    // attached to a plan_segment. Linked workouts render inside their
+    // segment block above; this list is just the orphans (e.g. random
+    // walks, workouts logged on a no-plan day, or pre-migration rows).
     const typeColors = { hill: '#f59e0b', strength: '#ef4444', run: '#3b82f6', hybrid: '#8b5cf6', recovery: '#10b981', ruck: '#78716c' };
+    const standaloneWorkouts = workouts.filter(w => !w.plan_segment_id);
     let workoutsHtml = '';
-    if (workouts.length) {
-      workoutsHtml = `<div class="card mb-md"><div class="card-title">Workouts (${workouts.length})</div>
-        ${workouts.map(w => {
+    if (standaloneWorkouts.length) {
+      const heading = plan ? 'Other workouts' : 'Workouts';
+      workoutsHtml = `<div class="card mb-md"><div class="card-title">${heading} (${standaloneWorkouts.length})</div>
+        ${standaloneWorkouts.map(w => {
           const color = typeColors[w.workout_type] || '#6366f1';
           return `<div class="list-item" onclick="showWorkoutDetail('${w.id}')" style="border-left:3px solid ${color};cursor:pointer;padding:6px 8px;margin-bottom:4px">
             <div style="font-weight:600;font-size:0.8rem">${esc(w.title)}</div>
@@ -10225,6 +10353,17 @@ document.addEventListener('click', e => {
   if (convStart) convStart.value = '2025-12-01';
   if (convEnd) convEnd.value = new Date().toISOString().split('T')[0];
 
-  // Auto-refresh on app resume
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && getStoredKey()) switchTab(currentTab); });
+  // Background Hevy auto-sync. Throttled via localStorage to once per
+  // 15 min so the workout you logged at the gym lands in AB Brain
+  // before you even open the Today card.
+  if (typeof autoSyncHevy === 'function') autoSyncHevy().catch(() => {});
+
+  // Auto-refresh on app resume — also refresh Hevy so workouts logged
+  // while the app was backgrounded come in when you flip back.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && getStoredKey()) {
+      switchTab(currentTab);
+      if (typeof autoSyncHevy === 'function') autoSyncHevy().catch(() => {});
+    }
+  });
 })();

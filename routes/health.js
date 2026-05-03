@@ -781,6 +781,50 @@ function round3(n) { return Math.round(n * 1000) / 1000; }
 // by a few minutes; 15min comfortably covers race starts and tap-to-end lag.
 const WORKOUT_MERGE_WINDOW_SEC = 900;
 
+// Auto-link a freshly inserted/merged Apple Health workout to today's
+// plan + the apple_health-target segment. Falls back to first segment
+// of any kind if no apple_health segment exists. No-op when no plan
+// exists for the workout's date.
+async function linkWorkoutToPlan(workoutId, workoutDate, source) {
+  if (!workoutId || !workoutDate) return;
+  try {
+    const targetPref = source === 'apple_health' ? 'apple_health'
+      : source === 'hevy' ? 'hevy' : 'manual';
+    const r = await query(
+      `SELECT dp.id AS plan_id,
+        (SELECT id FROM plan_segments
+         WHERE daily_plan_id = dp.id AND logging_target = $2
+         ORDER BY block_order LIMIT 1) AS preferred_segment_id,
+        (SELECT id FROM plan_segments
+         WHERE daily_plan_id = dp.id
+         ORDER BY block_order LIMIT 1) AS first_segment_id
+       FROM daily_plans dp
+       WHERE dp.plan_date = $1
+       LIMIT 1`,
+      [workoutDate, targetPref]
+    );
+    if (!r.rows[0]?.plan_id) return;
+    const segmentId = r.rows[0].preferred_segment_id || r.rows[0].first_segment_id;
+    await query(
+      `UPDATE workouts
+       SET daily_plan_id = COALESCE(daily_plan_id, $1),
+           plan_segment_id = COALESCE(plan_segment_id, $2),
+           updated_at = NOW()
+       WHERE id = $3`,
+      [r.rows[0].plan_id, segmentId, workoutId]
+    );
+    if (segmentId) {
+      await query(
+        `UPDATE plan_segments SET status = 'completed', updated_at = NOW()
+         WHERE id = $1 AND status IN ('planned','in_progress')`,
+        [segmentId]
+      );
+    }
+  } catch (err) {
+    console.error(`[health/link] workout ${workoutId} → plan failed: ${err.message}`);
+  }
+}
+
 async function upsertWorkouts(workouts) {
   let inserted = 0;
   let updated = 0;
@@ -826,6 +870,7 @@ async function upsertWorkouts(workouts) {
            JSON.stringify({ apple_health: w.metadata || {} })]
         );
         merged++;
+        await linkWorkoutToPlan(nearby.rows[0].id, w.workout_date, nearby.rows[0].source);
       } catch (err) {
         console.error(`[health/ingest] workout merge failed (${w.started_at}): ${err.message}`);
       }
@@ -874,6 +919,7 @@ async function upsertWorkouts(workouts) {
         JSON.stringify(w.metadata || {}),
       ]);
       if (result.rows[0].inserted_now) inserted++; else updated++;
+      await linkWorkoutToPlan(result.rows[0].id, w.workout_date, w.source || 'apple_health');
     } catch (err) {
       console.error(`[health/ingest] workout upsert failed (${w.started_at}): ${err.message}`);
     }

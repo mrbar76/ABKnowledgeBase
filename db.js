@@ -1276,6 +1276,79 @@ async function initDB() {
   // re-ingests deduplicate at the row level.
   await safeQuery('workouts unique apple_health started_at', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_apple_health_started_at ON workouts(started_at) WHERE source = 'apple_health' AND started_at IS NOT NULL`);
 
+  // ===== PLAN SEGMENTS (Phase N) =====
+  // A daily_plan is the day envelope; plan_segments are the prescribed
+  // sessions inside it. Multi-modality days (warmup walk + Z2 run +
+  // strength block) become 3 segments, each with its own logging_target
+  // (hevy / apple_health / manual), so the Hevy push only sends segments
+  // that belong in Hevy and Apple Fitness owns the cardio.
+  await safeQuery('plan_segments table', `
+    CREATE TABLE IF NOT EXISTS plan_segments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      daily_plan_id UUID NOT NULL REFERENCES daily_plans(id) ON DELETE CASCADE,
+      block_order INTEGER NOT NULL DEFAULT 0,
+      block_label TEXT NOT NULL,
+      logging_target TEXT NOT NULL DEFAULT 'manual',
+      planned_exercises JSONB DEFAULT '[]'::jsonb,
+      target_duration_min INTEGER,
+      target_effort INTEGER,
+      time_window_start TIME,
+      time_window_end TIME,
+      hevy_routine_id TEXT,
+      status TEXT DEFAULT 'planned',
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('plan_segments plan idx', `CREATE INDEX IF NOT EXISTS idx_plan_segments_plan ON plan_segments(daily_plan_id)`);
+  await safeQuery('plan_segments order idx', `CREATE INDEX IF NOT EXISTS idx_plan_segments_order ON plan_segments(daily_plan_id, block_order)`);
+
+  // Workouts now point at the segment they fulfilled (in addition to the
+  // existing daily_plan_id FK so we keep day-level rollups easy).
+  await safeQuery('workouts +plan_segment_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_segment_id UUID REFERENCES plan_segments(id) ON DELETE SET NULL`);
+  await safeQuery('workouts plan_segment idx', `CREATE INDEX IF NOT EXISTS idx_workouts_plan_segment ON workouts(plan_segment_id)`);
+
+  // Hevy sync was silently dropping these on INSERT (mapHevyWorkoutToAB
+  // built them in the row but the columns didn't exist). Add as real
+  // columns so total volume + sets land alongside the Hevy session.
+  await safeQuery('workouts +total_volume_lb', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_volume_lb NUMERIC(10,2)`);
+  await safeQuery('workouts +total_sets', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_sets INTEGER`);
+  await safeQuery('workouts +ended_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ`);
+
+  // Backfill: synth one segment per existing daily_plan that already has
+  // planned_exercises so legacy plans render correctly under the new
+  // unified card. Idempotent — guarded by NOT EXISTS.
+  await safeQuery('backfill plan_segments from daily_plans', `
+    INSERT INTO plan_segments (daily_plan_id, block_order, block_label, logging_target, planned_exercises, target_duration_min, target_effort, hevy_routine_id, status)
+    SELECT
+      dp.id,
+      0,
+      COALESCE(NULLIF(dp.workout_type, ''), 'strength'),
+      CASE
+        WHEN dp.workout_type IN ('strength','hybrid','hill') THEN 'hevy'
+        WHEN dp.workout_type IN ('run','recovery','cardio','ride','swim','bike') THEN 'apple_health'
+        ELSE 'manual'
+      END,
+      COALESCE(dp.planned_exercises, '[]'::jsonb),
+      dp.target_duration_min,
+      dp.target_effort,
+      dp.hevy_routine_id,
+      CASE WHEN dp.status = 'completed' THEN 'completed' ELSE 'planned' END
+    FROM daily_plans dp
+    WHERE NOT EXISTS (SELECT 1 FROM plan_segments ps WHERE ps.daily_plan_id = dp.id)
+  `);
+
+  // Backfill: link existing workouts to the first segment of their plan.
+  await safeQuery('backfill workouts.plan_segment_id', `
+    UPDATE workouts w
+    SET plan_segment_id = ps.id
+    FROM plan_segments ps
+    WHERE w.daily_plan_id = ps.daily_plan_id
+      AND ps.block_order = 0
+      AND w.plan_segment_id IS NULL
+      AND w.daily_plan_id IS NOT NULL
+  `);
+
   // body_metrics: lean mass + apple_health partial unique + nullable weight
   await safeQuery('body_metrics +lean_mass_lb', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS lean_mass_lb NUMERIC(6,2)`);
   // Apple Health may emit body-fat-only or BMI-only rows with no weight, so

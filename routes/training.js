@@ -309,9 +309,27 @@ router.get('/day/:date', async (req, res) => {
       query('SELECT * FROM daily_plans WHERE plan_date = $1', [date]),
     ]);
 
+    // Attach segments (with each segment's logged workouts) so the
+    // frontend can render the unified Today card without a second
+    // round trip.
+    let plan = dailyPlan.rows[0] || null;
+    if (plan) {
+      const segR = await query(
+        `SELECT ps.*, COALESCE(
+           (SELECT json_agg(w.* ORDER BY w.started_at NULLS LAST, w.created_at)
+            FROM workouts w WHERE w.plan_segment_id = ps.id), '[]'::json
+         ) AS workouts
+         FROM plan_segments ps
+         WHERE ps.daily_plan_id = $1
+         ORDER BY ps.block_order`,
+        [plan.id]
+      ).catch(() => ({ rows: [] }));
+      plan.segments = segR.rows;
+    }
+
     res.json({
       date,
-      daily_plan: dailyPlan.rows[0] || null,
+      daily_plan: plan,
       workouts: workouts.rows,
       meals: meals.rows,
       nutrition_context: nutrition.rows[0] || null,

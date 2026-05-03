@@ -2,6 +2,50 @@ const express = require('express');
 const { query, logActivity } = require('../db');
 const router = express.Router();
 
+// Auto-link a freshly inserted workout to today's plan + the
+// preferred segment (matching by source / logging_target). No-op when
+// caller already supplied daily_plan_id, or when no plan exists for
+// the workout's date.
+async function autoLinkWorkout(workoutRow) {
+  if (!workoutRow || !workoutRow.id || !workoutRow.workout_date) return;
+  if (workoutRow.daily_plan_id) return;
+  try {
+    const source = workoutRow.source || 'manual';
+    const targetPref = source === 'apple_health' ? 'apple_health'
+      : source === 'hevy' ? 'hevy' : 'manual';
+    const r = await query(
+      `SELECT dp.id AS plan_id,
+        (SELECT id FROM plan_segments
+         WHERE daily_plan_id = dp.id AND logging_target = $2
+         ORDER BY block_order LIMIT 1) AS preferred_segment_id,
+        (SELECT id FROM plan_segments
+         WHERE daily_plan_id = dp.id
+         ORDER BY block_order LIMIT 1) AS first_segment_id
+       FROM daily_plans dp WHERE dp.plan_date = $1 LIMIT 1`,
+      [workoutRow.workout_date, targetPref]
+    );
+    if (!r.rows[0]?.plan_id) return;
+    const segmentId = r.rows[0].preferred_segment_id || r.rows[0].first_segment_id;
+    await query(
+      `UPDATE workouts
+       SET daily_plan_id = $1,
+           plan_segment_id = COALESCE(plan_segment_id, $2),
+           updated_at = NOW()
+       WHERE id = $3`,
+      [r.rows[0].plan_id, segmentId, workoutRow.id]
+    );
+    if (segmentId) {
+      await query(
+        `UPDATE plan_segments SET status = 'completed', updated_at = NOW()
+         WHERE id = $1 AND status IN ('planned','in_progress')`,
+        [segmentId]
+      );
+    }
+  } catch (err) {
+    console.error(`[workouts/autoLink] ${workoutRow.id}: ${err.message}`);
+  }
+}
+
 // Canonical writable fields (matches read schema)
 const WRITABLE_FIELDS = [
   'title', 'workout_date', 'workout_type', 'location', 'elevation', 'focus',
@@ -186,6 +230,7 @@ router.post('/', async (req, res) => {
     );
 
     await logActivity('create', 'workout', result.rows[0].id, b.ai_source || b.source || 'manual', `Workout: ${title}`);
+    await autoLinkWorkout(result.rows[0]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -288,6 +333,12 @@ router.post('/bulk', async (req, res) => {
         );
 
         results.push({ id: result.rows[0].id, title: result.rows[0].title, workout_date: result.rows[0].workout_date });
+        await autoLinkWorkout({
+          id: result.rows[0].id,
+          workout_date: result.rows[0].workout_date,
+          source: b.source || 'import',
+          daily_plan_id: b.daily_plan_id || null,
+        });
         imported++;
       } catch (itemErr) {
         results.push({ error: itemErr.message, workout_date: b.workout_date, title: b.title });

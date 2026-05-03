@@ -989,6 +989,127 @@
         }
       }
     },
+    "/daily-plans/{id}/wrap": {
+      "post": {
+        "operationId": "wrapDay",
+        "summary": "Wrap the day: sync Hevy, auto-link actuals to plan + segments, mark segments completed/skipped, flip plan status to 'completed'. Idempotent. Use this BEFORE reading actuals in end-of-day-review.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan wrapped with Hevy sync result"
+          }
+        }
+      }
+    },
+    "/daily-plans/{id}/review": {
+      "get": {
+        "operationId": "getDailyPlanReview",
+        "summary": "Plan-vs-actual review using FK linkage. Returns plan + segments + per-segment diffs (target vs actual) + day-level summary + active injuries + linked coaching sessions.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan with segment_diffs and summary"
+          }
+        }
+      }
+    },
+    "/hevy/sync": {
+      "post": {
+        "operationId": "syncHevyWorkouts",
+        "summary": "Pull recent Hevy workouts into AB Brain, dedup by hevy_id, auto-link to today's plan + hevy segment.",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "schema": { "type": "string", "format": "date" },
+            "description": "YYYY-MM-DD, defaults to 30 days ago"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sync result with inserted/skipped/linked counts"
+          }
+        }
+      }
+    },
+    "/hevy/exercise-templates": {
+      "get": {
+        "operationId": "searchHevyTemplates",
+        "summary": "Search Hevy's exercise catalog. Used by Coach to resolve exercise names to template_ids before pushing a routine.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Substring match on exercise title"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 25 }
+          }
+        ],
+        "responses": { "200": { "description": "Matching templates" } }
+      },
+      "post": {
+        "operationId": "createHevyTemplate",
+        "summary": "Add a custom exercise to the user's Hevy library. Coach calls this when user confirms a missing exercise (e.g., 'Cat Cow' not in Hevy's catalog) via the morning brief's pending_custom flow.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "muscle_group": { "type": "string" },
+                  "equipment": { "type": "string" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Custom template created in Hevy" } }
+      }
+    },
+    "/hevy/push-plan": {
+      "post": {
+        "operationId": "pushPlanToHevy",
+        "summary": "Push a daily_plan's Hevy-target segments to Hevy as routines. One Hevy routine per segment with logging_target='hevy'. Idempotent — updates existing routines via segment.hevy_routine_id.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["plan_id"],
+                "properties": {
+                  "plan_id": { "type": "string", "format": "uuid" },
+                  "folder_id": { "type": "string", "description": "Hevy folder id; falls back to HEVY_ROUTINE_FOLDER_ID env var" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Push result with per-segment outcomes" } }
+      }
+    },
     "/nutrition/daily-context": {
       "get": {
         "operationId": "getDailyContext",
@@ -2497,6 +2618,30 @@
           "ai_source": {
             "type": "string",
             "default": "claude"
+          },
+          "planned_exercises": {
+            "type": "array",
+            "description": "Legacy flat exercise list. If provided alone (without segments), the server auto-groups into segments via the taxonomy helper. Prefer sending segments[] explicitly so logging_target is deterministic.",
+            "items": { "type": "object" }
+          },
+          "segments": {
+            "type": "array",
+            "description": "Per-segment prescription. Each segment has its own logging_target so strength → Hevy, cardio → Apple Fitness, mobility → manual. Replaces planned_exercises for multi-modality days.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "format": "uuid", "description": "Optional — supply when updating an existing segment to preserve hevy_routine_id." },
+                "block_order": { "type": "integer" },
+                "block_label": { "type": "string", "enum": ["warmup", "cardio", "strength", "mobility", "cooldown", "hill", "ruck", "recovery", "hybrid", "run"] },
+                "logging_target": { "type": "string", "enum": ["hevy", "apple_health", "manual"] },
+                "planned_exercises": { "type": "array", "items": { "type": "object" } },
+                "target_duration_min": { "type": "integer" },
+                "target_effort": { "type": "integer", "minimum": 1, "maximum": 10 },
+                "time_window_start": { "type": "string", "description": "HH:MM:SS" },
+                "time_window_end": { "type": "string", "description": "HH:MM:SS" },
+                "notes": { "type": "string" }
+              }
+            }
           }
         }
       },

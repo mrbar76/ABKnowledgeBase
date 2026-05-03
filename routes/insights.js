@@ -1466,6 +1466,25 @@ router.get('/morning', async (req, res) => {
         ORDER BY b.start_date DESC LIMIT 1`
     ).catch(() => ({ rows: [] }));
 
+    // If today has a plan, attach its segments + per-segment status so
+    // the morning-check-in skill knows what's planned for Hevy vs Apple
+    // vs manual, and can flag any segments stuck in 'planned' from
+    // yesterday.
+    let todayPlan = plan.rows[0] || null;
+    if (todayPlan) {
+      const segR = await query(
+        `SELECT ps.*, COALESCE(
+           (SELECT json_agg(w.* ORDER BY w.started_at NULLS LAST, w.created_at)
+            FROM workouts w WHERE w.plan_segment_id = ps.id), '[]'::json
+         ) AS workouts
+         FROM plan_segments ps
+         WHERE ps.daily_plan_id = $1
+         ORDER BY ps.block_order`,
+        [todayPlan.id]
+      ).catch(() => ({ rows: [] }));
+      todayPlan.segments = segR.rows;
+    }
+
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
@@ -1476,7 +1495,7 @@ router.get('/morning', async (req, res) => {
       },
       alerts,
       active_injuries: inj.rows,
-      today_plan: plan.rows[0] || null,
+      today_plan: todayPlan,
       today_context: todayCtx,
       yesterday_context: yesterdayCtx,
       upcoming_race: upcoming.rows[0] || null,

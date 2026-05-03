@@ -248,7 +248,15 @@ known. When in doubt, ask Avi.
 hydration drops too** — the new effort tier determines the band, not
 the originally-planned effort.
 
-## Step 8 — PUT the amended plan
+## Step 8 — PUT the amended plan (with segment-level changes)
+
+When the amendment touches modality (e.g., swap "Treadmill Z2 Run" for
+"Home basement yoga"), update segments — don't just flip the
+plan-level `workout_type`. Each segment owns its `logging_target`, so
+swapping cardio → mobility means changing the cardio segment's
+`block_label` and `logging_target` both.
+
+### 8a — Plan-level fields (effort, calories, status, rationale)
 
 ```
 PUT /api/daily-plans/{plan_id}
@@ -268,6 +276,38 @@ PUT /api/daily-plans/{plan_id}
   "tags": ["amend-day", "trigger:{trigger_label}", "from:{original_workout_type}", "to:{new_workout_type}"]
 }
 ```
+
+### 8b — Segments (only if the amendment changes the prescribed work)
+
+If the amendment swaps the actual session, also send `segments[]` in
+the same PUT body. The server replaces all segments idempotently
+(matched by id where supplied, by block_order/block_label otherwise).
+
+```
+PUT /api/daily-plans/{plan_id}
+{
+  ...the plan-level fields above,
+  "segments": [
+    {
+      "block_order": 0,
+      "block_label": "mobility",
+      "logging_target": "manual",
+      "target_duration_min": 30,
+      "target_effort": 2,
+      "planned_exercises": [
+        { "name": "Foam Roll Quads", "sets": [{ "duration": "60s" }] },
+        { "name": "Pigeon Stretch" }
+      ],
+      "notes": "Amended from cardio block"
+    }
+  ]
+}
+```
+
+The auto-push hook re-runs after PUT. Any old `hevy_routine_id` on a
+removed segment stays orphaned in Hevy (we don't delete Hevy
+routines), but the new segment status / Today card UI will reflect
+the amendment.
 
 ## Step 9 — feed forward to the morning brief
 

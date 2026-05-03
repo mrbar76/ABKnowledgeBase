@@ -1,6 +1,6 @@
 ---
 name: end-of-day-review
-description: End-of-day debrief — Avi reports back on the day's session, fueling, and feel. Compute plan-vs-actual, capture anomalies, queue amendments for tomorrow's morning-check-in. Triggers when Avi says "log today", "wrap the day", "how did I do", "review today", or reports a workout in the evening with end-of-day framing. Distinct from amend-day (which adjusts an active plan mid-day).
+description: End-of-day debrief — Avi reports back on the day's session, fueling, and feel. Use the /wrap endpoint to sync Hevy and auto-link actuals, then compute plan-vs-actual from segment_diffs (never fabricate workouts). Triggers when Avi says "log today", "wrap the day", "how did I do", "review today", or reports a workout in the evening with end-of-day framing. Distinct from amend-day (which adjusts an active plan mid-day).
 when_to_use: Evening of a day where Avi has trained, OR when he explicitly asks to review the day. Don't run this in the morning — that's morning-check-in's job. If a workout was logged today and no end-of-day review exists yet, this is the right Skill.
 ---
 
@@ -11,50 +11,65 @@ when_to_use: Evening of a day where Avi has trained, OR when he explicitly asks 
 The Project's Custom Instructions are loaded. Apply voice + ADHD-aware
 mode + hard rules.
 
-## Step 1 — Pull today's data
+## Step 1 — Wrap the day in one call
+
+The `/wrap` endpoint syncs Hevy, auto-links any orphaned same-date
+workouts to the plan + correct segment, flips per-segment status, and
+marks the plan completed. **Always call this before reading actuals.**
 
 ```
-GET /api/daily-plans/by-date/{today}
-GET /api/workouts?date={today}
-GET /api/meals?date={today}
-GET /api/nutrition/daily-summary?date={today}
-GET /api/health/insights/today
+GET  /api/daily-plans?date={today}
+POST /api/daily-plans/{plan_id}/wrap
+GET  /api/daily-plans/{plan_id}/review
+GET  /api/meals?date={today}
+GET  /api/nutrition/daily-summary?date={today}
+GET  /api/health/insights/today
 ```
 
-## Step 2 — Detect day type
+The `/review` response includes `segment_diffs[]` — one entry per
+prescribed segment with planned vs actual numbers already baked in.
+**Never POST a fake workout to make the diff line up.** If a segment
+has zero actuals, that segment was skipped — say so.
+
+## Step 2 — Detect day type from segment_diffs
 
 | Signal | Day type |
 |--------|----------|
-| At least one workout logged | training_day |
-| No workout, plan said rest | planned_rest |
-| No workout, plan said train | missed_session |
-| No workout, no plan | unstructured |
+| At least one segment status='completed' | training_day |
+| No segments completed, plan said rest | planned_rest |
+| No segments completed, plan said train | missed_session |
+| No plan exists | unstructured |
 
-## Step 3 — Compute deltas (only if training_day)
+## Step 3 — Compute deltas per segment (only if training_day)
 
-- `effort_delta` = actual_effort − planned_effort
-- `duration_delta_pct` = (actual_min − planned_min) / planned_min × 100
-- `protein_pct` = actual_protein / target_protein × 100
-- `cal_pct` = actual_cal / target_cal × 100
+For each completed segment, compare to its planned target:
+- `effort_delta` = segment.actual_effort − segment.target_effort
+- `duration_delta_pct` = (actual_duration_min − target_duration_min) / target_duration_min × 100
 - HR-zone check: easy intent + Z3+ avg HR → flag drift
 
+Day-level nutrition (cross-segment):
+- `protein_pct` = actual_protein / target_protein × 100
+- `cal_pct` = actual_cal / target_cal × 100
+
 Anomaly thresholds: |effort_delta| > 2, |duration_delta_pct| > 25%,
-protein_pct < 80, cal_pct < 70, HR drift on easy day.
+protein_pct < 80, cal_pct < 70, HR drift on easy segment.
 
 ## Step 4 — Generate the review
 
 ```
 EVENING REVIEW — {today}
 
-WHAT WAS DONE
-- {workout type, duration, effort, distance}
+WHAT WAS DONE (segment-by-segment)
+- {block_label} ({logging_target}): {actual_effort or status}, {duration}, {distance/sets if relevant}
+- (repeat per segment)
+
+DAY TOTALS
 - Meals: {N meals, total cal, total protein}
 - Subjective: {mood / motivation / soreness if logged}
 
-PLAN vs ACTUAL
-- Effort: {actual} vs {planned} ({delta})
-- Duration: {actual} vs {planned} ({delta_pct}%)
-- Nutrition: {actual_cal}/{target_cal} kcal, {actual_protein}/{target_protein}g protein
+PLAN vs ACTUAL — per segment
+- {block_label}: target E{N}/{N}min vs actual E{N}/{N}min → {delta}
+- (repeat)
 
 ANOMALIES
 - {flagged item or "none — execution matched plan"}
@@ -71,8 +86,9 @@ the way; capture answer in `next_steps`.
 
 ## Step 5 — Long-session fueling rehearsal nudge
 
-If `duration_minutes` ≥ 60 AND `workout_type IN ('run','hill','hybrid','ruck')`
-AND no `fueling_rehearsal` row exists for today's workout: ask
+If any completed segment had duration ≥ 60min AND segment.block_label
+in ('cardio','strength','hybrid','hill','ruck') AND no
+`fueling_rehearsal` row exists for today's workout: ask
 *"Long session today — log the fueling?"* If yes, hand off to
 `log-fueling-rehearsal` skill.
 
@@ -82,6 +98,7 @@ AND no `fueling_rehearsal` row exists for today's workout: ask
 POST /api/training/coaching
 {
   "session_date": "{today}",
+  "daily_plan_id": "{plan_id}",
   "title": "End-of-day review — {today}",
   "summary": "{the full formatted review above}",
   "key_decisions": [...],
@@ -95,20 +112,27 @@ POST /api/training/coaching
 }
 ```
 
-## Step 7 — Update today's daily plan
+## Step 7 — Plan status was already set by /wrap
 
-If `today_plan` exists, mark its status: `completed` if anomalies minor,
-`partial` if duration < 70%, `missed` if no workout but plan called for
-one, `amended` if Avi did a different session than planned.
+The `/wrap` call in Step 1 already marked status='completed' and
+flipped per-segment statuses. Only PUT the plan if the user reports
+something `/wrap` couldn't infer (e.g., "I did a totally different
+session" → set `status='amended'` + `completion_notes`).
 
 ```
 PUT /api/daily-plans/{plan_id}
 {
-  "status": "...",
-  "completion_notes": "{1-2 sentences from review}",
-  "actual_exercises": [...if Fitbod-style data captured...]
+  "status": "amended",
+  "completion_notes": "Did farmer carries instead of sled push due to gym layout"
 }
 ```
+
+## What NOT to do
+
+- **Do NOT POST workout rows to /api/workouts.** Hevy sync, HAE auto-import,
+  and manual UI logging are the only paths that create workouts. If actuals
+  are missing, the user didn't log them — say so. Don't paper over.
+- Do not call `/api/hevy/sync` separately — `/wrap` does it.
 
 ## ADHD-aware voice
 
