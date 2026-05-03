@@ -70,9 +70,14 @@ async function hevyFetch(path, opts = {}) {
   const res = await fetch(url, {
     ...opts,
     headers: {
-      // Hevy expects the lowercase `x-api-key` header (confirmed via
-      // CORS allowlist on api.hevyapp.com).
-      'x-api-key': HEVY_API_KEY,
+      // Hevy expects the literal `api-key` header (no x- prefix).
+      // Confirmed from the OpenAPI spec parameter definitions:
+      //   { "name": "api-key", "in": "header" }
+      // The CORS allowlist on api.hevyapp.com lists both `api-key` and
+      // `x-api-key`, but only the former is the real auth header.
+      // (Earlier commit 675e22a flipped this to x-api-key based on the
+      // CORS list and produced 401: InvalidApiKey for valid Pro keys.)
+      'api-key': HEVY_API_KEY,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       ...(opts.headers || {}),
