@@ -1,0 +1,119 @@
+---
+name: end-of-day-review
+description: End-of-day debrief — Avi reports back on the day's session, fueling, and feel. Compute plan-vs-actual, capture anomalies, queue amendments for tomorrow's morning-check-in. Triggers when Avi says "log today", "wrap the day", "how did I do", "review today", or reports a workout in the evening with end-of-day framing. Distinct from amend-day (which adjusts an active plan mid-day).
+when_to_use: Evening of a day where Avi has trained, OR when he explicitly asks to review the day. Don't run this in the morning — that's morning-check-in's job. If a workout was logged today and no end-of-day review exists yet, this is the right Skill.
+---
+
+# end-of-day-review
+
+## Step 0 — Load your brain
+
+The Project's Custom Instructions are loaded. Apply voice + ADHD-aware
+mode + hard rules.
+
+## Step 1 — Pull today's data
+
+```
+GET /api/daily-plans/by-date/{today}
+GET /api/workouts?date={today}
+GET /api/meals?date={today}
+GET /api/nutrition/daily-summary?date={today}
+GET /api/health/insights/today
+```
+
+## Step 2 — Detect day type
+
+| Signal | Day type |
+|--------|----------|
+| At least one workout logged | training_day |
+| No workout, plan said rest | planned_rest |
+| No workout, plan said train | missed_session |
+| No workout, no plan | unstructured |
+
+## Step 3 — Compute deltas (only if training_day)
+
+- `effort_delta` = actual_effort − planned_effort
+- `duration_delta_pct` = (actual_min − planned_min) / planned_min × 100
+- `protein_pct` = actual_protein / target_protein × 100
+- `cal_pct` = actual_cal / target_cal × 100
+- HR-zone check: easy intent + Z3+ avg HR → flag drift
+
+Anomaly thresholds: |effort_delta| > 2, |duration_delta_pct| > 25%,
+protein_pct < 80, cal_pct < 70, HR drift on easy day.
+
+## Step 4 — Generate the review
+
+```
+EVENING REVIEW — {today}
+
+WHAT WAS DONE
+- {workout type, duration, effort, distance}
+- Meals: {N meals, total cal, total protein}
+- Subjective: {mood / motivation / soreness if logged}
+
+PLAN vs ACTUAL
+- Effort: {actual} vs {planned} ({delta})
+- Duration: {actual} vs {planned} ({delta_pct}%)
+- Nutrition: {actual_cal}/{target_cal} kcal, {actual_protein}/{target_protein}g protein
+
+ANOMALIES
+- {flagged item or "none — execution matched plan"}
+
+INJURY RESPONSE
+- {if any active injuries: today's status update}
+
+QUEUED FOR TOMORROW
+- {1-3 specific adjustments to surface in tomorrow's morning brief}
+```
+
+If day_type was `missed_session`, lead with that and ask what got in
+the way; capture answer in `next_steps`.
+
+## Step 5 — Long-session fueling rehearsal nudge
+
+If `duration_minutes` ≥ 60 AND `workout_type IN ('run','hill','hybrid','ruck')`
+AND no `fueling_rehearsal` row exists for today's workout: ask
+*"Long session today — log the fueling?"* If yes, hand off to
+`log-fueling-rehearsal` skill.
+
+## Step 6 — Save the coaching session
+
+```
+POST /api/training/coaching
+{
+  "session_date": "{today}",
+  "title": "End-of-day review — {today}",
+  "summary": "{the full formatted review above}",
+  "key_decisions": [...],
+  "adjustments": [...],
+  "injury_notes": "{updated status}",
+  "nutrition_notes": "{adherence notes}",
+  "recovery_notes": "{HRV/sleep observations}",
+  "next_steps": "{1-3 concrete things for tomorrow}",
+  "ai_source": "claude",
+  "tags": ["skill", "end_of_day"]
+}
+```
+
+## Step 7 — Update today's daily plan
+
+If `today_plan` exists, mark its status: `completed` if anomalies minor,
+`partial` if duration < 70%, `missed` if no workout but plan called for
+one, `amended` if Avi did a different session than planned.
+
+```
+PUT /api/daily-plans/{plan_id}
+{
+  "status": "...",
+  "completion_notes": "{1-2 sentences from review}",
+  "actual_exercises": [...if Fitbod-style data captured...]
+}
+```
+
+## ADHD-aware voice
+
+- Lead with one-line summary of how the day went, then deltas.
+- Process win first. *"Five training days this week, no missed sessions
+  — hold the streak."* Not "good week!"
+- Anomalies stated honestly, no moralizing.
+- Queued-for-tomorrow tied to a concrete action.

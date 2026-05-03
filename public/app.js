@@ -453,7 +453,7 @@ function renderTodaysBriefCard(brief) {
           </div>
         </div>
         <div style="padding:10px 4px;font-size:0.78rem;color:var(--text-dim)">
-          No brief yet — Coach hasn't run the morning routine for today. It will land at 5am once the routine is scheduled.
+          No brief yet for today. Open the Coach and say "good morning" — your morning brief will land here.
         </div>
       </div>
     `;
