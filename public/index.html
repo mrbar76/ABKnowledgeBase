@@ -131,6 +131,15 @@
               <div id="sm-reparse-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
+              <div class="sm-card-label">Hevy Sync</div>
+              <div class="sm-card-desc">Strength workouts from Hevy. Test the connection first, then sync to pull recent workouts into AB Brain. Coach pushes daily plans as routines via the morning-check-in skill.</div>
+              <div class="sm-btn-row">
+                <button class="btn-action btn-action-secondary" onclick="testHevyConnection()" id="btn-hevy-test">Test Connection</button>
+                <button class="btn-action btn-action-secondary" onclick="syncHevyWorkouts()" id="btn-hevy-sync">Sync Workouts (30d)</button>
+              </div>
+              <div id="sm-hevy-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
               <div class="sm-card-label">ChatGPT Import</div>
               <div class="sm-card-desc">Import exported conversations.json &mdash; duplicates auto-skipped.</div>
               <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">

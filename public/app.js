@@ -2403,6 +2403,49 @@ async function reparseHealthImports() {
   }
 }
 
+async function testHevyConnection() {
+  const btn = document.getElementById('btn-hevy-test');
+  const out = document.getElementById('sm-hevy-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Calling Hevy /exercise_templates with key…'; }
+  try {
+    const data = await api('/hevy/test');
+    if (data.ok) {
+      const sample = data.sample?.exercise_templates?.[0]?.title || data.sample?.data?.[0]?.title || 'connection live';
+      if (out) {
+        out.style.color = 'var(--green)';
+        out.textContent = `✓ Connected. Sample exercise from your Hevy catalog: "${sample}"`;
+      }
+    } else {
+      if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${data.error || 'unknown'}`; }
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test Connection'; }
+  }
+}
+
+async function syncHevyWorkouts() {
+  const btn = document.getElementById('btn-hevy-sync');
+  const out = document.getElementById('sm-hevy-result');
+  if (!confirm('Pull last 30 days of Hevy workouts into AB Brain? Idempotent.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Pulling Hevy workouts…'; }
+  try {
+    const since = new Date(Date.now() - 30 * 86400_000).toLocaleDateString('en-CA');
+    const data = await api(`/hevy/sync?since=${since}`, { method: 'POST', body: '{}' });
+    if (out) {
+      out.style.color = 'var(--green)';
+      out.textContent = `✓ Inserted ${data.inserted} · skipped ${data.skipped} · since ${data.since}`;
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sync Workouts (30d)'; }
+  }
+}
+
 // ─── Contacts Management ────────────────────────────────────
 async function loadContactsList() {
   const list = document.getElementById('contacts-list');
