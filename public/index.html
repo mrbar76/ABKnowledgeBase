@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.8.0</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v2.0.0</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -341,6 +341,28 @@
             <!-- Version History -->
             <div class="sm-card expanded">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v2.0.0 — May 2, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Spartan Coach goes live</strong> — AB Brain transitions from a data-ingest platform into a working AI coach. Two layers share one voice: <em>Cloud Routines</em> (autonomous, scheduled — morning brief at 5am, evening review at 9pm) and a <em>Claude Project</em> (conversational — image intake, mid-day amendments, race debriefs, fueling rehearsal capture). Both inherit the same Project Instructions + read recent coaching sessions from the repo before generating, so the Coach has memory and consistent voice across every interaction.</p>
+                  <p><strong>"Today's Brief" home dashboard card</strong> — first card on the home tab, populates with the morning routine's prescription as soon as it lands. ADHD-friendly: no "remember to check in" cognitive load. Tap to expand the full brief with key decisions, adjustments, injury notes, nutrition notes, recovery notes, and next steps.</p>
+                  <p><strong>4 conversational Skills</strong> — <code>amend-day</code> (mid-day plan adjustment with stacking rule, left-side cascade prophylaxis, undo protocol), <code>log-fueling-rehearsal</code> (race-day GI safety log with PUT/DELETE correction window), <code>race-debrief</code> (post-race retro with auto-create fallback), <code>image-intake</code> (food/RENPHO/Apple Watch/Fitbod paths).</p>
+                  <p><strong>Avi-specific alert rules</strong> — <em>Rule B tightened</em> from 3 → 2 consecutive hard days at effort ≥7 (both spring 2026 cascades hit on day 3, 2-day cap gives buffer). <em>Rule E NEW</em>: TSB &lt; -80 = forced rest, -30 to -80 = medium hold/reduce. <em>Rule F NEW</em>: sleep &lt; 5h single night = drop one effort tier, two nights = halve intensity. <em>Severity 3</em> is the injury modification gate (was 5). <em>Hydration band</em> 1.0–2.0L (1.5L mid-target). <em>Left-side cascade</em>: when calf or hamstring flares, also reduce loaded forearm work today. <em>Shabbat constraint</em>: Hebcal API for zip 10705 — home-basement modalities only inside the candle-lighting → Havdalah window.</p>
+                  <p><strong>New entities + endpoints</strong> — Races (first-class A/B/C calendar with course notes, fueling plan, gear list), Training Blocks (offseason/base/build/peak/taper/race/transition/recovery with linked race), Fueling Rehearsals (g_carb/sodium/fluid per hour with gut + energy response 1-10), Athlete Profile (versioned snapshot of LTHR, max HR, VO2, FTP, threshold pace, sweat rate, sodium loss, race weight). Composite endpoints: <code>/insights/morning</code>, <code>/race</code>, <code>/weekly-review</code>, <code>/polarization</code> with ACWR + monotony + strain + coverage_pct flags.</p>
+                  <p><strong>Trends sub-tab + sleep deep-dive</strong> — five Apple-Trends-inspired cards (Sleep, Nutrition, Training, Body, Vitals) with direction flags + 90-day history. Sleep card includes a 0-100 composite Sleep Score (duration / quality / consistency), rolling sleep debt over 7/14/30 nights (target-clamped, no banking), 30-night stage breakdown bars, and 90-night duration sparkline. Bedtime regularity computed from <code>sleep_in_bed_start</code> stddev once HAE writes the field.</p>
+                  <p><strong>Targets system</strong> — long-term goals (sleep, macros, weight, weekly Z2/TSS, HRV, RHR) with seed defaults and per-metric on_track/below/above progress. Settings → Targets editor; Coach references in every prescription.</p>
+                  <p><strong>Macros &amp; Balance overhaul</strong> — date-aware (follows the date selector), plan-target-aware (prefers <code>daily_plans.target_calories</code> over static MACRO_GOALS), activity-aware (shows net energy balance alongside intake-vs-target so race days don't lie). Bidirectional calorie coloring (over OR under by &gt;10% = red), tiered net-balance band (|net| ≤400 green, 400–800 amber, &gt;800 red/blue), bars cap at 100% width with a target marker at 75%.</p>
+                  <p><strong>Critical bug fixes</strong> — HAE Format B was silently dropping all sleep data (B_METRIC_MAP missing <code>sleepanalysis</code> entry). <code>/insights/nutrition</code> was using raw Date objects as Map keys (identity-compare missed every lookup). Sleep Score consistency component is now functional. Macros card no longer shows 0 for everything on past dates. Plan badge no longer lies about target provenance ("plan: hybrid (no macro targets)"). Nutrition tab no longer goes blank when Chart.js cache is stale. Fueling rehearsal field renamed <code>g_caffeine_total</code> → <code>mg_caffeine_total</code> (200mg dose stored as 200 in g-named field would imply 200 grams = lethal).</p>
+                  <p><strong>ADHD-aware operating mode</strong> — Coach reduces decision fatigue (gives the prescription, no buffet), honors energy variability (flat-motivation days adjust without moralizing), uses tangible-specific praise tied to the next concrete action ("you closed a 30-day Apple Health sleep gap last night — wear it again tonight" not "good job sleeping").</p>
+                  <p><strong>Voice anchors</strong> — Friel periodization × Seiler 80/10/10 polarization × Jeukendrup race-fueling × Galpin strength + data honesty. Always explain the why. Brief by default, expand on request. Lead with numbers, translate immediately. Process &gt; outcome. Conservative-balanced on injuries. Blunt over softened.</p>
+                  <p><strong>Schema v2.0.0</strong> — claude-schema.json description rewritten with full architecture, hard rules, ADHD mode, canonical workout_type enum (hill/strength/run/hybrid/recovery/ruck), data sources split (AB Brain primary, Apple Health freshness fallback), confidence guidance for partial-data metrics, and DEPRECATED list (training_plans, facts, trunk_feedback). 90 operationIds covering every endpoint.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.0 — Apr 26, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -587,7 +609,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.0</span>
+          AB Brain <span id="sm-version">v2.0.0</span>
         </div>
 
       </div>
