@@ -182,7 +182,100 @@ POST /api/training/coaching
 
 If `today_plan` is null OR > 7 days old, also POST `/api/daily-plans`
 with the prescription you decided. Include `target_calories`, `target_protein_g`,
-etc. so the Macros card respects your plan.
+etc. so the Macros card respects your plan. Also include
+`planned_exercises` JSONB array (see Step 9 for shape).
+
+## Step 9 — Push the workout to Hevy (only if it's a strength/hybrid day)
+
+If today's `workout_type IN ('strength', 'hybrid', 'hill')` AND you've
+prescribed specific exercises, push the routine to Hevy so Avi opens
+the Hevy app at the gym and follows it.
+
+### 9a — Decide the structured exercise list
+
+For each exercise in your prescription, build an object:
+```
+{
+  "name": "Barbell Squat",            // human-readable, exact name
+  "sets": [
+    { "type": "warmup",  "reps": 8,  "weight_lb": 95  },
+    { "type": "normal",  "reps": 5,  "weight_lb": 135 },
+    { "type": "normal",  "reps": 5,  "weight_lb": 155 },
+    { "type": "normal",  "reps": 5,  "weight_lb": 175 }
+  ],
+  "notes": "Keep the back tight on top set"
+}
+```
+
+Pull the user's prior weights via:
+```
+GET /api/exercises/history?name=Barbell+Squat&limit=5
+```
+to choose appropriate working weights. Don't sandbag, don't lie about
+what they hit last time.
+
+### 9b — Resolve each exercise name to a Hevy template_id
+
+For each exercise, search Hevy's catalog:
+```
+GET /api/hevy/exercise-templates?q=barbell+squat&limit=5
+```
+
+Pick the closest match (Hevy uses canonical names like "Barbell Squat",
+"Bench Press (Barbell)", "Deadlift (Romanian)"). Add the matched
+`hevy_exercise_template_id` to each exercise object:
+
+```
+{
+  "name": "Barbell Squat",
+  "hevy_exercise_template_id": "<id from search result>",
+  "sets": [...],
+  "notes": "..."
+}
+```
+
+If no good match exists, skip that exercise from the Hevy push (still
+include it in the brief so Avi knows to add it manually) — the
+push-plan endpoint silently skips entries without a hevy_exercise_template_id.
+
+### 9c — Save the structured exercises on the daily_plan
+
+```
+PUT /api/daily-plans/{plan_id}
+{
+  "planned_exercises": [...the array from 9a/9b]
+}
+```
+
+This makes the structured exercise list available for end-of-day-review's
+plan-vs-actual comparison.
+
+### 9d — Push the routine to Hevy
+
+```
+POST /api/hevy/push-plan
+{
+  "plan_id": "<the daily_plan id>",
+  "planned_exercises": [...the array from 9a/9b]
+}
+```
+
+The endpoint looks at `daily_plans.hevy_routine_id` — if set, it
+PUTs (updates the existing Hevy routine). If null, it POSTs a new
+routine and persists the new `hevy_routine_id` back to the plan. Either
+way, idempotent.
+
+### 9e — Surface in the brief
+
+Add a line at the end of the TODAY'S SESSION section:
+
+> Routine pushed to Hevy as "🏋 Strength 2026-05-03". Open Hevy on
+> your phone at the gym; everything's pre-loaded.
+
+If push failed for any reason, state that honestly:
+
+> Hevy push failed: {error message}. Falling back to manual — see exercise
+> list above.
 
 ## Voice rules
 
