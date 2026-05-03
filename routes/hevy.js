@@ -134,16 +134,12 @@ function mapPlanToHevyRoutine(plan, planned_exercises, folder_id) {
   };
 
   // Hevy POST /routines requires a folder_id. Caller passes folder_id;
-  // fall back to env var HEVY_ROUTINE_FOLDER_ID if set. If neither is
-  // available, the field is omitted and Hevy will reject — caller should
-  // surface a clear error.
+  // fall back to env var HEVY_ROUTINE_FOLDER_ID if set. Field name is
+  // strictly `folder_id` — Hevy rejects `routine_folder_id` with
+  // "routine.routine_folder_id is not allowed" (verified Coach dry-run
+  // 2026-05-03). Don't send both.
   const fid = folder_id || process.env.HEVY_ROUTINE_FOLDER_ID;
-  if (fid) {
-    routine.folder_id = fid;
-    // Hevy's error message references "routine folder id" — also send
-    // the alternate spelling for safety in case the field name differs.
-    routine.routine_folder_id = fid;
-  }
+  if (fid) routine.folder_id = fid;
 
   return routine;
 }
