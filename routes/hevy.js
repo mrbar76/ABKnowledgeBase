@@ -47,8 +47,11 @@ async function hevyFetch(path, opts = {}) {
   const res = await fetch(url, {
     ...opts,
     headers: {
-      'api-key': HEVY_API_KEY,
+      // Hevy expects the lowercase `x-api-key` header (confirmed via
+      // CORS allowlist on api.hevyapp.com).
+      'x-api-key': HEVY_API_KEY,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       ...(opts.headers || {}),
     },
   });
