@@ -721,6 +721,51 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// (migrate-from-training-plans route removed — training_plans table dropped)
+// ══════════════════════════════════════════════════════════════════
+//  PER-SEGMENT EDIT — mark a segment done, append notes, override
+// ══════════════════════════════════════════════════════════════════
+//
+// Avi marks each segment done as it happens (morning workout → mark
+// done at noon; evening workout → mark done later). Notes captured
+// per-segment flow into end-of-day-review so Coach sees "ran too
+// fast" or "weights too light" without losing per-block context.
+router.put('/segments/:segment_id', async (req, res) => {
+  try {
+    const fields = [];
+    const vals = [];
+    let i = 1;
+    for (const field of SEGMENT_FIELDS) {
+      if (req.body[field] === undefined) continue;
+      fields.push(SEGMENT_JSONB.has(field) ? `${field} = $${i++}::jsonb` : `${field} = $${i++}`);
+      vals.push(SEGMENT_JSONB.has(field) ? JSON.stringify(req.body[field]) : req.body[field]);
+    }
+    if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
+    fields.push('updated_at = NOW()');
+    vals.push(req.params.segment_id);
+
+    const { rows } = await query(
+      `UPDATE plan_segments SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+      vals
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Segment not found' });
+
+    // Roll up: if any segment is now in_progress/completed, plan
+    // status follows. (The /wrap endpoint still owns the final
+    // 'completed' transition for the day as a whole.)
+    const seg = rows[0];
+    if (seg.status === 'in_progress') {
+      await query(
+        `UPDATE daily_plans SET status = 'in_progress', updated_at = NOW()
+         WHERE id = $1 AND status = 'planned'`,
+        [seg.daily_plan_id]
+      );
+    }
+
+    res.json(seg);
+  } catch (err) {
+    console.error(`[daily-plans/segments PUT] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;

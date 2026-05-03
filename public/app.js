@@ -5710,6 +5710,22 @@ function renderSegmentBlock(seg) {
     </div>`;
   }).join('');
 
+  // Per-segment notes (rendered as a small italic block + edit button)
+  const segNotes = seg.notes ? `<div style="margin-top:4px;padding:4px 6px;background:#3b82f608;border-left:2px solid #3b82f6;border-radius:3px;font-size:0.66rem;color:var(--text-secondary);font-style:italic">${esc(seg.notes)}</div>` : '';
+
+  // Per-segment Mark Done / In Progress / Skipped + notes button.
+  // Hidden when status='completed' to reduce clutter; user can still
+  // re-open via the notes button.
+  const isDone = seg.status === 'completed';
+  const isSkipped = seg.status === 'skipped';
+  const segActions = `
+    <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
+      ${!isDone ? `<button class="btn-submit btn-compact-sm" style="font-size:0.6rem;padding:2px 8px;background:#10b981" onclick="markSegmentDone('${seg.id}')">✓ Mark Done</button>` : ''}
+      ${!isDone && !isSkipped ? `<button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px" onclick="markSegmentInProgress('${seg.id}')">◐ In Progress</button>` : ''}
+      <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px" onclick="editSegmentNotes('${seg.id}', ${JSON.stringify(seg.notes || '').replace(/"/g, '&quot;')})">${seg.notes ? '✎ Notes' : '+ Notes'}</button>
+      ${!isSkipped && !isDone ? `<button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px;color:#ef4444" onclick="markSegmentSkipped('${seg.id}')">Skip</button>` : ''}
+    </div>`;
+
   return `<div style="margin-top:6px;padding:6px 8px;background:var(--bg-tertiary);border-left:3px solid ${dot.color};border-radius:4px">
     <div style="display:flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:700;color:${dot.color};text-transform:uppercase;letter-spacing:0.5px">
       <span>${dot.icon}</span>
@@ -5723,7 +5739,61 @@ function renderSegmentBlock(seg) {
     </div>
     ${exerciseLines || '<div style="font-size:0.7rem;color:var(--text-dim);padding:2px 0">no exercises listed</div>'}
     ${actualLines}
+    ${segNotes}
+    ${segActions}
   </div>`;
+}
+
+// Per-segment status helpers — feed Coach feedback in real time.
+async function markSegmentDone(segmentId) {
+  if (!segmentId) return;
+  try {
+    await api(`/daily-plans/segments/${segmentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'completed' }),
+    });
+    showToast('Segment marked done', 'success');
+    if (fitnessSubTab === 'today') loadFitnessToday();
+  } catch (err) { showToast('Failed: ' + err.message, 'error'); }
+}
+
+async function markSegmentInProgress(segmentId) {
+  if (!segmentId) return;
+  try {
+    await api(`/daily-plans/segments/${segmentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'in_progress' }),
+    });
+    if (fitnessSubTab === 'today') loadFitnessToday();
+  } catch (err) { showToast('Failed: ' + err.message, 'error'); }
+}
+
+async function markSegmentSkipped(segmentId) {
+  if (!segmentId) return;
+  if (!confirm('Skip this segment? You can add a reason in the notes after.')) return;
+  try {
+    await api(`/daily-plans/segments/${segmentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'skipped' }),
+    });
+    if (fitnessSubTab === 'today') loadFitnessToday();
+  } catch (err) { showToast('Failed: ' + err.message, 'error'); }
+}
+
+async function editSegmentNotes(segmentId, currentNotes) {
+  if (!segmentId) return;
+  // Use a simple prompt for now; can be replaced with a proper modal
+  // later. Coach reads these in end-of-day-review.
+  const next = prompt('Notes for this segment (Coach reads these in the end-of-day review):\n\nExamples: "ran too fast — HR drifted to Z3", "felt strong on top set, +5lb next week", "skipped sled push, did farmer carries instead"', currentNotes || '');
+  if (next === null) return;
+  try {
+    await api(`/daily-plans/segments/${segmentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ notes: next }),
+    });
+    showToast('Note saved', 'success');
+    if (fitnessSubTab === 'today') loadFitnessToday();
+  } catch (err) { showToast('Failed: ' + err.message, 'error'); }
 }
 
 // Wrap Day button handler — calls /api/daily-plans/:id/wrap, refreshes

@@ -31,6 +31,14 @@ prescribed segment with planned vs actual numbers already baked in.
 **Never POST a fake workout to make the diff line up.** If a segment
 has zero actuals, that segment was skipped — say so.
 
+Each segment also has a `notes` field that Avi may have edited from
+the Today card during or after the workout. **These notes are gold —
+they're Avi's in-the-moment feedback that the actual log doesn't
+capture.** Examples: "ran too fast, HR drifted to Z3", "weights too
+light on top set, +5lb next week", "skipped sled push, did farmer
+carries instead". Always echo segment notes back in the review and
+weave them into the next-day adjustment.
+
 ## Step 2 — Detect day type from segment_diffs
 
 | Signal | Day type |
