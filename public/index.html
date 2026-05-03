@@ -395,7 +395,23 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-                v1.7.1 — Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
+                v1.8.0 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Plan segments + per-segment logging</strong> &mdash; <code>plan_segments</code> table replaces flat <code>planned_exercises</code> on <code>daily_plans</code>. One plan can split into morning + evening segments, each routed to a different log target (Hevy / Apple Health / manual). Per-segment Mark Done / In Progress / Skip + Notes buttons; Coach reads notes in the end-of-day review.</p>
+                  <p><strong>Auto-rollup</strong> &mdash; when the last non-skipped segment marks completed, the day flips to completed without hitting Wrap Day. Workouts now FK-link to <code>plan_segment_id</code>, replacing date-string heuristics.</p>
+                  <p><strong>Hevy two-way overhaul</strong> &mdash; postgres-backed template cache (<code>hevy_template_cache</code>, ~4,300 templates), sticky exercise mapping (<code>hevy_exercise_map</code>), durable <code>sync_state</code> cursor using <code>/v1/workouts/events</code> so deletions are captured. Body measurements bridge pushes RENPHO weight / lean mass / body fat to Hevy with merge-then-PUT (since Hevy nulls omitted fields). Auto-create custom exercises for unmapped names. Today card shows green &ldquo;&rarr; Hevy: &lt;Title&gt;&rdquo; chip per resolved exercise.</p>
+                  <p><strong>Hevy API correctness fixes</strong> (verified against Hevy OAS): custom exercise POST uses wrapper <code>exercise</code> (not <code>exercise_template</code>), <code>muscle_group</code> + <code>equipment_category</code> + <code>exercise_type</code>; Routine PUT no longer sends <code>folder_id</code> (rejected); UserInfo response unwrapped from <code>{ data }</code>; <code>CustomExerciseType</code> enum corrected to <code>bodyweight_reps</code> / <code>bodyweight_assisted_reps</code>; <code>/templates/refresh</code> uses <code>pageSize=100</code> (10x faster); body measurements use real fields (weight_kg / lean_mass_kg / fat_percent only).</p>
+                  <p><strong>Settings &rarr; Hevy</strong> &mdash; six buttons: Health Check, Sample Catalog, Sync Workouts, Refresh Template Cache, Auto-Map Exercises, Sync Body Measurements.</p>
+                  <p><strong>Tests</strong> &mdash; <code>npm test</code> runs node:test suite (zero deps). 12 regression tests lock in folder_id field name, env fallback, title cleanup, lb&rarr;kg rounding, real body measurement schema, and mapHevyWorkoutToAB shape.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.7.1 &mdash; Apr 11, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
                 <div class="sm-doc-text">
@@ -624,7 +640,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v2.0.0</span>
+          AB Brain <span id="sm-version">v1.8.0</span>
         </div>
 
       </div>

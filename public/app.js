@@ -2454,7 +2454,10 @@ async function checkHevyHealth() {
   try {
     const data = await api('/hevy/health');
     if (data.ok) {
-      if (out) { out.style.color = 'var(--green)'; out.textContent = `✓ API key valid · user ${data.user?.username || data.user?.id || 'OK'}`; }
+      // Hevy UserInfo: { id, name, url }. Username field doesn't exist;
+      // use `name` (display name) primarily.
+      const label = data.user?.name || data.user?.id || 'OK';
+      if (out) { out.style.color = 'var(--green)'; out.textContent = `✓ API key valid · user ${label}`; }
     } else {
       if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${data.error}`; }
     }

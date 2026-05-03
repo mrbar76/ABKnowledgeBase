@@ -1145,7 +1145,7 @@
                   "ab_brain_exercise_id": { "type": "string", "format": "uuid" },
                   "hevy_exercise_template_id": { "type": "string" },
                   "hevy_title": { "type": "string", "description": "Optional; auto-filled from cache if omitted" },
-                  "hevy_type": { "type": "string", "enum": ["weight_reps", "reps_only", "weighted_bodyweight", "assisted_bodyweight", "duration", "distance_duration"] },
+                  "hevy_type": { "type": "string", "enum": ["weight_reps", "reps_only", "bodyweight_reps", "bodyweight_assisted_reps", "duration", "weight_duration", "distance_duration", "short_distance_weight"] },
                   "hevy_primary_muscle_group": { "type": "string" },
                   "hevy_equipment": { "type": "string" },
                   "is_custom": { "type": "boolean" },

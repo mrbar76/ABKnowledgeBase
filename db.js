@@ -1310,6 +1310,11 @@ async function initDB() {
   // existing daily_plan_id FK so we keep day-level rollups easy).
   await safeQuery('workouts +plan_segment_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_segment_id UUID REFERENCES plan_segments(id) ON DELETE SET NULL`);
   await safeQuery('workouts plan_segment idx', `CREATE INDEX IF NOT EXISTS idx_workouts_plan_segment ON workouts(plan_segment_id)`);
+  // Soft-delete tombstone for Hevy sync. /workouts/events emits
+  // DeletedWorkout entries we don't want to lose plan-segment links
+  // for, so we mark deleted_at instead of hard-deleting.
+  await safeQuery('workouts +deleted_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  await safeQuery('workouts deleted_at idx', `CREATE INDEX IF NOT EXISTS idx_workouts_deleted_at ON workouts(deleted_at) WHERE deleted_at IS NOT NULL`);
 
   // Hevy sync was silently dropping these on INSERT (mapHevyWorkoutToAB
   // built them in the row but the columns didn't exist). Add as real

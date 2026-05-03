@@ -4,6 +4,43 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.0] — 2026-05-03
+
+### Added — Plan segments + per-segment logging
+- **`plan_segments` table** — daily_plan now decomposes into ordered segments (`block_label`, `block_order`, `logging_target`, `planned_exercises`, `target_duration_min`, `target_effort`, `hevy_routine_id`, `status`, `notes`). One plan can have N segments routed to different log targets (Hevy / Apple Health / manual).
+- **`logging_target` per segment** — Coach picks where each block should be logged. Strength → Hevy, Z2 run → Apple Health, mobility → manual. Resolved via `utils/exerciseTaxonomy.js` when Coach doesn't set explicitly.
+- **Per-segment Mark Done + notes** — Each segment block on the Today card now has Mark Done / In Progress / Skip buttons and a Notes prompt. Coach reads `segment.notes` in the end-of-day review (e.g. "ran too fast — HR drifted Z3", "weights too light, +5lb next week").
+- **Auto-rollup of `daily_plan.status`** — When the last non-skipped segment marks completed, the day flips to completed automatically. Wrap Day still exists for end-of-day notes.
+- **Workout auto-link** — Hevy / HAE / manual workouts now attach to today's plan + the matching `plan_segment_id` via FK. Replaces the old date-string heuristic.
+- **`workouts.deleted_at`** — soft-delete tombstone so Hevy `DeletedWorkout` events don't lose plan-segment links.
+
+### Added — Hevy two-way integration overhaul
+- **`hevy_template_cache` table** — postgres-backed mirror of Hevy's ~4,300 exercise templates. `GET /api/hevy/exercise-templates?q=` now reads from this cache; lazy-refresh on first call or when older than 7 days. Catalog refresh uses `pageSize=100` (the spec's actual max) so a full refresh is ~43 calls instead of 433.
+- **`hevy_exercise_map` table** — sticky AB Brain name → Hevy template binding. Push-plan resolves missing template IDs via map → cache exact → cache fuzzy (trgm). CRUD endpoints + auto-populate that buckets matches into mapped/ambiguous/unmapped.
+- **Custom exercise auto-create** — `POST /api/hevy/exercise-map/auto-populate` accepts `auto_create_custom: true`. Unmapped names get title-cased, POSTed to Hevy's `/exercise_templates`, mapped, and cached in one pass.
+- **`sync_state` cursor** — `POST /api/hevy/sync` now uses `/v1/workouts/events` (not paginated `/workouts`) so DELETIONS are captured as `DeletedWorkout` events. Cursor stored in `sync_state` table; survives restarts.
+- **Body measurements bridge** — `POST /api/hevy/body-measurements/sync`. Pushes RENPHO `body_metrics` (weight_lb, fat_free_mass_lb, body_fat_pct) → Hevy `/v1/body_measurements` (weight_kg, lean_mass_kg, fat_percent). Merges with existing Hevy data first since PUT overwrites null. POST for new dates (PUT 404s on missing).
+- **Conflict resolution per spec** — `/sync` UPSERT now lets Hevy win for sets/reps/weight/timing/volume; AB Brain wins for body_notes via reversed COALESCE.
+- **`GET /api/hevy/health`** — verifies API key by hitting `/v1/user/info`. Settings page health-check button.
+- **Routine title cleanup** — Drop emoji prefix and the GMT timezone string. Precedence: `daily_plans.hevy_routine_title` (override) → `daily_plans.title` → generated `"May 3 — Strength (Top)"`.
+- **Today card chip per Hevy exercise** — Green "→ Hevy: <Title>" pill when template resolved, amber "⚠ unresolved" otherwise. Server enriches segments with `hevy_resolved_title` from cache.
+- **Settings → Hevy section** — Six buttons: Health Check, Sample Catalog, Sync Workouts, Refresh Template Cache, Auto-Map Exercises, Sync Body Measurements.
+
+### Fixed — Hevy API correctness (against verified OAS spec)
+- **Custom exercise POST shape** — Wrapper is `exercise` (not `exercise_template`). Fields are `muscle_group` (not `primary_muscle_group`), `equipment_category` (not `equipment`), `exercise_type` (required). Previous shape would have 400'd.
+- **Routine PUT body** — `PutRoutinesRequestBody` does NOT accept `folder_id`. Strip it before update calls or Hevy rejects.
+- **UserInfo unwrap** — Hevy returns `{ data: { id, name, url } }`. Health check now reads `resp.data` properly so the user's display name surfaces.
+- **CustomExerciseType enum** — Real values are `bodyweight_reps` / `bodyweight_assisted_reps` (not `weighted_bodyweight` / `assisted_bodyweight`). Schema doc updated so Coach picks valid types.
+- **Template refresh perf** — `/templates/refresh` previously ran 4,300 individual INSERTs in a tight loop (~30-90s). Now batches into chunks of 200 inside a transaction (~2-5s).
+- **Workout sync misses deletions** — Old code used `GET /workouts?page=N` filtered by start_time client-side. Switched to `GET /workouts/events?since=<cursor>` which emits `UpdatedWorkout` + `DeletedWorkout` types. Deletions now soft-delete via `workouts.deleted_at`.
+- **Body measurements field names** — Verified against Hevy OAS: `weight_kg`, `lean_mass_kg`, `fat_percent` (no `muscle_mass_kg`, `bone_mass_kg`, `water_percent`, `bmi`, `bmr_kcal`, `visceral_fat_rating` — all of those would 400 from Hevy's strict validator).
+- **`folder_id` field name regression** — Locked in tests/hevy.test.js. Body sent to Hevy must contain `folder_id`, NOT `routine_folder_id` (the May 3 production bug).
+
+### Added — Tests
+- **`npm test`** — node:test suite (zero deps, built into Node 18+). 12 regression tests cover: folder_id field name, `HEVY_ROUTINE_FOLDER_ID` env fallback, title cleanup, lb→kg rounding, abMetricsToHevy real schema (asserts invented fields are NOT in payload), mapHevyWorkoutToAB shape.
+
+---
+
 ## [1.7.1] — 2026-04-11
 
 ### Added
