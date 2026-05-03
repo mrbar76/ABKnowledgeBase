@@ -197,13 +197,6 @@ function mapSegmentToHevyRoutine(plan, segment, planned_exercises, folder_id) {
   return routine;
 }
 
-// Legacy wrapper kept for the explicit /push-plan body shape that
-// pre-dates segments. Synth a one-segment payload.
-function mapPlanToHevyRoutine(plan, planned_exercises, folder_id) {
-  const fakeSegment = { block_label: plan.workout_type, notes: '' };
-  return mapSegmentToHevyRoutine(plan, fakeSegment, planned_exercises, folder_id);
-}
-
 // Map a Hevy completed workout into an AB Brain workouts row.
 // Hevy workout shape (assumed): { id, title, description, start_time,
 // end_time, exercises: [{ exercise_template_id, title, sets: [...] }] }.
@@ -593,14 +586,13 @@ router.post('/exercise-map/auto-populate', async (req, res) => {
     const { rows: cacheCount } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
     if (!cacheCount[0].n) await refreshTemplateCache();
 
-    // Gather distinct names from segments + plans.
+    // Gather distinct exercise names from plan_segments. (Pre-1.8.1 we
+    // also unioned daily_plans.planned_exercises, but that column was
+    // removed from the active write path in v1.8.1.)
     const { rows: nameRows } = await query(`
       SELECT DISTINCT lower(coalesce(e->>'name', e->>'exercise_name', e->>'title')) AS name
-      FROM (
-        SELECT jsonb_array_elements(planned_exercises) AS e FROM plan_segments
-        UNION ALL
-        SELECT jsonb_array_elements(planned_exercises) AS e FROM daily_plans
-      ) sub
+      FROM plan_segments,
+           jsonb_array_elements(planned_exercises) AS e
       WHERE coalesce(e->>'name', e->>'exercise_name', e->>'title') IS NOT NULL
     `);
     const names = nameRows.map(r => r.name).filter(Boolean);
@@ -725,30 +717,22 @@ async function pushSegmentToHevy(planRow, segment, folderId) {
         `UPDATE plan_segments SET hevy_routine_id = $1, updated_at = NOW() WHERE id = $2`,
         [newId, segment.id]
       );
-      // Mirror onto daily_plans.hevy_routine_id for the first hevy
-      // segment so legacy clients (Today card badge) keep working.
-      if (segment.block_order === 0 || segment.block_order == null) {
-        await query(
-          `UPDATE daily_plans SET hevy_routine_id = $1, updated_at = NOW() WHERE id = $2`,
-          [newId, planRow.id]
-        );
-      }
     }
   }
 
   return { ok: true, segment_id: segment?.id, hevy_routine: hevyRoutine };
 }
 
-// Reusable helper: push a daily_plan to Hevy. With the segments model
-// we walk plan_segments where logging_target='hevy' and push each as
-// its own routine. The legacy single-routine flow is preserved as a
+// Reusable helper: push a daily_plan to Hevy. Walks plan_segments
+// where logging_target='hevy' and pushes each as its own routine.
+// Plans without hevy segments are no-ops.
 // fallback when no segments exist (e.g., pre-migration plans).
 //
 // Returns { ok, segments_pushed, results, error } when segments were
 // found, or { ok, hevy_routine, error } for the legacy single-routine
 // path. Silent no-op when HEVY_API_KEY is missing or no segment routes
 // to Hevy.
-async function pushPlanToHevy(planRow, suppliedExercises, folderId) {
+async function pushPlanToHevy(planRow, _unused, folderId) {
   if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key' };
   if (!planRow) return { ok: false, error: 'plan not found' };
 
@@ -783,62 +767,31 @@ async function pushPlanToHevy(planRow, suppliedExercises, folderId) {
     };
   }
 
-  // Legacy fallback: only pushable workout_types, single routine.
-  const PUSHABLE_TYPES = new Set(['strength', 'hybrid', 'hill']);
-  if (!PUSHABLE_TYPES.has(planRow.workout_type)) {
-    return { ok: false, skipped: 'workout_type_not_pushable' };
-  }
-  const exercises = suppliedExercises || planRow.planned_exercises || [];
-  await resolveTemplateIds(exercises);
-  const routine = mapPlanToHevyRoutine(planRow, exercises, folderId);
-  if (!routine.exercises.length) return { ok: false, skipped: 'no_resolvable_exercises' };
-  if (!routine.folder_id) return { ok: false, error: 'no folder_id (set HEVY_ROUTINE_FOLDER_ID env var or pass folder_id in body)' };
-
-  let hevyRoutine;
-  if (planRow.hevy_routine_id) {
-    const { folder_id: _drop, ...putRoutine } = routine;
-    hevyRoutine = await hevyFetch(`/routines/${planRow.hevy_routine_id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ routine: putRoutine }),
-    });
-  } else {
-    hevyRoutine = await hevyFetch('/routines', {
-      method: 'POST',
-      body: JSON.stringify({ routine }),
-    });
-    const newId = hevyRoutine.id || hevyRoutine.routine?.id || hevyRoutine.routine_id;
-    if (newId) {
-      await query(
-        `UPDATE daily_plans SET hevy_routine_id = $1, updated_at = NOW() WHERE id = $2`,
-        [newId, planRow.id]
-      );
-    }
-  }
-
-  if (typeof logActivity === 'function') {
-    try { await logActivity('hevy_push', 'daily_plan', planRow.id, null, `Routine pushed for ${planRow.plan_date}`); } catch (_) {}
-  }
-
-  return { ok: true, hevy_routine: hevyRoutine };
+  // No segments → nothing to push. Coach is required to write
+  // plan_segments via POST /daily-plans body. Legacy daily-plan-level
+  // planned_exercises was removed in v1.8.1.
+  return { ok: false, skipped: 'no_segments_with_logging_target_hevy' };
 }
 
 // ─── POST /api/hevy/push-plan ────────────────────────────────
-// Coach calls this after writing a daily_plan. Pushes the plan as a
-// Hevy routine so user opens Hevy at the gym and follows it.
+// Coach calls this after writing a daily_plan + its plan_segments.
+// Pushes one Hevy routine per segment with logging_target='hevy'.
 //
-// Body: { plan_id, planned_exercises: [...] }
-// where each planned_exercise has hevy_exercise_template_id + sets[].
+// Body: { plan_id, folder_id? }
+// Each plan_segment with logging_target='hevy' must already have
+// `planned_exercises` populated (each entry needs `name` for resolver
+// to find a Hevy template, or a pre-resolved `hevy_exercise_template_id`).
 router.post('/push-plan', async (req, res) => {
   if (!requireKey(res)) return;
   try {
-    const { plan_id, planned_exercises, folder_id, routine_folder_id } = req.body || {};
+    const { plan_id, folder_id } = req.body || {};
     if (!plan_id) return res.status(400).json({ error: 'plan_id required' });
 
     const planRes = await query(`SELECT * FROM daily_plans WHERE id = $1`, [plan_id]);
     const plan = planRes.rows[0];
     if (!plan) return res.status(404).json({ error: 'plan not found' });
 
-    const result = await pushPlanToHevy(plan, planned_exercises, folder_id || routine_folder_id);
+    const result = await pushPlanToHevy(plan, null, folder_id);
     if (!result.ok) {
       return res.status(result.skipped ? 200 : 400).json(result);
     }
@@ -1319,7 +1272,6 @@ module.exports.syncHevyWorkouts = syncHevyWorkouts;
 // elsewhere — they're internal helpers.
 module.exports._test = {
   mapSegmentToHevyRoutine,
-  mapPlanToHevyRoutine,
   mapHevyWorkoutToAB,
   formatPlanDate,
   abMetricsToHevy,

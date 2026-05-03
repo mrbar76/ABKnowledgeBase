@@ -1971,51 +1971,45 @@ EXERCISE LIBRARY & GYM PROFILES
 - \`PUT /exercises/gym-profiles/:id\` — update profile
 - \`GET /exercises/equipment\` — full equipment catalog for picker
 
-WORKOUT PLANNING (Fitbod-compatible)
+WORKOUT PLANNING (segments-based, v1.8.1+)
 When planning workouts, ALWAYS:
 1. Check the active gym profile: \`GET /exercises/gym-profiles/active\`
 2. Only suggest exercises available for that profile's equipment: \`GET /exercises/available\`
-3. Use EXACT exercise names from the library (these match Fitbod naming so Avi can quickly find them)
-4. ALWAYS include specific weight targets for every exercise. Look up Avi's recent workout history to set appropriate weights.
-   Do NOT write "build to heavy" or "moderate-heavy" — give a number: "3x10 @ 50 lb" not "3x10, build to moderate-heavy".
-   If unsure, give a range: "3x10 @ 45-55 lb". For bodyweight exercises, say "bodyweight". For bands, say the band level.
-5. Save structured planned_exercises on the daily plan using \`PUT /daily-plans/:id\`:
-   \`planned_exercises\` is a JSONB array:
-   [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "175 lb",
-      "group": "main", "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
-      "superset_with": null, "notes": "" },
-    { "name": "Cable Fly", "sets": 3, "reps": 12, "weight": "30 lb",
-      "group": "superset", "superset_with": "Dumbbell Lateral Raise" }]
-   Valid groups: warmup, main, superset, circuit, finisher
-6. Also put a human-readable summary in workout_notes for Avi to reference in Fitbod.
-   Format each exercise as: "- Exercise Name: SETSxREPS @ WEIGHT" (e.g. "- Leg Press: 4x10 @ 180 lb")
-7. If an exercise isn't in the library, add it: \`POST /exercises\` with name, muscle_primary, equipment
+3. Use EXACT exercise names. For Hevy segments these names get resolved to Hevy exercise_template_ids via /api/hevy/exercise-templates?q= and the persistent hevy_exercise_map table.
+4. ALWAYS include specific weight targets. Look up Avi's recent history to set appropriate weights. Numbers, not "moderate-heavy". For bodyweight: say "bodyweight". For bands: say the band level (Light/Medium/Heavy/X-Heavy) — these don't convert to lb.
+5. Save the plan via POST /api/daily-plans with a \`segments\` array. Each segment carries:
+   - \`block_label\`: warmup | cardio | strength | mobility | cooldown | hill | ruck | recovery | hybrid | run
+   - \`logging_target\`: \`hevy\` (strength), \`apple_health\` (cardio via Apple Watch), \`manual\` (mobility/PT)
+   - \`planned_exercises\`: array of { name, sets[{ reps, weight_lb?, distance_meters?, duration_seconds?, type? }], notes? }
+   - \`target_duration_min\`, \`target_effort\` (1-10)
+   Example body:
+   {
+     "plan_date": "2026-05-04", "workout_type": "hybrid", "title": "Z2 Run + Sled",
+     "segments": [
+       { "block_label": "cardio", "logging_target": "apple_health", "target_duration_min": 35,
+         "planned_exercises": [{ "name": "Z2 Run", "sets": [{ "duration_seconds": 2100 }] }] },
+       { "block_label": "strength", "logging_target": "hevy", "target_effort": 7,
+         "planned_exercises": [
+           { "name": "Sled Push", "sets": [{ "weight_lb": 90, "distance_meters": 20 },
+                                            { "weight_lb": 90, "distance_meters": 20 }] }
+         ] }
+     ]
+   }
+6. The legacy daily_plan-level \`planned_exercises\` field was REMOVED in v1.8.1. Don't send it; only segments are read.
+7. If a custom exercise isn't in the AB Brain library, add it: \`POST /exercises\`. If it isn't in Hevy, propose creating it and call \`POST /api/hevy/exercise-templates\` with { title, muscle_group, equipment_category, exercise_type } only after Avi confirms.
 
 PLAN-WORKOUT CONNECTION
-- Plans and workouts are linked by date (plan_date = workout_date) and optionally by daily_plan_id
-- After Avi completes a workout (sends Fitbod screenshots), log the actual workout:
-  \`POST /workouts\` with \`daily_plan_id\` set to the plan's id, and structured \`exercises\` JSONB:
-  [{ "name": "Barbell Bench Press", "sets": 4, "reps": 6, "weight": "180 lb",
-     "muscle_primary": "chest", "muscle_secondary": ["triceps","shoulders"],
-     "completed": true, "notes": "PR" }]
-- Then update the plan: \`PUT /daily-plans/:id\` with:
-  - status: "completed" or "partial"
-  - actual_exercises: same structured array of what was actually done
-  - completion_notes: your review (what changed, what was skipped, why)
-- Recovery scoring reads structured exercises for granular per-muscle tracking.
-  Exercises before March 2026 use legacy workout_type mapping. New structured data gives better accuracy.
+- Workouts auto-link to a plan_segment via FK (\`workouts.plan_segment_id\`). Hevy /sync handles strength workouts; HAE handles cardio; manual POST /workouts handles the rest.
+- When Avi marks a segment Done in the Today UI, plan_segments.status flips to 'completed'. When ALL non-skipped segments are completed, daily_plans.status auto-rolls up.
+- For end-of-day reviews: GET /api/daily-plans/{id}/review returns segment_diffs[] (planned vs actual per segment). Read segment.notes — Avi often types in-the-moment feedback there ("ran too fast — HR drifted to Z3", "weights too light, +5lb next week"). Echo notes back in the review and weave into next-day adjustments.
 
-LOGGING FROM FITBOD SCREENSHOTS
-When Avi sends Fitbod screenshots, extract exercises into the structured format:
-- Fitbod summary view: exercise name, highest weight, volume, estimated 1RM, total reps, PRs
-- Fitbod detail view: each set with reps × weight
-- Log whichever level of detail the screenshot shows. Both are valid.
-- For BANDS (resistance bands, loop bands): keep the label exactly as Fitbod shows (Light, Medium, Heavy, X-Heavy).
-  Do NOT convert to pounds — band resistance varies by stance, stretch, and brand. Treat labels as RPE.
-  Track progression by label: "Heavy → X-Heavy for same reps" = progress.
-- For TIMED exercises (plank, stretches): log duration per set, not reps.
-- Exercise names must match Fitbod naming exactly. If an exercise isn't in the library, add it via POST /exercises.
-- Mark PRs (trophy icon in Fitbod) in the exercise notes field.
+LOGGING FROM SCREENSHOTS / IMAGES
+When Avi sends a Hevy/Apple-Fitness screenshot:
+- Extract exercises into the same shape as planned_exercises (sets[]).
+- For Hevy strength: prefer letting Hevy /sync pull the workout in automatically. Only POST /workouts manually if /sync isn't running.
+- For BANDS: keep label exactly (Light/Medium/Heavy/X-Heavy). Track progression by label.
+- For TIMED exercises: log duration_seconds per set, not reps.
+- Mark PRs in the exercise's notes field.
 
 WORKOUT LOGGING
 Use \`POST /workouts\`. Required: \`workout_type\`.

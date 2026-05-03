@@ -2695,22 +2695,22 @@
             "type": "string",
             "default": "claude"
           },
-          "planned_exercises": {
-            "type": "array",
-            "description": "Legacy flat exercise list. If provided alone (without segments), the server auto-groups into segments via the taxonomy helper. Prefer sending segments[] explicitly so logging_target is deterministic.",
-            "items": { "type": "object" }
-          },
           "segments": {
             "type": "array",
-            "description": "Per-segment prescription. Each segment has its own logging_target so strength → Hevy, cardio → Apple Fitness, mobility → manual. Replaces planned_exercises for multi-modality days.",
+            "description": "Per-segment prescription. Each segment has its own logging_target so strength → Hevy, cardio → Apple Fitness, mobility → manual. This is the ONLY way to attach exercises to a daily plan — the legacy daily_plans.planned_exercises field was removed in v1.8.1.",
             "items": {
               "type": "object",
+              "required": ["block_label", "planned_exercises"],
               "properties": {
                 "id": { "type": "string", "format": "uuid", "description": "Optional — supply when updating an existing segment to preserve hevy_routine_id." },
-                "block_order": { "type": "integer" },
+                "block_order": { "type": "integer", "description": "0-indexed; defaults to array order if omitted" },
                 "block_label": { "type": "string", "enum": ["warmup", "cardio", "strength", "mobility", "cooldown", "hill", "ruck", "recovery", "hybrid", "run"] },
-                "logging_target": { "type": "string", "enum": ["hevy", "apple_health", "manual"] },
-                "planned_exercises": { "type": "array", "items": { "type": "object" } },
+                "logging_target": { "type": "string", "enum": ["hevy", "apple_health", "manual"], "description": "If omitted, inferred from the first exercise via exerciseTaxonomy" },
+                "planned_exercises": {
+                  "type": "array",
+                  "description": "Each entry: { name, sets, reps?, weight_lb?, distance_meters?, duration_seconds?, notes?, hevy_exercise_template_id? }. Coach can omit hevy_exercise_template_id; the server resolves it via hevy_exercise_map and hevy_template_cache at push time.",
+                  "items": { "type": "object" }
+                },
                 "target_duration_min": { "type": "integer" },
                 "target_effort": { "type": "integer", "minimum": 1, "maximum": 10 },
                 "time_window_start": { "type": "string", "description": "HH:MM:SS" },

@@ -1,7 +1,7 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
 const { pushPlanToHevy, syncHevyWorkouts } = require('./hevy');
-const { buildSegmentsFromExercises, inferLoggingTarget } = require('../utils/exerciseTaxonomy');
+const { inferLoggingTarget } = require('../utils/exerciseTaxonomy');
 const router = express.Router();
 
 // Fire-and-forget Hevy push on plan create/update. Never blocks the
@@ -18,9 +18,8 @@ function autoPushToHevy(planRow) {
     .catch(err => console.error(`[auto-hevy-push] plan ${planRow.id} failed: ${err.message}`));
 }
 
-// Segment writable fields. The Coach (or UI) can supply these directly
-// inside the `segments` array on POST/PUT; we also auto-derive from
-// flat planned_exercises for backwards compatibility.
+// Segment writable fields. Coach supplies these inside the `segments`
+// array on POST/PUT.
 const SEGMENT_FIELDS = [
   'block_order', 'block_label', 'logging_target', 'planned_exercises',
   'target_duration_min', 'target_effort', 'time_window_start', 'time_window_end',
@@ -30,15 +29,9 @@ const SEGMENT_JSONB = new Set(['planned_exercises']);
 
 // Replace all segments for a plan with the supplied list. Idempotent.
 // Each segment in the input may carry an `id` to preserve identity (so
-// hevy_routine_id stays attached on update). If `segments` is empty
-// and `legacyPlannedExercises` is non-empty, synth segments via the
-// taxonomy helper so legacy callers still work.
-async function syncSegmentsForPlan(planId, segments, legacyPlannedExercises, defaultWorkoutType) {
-  let working = Array.isArray(segments) && segments.length > 0
-    ? segments
-    : (Array.isArray(legacyPlannedExercises) && legacyPlannedExercises.length > 0
-        ? buildSegmentsFromExercises(legacyPlannedExercises, defaultWorkoutType)
-        : []);
+// hevy_routine_id stays attached on update).
+async function syncSegmentsForPlan(planId, segments) {
+  let working = Array.isArray(segments) && segments.length > 0 ? segments : [];
 
   if (working.length === 0) {
     // Nothing to write; leave existing segments alone (callers update
@@ -154,13 +147,17 @@ async function loadSegments(planId) {
 const WRITABLE_FIELDS = [
   'plan_date', 'status', 'title', 'goal',
   'workout_type', 'workout_focus', 'target_effort', 'target_duration_min', 'workout_notes',
-  'planned_exercises', 'actual_exercises', 'completion_notes',
+  'completion_notes',
   'target_calories', 'target_protein_g', 'target_carbs_g', 'target_fat_g', 'target_hydration_liters',
   'target_sleep_hours', 'recovery_notes',
-  'coaching_notes', 'rationale', 'tags', 'ai_source', 'metadata',
+  'coaching_notes', 'rationale', 'hevy_routine_title', 'tags', 'ai_source', 'metadata',
 ];
 
-const JSONB_FIELDS = new Set(['planned_exercises', 'actual_exercises', 'tags', 'metadata']);
+// As of v1.8.1, planned_exercises and actual_exercises are no longer
+// accepted on daily_plans CRUD — exercises live exclusively on
+// plan_segments. The columns may still exist in the DB for legacy
+// rows but the API surface ignores them.
+const JSONB_FIELDS = new Set(['tags', 'metadata']);
 
 // ══════════════════════════════════════════════════════════════════
 //  LIST / SEARCH DAILY PLANS
@@ -455,12 +452,7 @@ router.post('/', async (req, res) => {
     );
 
     const plan = rows[0];
-    plan.segments = await syncSegmentsForPlan(
-      plan.id,
-      req.body.segments,
-      req.body.planned_exercises,
-      plan.workout_type
-    );
+    plan.segments = await syncSegmentsForPlan(plan.id, req.body.segments);
 
     await logActivity('daily_plan_created', 'daily_plan', plan.id, null,
       `Daily plan for ${plan.plan_date}: ${plan.workout_type || plan.status || 'planned'}`);
@@ -517,12 +509,7 @@ router.post('/week', async (req, res) => {
           vals
         );
         const planRow = rows[0];
-        planRow.segments = await syncSegmentsForPlan(
-          planRow.id,
-          dayPlan.segments,
-          dayPlan.planned_exercises,
-          planRow.workout_type
-        );
+        planRow.segments = await syncSegmentsForPlan(planRow.id, dayPlan.segments);
         results.push(planRow);
       } catch (e) {
         errors.push({ date: dateStr, error: e.message });
@@ -555,7 +542,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    const segmentsSupplied = req.body.segments !== undefined || req.body.planned_exercises !== undefined;
+    const segmentsSupplied = req.body.segments !== undefined;
     if (!fields.length && !segmentsSupplied) return res.status(400).json({ error: 'No fields to update' });
 
     let plan;
@@ -575,12 +562,7 @@ router.put('/:id', async (req, res) => {
     }
 
     if (segmentsSupplied) {
-      plan.segments = await syncSegmentsForPlan(
-        plan.id,
-        req.body.segments,
-        req.body.planned_exercises,
-        plan.workout_type
-      );
+      plan.segments = await syncSegmentsForPlan(plan.id, req.body.segments);
     } else {
       plan.segments = await loadSegments(plan.id);
     }

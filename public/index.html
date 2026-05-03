@@ -395,6 +395,22 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.1 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Cleanup pass &mdash; one canonical path so Coach can&rsquo;t pick wrong.</strong> v1.8.0 left two ways to attach exercises to a day (legacy <code>daily_plans.planned_exercises</code> AND new <code>plan_segments.planned_exercises</code>). Coach reads the schema and could go either way. v1.8.1 forces segments.</p>
+                  <p><strong>Removed legacy push paths</strong> &mdash; <code>mapPlanToHevyRoutine</code> wrapper, <code>pushPlanToHevy</code>&rsquo;s flat-exercises fallback, <code>daily_plans.hevy_routine_id</code> mirror writes. Single source of truth is now <code>plan_segments.hevy_routine_id</code>.</p>
+                  <p><strong>Stripped legacy fields from API surface</strong> &mdash; <code>POST/PUT /api/daily-plans</code> no longer accepts <code>planned_exercises</code>/<code>actual_exercises</code>. Auto-populate only scans <code>plan_segments</code>. Coach init prompt rewritten to drop Fitbod references.</p>
+                  <p><strong>Skills updated</strong> &mdash; morning-check-in, image-intake, amend-day all reference segments.</p>
+                  <p><strong>Schema doc</strong> &mdash; <code>claude-schema.json</code> drops <code>DailyPlanCreate.planned_exercises</code>; adds <code>required: [block_label, planned_exercises]</code> on segment items.</p>
+                  <p><strong>db.js cleanup</strong> &mdash; dead <code>training_plans</code> shim removed, duplicate ALTER removed, deprecation comments added on legacy columns. Columns themselves kept for one release before drop in v1.9.0.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.0 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -640,7 +656,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.0</span>
+          AB Brain <span id="sm-version">v1.8.1</span>
         </div>
 
       </div>

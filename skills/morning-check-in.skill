@@ -242,10 +242,11 @@ A typical mixed-modality day:
 
 ### 8b — Save segments on the plan
 
-POST (or PUT) `/api/daily-plans` with the `segments` array. Backwards
-compat: if you only send flat `planned_exercises`, the server will
-auto-group via the taxonomy helper, but you should send segments
-explicitly so routing is deterministic.
+POST (or PUT) `/api/daily-plans` with the `segments` array. As of
+v1.8.1, the `segments` array is the ONLY way to attach exercises
+to a daily plan — the legacy flat `planned_exercises` on the daily
+plan was removed. If you don't send segments, the plan has no
+prescribed exercises.
 
 ```
 POST /api/daily-plans

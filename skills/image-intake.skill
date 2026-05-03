@@ -178,8 +178,9 @@ POST /api/workouts
 }
 ```
 
-6. If a `daily_plan` exists for today with `planned_exercises`, compare
-   actual vs planned — note swaps, weight adjustments, missed exercises.
+6. If today's `daily_plan` has segments with prescribed exercises
+   (`segments[].planned_exercises`), compare actual vs planned — note
+   swaps, weight adjustments, missed exercises.
 7. Confirm in one line: *"Logged: 5 exercises, 18 working sets. New
    PR on Barbell Squat: 175 × 6."*
 

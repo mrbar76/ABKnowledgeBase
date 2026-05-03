@@ -371,10 +371,6 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_dc_date ON daily_context(date DESC);
     CREATE INDEX IF NOT EXISTS idx_dc_search ON daily_context USING gin(search_vector)`);
 
-  // ===== TRAINING PLANS =====
-  await safeQuery('training_plans table', `
-    SELECT 1`); // training_plans table removed — all planning now uses daily_plans
-
   // ===== COACHING SESSIONS =====
   await safeQuery('coaching_sessions table', `
     CREATE TABLE IF NOT EXISTS coaching_sessions (
@@ -637,8 +633,8 @@ async function initDB() {
       END IF;
     END $$`);
 
-  // -- daily_plans migrations --
-  await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
+  // -- daily_plans migrations: planned_exercises moved earlier in the
+  //    init flow; the duplicate ALTER here was removed in v1.8.1.
 
   // -- workouts: add proper numeric columns alongside TEXT originals --
   await safeQuery('workouts +duration_minutes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`);
@@ -866,6 +862,10 @@ async function initDB() {
   await safeQuery('drop training_plans', `DROP TABLE IF EXISTS training_plans CASCADE`);
 
   // -- daily_plans: structured exercises and completion tracking --
+  // DEPRECATED in v1.8.1: planned_exercises and actual_exercises moved
+  // to plan_segments. The columns are kept for the one-time backfill
+  // migration below (~line 1325) and to avoid breaking reads of legacy
+  // rows. NEW WRITES MUST GO TO plan_segments.
   await safeQuery('daily_plans +planned_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('daily_plans +completion_notes', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
   await safeQuery('daily_plans +actual_exercises', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS actual_exercises JSONB DEFAULT '[]'::jsonb`);
@@ -1274,6 +1274,8 @@ async function initDB() {
   // routine the Coach pushed.
   await safeQuery('workouts +hevy_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hevy_id TEXT`);
   await safeQuery('workouts hevy_id unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_hevy_id ON workouts(hevy_id) WHERE hevy_id IS NOT NULL`);
+  // DEPRECATED in v1.8.1: hevy_routine_id moved to plan_segments
+  // (one routine per Hevy segment). Column kept for legacy reads only.
   await safeQuery('daily_plans +hevy_routine_id', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_routine_id TEXT`);
   // Partial unique index on (started_at) where source='apple_health' so
   // re-ingests deduplicate at the row level.

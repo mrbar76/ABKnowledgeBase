@@ -4,6 +4,28 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.1] — 2026-05-03
+
+### Removed — legacy code paths that confused Coach
+Coach (Claude) reads the OpenAPI schema and skill files to decide what to write. As of v1.8.0 there were two ways to attach exercises to a day (the old `daily_plans.planned_exercises` flat field AND the new `plan_segments.planned_exercises` per-segment array) — Coach could go either way and the system would accept both. v1.8.1 forces a single canonical path so Coach can't pick wrong.
+
+- **Removed** legacy fallback in `pushPlanToHevy()` that read `daily_plans.planned_exercises` when no segments existed. If a plan has no Hevy-target segments, push is a no-op (returns `skipped: 'no_segments_with_logging_target_hevy'`).
+- **Removed** `mapPlanToHevyRoutine` helper (was a one-segment-fake wrapper for legacy callers).
+- **Removed** `daily_plans.hevy_routine_id` mirror writes from Hevy push. The single source of truth is `plan_segments.hevy_routine_id`.
+- **Removed** `planned_exercises` and `actual_exercises` from `WRITABLE_FIELDS` whitelist on `POST/PUT /api/daily-plans` — sending them is now silently ignored.
+- **Removed** `legacyPlannedExercises` parameter from `syncSegmentsForPlan()`.
+- **Removed** auto-populate's UNION with `daily_plans.planned_exercises` — only segments are scanned for unmapped exercise names.
+- **Removed** stale Coach init prompt section (`public/app.js`) referencing Fitbod, `daily_plan.planned_exercises`, and `actual_exercises`. Replaced with v1.8.1 segments-based instructions.
+- **Removed** dead `safeQuery('training_plans table', 'SELECT 1')` shim in `db.js` (table dropped long ago).
+- **Removed** duplicate `daily_plans +planned_exercises` ALTER at `db.js:641`.
+- **Updated** skills (morning-check-in, image-intake, amend-day) so all references point at segments.
+- **Updated** `claude-schema.json`: dropped `DailyPlanCreate.planned_exercises` from request body. Added `required: [block_label, planned_exercises]` on segment items so Coach gets a validation error if it forgets either.
+
+### Note — DB columns kept for backwards compat
+The `daily_plans.planned_exercises`, `daily_plans.actual_exercises`, and `daily_plans.hevy_routine_id` columns are still in the schema (with deprecation comments). The one-time backfill migration that copied them into `plan_segments` still runs. Active code never writes to them. They will be dropped in v1.9.0 after one release of soak time.
+
+---
+
 ## [1.8.0] — 2026-05-03
 
 ### Added — Plan segments + per-segment logging
