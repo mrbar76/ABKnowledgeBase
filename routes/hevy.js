@@ -151,23 +151,44 @@ async function resolveTemplateIds(exercises) {
 // Exercises that can't be resolved are dropped from the routine — Hevy
 // can't store them.
 function mapSegmentToHevyRoutine(plan, segment, planned_exercises, folder_id) {
-  // Title precedence (per spec §4.4):
-  //   1. daily_plans.hevy_routine_title (explicit override Coach sets)
-  //   2. daily_plans.title (the human label Coach already wrote)
-  //   3. Generated: "May 3 — Strength (Top)"
+  // Title precedence:
+  //   1. daily_plans.hevy_routine_title       (full override, rare)
+  //   2. plan.title + segment.title_suffix    ("Strength A · Main Lift")
+  //   3. plan.title + Capitalized(block_label)("Strength A (Strength)")
+  //   4. Generated from date + workout_type   ("May 3 — Strength")
+  //
+  // title_suffix (added in v1.8.4) is the canonical disambiguator.
+  // Coach sets it when two segments share a block_label (e.g. "Main
+  // Lift" vs "Grip" both block_label='strength'). When set, it
+  // replaces the "(Strength)" parenthetical with " · Main Lift" — a
+  // bullet rather than parens to make it clear it's a custom suffix.
+  // When omitted and a collision exists, fall back to block_order so
+  // titles stay unique even without Coach intervention.
   const prefix = TYPE_PREFIX[segment?.block_label] || TYPE_PREFIX[plan.workout_type] || '';
   const goalLine = plan.goal ? plan.goal : '';
   const rationaleLine = plan.rationale ? `Why: ${plan.rationale}` : '';
   const intentLine = plan.intent_type ? `Intent: ${plan.intent_type}` : '';
   const segmentLabel = segment?.block_label ? segment.block_label.charAt(0).toUpperCase() + segment.block_label.slice(1) : '';
   const dateLabel = formatPlanDate(plan.plan_date);
+  // Coach-supplied suffix wins. Otherwise use the capitalized
+  // block_label (e.g. "Strength").
+  const suffix = segment?.title_suffix
+    ? String(segment.title_suffix).trim()
+    : segmentLabel;
   let title;
   if (plan.hevy_routine_title) {
     title = plan.hevy_routine_title;
   } else if (plan.title) {
-    title = segmentLabel ? `${plan.title} (${segmentLabel})` : plan.title;
+    if (segment?.title_suffix) {
+      title = `${plan.title} · ${suffix}`;
+    } else if (segmentLabel) {
+      title = `${plan.title} (${segmentLabel})`;
+    } else {
+      title = plan.title;
+    }
   } else {
-    const generatedParts = [dateLabel, prefix && `— ${prefix}`, segmentLabel && `(${segmentLabel})`].filter(Boolean);
+    const sep = segment?.title_suffix ? `· ${suffix}` : (suffix && `(${suffix})`);
+    const generatedParts = [dateLabel, prefix && `— ${prefix}`, sep].filter(Boolean);
     title = generatedParts.join(' ').replace(/\s+/g, ' ').trim();
   }
   const notes = [intentLine, goalLine, rationaleLine, segment?.notes].filter(Boolean).join('\n');
@@ -783,8 +804,24 @@ async function pushPlanToHevy(planRow, _unused, folderId) {
   const hevySegments = segR.rows.filter(s => s.logging_target === 'hevy');
 
   if (hevySegments.length > 0) {
+    // Auto-disambiguate titles when multiple Hevy segments share a
+    // block_label and Coach didn't supply title_suffix. Without this,
+    // two strength segments both produce "<plan.title> (Strength)" and
+    // collide in the AB Brain Plans folder. We mutate a copy so the
+    // DB row stays untouched.
+    const labelCounts = {};
+    for (const s of hevySegments) labelCounts[s.block_label] = (labelCounts[s.block_label] || 0) + 1;
+    const labelSeen = {};
+    const segsWithSuffix = hevySegments.map(s => {
+      if (s.title_suffix) return s;
+      if (labelCounts[s.block_label] <= 1) return s;
+      labelSeen[s.block_label] = (labelSeen[s.block_label] || 0) + 1;
+      const cap = s.block_label.charAt(0).toUpperCase() + s.block_label.slice(1);
+      return { ...s, title_suffix: `${cap} ${labelSeen[s.block_label]}` };
+    });
+
     const results = [];
-    for (const seg of hevySegments) {
+    for (const seg of segsWithSuffix) {
       try {
         const r = await pushSegmentToHevy(planRow, seg, folderId);
         results.push(r);

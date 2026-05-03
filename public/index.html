@@ -395,6 +395,20 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.4 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Hevy routine title collisions on multi-segment days.</strong> Heavy-pull day with two strength segments (Main Lift + Grip) produced two identical routines named &ldquo;Strength A &mdash; Heavy Pull + Grip + PT (Strength)&rdquo; in the AB Brain Plans folder.</p>
+                  <p><strong>New: <code>plan_segments.title_suffix</code></strong> &mdash; Coach sets it per segment. Title becomes <code>&lt;plan.title&gt; &middot; &lt;title_suffix&gt;</code> (e.g. &ldquo;Strength A &middot; Main Lift&rdquo;, &ldquo;Strength A &middot; Grip&rdquo;).</p>
+                  <p><strong>Fallback:</strong> if Coach forgets and two segments share a <code>block_label</code>, the server auto-appends &ldquo;Strength 1&rdquo;/&ldquo;Strength 2&rdquo; so titles never collide.</p>
+                  <p>Schema doc + morning-check-in skill updated.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.3 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -685,7 +699,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.3</span>
+          AB Brain <span id="sm-version">v1.8.4</span>
         </div>
 
       </div>

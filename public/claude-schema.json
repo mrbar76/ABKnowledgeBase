@@ -2705,6 +2705,7 @@
                 "id": { "type": "string", "format": "uuid", "description": "Optional — supply when updating an existing segment to preserve hevy_routine_id." },
                 "block_order": { "type": "integer", "description": "0-indexed; defaults to array order if omitted" },
                 "block_label": { "type": "string", "enum": ["warmup", "cardio", "strength", "mobility", "cooldown", "hill", "ruck", "recovery", "hybrid", "run"] },
+                "title_suffix": { "type": "string", "description": "Optional disambiguator when multiple segments share a block_label. Becomes part of the Hevy routine title: '<plan.title> · <title_suffix>'. Examples: 'Main Lift', 'Grip', 'Top Set', 'Backoff'. Without this, two strength segments collide on '<plan.title> (Strength)'. If omitted on a colliding label, the server auto-appends '<Label> 1', '<Label> 2', etc." },
                 "logging_target": { "type": "string", "enum": ["hevy", "apple_health", "manual"], "description": "If omitted, inferred from the first exercise via exerciseTaxonomy" },
                 "planned_exercises": {
                   "type": "array",

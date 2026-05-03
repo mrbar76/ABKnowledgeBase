@@ -1307,6 +1307,12 @@ async function initDB() {
     )`);
   await safeQuery('plan_segments plan idx', `CREATE INDEX IF NOT EXISTS idx_plan_segments_plan ON plan_segments(daily_plan_id)`);
   await safeQuery('plan_segments order idx', `CREATE INDEX IF NOT EXISTS idx_plan_segments_order ON plan_segments(daily_plan_id, block_order)`);
+  // title_suffix lets Coach disambiguate when multiple segments share
+  // a block_label (e.g. "Main Lift" vs "Grip" both = block_label='strength').
+  // The Hevy routine title becomes "<plan.title> · <title_suffix>" so
+  // the four routines for one day each have a unique name in the
+  // AB Brain Plans folder.
+  await safeQuery('plan_segments +title_suffix', `ALTER TABLE plan_segments ADD COLUMN IF NOT EXISTS title_suffix TEXT`);
 
   // Workouts now point at the segment they fulfilled (in addition to the
   // existing daily_plan_id FK so we keep day-level rollups easy).

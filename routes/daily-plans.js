@@ -21,7 +21,7 @@ function autoPushToHevy(planRow) {
 // Segment writable fields. Coach supplies these inside the `segments`
 // array on POST/PUT.
 const SEGMENT_FIELDS = [
-  'block_order', 'block_label', 'logging_target', 'planned_exercises',
+  'block_order', 'block_label', 'title_suffix', 'logging_target', 'planned_exercises',
   'target_duration_min', 'target_effort', 'time_window_start', 'time_window_end',
   'hevy_routine_id', 'status', 'notes',
 ];

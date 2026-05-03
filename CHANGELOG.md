@@ -4,6 +4,33 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.4] — 2026-05-03
+
+### Fixed — Hevy routine title collisions on multi-segment days
+
+When Coach builds a day with multiple segments sharing a `block_label` (e.g. heavy-pull day = two `block_label='strength'` segments — one for the main lift, one for grip work), the Hevy routine title generator produced **identical names** like:
+
+> Strength A — Heavy Pull + Grip + PT (Strength)
+> Strength A — Heavy Pull + Grip + PT (Strength)
+
+Indistinguishable in the AB Brain Plans folder.
+
+### New: `plan_segments.title_suffix`
+
+Coach now sets `title_suffix` on each segment to disambiguate. Hevy routine title becomes `<plan.title> · <title_suffix>`:
+
+- `title_suffix: "Main Lift"` → `"Strength A · Main Lift"`
+- `title_suffix: "Grip"` → `"Strength A · Grip"`
+
+If Coach forgets, the server auto-disambiguates by appending `Strength 1` / `Strength 2` based on `block_order` so titles still don't collide.
+
+Schema:
+- `plan_segments +title_suffix TEXT` (idempotent ALTER)
+- `claude-schema.json` documents the field on segment objects
+- `morning-check-in.skill` instructs Coach when to set it
+
+---
+
 ## [1.8.3] — 2026-05-03
 
 ### Fixed (3 spec bugs surfaced during live testing)

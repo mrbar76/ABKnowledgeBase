@@ -189,6 +189,15 @@ modality each portion of the day belongs to.
 
 A "day" has 1..N segments. Each segment carries:
 - `block_label` — warmup / cardio / strength / mobility / cooldown
+- `title_suffix` — **set this when two segments share the same
+  `block_label`.** Example: a heavy-pull day with a separate grip
+  segment has TWO segments with `block_label='strength'`. Set
+  `title_suffix: "Main Lift"` on the first and `title_suffix: "Grip"`
+  on the second. The Hevy routine titles become "Strength A · Main
+  Lift" and "Strength A · Grip" — distinct in the AB Brain Plans
+  folder. Without this, both routines collide on the same name. If
+  you forget, the server auto-appends "Strength 1" / "Strength 2"
+  but it's friendlier to set the suffix yourself.
 - `logging_target` — `hevy` (strength), `apple_health` (run/ride/swim
   via Apple Watch), or `manual` (mobility, PT, walks, anything not in
   Hevy or Apple Fitness)
