@@ -110,14 +110,14 @@ const TYPE_PREFIX = {
 // AB Brain stores planned_exercises as JSONB with a flexible shape;
 // caller provides them already resolved. exercise_template_id is the
 // Hevy ID — caller must look up via /api/hevy/exercise-templates first.
-function mapPlanToHevyRoutine(plan, planned_exercises) {
+function mapPlanToHevyRoutine(plan, planned_exercises, folder_id) {
   const prefix = TYPE_PREFIX[plan.workout_type] || '';
   const goalLine = plan.goal ? plan.goal : '';
   const rationaleLine = plan.rationale ? `Why: ${plan.rationale}` : '';
   const intentLine = plan.intent_type ? `Intent: ${plan.intent_type}` : '';
   const notes = [intentLine, goalLine, rationaleLine].filter(Boolean).join('\n');
 
-  return {
+  const routine = {
     title: `${prefix} ${plan.plan_date}`.trim(),
     notes,
     exercises: (planned_exercises || []).map(e => ({
@@ -132,6 +132,20 @@ function mapPlanToHevyRoutine(plan, planned_exercises) {
       })),
     })).filter(e => e.exercise_template_id),
   };
+
+  // Hevy POST /routines requires a folder_id. Caller passes folder_id;
+  // fall back to env var HEVY_ROUTINE_FOLDER_ID if set. If neither is
+  // available, the field is omitted and Hevy will reject — caller should
+  // surface a clear error.
+  const fid = folder_id || process.env.HEVY_ROUTINE_FOLDER_ID;
+  if (fid) {
+    routine.folder_id = fid;
+    // Hevy's error message references "routine folder id" — also send
+    // the alternate spelling for safety in case the field name differs.
+    routine.routine_folder_id = fid;
+  }
+
+  return routine;
 }
 
 // Map a Hevy completed workout into an AB Brain workouts row.
@@ -213,7 +227,9 @@ router.get('/exercise-templates', async (req, res) => {
       // runaway loops if Hevy returns non-empty pages forever.
       while (page < 200) {
         const resp = await hevyFetch(`/exercise_templates?page=${page}&pageSize=10`);
-        const items = resp.exercise_templates || resp.data || resp;
+        // Hevy's actual response key is `results` (verified 2026-05-03).
+        // Keeping the other fallbacks for forward-compat.
+        const items = resp.results || resp.exercise_templates || resp.data || resp;
         if (!Array.isArray(items) || !items.length) break;
         all.push(...items);
         if (items.length < 10) break;
@@ -245,7 +261,7 @@ router.get('/exercise-templates', async (req, res) => {
 // recovery / rest sessions don't belong as Hevy routines.
 const PUSHABLE_TYPES = new Set(['strength', 'hybrid', 'hill']);
 
-async function pushPlanToHevy(planRow, suppliedExercises) {
+async function pushPlanToHevy(planRow, suppliedExercises, folderId) {
   if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key' };
   if (!planRow) return { ok: false, error: 'plan not found' };
   if (!PUSHABLE_TYPES.has(planRow.workout_type)) {
@@ -253,9 +269,12 @@ async function pushPlanToHevy(planRow, suppliedExercises) {
   }
 
   const exercises = suppliedExercises || planRow.planned_exercises || [];
-  const routine = mapPlanToHevyRoutine(planRow, exercises);
+  const routine = mapPlanToHevyRoutine(planRow, exercises, folderId);
   if (!routine.exercises.length) {
     return { ok: false, skipped: 'no_resolvable_exercises' };
+  }
+  if (!routine.folder_id) {
+    return { ok: false, error: 'no folder_id (set HEVY_ROUTINE_FOLDER_ID env var or pass folder_id in body)' };
   }
 
   let hevyRoutine;
@@ -294,20 +313,51 @@ async function pushPlanToHevy(planRow, suppliedExercises) {
 router.post('/push-plan', async (req, res) => {
   if (!requireKey(res)) return;
   try {
-    const { plan_id, planned_exercises } = req.body || {};
+    const { plan_id, planned_exercises, folder_id, routine_folder_id } = req.body || {};
     if (!plan_id) return res.status(400).json({ error: 'plan_id required' });
 
     const planRes = await query(`SELECT * FROM daily_plans WHERE id = $1`, [plan_id]);
     const plan = planRes.rows[0];
     if (!plan) return res.status(404).json({ error: 'plan not found' });
 
-    const result = await pushPlanToHevy(plan, planned_exercises);
+    const result = await pushPlanToHevy(plan, planned_exercises, folder_id || routine_folder_id);
     if (!result.ok) {
       return res.status(result.skipped ? 200 : 400).json(result);
     }
     res.json(result);
   } catch (err) {
     console.error(`[hevy/push-plan] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/hevy/routine-folders ────────────────────────────
+// List user's existing folders so client can pick one. Hevy POST /routines
+// rejects without a folder_id — this endpoint solves the chicken-and-egg.
+router.get('/routine-folders', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const data = await hevyFetch('/routine_folders?page=1&pageSize=10');
+    const items = data.routine_folders || data.results || data.data || data;
+    res.json({ count: Array.isArray(items) ? items.length : 0, folders: items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/hevy/routine-folders ───────────────────────────
+// Create a folder if needed. Body: { title }. Returns the new folder
+// including its id. Useful for first-time setup ("AB Brain Plans").
+router.post('/routine-folders', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const title = req.body?.title || 'AB Brain Plans';
+    const data = await hevyFetch('/routine_folders', {
+      method: 'POST',
+      body: JSON.stringify({ routine_folder: { title } }),
+    });
+    res.json({ ok: true, folder: data });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -329,7 +379,7 @@ router.post('/sync', async (req, res) => {
     let kept_going = true;
     while (kept_going && page < 20) {
       const resp = await hevyFetch(`/workouts?page=${page}&pageSize=10`);
-      const items = resp.workouts || resp.data || resp;
+      const items = resp.results || resp.workouts || resp.data || resp;
       if (!Array.isArray(items) || !items.length) break;
 
       for (const hw of items) {
