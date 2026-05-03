@@ -711,16 +711,53 @@ async function pushSegmentToHevy(planRow, segment, folderId) {
       method: 'POST',
       body: JSON.stringify({ routine }),
     });
-    const newId = hevyRoutine.id || hevyRoutine.routine?.id || hevyRoutine.routine_id;
+    const newId = await extractRoutineId(hevyRoutine, routine.title);
+    if (!newId) {
+      console.error(`[hevy/push] segment ${segment?.id} created routine but ID extraction failed. Raw response keys: ${Object.keys(hevyRoutine || {}).join(',')}. Full payload (truncated): ${JSON.stringify(hevyRoutine).slice(0, 500)}`);
+    }
     if (newId && segment?.id) {
       await query(
         `UPDATE plan_segments SET hevy_routine_id = $1, updated_at = NOW() WHERE id = $2`,
         [newId, segment.id]
       );
+      console.log(`[hevy/push] segment ${segment.id} → routine ${newId}`);
     }
   }
 
   return { ok: true, segment_id: segment?.id, hevy_routine: hevyRoutine };
+}
+
+// Hevy's POST /v1/routines response shape is documented as `Routine`
+// directly, but in practice the response can be:
+//   { id, title, ... }                    (per OAS)
+//   { routine: { id, title, ... } }       (wrapper, like GET single)
+//   { data: { id, ... } }                 (like UserInfo)
+//   { data: { routine: { id } } }         (paranoid)
+//
+// If none of those yield an id, fall back to GET /v1/routines and find
+// the newest one matching our title — guarantees we capture the ID
+// even if Hevy ships a malformed response. Bug #10 fix.
+async function extractRoutineId(resp, expectedTitle) {
+  const direct = resp?.id
+    || resp?.routine?.id
+    || resp?.routine_id
+    || resp?.data?.id
+    || resp?.data?.routine?.id
+    || resp?.data?.routine_id;
+  if (direct) return direct;
+
+  if (!expectedTitle) return null;
+  // Fallback: list recent routines and match title. Page 1, pageSize=10
+  // is enough — the routine we just created is at top.
+  try {
+    const list = await hevyFetch(`/routines?page=1&pageSize=10`);
+    const items = list.routines || list.data || list.results || [];
+    const match = items.find(r => r.title === expectedTitle);
+    if (match?.id) return match.id;
+  } catch (err) {
+    console.error(`[hevy/extractRoutineId] fallback GET failed: ${err.message}`);
+  }
+  return null;
 }
 
 // Reusable helper: push a daily_plan to Hevy. Walks plan_segments
@@ -798,6 +835,39 @@ router.post('/push-plan', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error(`[hevy/push-plan] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/hevy/push-segment ─────────────────────────────
+// Manual retry: push a single plan_segment to Hevy. Called from the
+// Today card "Push to Hevy" button when auto-push fails or the user
+// wants to retrigger after editing exercise mappings. Body:
+//   { segment_id, folder_id? }
+router.post('/push-segment', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const { segment_id, folder_id } = req.body || {};
+    if (!segment_id) return res.status(400).json({ error: 'segment_id required' });
+
+    const segR = await query(`SELECT * FROM plan_segments WHERE id = $1`, [segment_id]);
+    const segment = segR.rows[0];
+    if (!segment) return res.status(404).json({ error: 'segment not found' });
+    if (segment.logging_target !== 'hevy') {
+      return res.status(400).json({ error: `segment logging_target is '${segment.logging_target}', not 'hevy'` });
+    }
+
+    const planR = await query(`SELECT * FROM daily_plans WHERE id = $1`, [segment.daily_plan_id]);
+    const plan = planR.rows[0];
+    if (!plan) return res.status(404).json({ error: 'parent plan not found' });
+
+    const result = await pushSegmentToHevy(plan, segment, folder_id);
+    if (!result.ok) {
+      return res.status(result.skipped ? 200 : 400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(`[hevy/push-segment] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });

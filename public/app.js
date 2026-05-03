@@ -5801,10 +5801,16 @@ function renderSegmentBlock(seg) {
   // re-open via the notes button.
   const isDone = seg.status === 'completed';
   const isSkipped = seg.status === 'skipped';
+  // Push to Hevy button — only for hevy segments. Shows "Push" if no
+  // routine yet, "Re-push" if there's an existing hevy_routine_id (so
+  // user can retry after fixing exercise mappings).
+  const isHevy = seg.logging_target === 'hevy';
+  const pushLabel = seg.hevy_routine_id ? '↻ Re-push' : '↑ Push to Hevy';
   const segActions = `
     <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
       ${!isDone ? `<button class="btn-submit btn-compact-sm" style="font-size:0.6rem;padding:2px 8px;background:#10b981" onclick="markSegmentDone('${seg.id}')">✓ Mark Done</button>` : ''}
       ${!isDone && !isSkipped ? `<button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px" onclick="markSegmentInProgress('${seg.id}')">◐ In Progress</button>` : ''}
+      ${isHevy && !isSkipped ? `<button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px;color:#3b82f6" onclick="pushSegmentToHevy('${seg.id}')" title="${seg.hevy_routine_id ? 'Routine ' + seg.hevy_routine_id + ' — push will update it' : 'No Hevy routine yet — push will create one'}">${pushLabel}</button>` : ''}
       <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px" onclick="editSegmentNotes('${seg.id}', ${JSON.stringify(seg.notes || '').replace(/"/g, '&quot;')})">${seg.notes ? '✎ Notes' : '+ Notes'}</button>
       ${!isSkipped && !isDone ? `<button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 8px;color:#ef4444" onclick="markSegmentSkipped('${seg.id}')">Skip</button>` : ''}
     </div>`;
@@ -5861,6 +5867,32 @@ async function markSegmentSkipped(segmentId) {
     });
     if (fitnessSubTab === 'today') loadFitnessToday();
   } catch (err) { showToast('Failed: ' + err.message, 'error'); }
+}
+
+// Push a single segment to Hevy. Used for manual retry when auto-push
+// failed (e.g. cache was empty at create time). Backend creates a new
+// routine if hevy_routine_id is null, or PUTs the existing one if set.
+async function pushSegmentToHevy(segmentId) {
+  if (!segmentId) return;
+  if (!confirm('Push this segment to Hevy now?\n\nIf the routine already exists, it will be updated. Otherwise a new one is created.\n\nMake sure Refresh Template Cache + Auto-Map Exercises were run first if exercises are showing as unresolved.')) return;
+  showToast('Pushing to Hevy...', 'info');
+  try {
+    const data = await api('/hevy/push-segment', {
+      method: 'POST',
+      body: JSON.stringify({ segment_id: segmentId }),
+    });
+    if (data.ok) {
+      const id = data.hevy_routine?.id || data.hevy_routine?.routine?.id || '?';
+      showToast(`✓ Pushed to Hevy · routine ${id}`, 'success');
+    } else if (data.skipped) {
+      showToast(`Skipped: ${data.skipped}`, 'warn');
+    } else {
+      showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+    }
+    if (fitnessSubTab === 'today') loadFitnessToday();
+  } catch (err) {
+    showToast(`Failed: ${err.message}`, 'error');
+  }
 }
 
 async function editSegmentNotes(segmentId, currentNotes) {

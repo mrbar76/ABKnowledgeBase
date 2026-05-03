@@ -153,6 +153,30 @@ const WRITABLE_FIELDS = [
   'coaching_notes', 'rationale', 'hevy_routine_title', 'tags', 'ai_source', 'metadata',
 ];
 
+// Fields that exist in the DB for legacy reasons but must be hidden
+// from API responses so Coach (and any client reading the schema
+// literally) doesn't think they still work. Bug #11 + #12 fix.
+//
+//   planned_exercises  → moved to plan_segments.planned_exercises
+//   actual_exercises   → workouts.* + plan_segments.workouts (FK)
+//   hevy_routine_id    → moved to plan_segments.hevy_routine_id
+//                        (which is plural across segments)
+const DEPRECATED_PLAN_FIELDS = ['planned_exercises', 'actual_exercises', 'hevy_routine_id'];
+
+function stripDeprecated(plan) {
+  if (!plan || typeof plan !== 'object') return plan;
+  for (const f of DEPRECATED_PLAN_FIELDS) {
+    if (f in plan) delete plan[f];
+  }
+  return plan;
+}
+
+function stripDeprecatedAll(plans) {
+  if (!Array.isArray(plans)) return plans;
+  for (const p of plans) stripDeprecated(p);
+  return plans;
+}
+
 // As of v1.8.1, planned_exercises and actual_exercises are no longer
 // accepted on daily_plans CRUD — exercises live exclusively on
 // plan_segments. The columns may still exist in the DB for legacy
@@ -186,7 +210,7 @@ router.get('/', async (req, res) => {
       params
     );
 
-    res.json({ total, limit: Number(limit), offset: Number(offset), results: rows });
+    res.json({ total, limit: Number(limit), offset: Number(offset), results: stripDeprecatedAll(rows) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -266,7 +290,7 @@ router.get('/by-date/:date', async (req, res) => {
     const recoverPercent = Math.min(100, Math.round((recoverCount / 3) * 100));
 
     res.json({
-      plan,
+      plan: stripDeprecated(plan),
       actual: {
         workouts,
         meals,
@@ -315,7 +339,7 @@ router.get('/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Daily plan not found' });
     const plan = rows[0];
     plan.segments = await loadSegments(plan.id);
-    res.json(plan);
+    res.json(stripDeprecated(plan));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -392,7 +416,7 @@ router.get('/:id/review', async (req, res) => {
     });
 
     res.json({
-      plan,
+      plan: stripDeprecated(plan),
       actual: {
         workouts,
         meals,
@@ -571,7 +595,7 @@ router.put('/:id', async (req, res) => {
       `Amended plan for ${plan.plan_date}`);
 
     autoPushToHevy(plan);
-    res.json(plan);
+    res.json(stripDeprecated(plan));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -676,7 +700,7 @@ router.post('/:id/wrap', async (req, res) => {
     refreshed.segments = await loadSegments(refreshed.id);
     res.json({
       ok: true,
-      plan: refreshed,
+      plan: stripDeprecated(refreshed),
       hevy_sync: hevySync,
     });
   } catch (err) {

@@ -354,6 +354,16 @@ router.get('/day/:date', async (req, res) => {
       } catch (_) { /* cache may not exist on first deploy; chip falls back to id-only */ }
     }
 
+    // Strip deprecated daily_plans columns (planned_exercises,
+    // actual_exercises, hevy_routine_id) so Coach + the Today UI never
+    // see the legacy fields. Real exercise data lives on
+    // plan.segments[].planned_exercises and plan.segments[].hevy_routine_id.
+    if (plan) {
+      delete plan.planned_exercises;
+      delete plan.actual_exercises;
+      delete plan.hevy_routine_id;
+    }
+
     res.json({
       date,
       daily_plan: plan,

@@ -4,6 +4,25 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.3] — 2026-05-03
+
+### Fixed (3 spec bugs surfaced during live testing)
+
+- **Bug #10 — `plan_segments.hevy_routine_id` never written back after push.** Auto-push silently created Hevy routines but the segment row's `hevy_routine_id` stayed null, so subsequent pushes created duplicates instead of updating, and sync couldn't link routines to segments. Root cause: ID extraction was checking only `resp.id`, `resp.routine.id`, `resp.routine_id` — Hevy may also wrap as `resp.data.id` or return a malformed shape. New `extractRoutineId()` tries all five paths and falls back to `GET /v1/routines` to find the just-created routine by title match. Logs the response shape on extraction failure so future regressions are visible.
+- **Bug #11 — `daily_plans.hevy_routine_id` is single-valued for multi-segment days.** The column is now stripped from every `/api/daily-plans/*` and `/api/training/day/*` response. Coach + clients only see `plan.segments[].hevy_routine_id`, which is naturally plural across segments. Column kept in DB for one release of soak; will be DROPped in v1.9.0.
+- **Bug #12 — `daily_plans.planned_exercises` and `actual_exercises` still surfaced on read despite v1.8.1 deprecation.** Same fix: stripped from every API response. `stripDeprecated()` helper applied at all six daily-plans response sites + the `/training/day` endpoint that the Today UI consumes.
+
+### Added — manual retry path for failed pushes
+
+- **`POST /api/hevy/push-segment`** — push one plan_segment to Hevy by ID. Used for retry when auto-push at plan-create time silently skipped because the template cache was empty.
+- **"↑ Push to Hevy" / "↻ Re-push" button** on every Hevy segment block in the Today card. Hovers show the existing `hevy_routine_id` (if any). Re-push updates the existing routine via PUT; first push creates a new one via POST.
+
+### Operational notes
+- If you have orphaned routines in Hevy from before v1.8.3 (where the writeback failed), delete them manually in the Hevy app — the API doesn't expose a DELETE endpoint for routines.
+- After clicking "Refresh Template Cache" and "Auto-Map Exercises" in Settings, use the per-segment Push button to retry any segment that previously showed "⚠ unresolved" exercises.
+
+---
+
 ## [1.8.2] — 2026-05-03
 
 ### Fixed

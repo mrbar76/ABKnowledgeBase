@@ -395,6 +395,21 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.3 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>3 spec bugs fixed (#10, #11, #12).</strong></p>
+                  <p><strong>#10 &mdash; segment.hevy_routine_id never written back after push.</strong> Auto-push silently created Hevy routines but the segment row stayed null, so re-push created duplicates instead of updating. New <code>extractRoutineId()</code> tries five response shapes and falls back to <code>GET /v1/routines</code> to find the just-created routine by title.</p>
+                  <p><strong>#11 &mdash; daily_plans.hevy_routine_id is single-valued for multi-segment days.</strong> Stripped from API responses. Coach now only sees <code>plan.segments[].hevy_routine_id</code> (plural).</p>
+                  <p><strong>#12 &mdash; daily_plans.planned_exercises / actual_exercises still surfaced on read.</strong> Same fix: <code>stripDeprecated()</code> applied at every API response site.</p>
+                  <p><strong>New: per-segment Push to Hevy button.</strong> Manual retry without editing the plan. <code>POST /api/hevy/push-segment</code>.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.2 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -670,7 +685,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.2</span>
+          AB Brain <span id="sm-version">v1.8.3</span>
         </div>
 
       </div>
