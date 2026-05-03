@@ -1030,18 +1030,18 @@
     "/hevy/sync": {
       "post": {
         "operationId": "syncHevyWorkouts",
-        "summary": "Pull recent Hevy workouts into AB Brain, dedup by hevy_id, auto-link to today's plan + hevy segment.",
+        "summary": "Pull recent Hevy workouts into AB Brain, dedup by hevy_id, auto-link to today's plan + hevy segment. Maintains a durable cursor in sync_state so the next call picks up where this one left off — survives restarts.",
         "parameters": [
           {
             "name": "since",
             "in": "query",
             "schema": { "type": "string", "format": "date" },
-            "description": "YYYY-MM-DD, defaults to 30 days ago"
+            "description": "YYYY-MM-DD override; if omitted, reads sync_state cursor (defaults to 30 days ago on first run)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Sync result with inserted/skipped/linked counts"
+            "description": "{ ok, inserted, skipped, linked, since, cursor_advanced_to }"
           }
         }
       }
@@ -1091,7 +1091,7 @@
     "/hevy/push-plan": {
       "post": {
         "operationId": "pushPlanToHevy",
-        "summary": "Push a daily_plan's Hevy-target segments to Hevy as routines. One Hevy routine per segment with logging_target='hevy'. Idempotent — updates existing routines via segment.hevy_routine_id.",
+        "summary": "Push a daily_plan's Hevy-target segments to Hevy as routines. One Hevy routine per segment with logging_target='hevy'. Idempotent — updates existing routines via segment.hevy_routine_id. Exercises without hevy_exercise_template_id are auto-resolved via the hevy_exercise_map / hevy_template_cache tables.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1108,6 +1108,82 @@
           }
         },
         "responses": { "200": { "description": "Push result with per-segment outcomes" } }
+      }
+    },
+    "/hevy/health": {
+      "get": {
+        "operationId": "hevyHealth",
+        "summary": "Verify the Hevy API key is valid by hitting /v1/user/info. Returns { ok, user } or { ok: false, error }.",
+        "responses": { "200": { "description": "Health status (always 200; check `ok` field)" } }
+      }
+    },
+    "/hevy/templates/refresh": {
+      "post": {
+        "operationId": "refreshHevyTemplates",
+        "summary": "Wipe + re-fetch Hevy's full exercise template catalog into hevy_template_cache. Call after creating a custom exercise so the cache reflects reality.",
+        "responses": { "200": { "description": "{ ok, cached: <count> }" } }
+      }
+    },
+    "/hevy/exercise-map": {
+      "get": {
+        "operationId": "listHevyExerciseMap",
+        "summary": "List all sticky AB-Brain-name → Hevy-template-id mappings.",
+        "responses": { "200": { "description": "{ count, mappings: [...] }" } }
+      },
+      "post": {
+        "operationId": "upsertHevyExerciseMap",
+        "summary": "Add or update a sticky mapping. Coach uses this to lock in 'Standing Calf Raise' → specific Hevy template across sessions.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["ab_brain_exercise_name", "hevy_exercise_template_id"],
+                "properties": {
+                  "ab_brain_exercise_name": { "type": "string" },
+                  "ab_brain_exercise_id": { "type": "string", "format": "uuid" },
+                  "hevy_exercise_template_id": { "type": "string" },
+                  "hevy_title": { "type": "string", "description": "Optional; auto-filled from cache if omitted" },
+                  "hevy_type": { "type": "string", "enum": ["weight_reps", "reps_only", "weighted_bodyweight", "assisted_bodyweight", "duration", "distance_duration"] },
+                  "hevy_primary_muscle_group": { "type": "string" },
+                  "hevy_equipment": { "type": "string" },
+                  "is_custom": { "type": "boolean" },
+                  "confidence": { "type": "string", "enum": ["manual", "auto", "fuzzy"] },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Upserted mapping row" } }
+      }
+    },
+    "/hevy/exercise-map/auto-populate": {
+      "post": {
+        "operationId": "autoPopulateHevyExerciseMap",
+        "summary": "For every distinct exercise name in plan_segments / daily_plans that isn't already mapped, look up Hevy templates via the cache. Confident matches are auto-inserted; ambiguous ones are returned for manual review.",
+        "responses": { "200": { "description": "{ mapped, ambiguous, unmapped, details }" } }
+      }
+    },
+    "/hevy/body-measurements/sync": {
+      "post": {
+        "operationId": "syncHevyBodyMeasurements",
+        "summary": "Push AB Brain body_metrics rows to Hevy /v1/body_measurements. Merges with existing Hevy data (Hevy PUT nulls omitted fields, so we GET first, merge AB-Brain numbers on top, then PUT). One row per date; latest scan wins.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "since": { "type": "string", "format": "date", "description": "YYYY-MM-DD; defaults to 30 days ago" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "{ ok, considered, pushed, merged, skipped, errors }" } }
       }
     },
     "/nutrition/daily-context": {

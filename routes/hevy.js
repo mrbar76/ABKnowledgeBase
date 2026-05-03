@@ -93,38 +93,87 @@ async function hevyFetch(path, opts = {}) {
 // Best-effort mapping of an AB Brain workout_type / block_label to a
 // Hevy routine title prefix. Hevy doesn't categorize routines by
 // modality; the title is the only place this surfaces.
+//
+// Plain ASCII labels — emoji ran into Hevy's title rendering issues
+// (the GMT timezone string + emoji combo from the May 3 push test was
+// the trigger for the cleanup).
 const TYPE_PREFIX = {
-  hill: '🏔 Hill',
-  strength: '🏋 Strength',
-  run: '🏃 Run',
-  hybrid: '🔥 Hybrid',
-  recovery: '🧘 Recovery',
-  ruck: '🎒 Ruck',
-  warmup: '🧘 Warmup',
-  cardio: '🏃 Cardio',
-  mobility: '🧘 Mobility',
-  cooldown: '🧘 Cooldown',
+  hill: 'Hill',
+  strength: 'Strength',
+  run: 'Run',
+  hybrid: 'Hybrid',
+  recovery: 'Recovery',
+  ruck: 'Ruck',
+  warmup: 'Warmup',
+  cardio: 'Cardio',
+  mobility: 'Mobility',
+  cooldown: 'Cooldown',
 };
+
+// Format a plan_date (YYYY-MM-DD or Date) into a clean "May 3" label
+// for routine titles. Avoids the GMT timezone garbage from
+// `new Date(...).toString()` that produced titles like
+// "🔥 Hybrid Sun May 03 2026 00:00:00 GMT+0000 (Coordinated Universal Time)".
+function formatPlanDate(d) {
+  if (!d) return '';
+  const s = String(d).slice(0, 10);
+  const [y, m, day] = s.split('-').map(Number);
+  if (!y || !m || !day) return s;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[m - 1]} ${day}`;
+}
 
 // Map a plan + segment + its planned_exercises into a Hevy routine
 // payload. Hevy routine shape (per docs): { title, folder_id?, notes?,
 // exercises: [{ exercise_template_id, sets: [{ type, weight_kg, reps,
 // distance_meters?, duration_seconds? }], notes? }] }.
 //
+// Resolve `hevy_exercise_template_id` for each exercise. Caller may
+// have already filled it in (Coach can pass it directly); otherwise we
+// look up via hevy_exercise_map → hevy_template_cache. Mutates the
+// passed exercises array in place; returns the same array for chaining.
+async function resolveTemplateIds(exercises) {
+  for (const e of (exercises || [])) {
+    if (e.hevy_exercise_template_id) continue;
+    const name = e.name || e.exercise_name || e.title;
+    if (!name) continue;
+    const hit = await lookupHevyTemplateByName(name);
+    if (hit) {
+      e.hevy_exercise_template_id = hit.id;
+      e._resolved_via = hit.source;
+    }
+  }
+  return exercises;
+}
+
 // Caller provides exercises with `hevy_exercise_template_id` already
-// resolved (see /api/hevy/exercise-templates search). Exercises without
-// a template id are skipped — Hevy can't store them as routine entries.
+// resolved OR with a `name` field that we resolve via mapping table.
+// Exercises that can't be resolved are dropped from the routine — Hevy
+// can't store them.
 function mapSegmentToHevyRoutine(plan, segment, planned_exercises, folder_id) {
+  // Title precedence (per spec §4.4):
+  //   1. daily_plans.hevy_routine_title (explicit override Coach sets)
+  //   2. daily_plans.title (the human label Coach already wrote)
+  //   3. Generated: "May 3 — Strength (Top)"
   const prefix = TYPE_PREFIX[segment?.block_label] || TYPE_PREFIX[plan.workout_type] || '';
   const goalLine = plan.goal ? plan.goal : '';
   const rationaleLine = plan.rationale ? `Why: ${plan.rationale}` : '';
   const intentLine = plan.intent_type ? `Intent: ${plan.intent_type}` : '';
   const segmentLabel = segment?.block_label ? segment.block_label.charAt(0).toUpperCase() + segment.block_label.slice(1) : '';
-  const titleParts = [prefix, plan.plan_date, segmentLabel ? `(${segmentLabel})` : ''].filter(Boolean);
+  const dateLabel = formatPlanDate(plan.plan_date);
+  let title;
+  if (plan.hevy_routine_title) {
+    title = plan.hevy_routine_title;
+  } else if (plan.title) {
+    title = segmentLabel ? `${plan.title} (${segmentLabel})` : plan.title;
+  } else {
+    const generatedParts = [dateLabel, prefix && `— ${prefix}`, segmentLabel && `(${segmentLabel})`].filter(Boolean);
+    title = generatedParts.join(' ').replace(/\s+/g, ' ').trim();
+  }
   const notes = [intentLine, goalLine, rationaleLine, segment?.notes].filter(Boolean).join('\n');
 
   const routine = {
-    title: titleParts.join(' ').trim(),
+    title,
     notes,
     exercises: (planned_exercises || []).map(e => ({
       exercise_template_id: e.hevy_exercise_template_id,
@@ -214,46 +263,348 @@ router.get('/test', async (req, res) => {
   }
 });
 
+// ─── Template cache (postgres-backed) ─────────────────────────
+//
+// Hevy's catalog is ~4,300 entries across 433 pages at pageSize=10. We
+// mirror it locally so /exercise-templates?q= is instant and consistent
+// across deploys. The cache is refreshed manually via
+// POST /api/hevy/templates/refresh and (optionally) on a weekly cron.
+async function fetchAllHevyTemplates() {
+  const all = [];
+  let page = 1;
+  // Cap at 600 pages (~6,000 exercises) to prevent runaway loops if
+  // Hevy ever returns non-empty pages forever.
+  while (page < 600) {
+    const resp = await hevyFetch(`/exercise_templates?page=${page}&pageSize=10`);
+    const items = resp.results || resp.exercise_templates || resp.data || resp;
+    if (!Array.isArray(items) || !items.length) break;
+    all.push(...items);
+    if (items.length < 10) break;
+    page++;
+  }
+  return all;
+}
+
+async function refreshTemplateCache() {
+  const templates = await fetchAllHevyTemplates();
+  // Wipe-and-rewrite. Hevy may delete templates (custom-made by us or
+  // others), so an upsert-only approach would leave stale rows.
+  await query(`TRUNCATE hevy_template_cache`);
+  for (const t of templates) {
+    await query(
+      `INSERT INTO hevy_template_cache (
+         hevy_id, title, type, primary_muscle_group,
+         secondary_muscle_groups, equipment, is_custom, raw, cached_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+       ON CONFLICT (hevy_id) DO UPDATE SET
+         title = EXCLUDED.title,
+         type = EXCLUDED.type,
+         primary_muscle_group = EXCLUDED.primary_muscle_group,
+         secondary_muscle_groups = EXCLUDED.secondary_muscle_groups,
+         equipment = EXCLUDED.equipment,
+         is_custom = EXCLUDED.is_custom,
+         raw = EXCLUDED.raw,
+         cached_at = NOW()`,
+      [
+        t.id || t.exercise_template_id,
+        t.title || t.name || '',
+        t.type || t.exercise_type || 'weight_reps',
+        t.primary_muscle_group || null,
+        Array.isArray(t.secondary_muscle_groups) ? t.secondary_muscle_groups : null,
+        t.equipment || null,
+        Boolean(t.is_custom),
+        JSON.stringify(t),
+      ]
+    );
+  }
+  return templates.length;
+}
+
 // ─── GET /api/hevy/exercise-templates?q=squat ────────────────
-// Search Hevy's exercise catalog. Coach uses this to resolve AB Brain
-// exercise names → Hevy exercise_template_id when pushing a routine.
+// Reads from the postgres cache first. If empty, lazy-refreshes once.
 router.get('/exercise-templates', async (req, res) => {
   if (!requireKey(res)) return;
   try {
     const q = String(req.query.q || '').toLowerCase().trim();
     const limit = Math.min(Number(req.query.limit) || 25, 100);
-    // Hevy's API doesn't seem to expose search server-side, so we
-    // page through and filter client-side. Cache in-memory for the
-    // process lifetime to avoid re-fetching the catalog on every call.
-    if (!global._hevyTemplateCache) {
-      const all = [];
-      let page = 1;
-      // Hevy's max pageSize is 10 (verified via Coach dry-run May 3 2026
-      // — pageSize=20+ returns validation error). Catalog has hundreds of
-      // exercises, so we need many pages. Cap at page 200 to prevent
-      // runaway loops if Hevy returns non-empty pages forever.
-      while (page < 200) {
-        const resp = await hevyFetch(`/exercise_templates?page=${page}&pageSize=10`);
-        // Hevy's actual response key is `results` (verified 2026-05-03).
-        // Keeping the other fallbacks for forward-compat.
-        const items = resp.results || resp.exercise_templates || resp.data || resp;
-        if (!Array.isArray(items) || !items.length) break;
-        all.push(...items);
-        if (items.length < 10) break;
-        page++;
-      }
-      global._hevyTemplateCache = all;
+
+    let { rows: countRows } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
+    if (!countRows[0].n) {
+      await refreshTemplateCache();
+      ({ rows: countRows } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`));
     }
-    const all = global._hevyTemplateCache;
-    const filtered = q
-      ? all.filter(t => String(t.title || t.name || '').toLowerCase().includes(q))
-      : all;
+    const total = countRows[0].n;
+
+    let rows;
+    if (q) {
+      ({ rows } = await query(
+        `SELECT hevy_id AS id, title, type, primary_muscle_group, secondary_muscle_groups,
+                equipment, is_custom, raw
+           FROM hevy_template_cache
+          WHERE lower(title) LIKE $1
+          ORDER BY length(title) ASC, title ASC
+          LIMIT $2`,
+        [`%${q}%`, limit]
+      ));
+    } else {
+      ({ rows } = await query(
+        `SELECT hevy_id AS id, title, type, primary_muscle_group, secondary_muscle_groups,
+                equipment, is_custom, raw
+           FROM hevy_template_cache
+          ORDER BY title ASC
+          LIMIT $1`,
+        [limit]
+      ));
+    }
+
+    res.json({ total, matched: rows.length, results: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/hevy/templates/refresh ─────────────────────────
+// Wipe + re-fetch the entire Hevy template catalog. Call after any
+// custom-template POST to make the cache reflect reality.
+router.post('/templates/refresh', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const cached = await refreshTemplateCache();
+    res.json({ ok: true, cached });
+  } catch (err) {
+    console.error(`[hevy/templates/refresh] ${err.stack}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── GET /api/hevy/health ─────────────────────────────────────
+// Verifies the API key is valid by hitting /v1/user/info. Used by the
+// frontend Settings page to show a green/red dot.
+router.get('/health', async (req, res) => {
+  if (!HEVY_API_KEY) {
+    return res.status(200).json({ ok: false, error: 'HEVY_API_KEY not set' });
+  }
+  try {
+    const info = await hevyFetch('/user/info');
+    res.json({ ok: true, user: info });
+  } catch (err) {
+    res.status(200).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Exercise mapping (sticky AB-name → Hevy template) ────────
+//
+// Why this exists: Coach's per-call /exercise-templates?q= search picks
+// the best title match each time, but "Standing Calf Raise" might match
+// 3 templates and the rank can shuffle. A persistent map locks the
+// chosen template so logs stay comparable across sessions.
+
+async function lookupHevyTemplateByName(name) {
+  // 1) hevy_exercise_map (manual or previously auto-populated)
+  const mapR = await query(
+    `SELECT hevy_exercise_template_id AS id, hevy_title AS title, hevy_type AS type
+       FROM hevy_exercise_map
+      WHERE lower(ab_brain_exercise_name) = lower($1)
+      LIMIT 1`,
+    [name]
+  );
+  if (mapR.rows.length) return { ...mapR.rows[0], source: 'map' };
+
+  // 2) hevy_template_cache exact title match
+  const exactR = await query(
+    `SELECT hevy_id AS id, title, type
+       FROM hevy_template_cache
+      WHERE lower(title) = lower($1)
+      LIMIT 1`,
+    [name]
+  );
+  if (exactR.rows.length) return { ...exactR.rows[0], source: 'cache_exact' };
+
+  // 3) hevy_template_cache trigram fuzzy
+  const fuzzyR = await query(
+    `SELECT hevy_id AS id, title, type, similarity(title, $1) AS sim
+       FROM hevy_template_cache
+      WHERE title % $1
+      ORDER BY sim DESC
+      LIMIT 1`,
+    [name]
+  );
+  if (fuzzyR.rows.length && Number(fuzzyR.rows[0].sim) > 0.35) {
+    return { ...fuzzyR.rows[0], source: 'cache_fuzzy' };
+  }
+
+  return null;
+}
+
+// GET /api/hevy/exercise-map — list all mappings
+router.get('/exercise-map', async (req, res) => {
+  try {
+    const { rows } = await query(`SELECT * FROM hevy_exercise_map ORDER BY ab_brain_exercise_name ASC`);
+    res.json({ count: rows.length, mappings: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/hevy/exercise-map — upsert a mapping
+router.post('/exercise-map', async (req, res) => {
+  try {
+    const {
+      ab_brain_exercise_name,
+      ab_brain_exercise_id,
+      hevy_exercise_template_id,
+      hevy_title,
+      hevy_type,
+      hevy_primary_muscle_group,
+      hevy_equipment,
+      is_custom,
+      confidence,
+      notes,
+    } = req.body || {};
+    if (!ab_brain_exercise_name || !hevy_exercise_template_id) {
+      return res.status(400).json({ error: 'ab_brain_exercise_name and hevy_exercise_template_id required' });
+    }
+    // If hevy_title/type omitted, fill from cache.
+    let title = hevy_title, type = hevy_type;
+    if (!title || !type) {
+      const { rows } = await query(
+        `SELECT title, type FROM hevy_template_cache WHERE hevy_id = $1`,
+        [hevy_exercise_template_id]
+      );
+      if (rows[0]) { title = title || rows[0].title; type = type || rows[0].type; }
+    }
+    if (!title || !type) {
+      return res.status(400).json({ error: 'hevy_title/hevy_type required (or refresh template cache first)' });
+    }
+
+    const { rows } = await query(
+      `INSERT INTO hevy_exercise_map (
+         ab_brain_exercise_name, ab_brain_exercise_id, hevy_exercise_template_id,
+         hevy_title, hevy_type, hevy_primary_muscle_group, hevy_equipment,
+         is_custom, confidence, notes
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (lower(ab_brain_exercise_name)) DO UPDATE SET
+         hevy_exercise_template_id = EXCLUDED.hevy_exercise_template_id,
+         hevy_title = EXCLUDED.hevy_title,
+         hevy_type = EXCLUDED.hevy_type,
+         hevy_primary_muscle_group = EXCLUDED.hevy_primary_muscle_group,
+         hevy_equipment = EXCLUDED.hevy_equipment,
+         is_custom = EXCLUDED.is_custom,
+         confidence = EXCLUDED.confidence,
+         notes = EXCLUDED.notes,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        ab_brain_exercise_name,
+        ab_brain_exercise_id || null,
+        hevy_exercise_template_id,
+        title,
+        type,
+        hevy_primary_muscle_group || null,
+        hevy_equipment || null,
+        Boolean(is_custom),
+        confidence || 'manual',
+        notes || null,
+      ]
+    );
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/hevy/exercise-map/:id — partial update
+router.put('/exercise-map/:id', async (req, res) => {
+  try {
+    const allowed = ['ab_brain_exercise_name','ab_brain_exercise_id','hevy_exercise_template_id','hevy_title','hevy_type','hevy_primary_muscle_group','hevy_equipment','is_custom','confidence','notes'];
+    const fields = [];
+    const vals = [];
+    let i = 1;
+    for (const f of allowed) {
+      if (req.body[f] === undefined) continue;
+      fields.push(`${f} = $${i++}`);
+      vals.push(req.body[f]);
+    }
+    if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
+    fields.push('updated_at = NOW()');
+    vals.push(req.params.id);
+    const { rows } = await query(
+      `UPDATE hevy_exercise_map SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+      vals
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/hevy/exercise-map/:id
+router.delete('/exercise-map/:id', async (req, res) => {
+  try {
+    const { rows } = await query(`DELETE FROM hevy_exercise_map WHERE id = $1 RETURNING *`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true, deleted: rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/hevy/exercise-map/auto-populate
+//
+// For every distinct exercise name referenced in plan_segments
+// .planned_exercises[].name (or daily_plans.planned_exercises) that
+// isn't already mapped, look up a Hevy template via the cache. Three
+// outcome buckets:
+//   mapped:    confident match auto-inserted
+//   ambiguous: multiple cache hits, awaiting manual review
+//   unmapped:  no match — Coach should propose creating a custom template
+router.post('/exercise-map/auto-populate', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    // Ensure cache has data — auto-populate is useless without it.
+    const { rows: cacheCount } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
+    if (!cacheCount[0].n) await refreshTemplateCache();
+
+    // Gather distinct names from segments + plans.
+    const { rows: nameRows } = await query(`
+      SELECT DISTINCT lower(coalesce(e->>'name', e->>'exercise_name', e->>'title')) AS name
+      FROM (
+        SELECT jsonb_array_elements(planned_exercises) AS e FROM plan_segments
+        UNION ALL
+        SELECT jsonb_array_elements(planned_exercises) AS e FROM daily_plans
+      ) sub
+      WHERE coalesce(e->>'name', e->>'exercise_name', e->>'title') IS NOT NULL
+    `);
+    const names = nameRows.map(r => r.name).filter(Boolean);
+
+    const { rows: existing } = await query(`SELECT lower(ab_brain_exercise_name) AS n FROM hevy_exercise_map`);
+    const have = new Set(existing.map(r => r.n));
+
+    const mapped = [];
+    const ambiguous = [];
+    const unmapped = [];
+
+    for (const name of names) {
+      if (have.has(name)) continue;
+      const hit = await lookupHevyTemplateByName(name);
+      if (!hit) { unmapped.push(name); continue; }
+      if (hit.source === 'cache_fuzzy') {
+        // Don't auto-commit fuzzy. Surface for review.
+        ambiguous.push({ name, suggestion: hit });
+        continue;
+      }
+      // Exact cache match — confident enough to auto-insert.
+      await query(
+        `INSERT INTO hevy_exercise_map (
+           ab_brain_exercise_name, hevy_exercise_template_id, hevy_title, hevy_type, confidence
+         ) VALUES ($1, $2, $3, $4, 'auto')
+         ON CONFLICT (lower(ab_brain_exercise_name)) DO NOTHING`,
+        [name, hit.id, hit.title, hit.type]
+      );
+      mapped.push({ name, hevy_id: hit.id, hevy_title: hit.title });
+    }
+
     res.json({
-      total: all.length,
-      matched: filtered.length,
-      results: filtered.slice(0, limit),
+      mapped: mapped.length,
+      ambiguous: ambiguous.length,
+      unmapped: unmapped.length,
+      details: { mapped, ambiguous, unmapped },
     });
   } catch (err) {
+    console.error(`[hevy/exercise-map/auto-populate] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -264,6 +615,7 @@ router.get('/exercise-templates', async (req, res) => {
 async function pushSegmentToHevy(planRow, segment, folderId) {
   if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key' };
   const exercises = segment?.planned_exercises || [];
+  await resolveTemplateIds(exercises);
   const routine = mapSegmentToHevyRoutine(planRow, segment, exercises, folderId);
   if (!routine.exercises.length) {
     return { ok: false, segment_id: segment?.id, skipped: 'no_resolvable_exercises' };
@@ -353,6 +705,7 @@ async function pushPlanToHevy(planRow, suppliedExercises, folderId) {
     return { ok: false, skipped: 'workout_type_not_pushable' };
   }
   const exercises = suppliedExercises || planRow.planned_exercises || [];
+  await resolveTemplateIds(exercises);
   const routine = mapPlanToHevyRoutine(planRow, exercises, folderId);
   if (!routine.exercises.length) return { ok: false, skipped: 'no_resolvable_exercises' };
   if (!routine.folder_id) return { ok: false, error: 'no folder_id (set HEVY_ROUTINE_FOLDER_ID env var or pass folder_id in body)' };
@@ -446,10 +799,28 @@ router.post('/routine-folders', async (req, res) => {
 // into AB Brain `workouts`, deduped by hevy_id. After each upsert,
 // auto-links the row to the daily_plan + hevy-target plan_segment for
 // the workout's date. Returns { ok, inserted, skipped, linked, since }.
+//
+// Cursor: if `since` is omitted, we read the durable cursor from
+// sync_state(source='hevy_workouts'). After a successful pass, we
+// persist the latest start_time we saw so the next call advances. This
+// survives restarts.
 async function syncHevyWorkouts(since) {
   if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key', inserted: 0 };
-  const sinceDate = since || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+
+  // Resolve effective `since`:
+  //   1. Explicit param (caller override)
+  //   2. sync_state.cursor for 'hevy_workouts'
+  //   3. 30 days back (first-ever run)
+  let sinceDate = since;
+  if (!sinceDate) {
+    const { rows } = await query(`SELECT cursor FROM sync_state WHERE source = 'hevy_workouts'`);
+    if (rows[0]?.cursor) sinceDate = String(rows[0].cursor).slice(0, 10);
+  }
+  if (!sinceDate) {
+    sinceDate = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  }
   const sinceMs = new Date(sinceDate + 'T00:00:00Z').getTime();
+  let latestSeenMs = sinceMs;
 
   let inserted = 0;
   let skipped = 0;
@@ -464,6 +835,7 @@ async function syncHevyWorkouts(since) {
     for (const hw of items) {
       const startMs = hw.start_time ? new Date(hw.start_time).getTime() : 0;
       if (startMs < sinceMs) { kept_going = false; break; }
+      if (startMs > latestSeenMs) latestSeenMs = startMs;
       const row = mapHevyWorkoutToAB(hw);
       if (!row.hevy_id) { skipped++; continue; }
       try {
@@ -534,7 +906,24 @@ async function syncHevyWorkouts(since) {
     page++;
   }
 
-  return { ok: true, inserted, skipped, linked, since: sinceDate };
+  // Advance the durable cursor. We push it forward by 1ms past the
+  // newest workout we saw so the next call doesn't re-fetch the same
+  // top row. If no new workouts, the cursor stays put.
+  if (latestSeenMs > sinceMs) {
+    const nextCursor = new Date(latestSeenMs + 1).toISOString();
+    await query(
+      `INSERT INTO sync_state (source, cursor, last_synced_at, stats, updated_at)
+       VALUES ('hevy_workouts', $1, NOW(), $2::jsonb, NOW())
+       ON CONFLICT (source) DO UPDATE SET
+         cursor = EXCLUDED.cursor,
+         last_synced_at = NOW(),
+         stats = EXCLUDED.stats,
+         updated_at = NOW()`,
+      [nextCursor, JSON.stringify({ inserted, skipped, linked })]
+    );
+  }
+
+  return { ok: true, inserted, skipped, linked, since: sinceDate, cursor_advanced_to: latestSeenMs > sinceMs ? new Date(latestSeenMs).toISOString() : null };
 }
 
 // ─── POST /api/hevy/sync ──────────────────────────────────────
@@ -550,6 +939,122 @@ router.post('/sync', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error(`[hevy/sync] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/hevy/body-measurements/sync ────────────────────
+//
+// Push AB Brain body_metrics rows up to Hevy as body_measurements.
+// Hevy's PUT /v1/body_measurements/{date} is upsert — but it
+// OVERWRITES every field and sets omitted fields to null. So for any
+// given date we:
+//   1. GET the existing Hevy record (if any)
+//   2. Merge our AB-Brain numbers on top
+//   3. PUT the merged result
+//
+// Body: { since: 'YYYY-MM-DD' } (default = 30 days back)
+//
+// Conversions:
+//   weight_lb     → weight_kg            (lb × 0.453592)
+//   muscle_mass_lb → muscle_mass_kg
+//   bone_mass_lb  → bone_mass_kg
+//   body_fat_pct  → fat_percent
+//   body_water_pct → water_percent
+function lbToKg(lb) {
+  if (lb == null) return null;
+  return Math.round(Number(lb) * 0.453592 * 100) / 100;
+}
+
+function abMetricsToHevy(row) {
+  return {
+    weight_kg: lbToKg(row.weight_lb),
+    fat_percent: row.body_fat_pct != null ? Number(row.body_fat_pct) : null,
+    muscle_mass_kg: lbToKg(row.muscle_mass_lb),
+    bone_mass_kg: lbToKg(row.bone_mass_lb),
+    water_percent: row.body_water_pct != null ? Number(row.body_water_pct) : null,
+    bmi: row.bmi != null ? Number(row.bmi) : null,
+    bmr_kcal: row.bmr_kcal != null ? Number(row.bmr_kcal) : null,
+    visceral_fat_rating: row.visceral_fat != null ? Number(row.visceral_fat) : null,
+  };
+}
+
+async function getHevyMeasurement(date) {
+  // Hevy returns 404 when no measurement exists for the date.
+  try {
+    return await hevyFetch(`/body_measurements/${date}`);
+  } catch (err) {
+    if (/→ 404/.test(err.message)) return null;
+    throw err;
+  }
+}
+
+router.post('/body-measurements/sync', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const since = req.body?.since || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+    // One row per date — pick the latest measurement of the day so
+    // morning + evening RENPHO scans collapse cleanly.
+    const { rows } = await query(
+      `SELECT DISTINCT ON (measurement_date)
+              measurement_date, weight_lb, body_fat_pct, muscle_mass_lb,
+              bone_mass_lb, body_water_pct, bmi, bmr_kcal, visceral_fat
+         FROM body_metrics
+        WHERE measurement_date >= $1
+        ORDER BY measurement_date DESC, measurement_time DESC NULLS LAST, created_at DESC`,
+      [since]
+    );
+
+    let pushed = 0;
+    let merged = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (const row of rows) {
+      const date = String(row.measurement_date).slice(0, 10);
+      const ab = abMetricsToHevy(row);
+
+      // Skip if every AB field is null — nothing to push.
+      if (!Object.values(ab).some(v => v != null)) { skipped++; continue; }
+
+      // Merge with existing Hevy record so PUT doesn't null fields we
+      // didn't supply but Hevy already had (e.g. user edited fat % on
+      // their phone).
+      let payload = ab;
+      try {
+        const existing = await getHevyMeasurement(date);
+        if (existing) {
+          merged++;
+          payload = { ...existing, ...Object.fromEntries(Object.entries(ab).filter(([_, v]) => v != null)) };
+          // Strip server-managed fields Hevy will reject on PUT.
+          delete payload.id;
+          delete payload.date;
+          delete payload.created_at;
+          delete payload.updated_at;
+        }
+      } catch (err) {
+        errors.push({ date, phase: 'get', error: err.message });
+        continue;
+      }
+
+      try {
+        await hevyFetch(`/body_measurements/${date}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        pushed++;
+      } catch (err) {
+        errors.push({ date, phase: 'put', error: err.message });
+      }
+    }
+
+    if (typeof logActivity === 'function') {
+      try { await logActivity('hevy_body_sync', null, null, null, `Pushed ${pushed} body measurements (${merged} merged, ${skipped} empty)`); } catch (_) {}
+    }
+
+    res.json({ ok: true, considered: rows.length, pushed, merged, skipped, errors });
+  } catch (err) {
+    console.error(`[hevy/body-measurements/sync] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -603,3 +1108,14 @@ module.exports = router;
 module.exports.pushPlanToHevy = pushPlanToHevy;
 module.exports.pushSegmentToHevy = pushSegmentToHevy;
 module.exports.syncHevyWorkouts = syncHevyWorkouts;
+// Exposed for unit tests in tests/hevy.test.js. Don't import these
+// elsewhere — they're internal helpers.
+module.exports._test = {
+  mapSegmentToHevyRoutine,
+  mapPlanToHevyRoutine,
+  mapHevyWorkoutToAB,
+  formatPlanDate,
+  abMetricsToHevy,
+  lbToKg,
+  TYPE_PREFIX,
+};

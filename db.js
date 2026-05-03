@@ -789,6 +789,9 @@ async function initDB() {
   // -- daily_plans: add title + goal columns (unified plan concept) --
   await safeQuery('daily_plans +title', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS title TEXT`);
   await safeQuery('daily_plans +goal', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS goal TEXT`);
+  // hevy_routine_title is an explicit override Coach can set when the
+  // generated title isn't right (e.g. "May 3 — Z2 Run + Sled + PT").
+  await safeQuery('daily_plans +hevy_routine_title', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_routine_title TEXT`);
 
   // -- migrate microcycle training_plans → daily_plans (before drop) --
   await (async () => {
@@ -1347,6 +1350,72 @@ async function initDB() {
       AND ps.block_order = 0
       AND w.plan_segment_id IS NULL
       AND w.daily_plan_id IS NOT NULL
+  `);
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  HEVY MAPPING + CACHE + SYNC STATE
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // Three tables work together so push-plan / sync don't drift:
+  //
+  //   hevy_template_cache  — local mirror of /v1/exercise_templates so
+  //                          we don't page through 4,300+ entries on
+  //                          every search. Refreshed on a manual or
+  //                          weekly trigger.
+  //
+  //   hevy_exercise_map    — sticky AB-Brain-name → Hevy-template-id
+  //                          binding so "Standing Calf Raise" always
+  //                          maps to the same Hevy template across
+  //                          sessions. Push-plan consults this BEFORE
+  //                          falling back to live search.
+  //
+  //   sync_state           — durable cursor for /v1/workouts/events.
+  //                          Without this, every deploy resets the
+  //                          cursor and we re-process old events.
+  await safeQuery('hevy_template_cache table', `
+    CREATE TABLE IF NOT EXISTS hevy_template_cache (
+      hevy_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL,
+      primary_muscle_group TEXT,
+      secondary_muscle_groups TEXT[],
+      equipment TEXT,
+      is_custom BOOLEAN DEFAULT FALSE,
+      raw JSONB,
+      cached_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await safeQuery('hevy_template_cache title idx', `CREATE INDEX IF NOT EXISTS idx_hevy_tpl_title ON hevy_template_cache(lower(title))`);
+  await safeQuery('hevy_template_cache title trgm idx', `CREATE INDEX IF NOT EXISTS idx_hevy_tpl_trgm ON hevy_template_cache USING gin(title gin_trgm_ops)`);
+
+  await safeQuery('hevy_exercise_map table', `
+    CREATE TABLE IF NOT EXISTS hevy_exercise_map (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      ab_brain_exercise_name TEXT NOT NULL,
+      ab_brain_exercise_id UUID,
+      hevy_exercise_template_id TEXT NOT NULL,
+      hevy_title TEXT NOT NULL,
+      hevy_type TEXT NOT NULL,
+      hevy_primary_muscle_group TEXT,
+      hevy_equipment TEXT,
+      is_custom BOOLEAN DEFAULT FALSE,
+      confidence TEXT DEFAULT 'manual',
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await safeQuery('hevy_exercise_map name unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_hevy_map_ab_name ON hevy_exercise_map(lower(ab_brain_exercise_name))`);
+  await safeQuery('hevy_exercise_map hevy_id idx', `CREATE INDEX IF NOT EXISTS idx_hevy_map_hevy_id ON hevy_exercise_map(hevy_exercise_template_id)`);
+
+  await safeQuery('sync_state table', `
+    CREATE TABLE IF NOT EXISTS sync_state (
+      source TEXT PRIMARY KEY,
+      cursor TEXT,
+      last_synced_at TIMESTAMPTZ,
+      stats JSONB DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
   `);
 
   // body_metrics: lean mass + apple_health partial unique + nullable weight
