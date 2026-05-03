@@ -1,5 +1,5 @@
 // Hevy integration. Two-way sync between AB Brain and Hevy
-// (https://hevy.com), the strength-training app:
+// (https://hevy.com), the strength-training app.
 //
 //   PUSH: Coach generates today's daily_plan → POST /api/hevy/push-plan
 //         creates a Hevy routine the user opens at the gym.
@@ -9,21 +9,44 @@
 //         dedupeAppleWorkouts() pass merges the two by started_at
 //         window.
 //
-// Auth: HEVY_API_KEY env var, sent as `api-key` header. User generates
-// the key in Hevy → Profile → Settings → API.
+// Auth: HEVY_API_KEY env var, sent as `x-api-key` header (confirmed
+// via api.hevyapp.com CORS allowlist).
 //
-// Endpoint shape (Hevy public API as of 2024-2025):
+// **Hevy Pro required.** Per the spec preamble: "Currently, this API is
+// only available to Hevy Pro users." Generate the key at:
+//   https://hevy.com/settings?developer
+//
+// Endpoint inventory (verified from api.hevyapp.com/docs spec, May 2026):
+//   GET  /v1/user/info
 //   GET  /v1/workouts?page=N&pageSize=M
+//   GET  /v1/workouts/count
+//   GET  /v1/workouts/events  (deltas since timestamp)
 //   GET  /v1/workouts/{id}
 //   POST /v1/workouts
+//   PUT  /v1/workouts/{id}
 //   GET  /v1/routines
+//   GET  /v1/routines/{id}
 //   POST /v1/routines
 //   PUT  /v1/routines/{id}
 //   GET  /v1/exercise_templates?page=N&pageSize=M
+//   GET  /v1/exercise_templates/{id}
+//   POST /v1/exercise_templates  (create custom)
+//   GET  /v1/exercise_history/{exerciseTemplateId}
+//   GET  /v1/routine_folders
+//   POST /v1/routine_folders
+//   GET  /v1/body_measurements
+//   POST /v1/body_measurements
+//   PUT  /v1/body_measurements/{date}
 //
-// Field shapes assumed below are best-effort; if Hevy's actual response
-// keys differ, the mapping helpers (mapHevyWorkoutToAB, mapPlanToHevyRoutine)
-// are the only places to adjust.
+// Workout schema: id, title, routine_id, description, start_time,
+// end_time, exercises:[{ index, title, notes, exercise_template_id,
+// supersets_id, sets:[{ index, type, weight_kg, reps, distance_meters,
+// duration_seconds, rpe, custom_metric }] }]
+//
+// Routine schema: id, title, folder_id, exercises:[{ index, title,
+// rest_seconds, notes, exercise_template_id, supersets_id, sets:[{
+// index, type, weight_kg, reps, rep_range:{start,end}, distance_meters,
+// duration_seconds, rpe, custom_metric }] }]
 
 const express = require('express');
 const { query, logActivity } = require('../db');
