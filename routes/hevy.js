@@ -231,6 +231,56 @@ router.get('/exercise-templates', async (req, res) => {
   }
 });
 
+// Reusable helper: push a daily_plan to Hevy as a routine. Returns
+// { ok, hevy_routine, error }. Used by both the explicit POST /push-plan
+// route and the auto-push hook from routes/daily-plans.js. Silently
+// skips when HEVY_API_KEY is missing or when the plan has no resolvable
+// exercises (caller decides whether to log the no-op).
+//
+// PUSHABLE_TYPES — only strength-style modalities push to Hevy. Run /
+// recovery / rest sessions don't belong as Hevy routines.
+const PUSHABLE_TYPES = new Set(['strength', 'hybrid', 'hill']);
+
+async function pushPlanToHevy(planRow, suppliedExercises) {
+  if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key' };
+  if (!planRow) return { ok: false, error: 'plan not found' };
+  if (!PUSHABLE_TYPES.has(planRow.workout_type)) {
+    return { ok: false, skipped: 'workout_type_not_pushable' };
+  }
+
+  const exercises = suppliedExercises || planRow.planned_exercises || [];
+  const routine = mapPlanToHevyRoutine(planRow, exercises);
+  if (!routine.exercises.length) {
+    return { ok: false, skipped: 'no_resolvable_exercises' };
+  }
+
+  let hevyRoutine;
+  if (planRow.hevy_routine_id) {
+    hevyRoutine = await hevyFetch(`/routines/${planRow.hevy_routine_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ routine }),
+    });
+  } else {
+    hevyRoutine = await hevyFetch('/routines', {
+      method: 'POST',
+      body: JSON.stringify({ routine }),
+    });
+    const newId = hevyRoutine.id || hevyRoutine.routine?.id || hevyRoutine.routine_id;
+    if (newId) {
+      await query(
+        `UPDATE daily_plans SET hevy_routine_id = $1, updated_at = NOW() WHERE id = $2`,
+        [newId, planRow.id]
+      );
+    }
+  }
+
+  if (typeof logActivity === 'function') {
+    try { await logActivity('hevy_push', `Routine pushed for ${planRow.plan_date}`, { plan_id: planRow.id, hevy_routine: hevyRoutine }); } catch (_) {}
+  }
+
+  return { ok: true, hevy_routine: hevyRoutine };
+}
+
 // ─── POST /api/hevy/push-plan ────────────────────────────────
 // Coach calls this after writing a daily_plan. Pushes the plan as a
 // Hevy routine so user opens Hevy at the gym and follows it.
@@ -247,38 +297,11 @@ router.post('/push-plan', async (req, res) => {
     const plan = planRes.rows[0];
     if (!plan) return res.status(404).json({ error: 'plan not found' });
 
-    const routine = mapPlanToHevyRoutine(plan, planned_exercises || plan.planned_exercises || []);
-    if (!routine.exercises.length) {
-      return res.status(400).json({ error: 'no resolvable exercises (need hevy_exercise_template_id on each)' });
+    const result = await pushPlanToHevy(plan, planned_exercises);
+    if (!result.ok) {
+      return res.status(result.skipped ? 200 : 400).json(result);
     }
-
-    // If plan already has a hevy_routine_id, update; else create.
-    let hevyRoutine;
-    if (plan.hevy_routine_id) {
-      hevyRoutine = await hevyFetch(`/routines/${plan.hevy_routine_id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ routine }),
-      });
-    } else {
-      hevyRoutine = await hevyFetch('/routines', {
-        method: 'POST',
-        body: JSON.stringify({ routine }),
-      });
-      // Hevy returns the created routine; persist its id back to AB Brain.
-      const newId = hevyRoutine.id || hevyRoutine.routine?.id || hevyRoutine.routine_id;
-      if (newId) {
-        await query(
-          `UPDATE daily_plans SET hevy_routine_id = $1, updated_at = NOW() WHERE id = $2`,
-          [newId, plan_id]
-        );
-      }
-    }
-
-    if (typeof logActivity === 'function') {
-      try { await logActivity('hevy_push', `Routine pushed for ${plan.plan_date}`, { plan_id, hevy_routine: hevyRoutine }); } catch (_) {}
-    }
-
-    res.json({ ok: true, hevy_routine: hevyRoutine });
+    res.json(result);
   } catch (err) {
     console.error(`[hevy/push-plan] ${err.stack}`);
     res.status(500).json({ error: err.message });
@@ -358,3 +381,4 @@ router.get('/routines', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.pushPlanToHevy = pushPlanToHevy;

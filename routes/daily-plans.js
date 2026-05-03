@@ -1,6 +1,21 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { pushPlanToHevy } = require('./hevy');
 const router = express.Router();
+
+// Fire-and-forget Hevy push on plan create/update. Never blocks the
+// response. Silently no-ops when HEVY_API_KEY isn't set, when
+// workout_type isn't pushable, or when no resolvable exercises exist.
+function autoPushToHevy(planRow) {
+  if (!planRow) return;
+  Promise.resolve()
+    .then(() => pushPlanToHevy(planRow))
+    .then(r => {
+      if (r?.ok) console.log(`[auto-hevy-push] plan ${planRow.id} → routine ${r.hevy_routine?.id || r.hevy_routine?.routine?.id || 'updated'}`);
+      else if (r?.skipped) console.log(`[auto-hevy-push] plan ${planRow.id} skipped: ${r.skipped}`);
+    })
+    .catch(err => console.error(`[auto-hevy-push] plan ${planRow.id} failed: ${err.message}`));
+}
 
 // Writable fields for daily_plans
 const WRITABLE_FIELDS = [
@@ -261,6 +276,7 @@ router.post('/', async (req, res) => {
     await logActivity('daily_plan_created', 'daily_plan', rows[0].id, null,
       `Daily plan for ${rows[0].plan_date}: ${rows[0].workout_type || rows[0].status || 'planned'}`);
 
+    autoPushToHevy(rows[0]);
     res.status(201).json(rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -358,6 +374,7 @@ router.put('/:id', async (req, res) => {
     await logActivity('daily_plan_updated', 'daily_plan', rows[0].id, null,
       `Amended plan for ${rows[0].plan_date}`);
 
+    autoPushToHevy(rows[0]);
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

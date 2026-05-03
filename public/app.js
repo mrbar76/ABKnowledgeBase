@@ -5595,6 +5595,20 @@ function shiftFitnessToday(delta) {
   loadFitnessToday();
 }
 
+// Hevy push status badge for the Today's Plan card. Three states:
+//   ✓ green "Hevy" — plan has hevy_routine_id (push succeeded)
+//   ⚠ amber "Hevy queued" — pushable workout type but no routine id yet
+//   (nothing) — workout_type isn't pushable (run, recovery, ruck, rest, etc.)
+function renderHevyBadge(plan) {
+  if (!plan) return '';
+  const PUSHABLE = new Set(['strength', 'hybrid', 'hill']);
+  if (!PUSHABLE.has(plan.workout_type)) return '';
+  if (plan.hevy_routine_id) {
+    return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="Routine ${plan.hevy_routine_id} pushed to Hevy">✓ Hevy</span>`;
+  }
+  return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="Pushable workout but no Hevy routine yet — try editing the plan to trigger auto-push, or push via Coach">⚠ Hevy queued</span>`;
+}
+
 async function loadFitnessToday() {
   const el = document.getElementById('fitness-content');
   if (!el) return;
@@ -5732,9 +5746,10 @@ async function loadFitnessToday() {
 
       planHtml = `
         <div class="card mb-md" style="border-left:3px solid ${statusColor}">
-          <div class="card-title" style="display:flex;align-items:center;gap:8px">
+          <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span>${plan.status === 'rest' ? "Rest Day" : "Today's Plan"}</span>
             <span class="badge-dynamic" style="background:${statusColor}22;color:${statusColor};font-size:0.65rem">${statusIcon} ${plan.status}</span>
+            ${renderHevyBadge(plan)}
             <span style="flex:1"></span>
             <button class="btn-submit btn-compact-sm btn-secondary" style="font-size:0.6rem;padding:2px 6px" onclick="showGymProfilePicker()">⚙</button>
           </div>
