@@ -4,6 +4,38 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.14] — 2026-05-03
+
+### Fixed — Coach bug #1: Apple Health workouts logging zero calories
+
+Coach's end-of-day review surfaced that **every** Apple Watch workout had `calories_burned: None` despite the watch always tracking active energy. Two compounding bugs:
+
+1. **Parser only checked one field shape.** HAE exports workout calories under at least four different keys depending on version + config:
+   - `activeEnergyBurned: { qty, units }` (canonical HAE)
+   - `activeEnergy: { qty }` (older HAE)
+   - `activeEnergyKcal: 365` (Format A flat numeric)
+   - `metrics.activeEnergy.qty` (newer nested HAE)
+
+   The parser only checked the first. Any other shape silently dropped. Same for `totalEnergy` / `totalEnergyBurned` / `totalEnergyKcal`.
+
+2. **`cal_active` / `cal_total` INT columns never populated on insert.** A startup-only backfill copied from the legacy TEXT columns once at boot. New rows had `active_calories` TEXT populated but `cal_active` INT null, so any downstream query reading the INT columns returned zero.
+
+### Fixes
+
+- **New `pickEnergyKcal(obj, keys[])` helper** that tries every plausible shape (object with `qty`, flat number, numeric string with units suffix). Returns the kcal number or null.
+- **Format A + Format D workout parsers both use it now.** Active and total calories pulled from `activeEnergyBurned | activeEnergy | activeEnergyKcal | metrics.activeEnergy` (in priority order). Total falls back to `active + basal` when only those two are available.
+- **Both parsers log a warning** with the actual payload keys when no calorie field is found, so future drift is visible in deploy logs instead of silent.
+- **`cal_active` / `cal_total` written on every insert** — the INSERT and the merge-into-manual-row paths both compute the INT from the TEXT field at insert time, so all downstream consumers (recovery score, energy balance, Coach review) see the same number.
+
+### Added — regression tests
+`tests/health-calories.test.js`: 11 tests covering every payload shape, plus a "no calorie field" case so we get a flagged null instead of silently zero.
+
+### What this means for your data
+- **Going forward**: every new HAE push populates calories on workouts immediately.
+- **Today's broken rows** (5 dupe rows with 0 calories): will be re-parsed and corrected on next HAE push that covers those start_times. Or you can hit Settings → Reparse Health Imports → Reparse All to re-run all stored payloads against the fixed parser.
+
+---
+
 ## [1.8.13] — 2026-05-03
 
 ### Fixed — Trends tab crashed with "weightKg is not defined"

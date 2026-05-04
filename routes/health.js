@@ -182,6 +182,30 @@ async function upsertDailyActivity(format, dateRows) {
   return { inserted, updated };
 }
 
+// ─── Energy field extractor ─────────────────────────────────────
+// Apple Watch / HAE workouts come in with calorie data under varying
+// key names. v1.8.14 unified extractor: try canonical, older, flat
+// numeric, and Format-A variants, return the kcal number or null.
+//
+// Accepts:
+//   { activeEnergyBurned: { qty: 365, units: 'kcal' } }     ← canonical
+//   { activeEnergyBurned: 365 }                              ← flat
+//   { activeEnergyKcal: 365 }                                ← Format A
+function pickEnergyKcal(obj, keys) {
+  if (!obj || typeof obj !== 'object') return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v == null) continue;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'object' && v.qty != null && Number.isFinite(Number(v.qty))) return Number(v.qty);
+    if (typeof v === 'string' && /\d/.test(v)) {
+      const n = Number(v.replace(/[^\d.]/g, ''));
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
 // ─── Format A parser ────────────────────────────────────────────
 
 function parseFormatA(body) {
@@ -229,9 +253,23 @@ function parseFormatA(body) {
       heart_rate_avg: w.averageHeartRateBpm != null ? String(w.averageHeartRateBpm) : null,
       heart_rate_max: w.maxHeartRateBpm != null ? String(w.maxHeartRateBpm) : null,
       pace_avg: w.averagePaceSecPerKm != null ? formatPace(w.averagePaceSecPerKm * MILES_TO_KM, 'mi') : null,
-      active_calories: w.activeEnergyKcal != null ? String(Math.round(w.activeEnergyKcal)) : null,
-      total_calories: (w.activeEnergyKcal != null && w.basalEnergyKcal != null)
-        ? String(Math.round(w.activeEnergyKcal + w.basalEnergyKcal)) : null,
+      // v1.8.14: same robust calorie extractor as Format D so workouts
+      // populate active_calories regardless of which field name HAE
+      // shipped this version.
+      active_calories: (() => {
+        const a = pickEnergyKcal(w, ['activeEnergyKcal', 'activeEnergyBurned', 'activeEnergy'])
+          ?? pickEnergyKcal(w?.metrics, ['activeEnergy', 'activeEnergyBurned']);
+        if (a == null) console.warn(`[health/Format A] no calories on workout ${startedAt}; payload keys: ${Object.keys(w).join(',')}`);
+        return a != null ? String(Math.round(a)) : null;
+      })(),
+      total_calories: (() => {
+        const t = pickEnergyKcal(w, ['totalEnergyKcal', 'totalEnergyBurned', 'totalEnergy'])
+          ?? pickEnergyKcal(w?.metrics, ['totalEnergy', 'totalEnergyBurned']);
+        if (t != null) return String(Math.round(t));
+        const a = pickEnergyKcal(w, ['activeEnergyKcal', 'activeEnergyBurned', 'activeEnergy']);
+        const b = pickEnergyKcal(w, ['basalEnergyKcal', 'basalEnergyBurned', 'basalEnergy']);
+        return (a != null && b != null) ? String(Math.round(a + b)) : null;
+      })(),
       location: w.isIndoor ? 'indoor' : 'outdoor',
       source: 'apple_health',
       ai_source: null,
@@ -453,6 +491,31 @@ function parseFormatDWorkouts(body) {
     const avgHR = hrSummary.avg ?? w.avgHeartRate;
     const maxHR = hrSummary.max ?? w.maxHeartRate;
 
+    // Coach bug #1 (v1.8.14): every Apple Watch workout was logging
+    // calories_burned: None because the parser only checked one field
+    // shape. HAE exports workouts with calorie data under several keys
+    // depending on version + config:
+    //   activeEnergyBurned: { qty, units }     ← canonical HAE
+    //   activeEnergy:       { qty, units }     ← older HAE
+    //   activeEnergyKcal:    <number>          ← Format A custom dispatch
+    //   activeEnergyBurned:  <number>          ← flat numeric variant
+    //   metrics.activeEnergy ← seen in newer HAE
+    // Try all known shapes and log the keys that WERE in the payload
+    // when none match, so future drift is visible.
+    const activeKcal = pickEnergyKcal(w, ['activeEnergyBurned', 'activeEnergy', 'activeEnergyKcal'])
+      ?? pickEnergyKcal(w?.metrics, ['activeEnergy', 'activeEnergyBurned']);
+    const totalKcal = pickEnergyKcal(w, ['totalEnergy', 'totalEnergyBurned', 'totalEnergyKcal'])
+      ?? pickEnergyKcal(w?.metrics, ['totalEnergy', 'totalEnergyBurned']);
+    const basalKcal = pickEnergyKcal(w, ['basalEnergyBurned', 'basalEnergy', 'basalEnergyKcal'])
+      ?? pickEnergyKcal(w?.metrics, ['basalEnergy', 'basalEnergyBurned']);
+    // Compute total if missing but active+basal both present.
+    const totalComputed = (totalKcal == null && activeKcal != null && basalKcal != null)
+      ? activeKcal + basalKcal
+      : totalKcal;
+    if (activeKcal == null) {
+      console.warn(`[health/parseFormatDWorkouts] no calories on ${w.name || 'workout'} ${startedAt}; payload keys: ${Object.keys(w).join(',')}`);
+    }
+
     out.push({
       started_at: startedAt,
       ended_at: endedAt,
@@ -465,8 +528,8 @@ function parseFormatDWorkouts(body) {
       heart_rate_avg: avgHR != null ? String(Math.round(Number(avgHR))) : null,
       heart_rate_max: maxHR != null ? String(Math.round(Number(maxHR))) : null,
       pace_avg: null,
-      active_calories: w.activeEnergyBurned?.qty != null ? String(Math.round(w.activeEnergyBurned.qty)) : null,
-      total_calories: w.totalEnergy?.qty != null ? String(Math.round(w.totalEnergy.qty)) : null,
+      active_calories: activeKcal != null ? String(Math.round(activeKcal)) : null,
+      total_calories: totalComputed != null ? String(Math.round(totalComputed)) : null,
       location: typeof w.location === 'string' ? w.location.toLowerCase() : null,
       source: 'apple_health',
       ai_source: null,
@@ -855,6 +918,13 @@ async function upsertWorkouts(workouts) {
     if (nearby.rows.length && nearby.rows[0].source !== 'apple_health') {
       // Merge: only fill nulls on existing manual fields; always overwrite
       // sensor-derived metrics where Apple is more authoritative.
+      // v1.8.14: merge into cal_active / cal_total too — earlier the
+      // merge updated only the legacy TEXT fields, leaving INT columns
+      // null on rows enriched from Apple data.
+      const mergeCalActive = w.active_calories != null
+        ? Number(String(w.active_calories).replace(/[^\d.]/g, '')) || null : null;
+      const mergeCalTotal = w.total_calories != null
+        ? Number(String(w.total_calories).replace(/[^\d.]/g, '')) || null : null;
       try {
         await query(
           `UPDATE workouts SET
@@ -866,6 +936,8 @@ async function upsertWorkouts(workouts) {
              pace_avg        = COALESCE($7, pace_avg),
              active_calories = COALESCE($8, active_calories),
              total_calories  = COALESCE($9, total_calories),
+             cal_active      = COALESCE($12, cal_active),
+             cal_total       = COALESCE($13, cal_total),
              ended_at        = COALESCE($10, ended_at),
              metadata        = metadata || $11::jsonb,
              updated_at      = NOW()
@@ -874,7 +946,8 @@ async function upsertWorkouts(workouts) {
            w.time_duration, w.distance, w.elevation_gain,
            w.heart_rate_avg, w.heart_rate_max, w.pace_avg,
            w.active_calories, w.total_calories, w.ended_at,
-           JSON.stringify({ apple_health: w.metadata || {} })]
+           JSON.stringify({ apple_health: w.metadata || {} }),
+           mergeCalActive, mergeCalTotal]
         );
         merged++;
         await linkWorkoutToPlan(nearby.rows[0].id, w.workout_date, nearby.rows[0].source);
@@ -887,19 +960,32 @@ async function upsertWorkouts(workouts) {
     // 2) No nearby existing row — fall through to insert/upsert against the
     //    apple_health partial unique index.
     const title = `${capitalize(w.workout_type)} – ${w.workout_date}`;
+    // v1.8.14: also write the numeric cal_active / cal_total at insert
+    // time. The legacy startup-only backfill only ran on init, so new
+    // rows had active_calories TEXT populated but cal_active INT null,
+    // making downstream queries that read the INT columns return zero.
+    const calActiveInt = w.active_calories != null
+      ? Number(String(w.active_calories).replace(/[^\d.]/g, '')) || null
+      : null;
+    const calTotalInt = w.total_calories != null
+      ? Number(String(w.total_calories).replace(/[^\d.]/g, '')) || null
+      : null;
+
     const sql = `
       INSERT INTO workouts (
         title, workout_date, workout_type, inferred_workout_type, location,
         time_duration, distance, elevation_gain,
         heart_rate_avg, heart_rate_max, pace_avg,
         active_calories, total_calories,
+        cal_active, cal_total,
         started_at, ended_at, source, ai_source, metadata
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8,
         $9, $10, $11,
         $12, $13,
-        $14, $15, $16, $17, $18
+        $14, $15,
+        $16, $17, $18, $19, $20
       )
       ON CONFLICT (started_at) WHERE source = 'apple_health' AND started_at IS NOT NULL
       DO UPDATE SET
@@ -911,6 +997,8 @@ async function upsertWorkouts(workouts) {
         pace_avg = EXCLUDED.pace_avg,
         active_calories = EXCLUDED.active_calories,
         total_calories = EXCLUDED.total_calories,
+        cal_active = EXCLUDED.cal_active,
+        cal_total = EXCLUDED.cal_total,
         ended_at = EXCLUDED.ended_at,
         metadata = EXCLUDED.metadata,
         updated_at = NOW()
@@ -922,6 +1010,7 @@ async function upsertWorkouts(workouts) {
         w.time_duration, w.distance, w.elevation_gain,
         w.heart_rate_avg, w.heart_rate_max, w.pace_avg,
         w.active_calories, w.total_calories,
+        calActiveInt, calTotalInt,
         w.started_at, w.ended_at, w.source, w.ai_source,
         JSON.stringify(w.metadata || {}),
       ]);
@@ -1813,3 +1902,5 @@ module.exports.B_METRIC_MAP = B_METRIC_MAP;
 module.exports.D_METRIC_MAP = D_METRIC_MAP;
 module.exports.ingestPayload = ingestPayload;
 module.exports.mergeBodyMetricDuplicates = mergeBodyMetricDuplicates;
+module.exports.pickEnergyKcal = pickEnergyKcal;
+module.exports.parseFormatDWorkouts = parseFormatDWorkouts;
