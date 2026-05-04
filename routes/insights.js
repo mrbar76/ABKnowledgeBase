@@ -1025,7 +1025,7 @@ router.get('/trends', async (req, res) => {
               sleep_total_min, sleep_deep_min, sleep_rem_min,
               sleep_core_min, sleep_awake_min, sleep_efficiency_pct,
               sleep_in_bed_start, sleep_in_bed_end,
-              active_energy_kcal, basal_energy_kcal
+              active_energy_kcal, basal_energy_kcal, updated_at
          FROM daily_activity
          WHERE activity_date >= $1
          ORDER BY activity_date ASC`,
@@ -1118,9 +1118,21 @@ router.get('/trends', async (req, res) => {
     // ═══ NUTRITION ═══════════════════════════════════════════════
     const todayMeal = mealsRes.rows.find(m => dateOnly(m.meal_date) === today) || {};
     const calBurnByDate = new Map();
+    // Per-day breakdown so the UI can surface "active X · basal Y" and
+    // the user can tell at a glance whether basal_energy_kcal is null
+    // (HAE export config issue) or just the day is incomplete.
+    const calBreakdownByDate = new Map();
     for (const r of daRows) {
-      const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
-      if (out > 0) calBurnByDate.set(dateOnly(r.activity_date), out);
+      const active = Number(r.active_energy_kcal) || 0;
+      const basal = Number(r.basal_energy_kcal) || 0;
+      const out = active + basal;
+      const dateKey = dateOnly(r.activity_date);
+      if (out > 0) calBurnByDate.set(dateKey, out);
+      calBreakdownByDate.set(dateKey, {
+        active: r.active_energy_kcal != null ? Math.round(active) : null,
+        basal: r.basal_energy_kcal != null ? Math.round(basal) : null,
+        last_synced_at: r.updated_at || null,
+      });
     }
     const calsTarget = tget('calories_kcal', 2600);
     const proteinTarget = tget('protein_g', 138);
@@ -1147,10 +1159,16 @@ router.get('/trends', async (req, res) => {
     const protein30 = proteinSeries.slice(-30);
     const protein60Prior = proteinSeries.slice(-90, -30);
 
+    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, basal: null, last_synced_at: null };
     const nutrition = {
       today: {
         calories_in: Math.round(Number(todayMeal.kcal) || 0),
         calories_out: Math.round(calBurnByDate.get(today) || 0),
+        // v1.8.9: surface the breakdown so the UI can show
+        // "OUT 3275 (active 1526 · basal 1749)" or warn when basal is null.
+        calories_active: todayBreakdown.active,
+        calories_basal: todayBreakdown.basal,
+        last_synced_at: todayBreakdown.last_synced_at,
         balance: Math.round((Number(todayMeal.kcal) || 0) - (calBurnByDate.get(today) || 0)),
         protein_g: Math.round(Number(todayMeal.protein) || 0),
         carbs_g: Math.round(Number(todayMeal.carbs) || 0),

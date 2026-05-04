@@ -4,6 +4,24 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.9] — 2026-05-03
+
+### Added — visibility into why OUT looks wrong on the Macros tab
+
+v1.8.8 fixed Format A's missing basal capture, but if HAE never sends `basalEnergyKcal` in its payloads (config issue) OR uses a different field name, reparse won't help. Hard to diagnose without seeing the raw data.
+
+- **`OUT` line now shows breakdown:** `OUT 3275 burned (active 1526 · basal 1749) · synced 12m ago`. If basal is null, the chip shows `basal null` in amber with a tooltip explaining what's missing.
+- **`/api/health/diagnose-day?date=YYYY-MM-DD`** — new endpoint that dumps:
+  - The `daily_activity` row for the date
+  - The 5 most recent `raw_health_imports` covering that date
+  - **For each import, every payload field with `basal/active/energy/calorie/kcal` in its key** — so you can see exactly what HAE exported under what name
+  - A plain-language `diagnosis` string explaining what's null and why
+- `/insights/nutrition/macros/today` response gains `calories_active`, `calories_basal`, and `last_synced_at` fields under `today`.
+
+If after deploy + reparse the OUT chip still shows `basal null`, hit `/api/health/diagnose-day?date=2026-05-03` to see whether your HAE export config sends Basal Energy Burned at all. If `energy_fields_in_payload` doesn't include any basal-related entry, enable that metric in the HAE app settings.
+
+---
+
 ## [1.8.8] — 2026-05-03
 
 ### Fixed — Macros tab "OUT" massively under-counts vs Apple Health

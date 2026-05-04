@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.9 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Visibility into why OUT looks wrong.</strong> v1.8.8 fixed Format A&rsquo;s missing basal capture, but if HAE doesn&rsquo;t send <code>basalEnergyKcal</code> at all, reparse won&rsquo;t help.</p>
+                  <p><strong>OUT line now shows breakdown:</strong> &ldquo;OUT 3275 (active 1526 &middot; basal 1749) &middot; synced 12m ago&rdquo;. If basal is null, you see <code>basal null</code> in amber.</p>
+                  <p><strong>New endpoint <code>/api/health/diagnose-day?date=YYYY-MM-DD</code></strong> &mdash; dumps the daily_activity row, recent raw imports, and every payload field with basal/active/energy/calorie/kcal in its name. Plain-language diagnosis tells you whether HAE is sending it under a different name or not at all.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.8 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -751,7 +764,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.8</span>
+          AB Brain <span id="sm-version">v1.8.9</span>
         </div>
 
       </div>

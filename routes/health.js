@@ -1713,6 +1713,96 @@ async function mergeBodyMetricDuplicates({ dryRun = false } = {}) {
   return summary;
 }
 
+// ─── GET /api/health/diagnose-day?date=YYYY-MM-DD ─────────────
+// v1.8.9: surface what's actually stored for a given date so we can
+// debug why "OUT" on the Macros tab is suspiciously low. Returns:
+//   - daily_activity row (active_energy_kcal, basal_energy_kcal, etc.)
+//   - raw_health_imports rows covering that date, with their top-level
+//     payload keys + which energy-related field names the payload
+//     actually contains
+// Use the "Reparse Health Imports → Reparse All" button after a parser
+// fix; if basal_energy_kcal stays null after that, the field simply
+// isn't in HAE's export.
+router.get('/diagnose-day', async (req, res) => {
+  try {
+    const date = String(req.query.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date query param required, format YYYY-MM-DD' });
+    }
+    const da = await query(
+      `SELECT activity_date, active_energy_kcal, basal_energy_kcal,
+              steps, distance_mi, exercise_minutes, flights_climbed,
+              sources, updated_at
+       FROM daily_activity WHERE activity_date = $1`,
+      [date]
+    );
+    const imports = await query(
+      `SELECT id, source_format, ingested_at, file_hash, file_bytes,
+              date_range_start, date_range_end,
+              parse_result,
+              jsonb_object_keys(payload::jsonb) AS payload_top_key
+       FROM raw_health_imports
+       WHERE date_range_start <= $1::date AND date_range_end >= $1::date
+       ORDER BY ingested_at DESC LIMIT 5`,
+      [date]
+    );
+
+    // For each import, scan the payload for any key containing
+    // "basal" or "energy" or "calorie" (case-insensitive) so we can
+    // see what HAE actually exported.
+    const importDigest = [];
+    const seen = new Set();
+    for (const r of imports.rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      const payloadR = await query(`SELECT payload FROM raw_health_imports WHERE id = $1`, [r.id]);
+      const payload = payloadR.rows[0]?.payload || {};
+      const energyFields = [];
+      function scan(obj, path = '$') {
+        if (!obj || typeof obj !== 'object') return;
+        if (Array.isArray(obj)) {
+          if (obj.length && typeof obj[0] === 'object') scan(obj[0], `${path}[0]`);
+          return;
+        }
+        for (const k of Object.keys(obj)) {
+          if (/basal|active|energy|calorie|kcal/i.test(k)) {
+            const v = obj[k];
+            energyFields.push({ path: `${path}.${k}`, type: typeof v, sample: typeof v === 'object' ? '<object>' : v });
+          }
+          if (typeof obj[k] === 'object') scan(obj[k], `${path}.${k}`);
+        }
+      }
+      scan(payload);
+      importDigest.push({
+        import_id: r.id,
+        source_format: r.source_format,
+        ingested_at: r.ingested_at,
+        file_bytes: r.file_bytes,
+        date_range: [r.date_range_start, r.date_range_end],
+        top_keys: Array.from(new Set(imports.rows.filter(x => x.id === r.id).map(x => x.payload_top_key))),
+        parse_result_summary: r.parse_result ? Object.keys(r.parse_result).slice(0, 10) : null,
+        energy_fields_in_payload: energyFields.slice(0, 30),
+      });
+    }
+
+    res.json({
+      date,
+      daily_activity_row: da.rows[0] || null,
+      diagnosis: !da.rows.length
+        ? 'no daily_activity row for this date — HAE has never written one'
+        : da.rows[0].active_energy_kcal == null && da.rows[0].basal_energy_kcal == null
+        ? 'both active and basal are null — HAE payload likely missing energy fields entirely'
+        : da.rows[0].basal_energy_kcal == null
+        ? 'basal_energy_kcal is null — check energy_fields_in_payload below to see what HAE actually exported. If no basal-related field is present, enable "Basal Energy Burned" in HAE app settings.'
+        : 'both fields populated; if OUT looks low, day is incomplete (HAE syncs throughout the day).',
+      raw_imports: importDigest,
+    });
+  } catch (err) {
+    console.error(`[health/diagnose-day] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;

@@ -7318,10 +7318,32 @@ function buildMacroDashboard(summary, activityRow) {
           <div class="calorie-bar-fill" style="width:${fillW}%;background:${calColor}"></div>
           ${TARGET_MARKER_HTML}
         </div>
-        ${calOut != null ? `<div class="flex-between" style="margin-top:4px">
-          <span class="text-micro text-dim">${Math.round(calOut)} burned (active + basal)</span>
-          <span class="text-micro" style="color:${calColor};font-weight:500">net ${netLabel}</span>
-        </div>` : ''}
+        ${calOut != null ? (() => {
+          // Diagnostic breakdown surfaced in v1.8.9. Tells you whether
+          // the OUT number is small because the day is incomplete vs
+          // because basal_energy_kcal is missing from the HAE payload.
+          const a = activityRow?.calories_active;
+          const b = activityRow?.calories_basal;
+          const sync = activityRow?.last_synced_at;
+          let breakdownTxt = `${Math.round(calOut)} burned`;
+          const parts = [];
+          if (a != null) parts.push(`active ${a}`);
+          else parts.push('<span style="color:#f59e0b">active null</span>');
+          if (b != null) parts.push(`basal ${b}`);
+          else parts.push('<span style="color:#f59e0b" title="basal_energy_kcal is null. Either HAE config does not export Basal Energy Burned, or no payload received yet today. Run Settings → Reparse Health Imports → Reparse All; if still null, hit /api/health/diagnose-day?date=YYYY-MM-DD to inspect the raw payload.">basal null</span>');
+          if (parts.length) breakdownTxt += ` (${parts.join(' · ')})`;
+          let syncTxt = '';
+          if (sync) {
+            const ms = Date.now() - new Date(sync).getTime();
+            const mins = Math.round(ms / 60000);
+            const ago = mins < 60 ? `${mins}m` : mins < 60 * 24 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / (60 * 24))}d`;
+            syncTxt = ` · synced ${ago} ago`;
+          }
+          return `<div class="flex-between" style="margin-top:4px">
+            <span class="text-micro text-dim">${breakdownTxt}${syncTxt}</span>
+            <span class="text-micro" style="color:${calColor};font-weight:500">net ${netLabel}</span>
+          </div>`;
+        })() : ''}
       </div>`;
     })()}
 
