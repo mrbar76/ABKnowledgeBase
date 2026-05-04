@@ -65,13 +65,23 @@ const WRITABLE_FIELDS = [
 
 const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata', 'splits']);
 
-// Parse text duration into minutes: "45 min" → 45, "1:30:00" → 90, "90" → 90
+// Parse text duration into minutes.
+// v1.8.16: regex was unanchored and treated mm:ss the same as h:mm,
+// so a 5:54 mm:ss walk got logged as 354 minutes. Fixed: explicit
+// 3-segment (h:mm:ss) vs 2-segment (mm:ss) parsing.
+//   "1:30:00" h:mm:ss → 1*60 + 30 + 0/60 = 90
+//   "5:54"    mm:ss   → 5 + 54/60 ≈ 6     ← was 354 before
+//   "45 min"          → 45
+//   "1.5 hr"          → 90
+//   "90"              → 90 (raw minutes)
 function parseDurationMin(val) {
   if (val == null) return null;
   const s = String(val).trim();
   if (!s) return null;
-  const tm = s.match(/^(\d+):(\d+)/);
-  if (tm) return parseInt(tm[1], 10) * 60 + parseInt(tm[2], 10);
+  const tm3 = s.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+  if (tm3) return parseInt(tm3[1], 10) * 60 + parseInt(tm3[2], 10) + Math.round(parseInt(tm3[3], 10) / 60);
+  const tm2 = s.match(/^(\d+):(\d{1,2})$/);
+  if (tm2) return parseInt(tm2[1], 10) + Math.round(parseInt(tm2[2], 10) / 60);
   const nm = s.match(/^(\d+(?:\.\d+)?)/);
   if (nm) {
     const n = parseFloat(nm[1]);
@@ -450,3 +460,4 @@ router.get('/stats/summary', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.parseDurationMin = parseDurationMin;

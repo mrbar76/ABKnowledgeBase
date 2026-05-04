@@ -4,6 +4,31 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.16] — 2026-05-03
+
+### Coach bugs #2, #5, #6 fixed (#4 self-heals via v1.8.15 dedupe)
+
+**Bug #2 — seconds-as-minutes regression.** `parseDurationMin` matched both `h:mm:ss` and `mm:ss` against the same loose regex. A 354-second walk that `formatDuration` wrote as `"5:54"` got re-parsed as **354 minutes** (5h × 60 + 54). Two-segment time strings now require `^(\d+):(\d{1,2})$` (anchored, exactly 2 segments) and resolve as `min + sec/60`. Three-segment strings stay `h*60 + m + s/60`.
+
+| Input | Old | New |
+|---|---|---|
+| `"5:54"` (mm:ss) | 354 min ❌ | 6 min ✓ |
+| `"23:45"` (mm:ss) | 1425 min ❌ | 24 min ✓ |
+| `"1:30:00"` (h:mm:ss) | 90 min ✓ | 90 min ✓ |
+| `"45 min"` | 45 ✓ | 45 ✓ |
+
+**Bug #5 — PT/Mobility tagged as strength.** `normalizeWorkoutType` had no mobility/PT/yoga branches, so titles like `"PT/Mobility Block (Cascade Prophylaxis)"` fell through to `'other'` (or got mistagged via the loose `strength` substring match). Added explicit branches **before** strength: mobility, stretch, yoga, PT, foam, prehab, rehab. Also reordered cooldown/warmup before walk/run so `"Cool Down Walk"` resolves to `cooldown`, not `walking`.
+
+**Bug #6 — "Forearm Rebuild" auto-title despite memory edit.** Not in any code template — Coach was freeform-generating the phrase from old training context. Added a skill rule in `morning-check-in.skill`: do NOT inject body-part rehab terminology into titles unless that injury is currently in `active_injuries[]` with severity ≥ 1. Default to neutral labels (`Mobility Block`, `PT/Mobility`, `Recovery Work`). The cascade-prophylaxis programming logic still applies; only the *titling* changes.
+
+**Bug #4 — Hevy rows tagged `source: apple_health`.** Likely an artifact of pre-dedupe data: Apple Watch auto-detected the strength session before Hevy /sync ran, so the row existed with source='apple_health' until dedupe. v1.8.15's overlap-based dedupe collapses Apple children into the Hevy parent, leaving the surviving row with `source='hevy'`. After deploy + reparse + dedupe pass, this self-corrects. Will revisit if it persists with fresh data.
+
+### Tests
+- `tests/duration-and-classification.test.js` — 8 new tests (mm:ss vs h:mm:ss, word-form durations, mobility/strength/cardio classification, cooldown/warmup ordering)
+- 33/33 passing across all test files
+
+---
+
 ## [1.8.15] — 2026-05-03
 
 ### Architecture fix per Coach spec — energy accounting boundaries

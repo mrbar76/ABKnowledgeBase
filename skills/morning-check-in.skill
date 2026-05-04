@@ -205,6 +205,29 @@ A "day" has 1..N segments. Each segment carries:
 - `target_duration_min`, `target_effort`
 - `planned_exercises[]` — the same shape as before (see Step 9a)
 
+### Title hygiene — DO NOT inject stale injury terminology
+
+When generating `plan.title`, `segment.title_suffix`, or any
+user-visible label, **do not include body-part rehab phrasing
+unless that injury is currently in `active_injuries[]` with
+severity ≥ 1**. Common offenders:
+
+  ✗ "Forearm Rebuild"           ← old terminology, not a current concern
+  ✗ "Calf Cascade Prophylaxis"  ← only when calf is actively flaring
+  ✗ "Hamstring Rehab"           ← only with active hamstring injury
+
+Default titles for PT/mobility segments should be neutral:
+
+  ✓ "Mobility Block"
+  ✓ "PT/Mobility"
+  ✓ "Recovery Work"
+  ✓ "Cool Down Stretches"
+
+Check `active_injuries[]` BEFORE writing any injury-specific
+title. If empty or all severity 0, use neutral titles. The
+left-side cascade prophylaxis rule (calf → hamstring → forearm)
+still applies for PROGRAMMING decisions, but not for naming.
+
 Routing rules:
 - Run / treadmill / spin / row / swim → `apple_health`
 - Squat / press / deadlift / curl / bench / sled / carry → `hevy`

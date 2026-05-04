@@ -1090,15 +1090,30 @@ async function applyWorkoutTypeOverrides(overrides) {
 function normalizeWorkoutType(t) {
   if (!t) return 'other';
   const m = String(t).toLowerCase();
+  // v1.8.16: PT/Mobility/Yoga blocks were getting tagged 'strength'
+  // because the strength-match (line below) is too permissive — a
+  // title like "PT/Mobility Block (Cascade Prophylaxis)" hits no
+  // earlier branch and falls through. Add explicit mobility branches
+  // BEFORE strength so they win.
+  if (m.includes('mobility') || m.includes('stretch') || m.includes('yoga') ||
+      m.includes('pt ') || m.startsWith('pt/') || m.includes('pt/') ||
+      m.includes('foam') || m.includes('prehab') || m.includes('rehab')) {
+    return 'mobility';
+  }
+  // cooldown/warmup before walk/run so "Cool Down Walk" → cooldown,
+  // not walking. Both labels are legitimate but cooldown is the more
+  // training-load-meaningful one.
+  if (m.includes('cooldown') || m.includes('cool down') || m.includes('cool-down')) return 'cooldown';
+  if (m.includes('warmup') || m.includes('warm up') || m.includes('warm-up')) return 'warmup';
   if (m.includes('hik')) return 'hiking';
   if (m.includes('run')) return 'running';
   if (m.includes('walk')) return 'walking';
   if (m.includes('cycl') || m.includes('bik')) return 'cycling';
-  if (m.includes('strength')) return 'strength';
   if (m.includes('hiit')) return 'hiit';
   if (m.includes('row')) return 'rowing';
   if (m.includes('elliptical')) return 'elliptical';
-  if (m.includes('cooldown')) return 'cooldown';
+  // strength last so PT/mobility blocks above win
+  if (m.includes('strength') || m.includes('lift') || m.includes('weight')) return 'strength';
   return 'other';
 }
 
@@ -1962,3 +1977,4 @@ module.exports.ingestPayload = ingestPayload;
 module.exports.mergeBodyMetricDuplicates = mergeBodyMetricDuplicates;
 module.exports.pickEnergyKcal = pickEnergyKcal;
 module.exports.parseFormatDWorkouts = parseFormatDWorkouts;
+module.exports.normalizeWorkoutType = normalizeWorkoutType;
