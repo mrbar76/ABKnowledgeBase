@@ -196,6 +196,13 @@ function parseFormatA(body) {
       exercise_minutes: d.exerciseMinutes ?? null,
       flights_climbed: d.flightsClimbed ?? null,
       active_energy_kcal: d.activeEnergyKcal ?? null,
+      // BUG FIX (v1.8.8): basal_energy_kcal was omitted here, causing
+      // the Macros tab to show OUT = active_only (~500-1500 kcal)
+      // instead of active + basal (~2500-3500 kcal). Result: every
+      // training day looked like a massive surplus when it was
+      // actually balanced. Format B parsing at line ~714 already
+      // captures it; Format A was missing.
+      basal_energy_kcal: d.basalEnergyKcal ?? null,
       workout_count: d.workoutCount ?? null,
     });
   }

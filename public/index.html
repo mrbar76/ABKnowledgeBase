@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.8 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Macros tab &ldquo;OUT&rdquo; was massively under-counting vs Apple Health.</strong> Apple showed 3,275 cal burned; AB Brain showed 520. Every training day looked like a huge surplus when it was balanced.</p>
+                  <p><strong>Root cause:</strong> Format A daily ingest in <code>routes/health.js</code> captured <code>activeEnergyKcal</code> but omitted <code>basalEnergyKcal</code>. Format B parsed both. Depending on which HAE shape your iPhone pushes, basal was silently dropped &mdash; missing the ~1,500&ndash;2,000 kcal/day BMR.</p>
+                  <p><strong>Action after deploy:</strong> Settings &rarr; Reparse Health Imports &rarr; Reparse All. The upsert uses <code>COALESCE(existing, new)</code> so historical rows with null basal get backfilled from the stored raw payloads.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.7 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -738,7 +751,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.7</span>
+          AB Brain <span id="sm-version">v1.8.8</span>
         </div>
 
       </div>

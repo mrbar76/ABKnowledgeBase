@@ -4,6 +4,31 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.8] — 2026-05-03
+
+### Fixed — Macros tab "OUT" massively under-counts vs Apple Health
+
+Apple Health showed total burned today = 3,275 cal. AB Brain Macros tab showed `OUT 520 · BALANCE +2875`. Result: every training day looked like a 1,500–3,000 kcal surplus when reality was balanced or in deficit. Energy-balance recommendations were wildly wrong.
+
+**Root cause:** Format A daily-activity ingest at `routes/health.js:198` captured `activeEnergyKcal` but **omitted `basalEnergyKcal`**. Format B (line ~714) parsed both. Depending on which HAE export shape your iPhone pushed, basal was silently dropped.
+
+The Macros math is `OUT = active + basal`. With basal null, OUT = active only ≈ 500–1500 kcal, missing the ~1,500–2,000 kcal/day BMR that Apple includes in its "TOTAL CAL" display.
+
+**Fix:** added `basal_energy_kcal: d.basalEnergyKcal ?? null` to the Format A daily row. Format B was already correct. The `ON CONFLICT DO UPDATE` upsert in `daily_activity` writes via `COALESCE(existing, new)` so a Reparse All will backfill historical days where basal was null.
+
+### Action required after deploy
+1. **Settings → Reparse Health Imports → Reparse All** — backfills `basal_energy_kcal` on historical days from stored raw payloads.
+2. Verify on the Macros tab: `OUT` should now match Apple's "Total CAL" (within ±200 kcal due to ingest timing).
+3. If `OUT` is still much lower than Apple, run this SQL to inspect:
+   ```sql
+   SELECT activity_date, active_energy_kcal, basal_energy_kcal
+   FROM daily_activity
+   ORDER BY activity_date DESC LIMIT 7;
+   ```
+   If `basal_energy_kcal` is null even after reparse, your HAE export config isn't sending Basal Energy Burned — enable it in the HAE app settings.
+
+---
+
 ## [1.8.7] — 2026-05-03
 
 ### Added — Apple Watch enrichment chip on Hevy workout rows
