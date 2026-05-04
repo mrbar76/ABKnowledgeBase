@@ -4,6 +4,21 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.6] — 2026-05-03
+
+### Fixed — every Today-card exercise showed "⚠ unresolved"
+
+When Coach writes segment `planned_exercises` with `name` only (no `hevy_exercise_template_id`), the resolver in `pushSegmentToHevy` fills IDs **at push time** so the Hevy routine gets the right templates. But the resolver only mutated the in-memory copy — it never wrote IDs back to `plan_segments.planned_exercises`. Result: push works, but every render of the Today card shows amber "⚠ unresolved" forever, because the chip checks `ex.hevy_exercise_template_id` which is still null in the DB.
+
+Two fixes:
+
+- **Push-time persistence** (`routes/hevy.js`) — after `resolveTemplateIds()` mutates the array, if any IDs were filled in, persist the new `planned_exercises` JSONB back to the segment row. From the next render onward, chips show green "→ Hevy: \<Title\>".
+- **Render-time fallback** (`routes/training.js`) — when the Today endpoint sees an exercise without `hevy_exercise_template_id`, try the sticky `hevy_exercise_map` first, then `hevy_template_cache` exact-title match. Cover plans created before v1.8.6 (display-only enrichment; does NOT write back — push handles that).
+
+Both passes only run for segments with `logging_target='hevy'`. Cardio / manual segments are untouched.
+
+---
+
 ## [1.8.5] — 2026-05-03
 
 ### Changed — naming is Coach's job, not the system's

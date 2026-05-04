@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.6 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Every Today-card exercise showed &ldquo;&#x26A0; unresolved&rdquo; even after a successful Hevy push.</strong> Coach wrote segments with <code>name</code> only; the resolver filled IDs at push time but only in memory &mdash; never wrote them back to <code>plan_segments.planned_exercises</code>. So push worked, but every subsequent render showed amber chips.</p>
+                  <p><strong>Push-time persistence:</strong> after <code>resolveTemplateIds()</code> fills IDs in memory, the new JSONB is written back to the segment row. Future renders show green &ldquo;&rarr; Hevy: &lt;Title&gt;&rdquo;.</p>
+                  <p><strong>Render-time fallback:</strong> Today endpoint also tries name-lookup against <code>hevy_exercise_map</code> + <code>hevy_template_cache</code> for any exercise still missing an ID. Covers pre-v1.8.6 plans without needing a re-push.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.5 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -712,7 +725,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.5</span>
+          AB Brain <span id="sm-version">v1.8.6</span>
         </div>
 
       </div>

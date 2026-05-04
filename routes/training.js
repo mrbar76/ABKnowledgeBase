@@ -327,31 +327,78 @@ router.get('/day/:date', async (req, res) => {
       plan.segments = segR.rows;
 
       // For Hevy segments, enrich each planned exercise with
-      // `hevy_resolved_title` from hevy_template_cache so the Today
-      // card chip shows "→ Hevy: Standing Calf Raise" instead of just
-      // "→ Hevy". Best-effort — non-fatal if cache empty.
+      // `hevy_resolved_title` (and back-fill `hevy_exercise_template_id`
+      // when missing) so the Today card chip shows green "→ Hevy:
+      // Deadlift (Barbell)" instead of amber "⚠ unresolved".
+      //
+      // Two passes:
+      //   1. ID-based: look up titles for exercises that already have
+      //      hevy_exercise_template_id.
+      //   2. Name-based fallback: for exercises without an ID, try the
+      //      sticky map (hevy_exercise_map) and the cache. This covers
+      //      pre-v1.8.6 segments where Coach wrote name-only and the
+      //      resolver fills at push time but never persists back.
+      //      Display-only — does NOT save back to DB; v1.8.6 push path
+      //      handles persistence after a real push completes.
       try {
         const ids = new Set();
+        const namesNeedingLookup = new Set();
         for (const s of plan.segments) {
+          if (s.logging_target !== 'hevy') continue;
           for (const e of (s.planned_exercises || [])) {
-            if (e.hevy_exercise_template_id) ids.add(e.hevy_exercise_template_id);
+            if (e.hevy_exercise_template_id) {
+              ids.add(e.hevy_exercise_template_id);
+            } else {
+              const name = e.name || e.exercise_name || e.title;
+              if (name) namesNeedingLookup.add(name.toLowerCase());
+            }
           }
         }
+        const idToTitle = new Map();
         if (ids.size) {
           const titlesR = await query(
             `SELECT hevy_id, title FROM hevy_template_cache WHERE hevy_id = ANY($1::text[])`,
             [Array.from(ids)]
           );
-          const map = new Map(titlesR.rows.map(r => [r.hevy_id, r.title]));
-          for (const s of plan.segments) {
-            for (const e of (s.planned_exercises || [])) {
-              if (e.hevy_exercise_template_id && map.has(e.hevy_exercise_template_id)) {
-                e.hevy_resolved_title = map.get(e.hevy_exercise_template_id);
+          for (const r of titlesR.rows) idToTitle.set(r.hevy_id, r.title);
+        }
+        const nameToHit = new Map();
+        if (namesNeedingLookup.size) {
+          const names = Array.from(namesNeedingLookup);
+          // Sticky map first (Coach-confirmed mappings), then cache exact.
+          const mapR = await query(
+            `SELECT lower(ab_brain_exercise_name) AS lname,
+                    hevy_exercise_template_id AS id, hevy_title AS title
+             FROM hevy_exercise_map WHERE lower(ab_brain_exercise_name) = ANY($1::text[])`,
+            [names]
+          );
+          for (const r of mapR.rows) nameToHit.set(r.lname, { id: r.id, title: r.title });
+          const stillMissing = names.filter(n => !nameToHit.has(n));
+          if (stillMissing.length) {
+            const cacheR = await query(
+              `SELECT lower(title) AS lname, hevy_id AS id, title
+               FROM hevy_template_cache WHERE lower(title) = ANY($1::text[])`,
+              [stillMissing]
+            );
+            for (const r of cacheR.rows) nameToHit.set(r.lname, { id: r.id, title: r.title });
+          }
+        }
+        for (const s of plan.segments) {
+          if (s.logging_target !== 'hevy') continue;
+          for (const e of (s.planned_exercises || [])) {
+            if (e.hevy_exercise_template_id && idToTitle.has(e.hevy_exercise_template_id)) {
+              e.hevy_resolved_title = idToTitle.get(e.hevy_exercise_template_id);
+            } else if (!e.hevy_exercise_template_id) {
+              const name = (e.name || e.exercise_name || e.title || '').toLowerCase();
+              const hit = nameToHit.get(name);
+              if (hit) {
+                e.hevy_exercise_template_id = hit.id;
+                e.hevy_resolved_title = hit.title;
               }
             }
           }
         }
-      } catch (_) { /* cache may not exist on first deploy; chip falls back to id-only */ }
+      } catch (_) { /* cache/map may not exist on first deploy; chip falls back to id-only */ }
     }
 
     // Strip deprecated daily_plans columns (planned_exercises,

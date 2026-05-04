@@ -707,7 +707,25 @@ router.post('/exercise-map/auto-populate', async (req, res) => {
 async function pushSegmentToHevy(planRow, segment, folderId) {
   if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key' };
   const exercises = segment?.planned_exercises || [];
+  const beforeIds = exercises.map(e => e.hevy_exercise_template_id || null);
   await resolveTemplateIds(exercises);
+  // If the resolver filled in any new IDs, persist them back to the
+  // segment row so the Today card chip renders green "→ Hevy: <Title>"
+  // instead of amber "⚠ unresolved" on future loads. Without this,
+  // every render shows unresolved even after a successful push,
+  // because resolveTemplateIds only mutates the in-memory copy.
+  const afterIds = exercises.map(e => e.hevy_exercise_template_id || null);
+  const changed = afterIds.some((id, i) => id && id !== beforeIds[i]);
+  if (changed && segment?.id) {
+    try {
+      await query(
+        `UPDATE plan_segments SET planned_exercises = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+        [JSON.stringify(exercises), segment.id]
+      );
+    } catch (err) {
+      console.error(`[hevy/push] failed to persist resolved IDs to segment ${segment.id}: ${err.message}`);
+    }
+  }
   const routine = mapSegmentToHevyRoutine(planRow, segment, exercises, folderId);
   if (!routine.exercises.length) {
     return { ok: false, segment_id: segment?.id, skipped: 'no_resolvable_exercises' };
