@@ -5782,13 +5782,43 @@ function renderSegmentBlock(seg) {
     // the watch didn't capture HR. Only render when it's a finite number.
     const hrRaw = w.hr_avg ?? w.heart_rate_avg;
     const hrNum = hrRaw != null ? Number(hrRaw) : NaN;
-    const hr = Number.isFinite(hrNum) && hrNum > 0 ? `HR ${hrNum}` : '';
-    const meta = [dur, dist, hr].filter(Boolean).join(' · ');
+    const hrFinite = Number.isFinite(hrNum) && hrNum > 0;
+    const hr = hrFinite ? `HR ${hrNum}` : '';
+    const calsRaw = w.active_calories ?? w.cal_active ?? null;
+    const calsNum = calsRaw != null ? Number(calsRaw) : NaN;
+    const calsFinite = Number.isFinite(calsNum) && calsNum > 0;
+    const cals = calsFinite ? `${Math.round(calsNum)} kcal` : '';
+    const meta = [dur, dist, hr, cals].filter(Boolean).join(' · ');
+
+    // Apple Watch enrichment chip — only meaningful for Hevy-sourced
+    // strength workouts. Hevy itself doesn't return HR or calories
+    // (verified against api.hevyapp.com OAS); those fields only get
+    // populated when HAE syncs an Apple Watch workout that
+    // dedupeAppleWorkouts() merged into the Hevy row by start_time.
+    //
+    //   ✓ Watch HR+kcal      — both came in (ideal)
+    //   ✓ Watch HR / kcal    — partial sync
+    //   ⚠ no watch data      — Hevy row has no Apple data merged yet
+    //                          (you didn't wear the watch, OR HAE hasn't
+    //                          synced — typically lags 5-30 min)
+    const isHevySourced = w.source === 'hevy' || Boolean(w.hevy_id);
+    let watchChip = '';
+    if (isHevySourced) {
+      if (hrFinite && calsFinite) {
+        watchChip = `<span style="margin-left:6px;color:#10b981;font-size:0.58rem;background:#10b98115;padding:1px 5px;border-radius:6px" title="Apple Watch HR and calories merged via HAE → dedupeAppleWorkouts()">✓ Watch HR+kcal</span>`;
+      } else if (hrFinite) {
+        watchChip = `<span style="margin-left:6px;color:#10b981;font-size:0.58rem;background:#10b98115;padding:1px 5px;border-radius:6px" title="Apple Watch HR merged; calories not synced yet">✓ Watch HR</span>`;
+      } else if (calsFinite) {
+        watchChip = `<span style="margin-left:6px;color:#10b981;font-size:0.58rem;background:#10b98115;padding:1px 5px;border-radius:6px" title="Apple Watch calories merged; HR not synced yet">✓ Watch kcal</span>`;
+      } else {
+        watchChip = `<span style="margin-left:6px;color:#f59e0b;font-size:0.58rem;background:#f59e0b15;padding:1px 5px;border-radius:6px" title="No Apple Watch data merged yet. Either you didn't wear the watch during this lift, or HAE hasn't synced (typically 5-30 min after the workout ends).">⚠ no watch data</span>`;
+      }
+    }
     const notes = w.body_notes
       ? `<div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;font-style:italic">${esc(w.body_notes)}</div>`
       : '';
     return `<div style="margin-top:4px;padding:4px 6px;background:#10b98109;border-radius:4px;font-size:0.7rem">
-      <span style="color:#10b981">✓ logged</span> ${esc(w.title || 'Workout')}${meta ? ' — ' + meta : ''}
+      <span style="color:#10b981">✓ logged</span> ${esc(w.title || 'Workout')}${watchChip}${meta ? ' — ' + meta : ''}
       ${notes}
     </div>`;
   }).join('');

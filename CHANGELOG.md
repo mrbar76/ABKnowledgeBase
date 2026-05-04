@@ -4,6 +4,22 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.7] — 2026-05-03
+
+### Added — Apple Watch enrichment chip on Hevy workout rows
+
+Hevy doesn't return heart rate or calories (verified against the OAS — only `start_time/end_time/exercises/sets`). Those fields only land in the AB Brain `workouts` row when `dedupeAppleWorkouts()` merges an Apple Watch workout into the Hevy row by overlapping `started_at`. Without a chip, you couldn't tell if the watch picked up your lift or not.
+
+- **`✓ Watch HR+kcal`** (green) — both HR and active calories merged from HAE
+- **`✓ Watch HR`** / **`✓ Watch kcal`** (green) — partial sync
+- **`⚠ no watch data`** (amber) — Hevy row has no Apple data; either watch wasn't tracking or HAE hasn't synced yet (typically 5–30 min lag)
+
+Chip only renders for Hevy-sourced workouts (`source='hevy'` or `hevy_id IS NOT NULL`). Apple Health and manual workouts get the data natively, so the chip would be redundant.
+
+Active calories also now show in the workout meta line alongside HR / duration / distance when available.
+
+---
+
 ## [1.8.6] — 2026-05-03
 
 ### Fixed — every Today-card exercise showed "⚠ unresolved"

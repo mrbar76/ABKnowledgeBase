@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.7 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Apple Watch enrichment chip on Hevy workouts.</strong> Hevy&rsquo;s API doesn&rsquo;t return HR or calories &mdash; those only land in AB Brain when <code>dedupeAppleWorkouts()</code> merges an Apple Health workout into the Hevy row by overlapping start time. Now you can tell at a glance.</p>
+                  <p><strong>&#x2713; Watch HR+kcal</strong> &mdash; both merged.<br><strong>&#x2713; Watch HR</strong> / <strong>&#x2713; Watch kcal</strong> &mdash; partial.<br><strong>&#x26A0; no watch data</strong> &mdash; you didn&rsquo;t wear it or HAE hasn&rsquo;t synced yet (typically 5&ndash;30 min lag).</p>
+                  <p>Active calories also now show in the meta line alongside HR / duration / distance.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.6 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -725,7 +738,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.6</span>
+          AB Brain <span id="sm-version">v1.8.7</span>
         </div>
 
       </div>
