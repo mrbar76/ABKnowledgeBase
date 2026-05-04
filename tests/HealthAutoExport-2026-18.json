@@ -1,0 +1,5997 @@
+{
+  "data" : {
+    "metrics" : [
+      {
+        "units" : "%",
+        "data" : [
+          {
+            "date" : "2026-05-02 08:00:00 -0400",
+            "qty" : 15.199999999999999,
+            "source" : "RENPHO Health"
+          }
+        ],
+        "name" : "body_fat_percentage"
+      },
+      {
+        "name" : "body_mass_index",
+        "units" : "count",
+        "data" : [
+          {
+            "qty" : 26.399999999999999,
+            "date" : "2026-05-02 08:00:00 -0400",
+            "source" : "RENPHO Health"
+          }
+        ]
+      },
+      {
+        "units" : "min",
+        "data" : [
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 08:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-26 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 3
+          },
+          {
+            "qty" : 7,
+            "date" : "2026-04-26 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 11:00:00 -0400",
+            "qty" : 23
+          },
+          {
+            "qty" : 60,
+            "date" : "2026-04-26 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 13:00:00 -0400",
+            "qty" : 29
+          },
+          {
+            "qty" : 7,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 17:00:00 -0400"
+          },
+          {
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 18:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 20:00:00 -0400",
+            "qty" : 3
+          },
+          {
+            "qty" : 7,
+            "date" : "2026-04-27 05:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 09:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-27 11:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 8,
+            "date" : "2026-04-27 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1,
+            "date" : "2026-04-27 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 20:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 07:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 08:00:00 -0400",
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 15:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-30 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 2
+          },
+          {
+            "qty" : 5,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 4
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 18:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 19:00:00 -0400",
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 20:00:00 -0400",
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 22:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 7
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-05-01 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 5,
+            "date" : "2026-05-01 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-05-02 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 5,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 11:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 9,
+            "date" : "2026-05-02 12:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 2
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 6,
+            "date" : "2026-05-02 21:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 22:00:00 -0400",
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch"
+          }
+        ],
+        "name" : "apple_exercise_time"
+      },
+      {
+        "name" : "apple_stand_time",
+        "units" : "min",
+        "data" : [
+          {
+            "date" : "2026-04-26 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 10
+          },
+          {
+            "date" : "2026-04-26 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 7
+          },
+          {
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 15,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 11:00:00 -0400",
+            "qty" : 34
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 58,
+            "date" : "2026-04-26 12:00:00 -0400"
+          },
+          {
+            "qty" : 45,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 13:00:00 -0400"
+          },
+          {
+            "qty" : 17,
+            "date" : "2026-04-26 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 16:00:00 -0400",
+            "qty" : 3
+          },
+          {
+            "qty" : 9,
+            "date" : "2026-04-26 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 3
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 2
+          },
+          {
+            "qty" : 18,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 20:00:00 -0400"
+          },
+          {
+            "qty" : 18,
+            "date" : "2026-04-27 05:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 10
+          },
+          {
+            "date" : "2026-04-27 07:00:00 -0400",
+            "qty" : 6,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 09:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-27 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 12:00:00 -0400",
+            "qty" : 20
+          },
+          {
+            "date" : "2026-04-27 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 3,
+            "date" : "2026-04-27 14:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 8,
+            "date" : "2026-04-27 18:00:00 -0400"
+          },
+          {
+            "qty" : 4,
+            "date" : "2026-04-27 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 20:00:00 -0400",
+            "qty" : 5
+          },
+          {
+            "date" : "2026-04-27 22:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 4
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 2,
+            "date" : "2026-04-28 07:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 9,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 10:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 4,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 14:00:00 -0400",
+            "qty" : 3
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 15:00:00 -0400",
+            "qty" : 4
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 16:00:00 -0400",
+            "qty" : 2
+          },
+          {
+            "qty" : 6,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 3,
+            "date" : "2026-04-28 21:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 15,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 5
+          },
+          {
+            "qty" : 10,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 08:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 09:00:00 -0400",
+            "qty" : 10
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 10:00:00 -0400"
+          },
+          {
+            "qty" : 3,
+            "date" : "2026-04-29 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 5,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 13:00:00 -0400"
+          },
+          {
+            "qty" : 5,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 14:00:00 -0400"
+          },
+          {
+            "qty" : 5,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 15:00:00 -0400"
+          },
+          {
+            "qty" : 4,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 16:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 18:00:00 -0400",
+            "qty" : 8
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 19:00:00 -0400",
+            "qty" : 3
+          },
+          {
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 20:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1,
+            "date" : "2026-04-30 01:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 6
+          },
+          {
+            "date" : "2026-04-30 09:00:00 -0400",
+            "qty" : 8,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 2,
+            "date" : "2026-04-30 11:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 5,
+            "date" : "2026-04-30 12:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 13:00:00 -0400",
+            "qty" : 10,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 17:00:00 -0400",
+            "qty" : 10,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 18:00:00 -0400",
+            "qty" : 2
+          },
+          {
+            "date" : "2026-04-30 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 7
+          },
+          {
+            "qty" : 5,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 20:00:00 -0400"
+          },
+          {
+            "qty" : 3,
+            "date" : "2026-05-01 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 9
+          },
+          {
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 12:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 14:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1,
+            "date" : "2026-05-01 16:00:00 -0400"
+          },
+          {
+            "qty" : 13,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 18:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 20:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 1,
+            "date" : "2026-05-01 21:00:00 -0400"
+          },
+          {
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 08:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 11:00:00 -0400",
+            "qty" : 23
+          },
+          {
+            "date" : "2026-05-02 12:00:00 -0400",
+            "qty" : 31,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 13:00:00 -0400",
+            "qty" : 8,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 14:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 20:00:00 -0400"
+          },
+          {
+            "qty" : 9,
+            "date" : "2026-05-02 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          }
+        ]
+      },
+      {
+        "data" : [
+          {
+            "date" : "2026-05-02 08:00:00 -0400",
+            "qty" : 160.03191400000003,
+            "source" : "RENPHO Health"
+          }
+        ],
+        "units" : "lb",
+        "name" : "lean_body_mass"
+      },
+      {
+        "units" : "dBASPL",
+        "name" : "headphone_audio_exposure",
+        "data" : [
+          {
+            "date" : "2026-04-27 07:00:00 -0400",
+            "qty" : 58.323682246087763,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 08:00:00 -0400",
+            "qty" : 70.158704980786055
+          },
+          {
+            "qty" : 41.203650996270405,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 17:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 78.449110792906779,
+            "date" : "2026-05-02 13:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 66.129808099944128,
+            "date" : "2026-05-02 14:00:00 -0400"
+          }
+        ]
+      },
+      {
+        "data" : [
+          {
+            "qty" : 2,
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 09:00:00 -0400",
+            "qty" : 3,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 4
+          },
+          {
+            "qty" : 42.84192127488069,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 11:00:00 -0400"
+          },
+          {
+            "qty" : 58.15807872511931,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 12:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 13:00:00 -0400",
+            "qty" : 32
+          },
+          {
+            "qty" : 7,
+            "date" : "2026-04-26 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 3.5311668708272999,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 3.0152716740340608,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 2,
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-28 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 08:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 15:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 2.9661816665910949,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 3.0338183334089051
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 08:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 12:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 4,
+            "date" : "2026-05-01 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 2
+          },
+          {
+            "qty" : 2,
+            "date" : "2026-05-01 22:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-05-02 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 3
+          },
+          {
+            "date" : "2026-05-02 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-05-02 13:00:00 -0400",
+            "qty" : 1,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 2,
+            "date" : "2026-05-02 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 17:00:00 -0400",
+            "qty" : 0.91916031640331897
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 18:00:00 -0400",
+            "qty" : 0.080839683596681033
+          },
+          {
+            "qty" : 2,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 22:00:00 -0400"
+          }
+        ],
+        "name" : "flights_climbed",
+        "units" : "count"
+      },
+      {
+        "name" : "resting_heart_rate",
+        "units" : "count\/min",
+        "data" : [
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 08:00:00 -0400",
+            "qty" : 60
+          },
+          {
+            "date" : "2026-04-27 05:00:00 -0400",
+            "qty" : 57,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 59,
+            "date" : "2026-04-28 07:00:00 -0400"
+          },
+          {
+            "qty" : 60,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 07:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 64,
+            "date" : "2026-04-30 00:00:00 -0400"
+          },
+          {
+            "qty" : 53,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 07:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 00:00:00 -0400",
+            "qty" : 57,
+            "source" : "Avi’s Apple Watch"
+          }
+        ]
+      },
+      {
+        "units" : "hr",
+        "data" : [
+          {
+            "date" : "2026-05-02 00:00:00 -0400",
+            "inBedEnd" : "2026-05-02 06:53:33 -0400",
+            "totalSleep" : 7.3416666666666668,
+            "inBed" : 0,
+            "asleep" : 7.3416666666666668,
+            "deep" : 0,
+            "rem" : 0,
+            "source" : "Avi’s Apple Watch",
+            "core" : 0,
+            "inBedStart" : "2026-05-01 23:23:03 -0400",
+            "awake" : 0,
+            "sleepStart" : "2026-05-01 23:23:03 -0400",
+            "sleepEnd" : "2026-05-02 06:53:33 -0400"
+          }
+        ],
+        "name" : "sleep_analysis"
+      },
+      {
+        "name" : "six_minute_walking_test_distance",
+        "data" : [
+          {
+            "qty" : 500,
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 19:00:00 -0400"
+          }
+        ],
+        "units" : "m"
+      },
+      {
+        "units" : "kcal",
+        "data" : [
+          {
+            "date" : "2026-04-26 08:00:00 -0400",
+            "qty" : 24.238348061231569,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 49.891006914082077,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 09:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 75.232290689918599
+          },
+          {
+            "date" : "2026-04-26 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 257.90454250427189
+          },
+          {
+            "qty" : 533.67805502248575,
+            "date" : "2026-04-26 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 300.29228854608874,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 14:00:00 -0400",
+            "qty" : 61.368762863277695
+          },
+          {
+            "qty" : 23.555469728894561,
+            "date" : "2026-04-26 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 34.627451413295312,
+            "date" : "2026-04-26 16:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 17:00:00 -0400",
+            "qty" : 49.03178425645519
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "qty" : 21.280000000000008,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 28.708160925183456,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 20:00:00 -0400",
+            "qty" : 51.840839074816529,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 22:00:00 -0400",
+            "qty" : 0.044999999999999998,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 05:00:00 -0400",
+            "qty" : 63.909567041133997
+          },
+          {
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 47.377747840390256,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 18.271685118475755
+          },
+          {
+            "qty" : 9.849000000000002,
+            "date" : "2026-04-27 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 25.111462958993574,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 09:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 10:00:00 -0400",
+            "qty" : 16.686362855818512
+          },
+          {
+            "qty" : 17.971611758764951,
+            "date" : "2026-04-27 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 12:00:00 -0400",
+            "qty" : 98.101940196091022,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 13:00:00 -0400",
+            "qty" : 31.951622230331925
+          },
+          {
+            "date" : "2026-04-27 14:00:00 -0400",
+            "qty" : 17.582427772631753,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 15.469714731087832,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 15:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 16:00:00 -0400",
+            "qty" : 15.448857496280414
+          },
+          {
+            "date" : "2026-04-27 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 15.507
+          },
+          {
+            "qty" : 38.097000000000023,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 18:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 19:00:00 -0400",
+            "qty" : 27.348890351811193,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 34.233109648188787
+          },
+          {
+            "qty" : 19.423278063355156,
+            "date" : "2026-04-27 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 22:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 13.28472193664485
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "qty" : 13.118999999999996,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 08:00:00 -0400",
+            "qty" : 26.603207695567434
+          },
+          {
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 42.610792304432579,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 26.176000000000005,
+            "date" : "2026-04-28 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 35.312970311428408,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 11:00:00 -0400"
+          },
+          {
+            "qty" : 18.587029688571597,
+            "date" : "2026-04-28 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 18.81582004787996,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 13:00:00 -0400"
+          },
+          {
+            "qty" : 25.571622605844656,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 14:00:00 -0400"
+          },
+          {
+            "qty" : 22.526557346275396,
+            "date" : "2026-04-28 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 25.371457069258138,
+            "date" : "2026-04-28 16:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 22.286256256613981
+          },
+          {
+            "qty" : 19.555038871199628,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 18:00:00 -0400"
+          },
+          {
+            "qty" : 16.240850762111897,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 36.283783578390597
+          },
+          {
+            "date" : "2026-04-28 21:00:00 -0400",
+            "qty" : 33.924170619653033,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 42.856442842772722,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 07:00:00 -0400",
+            "qty" : 17.082999999999998
+          },
+          {
+            "qty" : 40.649590816333458,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 09:00:00 -0400",
+            "qty" : 43.989529316746108,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 22.41274802441588,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 10:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 11:00:00 -0400",
+            "qty" : 16.515033053959193,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 12:00:00 -0400",
+            "qty" : 26.416680110697314
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 22.772418677848059,
+            "date" : "2026-04-29 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 14:00:00 -0400",
+            "qty" : 27.038263910442996
+          },
+          {
+            "date" : "2026-04-29 15:00:00 -0400",
+            "qty" : 37.360736089557001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 16:00:00 -0400",
+            "qty" : 35.636360138534407
+          },
+          {
+            "date" : "2026-04-29 17:00:00 -0400",
+            "qty" : 17.483639861465598,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 37.87984625732863,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 18:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 20.073065890781141,
+            "date" : "2026-04-29 19:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 20:00:00 -0400",
+            "qty" : 21.411087851890226
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 21:00:00 -0400",
+            "qty" : 9.8559999999999981
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 5.9429999999999987,
+            "date" : "2026-04-29 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 23:00:00 -0400",
+            "qty" : 11.244999999999999,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 00:00:00 -0400",
+            "qty" : 5.4979999999999993,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 7.7600000000000007,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 01:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 22.043999999999997,
+            "date" : "2026-04-30 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 30.959000000000007
+          },
+          {
+            "qty" : 15.426788562934657,
+            "date" : "2026-04-30 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 27.544524219350752,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 11:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 12:00:00 -0400",
+            "qty" : 38.22988020526639,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 53.014409474784706,
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 14:00:00 -0400",
+            "qty" : 15.92661788763094
+          },
+          {
+            "qty" : 21.538413345149248,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 15:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 16:00:00 -0400",
+            "qty" : 19.484400859921436
+          },
+          {
+            "qty" : 52.420071904888651,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 24.603893540073241
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 37.117798775783434,
+            "date" : "2026-04-30 19:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 20:00:00 -0400",
+            "qty" : 19.458201224216573
+          },
+          {
+            "qty" : 0.254,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 21:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 22:00:00 -0400",
+            "qty" : 1.8120000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 07:00:00 -0400",
+            "qty" : 19.512446981406487
+          },
+          {
+            "date" : "2026-05-01 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 52.362818493232389
+          },
+          {
+            "date" : "2026-05-01 09:00:00 -0400",
+            "qty" : 13.79631014927854,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 17.631206305784676,
+            "date" : "2026-05-01 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 17.370441312822503
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 23.897689512105053,
+            "date" : "2026-05-01 12:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 18.621115575475685
+          },
+          {
+            "qty" : 22.129001708031577,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 14:00:00 -0400"
+          },
+          {
+            "qty" : 16.552772418116263,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 15:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 16:00:00 -0400",
+            "qty" : 14.944954715823686
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 17:00:00 -0400",
+            "qty" : 66.416047210787667
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 28.755195617135495,
+            "date" : "2026-05-01 18:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 10.370453854383252,
+            "date" : "2026-05-01 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 20:00:00 -0400",
+            "qty" : 9.9651652434742264,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 21:00:00 -0400",
+            "qty" : 12.588380902142525,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1.8210000000000002,
+            "date" : "2026-05-01 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1.2719999999999998,
+            "date" : "2026-05-02 00:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 01:00:00 -0400",
+            "qty" : 1.869,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 02:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 0.57099999999999995
+          },
+          {
+            "qty" : 2.6459999999999999,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 03:00:00 -0400"
+          },
+          {
+            "qty" : 2.2789999999999999,
+            "date" : "2026-05-02 04:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 1.2589999999999999,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 05:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 06:00:00 -0400",
+            "qty" : 1.641,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 15.599693487765087
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 14.00030651223492,
+            "date" : "2026-05-02 09:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 16.512590186259537,
+            "date" : "2026-05-02 10:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 11:00:00 -0400",
+            "qty" : 87.143120158744551
+          },
+          {
+            "date" : "2026-05-02 12:00:00 -0400",
+            "qty" : 104.19518625653012,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 13:00:00 -0400",
+            "qty" : 45.890103398465797,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 13.006
+          },
+          {
+            "qty" : 14.507633954511883,
+            "date" : "2026-05-02 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 56.92649449115973
+          },
+          {
+            "qty" : 20.036871554328364,
+            "date" : "2026-05-02 22:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 23:00:00 -0400",
+            "qty" : 2.8630000000000004
+          }
+        ],
+        "name" : "active_energy"
+      },
+      {
+        "name" : "heart_rate",
+        "units" : "count\/min",
+        "data" : [
+          {
+            "date" : "2026-04-26 08:00:00 -0400",
+            "Min" : 82,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 85.75,
+            "Max" : 89
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 99,
+            "date" : "2026-04-26 09:00:00 -0400",
+            "Min" : 63,
+            "Avg" : 80.615802003403644
+          },
+          {
+            "Max" : 85,
+            "Min" : 59,
+            "date" : "2026-04-26 10:00:00 -0400",
+            "Avg" : 73.300000000000011,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 173,
+            "Min" : 54,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 11:00:00 -0400",
+            "Avg" : 125.40053766722322
+          },
+          {
+            "Avg" : 165.91328182706587,
+            "Max" : 186,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 137,
+            "date" : "2026-04-26 12:00:00 -0400"
+          },
+          {
+            "Max" : 179,
+            "date" : "2026-04-26 13:00:00 -0400",
+            "Min" : 49,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 156.23298920810387
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 14:00:00 -0400",
+            "Min" : 60,
+            "Max" : 110,
+            "Avg" : 84.444444444444429
+          },
+          {
+            "Avg" : 91.909090909090907,
+            "Min" : 74,
+            "date" : "2026-04-26 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 102
+          },
+          {
+            "Avg" : 88.2591918562442,
+            "Max" : 97,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 16:00:00 -0400",
+            "Min" : 72
+          },
+          {
+            "Max" : 87.271636962890625,
+            "date" : "2026-04-26 17:00:00 -0400",
+            "Min" : 70,
+            "Avg" : 82.014919295186886,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Min" : 68,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 79.615384615384613,
+            "date" : "2026-04-26 18:00:00 -0400",
+            "Max" : 85
+          },
+          {
+            "Avg" : 77.831854600172761,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 85.814109802246094,
+            "date" : "2026-04-26 19:00:00 -0400",
+            "Min" : 58
+          },
+          {
+            "date" : "2026-04-26 20:00:00 -0400",
+            "Min" : 54,
+            "Avg" : 73.111111111111114,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 81
+          },
+          {
+            "Avg" : 84.38455751554875,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 05:00:00 -0400",
+            "Max" : 96,
+            "Min" : 77
+          },
+          {
+            "Min" : 69,
+            "date" : "2026-04-27 06:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 87,
+            "Avg" : 76.894656094637782
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 74,
+            "date" : "2026-04-27 07:00:00 -0400",
+            "Min" : 60,
+            "Avg" : 66.638536725725473
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 82,
+            "date" : "2026-04-27 08:00:00 -0400",
+            "Min" : 58,
+            "Avg" : 68.454545454545439
+          },
+          {
+            "Min" : 71,
+            "Max" : 86,
+            "Avg" : 77.710024907038758,
+            "date" : "2026-04-27 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 73.153846153846146,
+            "Max" : 78,
+            "Min" : 71,
+            "date" : "2026-04-27 10:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 11:00:00 -0400",
+            "Min" : 68,
+            "Max" : 97,
+            "Avg" : 73.173874796163702,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Avg" : 75.399999999999991,
+            "date" : "2026-04-27 12:00:00 -0400",
+            "Max" : 82,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 72
+          },
+          {
+            "date" : "2026-04-27 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 81,
+            "Avg" : 70.833333333333343,
+            "Min" : 63
+          },
+          {
+            "Avg" : 63.238136678569759,
+            "date" : "2026-04-27 14:00:00 -0400",
+            "Min" : 54,
+            "Max" : 74,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 77,
+            "Avg" : 65.916666666666671,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 15:00:00 -0400",
+            "Min" : 59
+          },
+          {
+            "Max" : 66,
+            "Avg" : 60.090909090909086,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 51,
+            "date" : "2026-04-27 16:00:00 -0400"
+          },
+          {
+            "Avg" : 61.432153866589829,
+            "date" : "2026-04-27 17:00:00 -0400",
+            "Max" : 70,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 43
+          },
+          {
+            "date" : "2026-04-27 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 53,
+            "Max" : 85,
+            "Avg" : 65.636363636363626
+          },
+          {
+            "Max" : 74,
+            "date" : "2026-04-27 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 57,
+            "Avg" : 63.817041570490062
+          },
+          {
+            "Max" : 74,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 57,
+            "Avg" : 66.076923076923066,
+            "date" : "2026-04-27 20:00:00 -0400"
+          },
+          {
+            "Avg" : 69.083019603382454,
+            "date" : "2026-04-27 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 59,
+            "Max" : 79
+          },
+          {
+            "Min" : 64,
+            "date" : "2026-04-27 22:00:00 -0400",
+            "Max" : 74,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 68.666666666666657
+          },
+          {
+            "Avg" : 75.177472432454408,
+            "Min" : 72,
+            "date" : "2026-04-28 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 79
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 08:00:00 -0400",
+            "Min" : 73,
+            "Avg" : 76.545454545454547,
+            "Max" : 81
+          },
+          {
+            "date" : "2026-04-28 09:00:00 -0400",
+            "Max" : 77,
+            "Min" : 67,
+            "Avg" : 71,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Min" : 61.999999999999993,
+            "Max" : 81,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 10:00:00 -0400",
+            "Avg" : 73.749999999999986
+          },
+          {
+            "Avg" : 67.211323329380605,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 71.958526611328125,
+            "date" : "2026-04-28 11:00:00 -0400",
+            "Min" : 59
+          },
+          {
+            "Avg" : 65.363636363636374,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 12:00:00 -0400",
+            "Min" : 56,
+            "Max" : 74
+          },
+          {
+            "Min" : 54,
+            "date" : "2026-04-28 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 73,
+            "Avg" : 61.583333333333314
+          },
+          {
+            "date" : "2026-04-28 14:00:00 -0400",
+            "Max" : 79,
+            "Avg" : 68.15384615384616,
+            "Min" : 56,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 77,
+            "Min" : 63,
+            "Avg" : 68.454545454545439
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 89,
+            "date" : "2026-04-28 16:00:00 -0400",
+            "Min" : 49,
+            "Avg" : 76.666666666666657
+          },
+          {
+            "Avg" : 66.238971074422182,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 17:00:00 -0400",
+            "Min" : 49,
+            "Max" : 73
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 71,
+            "Min" : 61,
+            "date" : "2026-04-28 18:00:00 -0400",
+            "Avg" : 66.307692307692307
+          },
+          {
+            "Avg" : 62.909090909090899,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 73,
+            "Min" : 60,
+            "date" : "2026-04-28 19:00:00 -0400"
+          },
+          {
+            "Max" : 88,
+            "date" : "2026-04-28 20:00:00 -0400",
+            "Min" : 57,
+            "Avg" : 67.333333333333329,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 53,
+            "Max" : 85,
+            "date" : "2026-04-28 21:00:00 -0400",
+            "Avg" : 69.274509136083026
+          },
+          {
+            "Max" : 94,
+            "date" : "2026-04-28 22:00:00 -0400",
+            "Avg" : 82.186715309533525,
+            "Min" : 73,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Min" : 61,
+            "date" : "2026-04-29 07:00:00 -0400",
+            "Avg" : 74.322173313675606,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 82
+          },
+          {
+            "Avg" : 78.909090909090892,
+            "date" : "2026-04-29 08:00:00 -0400",
+            "Min" : 73,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 84
+          },
+          {
+            "date" : "2026-04-29 09:00:00 -0400",
+            "Avg" : 78.954962931689948,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 92,
+            "Min" : 66
+          },
+          {
+            "date" : "2026-04-29 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 65,
+            "Avg" : 72.583333333333314,
+            "Max" : 79
+          },
+          {
+            "Min" : 66,
+            "Avg" : 70.507868840144226,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 11:00:00 -0400",
+            "Max" : 77
+          },
+          {
+            "Min" : 55,
+            "Max" : 81,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 69.750000000000028,
+            "date" : "2026-04-29 12:00:00 -0400"
+          },
+          {
+            "Max" : 73,
+            "date" : "2026-04-29 13:00:00 -0400",
+            "Min" : 65,
+            "Avg" : 69.114681791582555,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 86,
+            "date" : "2026-04-29 14:00:00 -0400",
+            "Min" : 70,
+            "Avg" : 75.583333333333329
+          },
+          {
+            "Max" : 84,
+            "date" : "2026-04-29 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 71,
+            "Avg" : 79.275632222493499
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "Min" : 74,
+            "Avg" : 80.500000000000014,
+            "Max" : 93,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 17:00:00 -0400",
+            "Avg" : 73.981550679145855,
+            "Max" : 85,
+            "Min" : 61,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 61.999999999999993,
+            "Max" : 72,
+            "date" : "2026-04-29 18:00:00 -0400",
+            "Avg" : 68.454545454545453
+          },
+          {
+            "Avg" : 73.841284779668996,
+            "date" : "2026-04-29 19:00:00 -0400",
+            "Max" : 101,
+            "Min" : 60,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Min" : 71,
+            "Avg" : 80.809159746242884,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 96,
+            "date" : "2026-04-29 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 21:00:00 -0400",
+            "Min" : 61,
+            "Avg" : 67.955855736365692,
+            "Max" : 76
+          },
+          {
+            "date" : "2026-04-29 22:00:00 -0400",
+            "Min" : 59,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 61.999999999999993,
+            "Avg" : 60.41666666666665
+          },
+          {
+            "Avg" : 58.61878231593542,
+            "date" : "2026-04-29 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 56,
+            "Max" : 63
+          },
+          {
+            "Max" : 59,
+            "date" : "2026-04-30 00:00:00 -0400",
+            "Avg" : 56.166666666666664,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 53
+          },
+          {
+            "date" : "2026-04-30 01:00:00 -0400",
+            "Max" : 60,
+            "Min" : 52,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 56.005944252014167
+          },
+          {
+            "Max" : 108,
+            "Avg" : 85.011708068847639,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 08:00:00 -0400",
+            "Min" : 76
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 09:00:00 -0400",
+            "Min" : 58,
+            "Max" : 94,
+            "Avg" : 76.717317740057823
+          },
+          {
+            "date" : "2026-04-30 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 82,
+            "Min" : 69,
+            "Avg" : 73.187617787771245
+          },
+          {
+            "Min" : 61.999999999999993,
+            "Max" : 76,
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 69.916666666666671,
+            "date" : "2026-04-30 11:00:00 -0400"
+          },
+          {
+            "Avg" : 73.083333333333329,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 12:00:00 -0400",
+            "Max" : 79,
+            "Min" : 68
+          },
+          {
+            "Max" : 101,
+            "Avg" : 81.278549674752369,
+            "Min" : 68,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "Min" : 79,
+            "Max" : 81,
+            "Avg" : 80.384615384615373,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 14:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 15:00:00 -0400",
+            "Max" : 82,
+            "Avg" : 79.545454545454547,
+            "Min" : 75,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 89,
+            "Min" : 73,
+            "date" : "2026-04-30 16:00:00 -0400",
+            "Avg" : 80.075888413649324
+          },
+          {
+            "Max" : 91,
+            "date" : "2026-04-30 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 80.181818181818159,
+            "Min" : 59
+          },
+          {
+            "Min" : 69,
+            "date" : "2026-04-30 18:00:00 -0400",
+            "Max" : 82,
+            "Avg" : 75.546384958120498,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 73,
+            "Min" : 58,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 19:00:00 -0400",
+            "Avg" : 67.994772249269332
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 67.111111111111114,
+            "date" : "2026-04-30 20:00:00 -0400",
+            "Max" : 86,
+            "Min" : 61
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 92,
+            "date" : "2026-05-01 07:00:00 -0400",
+            "Min" : 59,
+            "Avg" : 68.711091771256449
+          },
+          {
+            "date" : "2026-05-01 08:00:00 -0400",
+            "Avg" : 67.181818181818173,
+            "Min" : 61.999999999999993,
+            "Max" : 75,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 63.083333333333321,
+            "Max" : 67,
+            "Min" : 59,
+            "date" : "2026-05-01 09:00:00 -0400"
+          },
+          {
+            "Max" : 77,
+            "date" : "2026-05-01 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 64.769230769230774,
+            "Min" : 52
+          },
+          {
+            "date" : "2026-05-01 11:00:00 -0400",
+            "Min" : 52,
+            "Avg" : 57.374516678534007,
+            "Max" : 65,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Min" : 46,
+            "Max" : 76,
+            "date" : "2026-05-01 12:00:00 -0400",
+            "Avg" : 65.166666666666671,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Min" : 57,
+            "Avg" : 63.363636363636353,
+            "Max" : 72,
+            "date" : "2026-05-01 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Avg" : 62.000000000000007,
+            "Min" : 54,
+            "date" : "2026-05-01 14:00:00 -0400",
+            "Max" : 75,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 15:00:00 -0400",
+            "Max" : 73,
+            "Avg" : 63.542381248496113,
+            "Min" : 58,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 78,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 52,
+            "Avg" : 61.666666666666664,
+            "date" : "2026-05-01 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 63.806627575314216,
+            "Max" : 105,
+            "Min" : 44
+          },
+          {
+            "Max" : 68,
+            "date" : "2026-05-01 18:00:00 -0400",
+            "Min" : 49,
+            "Avg" : 60.923076923076948,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 57,
+            "Avg" : 60.926312373234687,
+            "date" : "2026-05-01 19:00:00 -0400",
+            "Max" : 64.042060852050781
+          },
+          {
+            "Avg" : 60.25,
+            "Max" : 66,
+            "Min" : 58,
+            "date" : "2026-05-01 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Avg" : 58.750000000000007,
+            "Min" : 50,
+            "date" : "2026-05-01 21:00:00 -0400",
+            "Max" : 66,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Max" : 95,
+            "Avg" : 59.101969317855115,
+            "date" : "2026-05-01 23:00:00 -0400",
+            "Min" : 53.871849060058594
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 52,
+            "Avg" : 56.583333333333336,
+            "Max" : 59,
+            "date" : "2026-05-02 00:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 01:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 61,
+            "Avg" : 57.189374287923179,
+            "Min" : 54
+          },
+          {
+            "Max" : 58,
+            "Min" : 54,
+            "date" : "2026-05-02 02:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 56.38461538461538
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 55,
+            "date" : "2026-05-02 03:00:00 -0400",
+            "Avg" : 56.94477785550631,
+            "Max" : 59
+          },
+          {
+            "Min" : 55,
+            "Avg" : 57.090909090909086,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 04:00:00 -0400",
+            "Max" : 60
+          },
+          {
+            "date" : "2026-05-02 05:00:00 -0400",
+            "Min" : 56,
+            "Avg" : 57.480001009427582,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 61
+          },
+          {
+            "Avg" : 59.54545454545454,
+            "date" : "2026-05-02 06:00:00 -0400",
+            "Max" : 61.999999999999993,
+            "Min" : 55,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 66,
+            "Min" : 61,
+            "date" : "2026-05-02 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Avg" : 63.229299545288079
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 63,
+            "date" : "2026-05-02 09:00:00 -0400",
+            "Avg" : 66.534067611539626,
+            "Max" : 76
+          },
+          {
+            "date" : "2026-05-02 10:00:00 -0400",
+            "Min" : 57,
+            "source" : "Avi’s Apple Watch",
+            "Max" : 76,
+            "Avg" : 63.083333333333321
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "Min" : 54,
+            "Avg" : 72.562568073188302,
+            "date" : "2026-05-02 11:00:00 -0400",
+            "Max" : 90
+          },
+          {
+            "date" : "2026-05-02 12:00:00 -0400",
+            "Min" : 70,
+            "Max" : 120,
+            "Avg" : 87.91199374112847,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 99,
+            "date" : "2026-05-02 13:00:00 -0400",
+            "Avg" : 76.808782137357269,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 60
+          },
+          {
+            "Avg" : 75.818181818181841,
+            "date" : "2026-05-02 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Min" : 71,
+            "Max" : 82
+          },
+          {
+            "Min" : 61.999999999999993,
+            "Max" : 64,
+            "date" : "2026-05-02 20:00:00 -0400",
+            "Avg" : 62.964984642831901,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "Max" : 69,
+            "Avg" : 63.823666564091468,
+            "Min" : 57
+          },
+          {
+            "date" : "2026-05-02 22:00:00 -0400",
+            "Avg" : 58.923076923076906,
+            "Max" : 66,
+            "Min" : 55,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "Max" : 60,
+            "source" : "Avi’s Apple Watch",
+            "Min" : 56,
+            "date" : "2026-05-02 23:00:00 -0400",
+            "Avg" : 57.476144921626137
+          }
+        ]
+      },
+      {
+        "units" : "ml\/(kg·min)",
+        "data" : [
+          {
+            "date" : "2026-04-26 13:00:00 -0400",
+            "qty" : 37.700000000000003,
+            "source" : "Avi’s Apple Watch"
+          }
+        ],
+        "name" : "vo2_max"
+      },
+      {
+        "name" : "respiratory_rate",
+        "units" : "count\/min",
+        "data" : [
+          {
+            "date" : "2026-04-29 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 19.5
+          },
+          {
+            "qty" : 18.75,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 00:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 01:00:00 -0400",
+            "qty" : 17.833333333333332
+          },
+          {
+            "date" : "2026-05-01 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 14.699999999999999
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 14,
+            "date" : "2026-05-02 00:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 01:00:00 -0400",
+            "qty" : 14.25,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 02:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 14.75
+          },
+          {
+            "qty" : 15.083333333333334,
+            "date" : "2026-05-02 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 04:00:00 -0400",
+            "qty" : 15.583333333333334,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 15.583333333333334,
+            "date" : "2026-05-02 05:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 06:00:00 -0400",
+            "qty" : 15,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 22:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 18.166666666666668
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 16.600000000000001,
+            "date" : "2026-05-02 23:00:00 -0400"
+          }
+        ]
+      },
+      {
+        "data" : [
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 164,
+            "date" : "2026-04-26 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 05:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 85.999999999999986
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 92,
+            "date" : "2026-04-28 07:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 87,
+            "date" : "2026-04-29 07:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 00:00:00 -0400",
+            "qty" : 96.5,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 63
+          },
+          {
+            "date" : "2026-05-02 00:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 92
+          }
+        ],
+        "units" : "count\/min",
+        "name" : "walking_heart_rate_average"
+      },
+      {
+        "units" : "count",
+        "data" : [
+          {
+            "date" : "2026-04-26 06:00:00 -0400",
+            "qty" : 20,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 220,
+            "date" : "2026-04-26 07:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 08:00:00 -0400",
+            "qty" : 368.48259428446892
+          },
+          {
+            "qty" : 429.51740571553108,
+            "date" : "2026-04-26 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 763
+          },
+          {
+            "date" : "2026-04-26 11:00:00 -0400",
+            "qty" : 2614.0982402786908,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 12:00:00 -0400",
+            "qty" : 5208.0131437202872,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 3832.5202891948211,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 13:00:00 -0400"
+          },
+          {
+            "qty" : 1074.3683268062016,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 14:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 16:00:00 -0400",
+            "qty" : 310.05839335251125,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 552.9416066474887,
+            "date" : "2026-04-26 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 189.40669528352137,
+            "date" : "2026-04-26 18:00:00 -0400"
+          },
+          {
+            "qty" : 171.59330471647863,
+            "date" : "2026-04-26 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 706,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 20:00:00 -0400"
+          },
+          {
+            "qty" : 1183,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 648,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 228,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 07:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 08:00:00 -0400",
+            "qty" : 53
+          },
+          {
+            "qty" : 57,
+            "date" : "2026-04-27 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 10:00:00 -0400",
+            "qty" : 68,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 11:00:00 -0400",
+            "qty" : 47,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 1868,
+            "date" : "2026-04-27 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 245,
+            "date" : "2026-04-27 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 14:00:00 -0400",
+            "qty" : 41
+          },
+          {
+            "date" : "2026-04-27 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 6
+          },
+          {
+            "date" : "2026-04-27 16:00:00 -0400",
+            "qty" : 68,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 17:00:00 -0400",
+            "qty" : 8
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 18:00:00 -0400",
+            "qty" : 154
+          },
+          {
+            "date" : "2026-04-27 19:00:00 -0400",
+            "qty" : 311.6410289683887,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 348.3589710316113,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 21:00:00 -0400",
+            "qty" : 70
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 22:00:00 -0400",
+            "qty" : 196
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 114,
+            "date" : "2026-04-27 23:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "qty" : 81,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 81,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 542,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 136,
+            "date" : "2026-04-28 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 412
+          },
+          {
+            "qty" : 13,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 12:00:00 -0400"
+          },
+          {
+            "qty" : 60,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 13:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 14:00:00 -0400",
+            "qty" : 121,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-28 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 82
+          },
+          {
+            "date" : "2026-04-28 16:00:00 -0400",
+            "qty" : 128,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 99,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 17:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 18:00:00 -0400",
+            "qty" : 41
+          },
+          {
+            "qty" : 35,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 19:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 325,
+            "date" : "2026-04-28 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 21:00:00 -0400",
+            "qty" : 362
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 705,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 302,
+            "date" : "2026-04-29 07:00:00 -0400"
+          },
+          {
+            "qty" : 592.55542761532956,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 08:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 09:00:00 -0400",
+            "qty" : 790.44457238467044
+          },
+          {
+            "date" : "2026-04-29 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 108.89534795140511
+          },
+          {
+            "qty" : 52,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 11:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 12:00:00 -0400",
+            "qty" : 130
+          },
+          {
+            "date" : "2026-04-29 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 173
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 14:00:00 -0400",
+            "qty" : 317
+          },
+          {
+            "date" : "2026-04-29 15:00:00 -0400",
+            "qty" : 389,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 383
+          },
+          {
+            "qty" : 9,
+            "date" : "2026-04-29 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 190
+          },
+          {
+            "date" : "2026-04-29 19:00:00 -0400",
+            "qty" : 185,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 20:00:00 -0400",
+            "qty" : 206
+          },
+          {
+            "qty" : 16,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 23:00:00 -0400",
+            "qty" : 45,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 19,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 01:00:00 -0400"
+          },
+          {
+            "qty" : 74,
+            "date" : "2026-04-30 05:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 366
+          },
+          {
+            "qty" : 426,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "qty" : 25,
+            "date" : "2026-04-30 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 152,
+            "date" : "2026-04-30 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 321
+          },
+          {
+            "qty" : 761,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 15
+          },
+          {
+            "qty" : 13,
+            "date" : "2026-04-30 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 26,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 16:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 763,
+            "date" : "2026-04-30 17:00:00 -0400"
+          },
+          {
+            "qty" : 154.58920253496717,
+            "date" : "2026-04-30 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 519.46634830295579,
+            "date" : "2026-04-30 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 244.53365169704418,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 20:00:00 -0400"
+          },
+          {
+            "qty" : 176,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 07:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 686,
+            "date" : "2026-05-01 08:00:00 -0400"
+          },
+          {
+            "qty" : 39,
+            "date" : "2026-05-01 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 30,
+            "date" : "2026-05-01 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 11:00:00 -0400",
+            "qty" : 45
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 81,
+            "date" : "2026-05-01 12:00:00 -0400"
+          },
+          {
+            "qty" : 18,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 13:00:00 -0400"
+          },
+          {
+            "qty" : 56,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 14:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 15:00:00 -0400",
+            "qty" : 9
+          },
+          {
+            "date" : "2026-05-01 17:00:00 -0400",
+            "qty" : 1050,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 160.86898698676302,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 18:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 19:00:00 -0400",
+            "qty" : 24,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 33
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 197,
+            "date" : "2026-05-01 21:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 22:00:00 -0400",
+            "qty" : 44
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 23:00:00 -0400",
+            "qty" : 16
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 03:00:00 -0400",
+            "qty" : 29
+          },
+          {
+            "qty" : 73,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 09:00:00 -0400",
+            "qty" : 25,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 11:00:00 -0400",
+            "qty" : 1455,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 12:00:00 -0400",
+            "qty" : 1572,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 13:00:00 -0400",
+            "qty" : 668
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 111,
+            "date" : "2026-05-02 14:00:00 -0400"
+          },
+          {
+            "qty" : 47,
+            "date" : "2026-05-02 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 16:00:00 -0400",
+            "qty" : 33
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 17:00:00 -0400",
+            "qty" : 14
+          },
+          {
+            "date" : "2026-05-02 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 56
+          },
+          {
+            "date" : "2026-05-02 20:00:00 -0400",
+            "qty" : 222,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 21:00:00 -0400",
+            "qty" : 862,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 92,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 22:00:00 -0400"
+          }
+        ],
+        "name" : "step_count"
+      },
+      {
+        "name" : "basal_energy_burned",
+        "data" : [
+          {
+            "date" : "2026-04-26 00:00:00 -0400",
+            "qty" : 61.859613837188633,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 72.009653512695309,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 01:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 02:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 73.289000000000001
+          },
+          {
+            "qty" : 73.289000000000001,
+            "date" : "2026-04-26 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 73.289000000000001,
+            "date" : "2026-04-26 04:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 05:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 06:00:00 -0400",
+            "qty" : 73.289000000000001
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 07:00:00 -0400",
+            "qty" : 73.288999203775873
+          },
+          {
+            "qty" : 84.156667624230096,
+            "date" : "2026-04-26 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 96.721828027288268,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 99.702356630385623
+          },
+          {
+            "date" : "2026-04-26 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 101.30318673745784
+          },
+          {
+            "date" : "2026-04-26 12:00:00 -0400",
+            "qty" : 111.1698299976815,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 13:00:00 -0400",
+            "qty" : 105.81862302358464,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 14:00:00 -0400",
+            "qty" : 99.394615267299429,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 100.97630928936857,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 15:00:00 -0400"
+          },
+          {
+            "qty" : 102.32912436903095,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 17:00:00 -0400",
+            "qty" : 89.299251284369433,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 83.143191769150178,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 18:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 91.083487088719664,
+            "date" : "2026-04-26 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 93.429846598599582
+          },
+          {
+            "qty" : 73.288998844092148,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 21:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 22:00:00 -0400",
+            "qty" : 73.28858962201079,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-26 23:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 00:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 01:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 02:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 73.289000000000001,
+            "date" : "2026-04-27 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 04:00:00 -0400",
+            "qty" : 73.289151857349907,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 87.277041938271097,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 93.865539933656621,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 79.265714122394158,
+            "date" : "2026-04-27 07:00:00 -0400"
+          },
+          {
+            "qty" : 76.602373649748358,
+            "date" : "2026-04-27 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 93.326551790100254,
+            "date" : "2026-04-27 09:00:00 -0400"
+          },
+          {
+            "qty" : 79.23200887398518,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 10:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 11:00:00 -0400",
+            "qty" : 80.826120068599579,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 102.34654794425091
+          },
+          {
+            "qty" : 97.608391022808718,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 13:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 82.59305141513947
+          },
+          {
+            "qty" : 80.473150308437397,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 15:00:00 -0400"
+          },
+          {
+            "qty" : 80.000221584888266,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 83.389994108813823
+          },
+          {
+            "date" : "2026-04-27 18:00:00 -0400",
+            "qty" : 88.674741260548345,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 19:00:00 -0400",
+            "qty" : 85.628603469635607,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 88.330394706780169
+          },
+          {
+            "date" : "2026-04-27 21:00:00 -0400",
+            "qty" : 90.00968719805563,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 79.769013913810483,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 23:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 73.289000000000001,
+            "date" : "2026-04-28 00:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 01:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 02:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 73.289000000000001,
+            "date" : "2026-04-28 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 04:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 73.289000000000001
+          },
+          {
+            "date" : "2026-04-28 05:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 73.289304536655763,
+            "date" : "2026-04-28 06:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "qty" : 82.097951241805774,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 92.654642938365527,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 08:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 92.048973175421068,
+            "date" : "2026-04-28 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 10:00:00 -0400",
+            "qty" : 82.865778495796874,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 83.602145470198764,
+            "date" : "2026-04-28 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 12:00:00 -0400",
+            "qty" : 88.27475900871616
+          },
+          {
+            "date" : "2026-04-28 13:00:00 -0400",
+            "qty" : 84.014662724595254,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 14:00:00 -0400",
+            "qty" : 85.862857626514881,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 15:00:00 -0400",
+            "qty" : 85.081283650468052,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 90.425734738384705,
+            "date" : "2026-04-28 16:00:00 -0400"
+          },
+          {
+            "qty" : 87.232570333772358,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 18:00:00 -0400",
+            "qty" : 86.195296503397842,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 81.495071697219615,
+            "date" : "2026-04-28 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "qty" : 89.897378441356778,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 21:00:00 -0400",
+            "qty" : 89.372694991485531,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 89.316803958435642
+          },
+          {
+            "qty" : 69.11620165030152,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-28 23:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 00:00:00 -0400",
+            "qty" : 72.474179903274262,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 01:00:00 -0400",
+            "qty" : 73.289000000000001
+          },
+          {
+            "date" : "2026-04-29 02:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 73.289000000000001
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 03:00:00 -0400",
+            "qty" : 73.289000000000001
+          },
+          {
+            "date" : "2026-04-29 04:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 05:00:00 -0400",
+            "qty" : 73.289000000000001,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 06:00:00 -0400",
+            "qty" : 73.289222946468627
+          },
+          {
+            "qty" : 77.950995150096091,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 07:00:00 -0400"
+          },
+          {
+            "qty" : 87.46880854180877,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 87.66250635978821
+          },
+          {
+            "qty" : 85.915160629719935,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 10:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 11:00:00 -0400",
+            "qty" : 80.330713085599257,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 83.447346004958604
+          },
+          {
+            "qty" : 78.230685901578155,
+            "date" : "2026-04-29 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-29 14:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 88.330946197398546
+          },
+          {
+            "qty" : 83.505285017974543,
+            "date" : "2026-04-29 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 16:00:00 -0400",
+            "qty" : 88.929514217884517
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 17:00:00 -0400",
+            "qty" : 81.259765456847333
+          },
+          {
+            "qty" : 89.858230302783923,
+            "date" : "2026-04-29 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 19:00:00 -0400",
+            "qty" : 85.295754526585256
+          },
+          {
+            "qty" : 78.797166142453818,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 20:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 78.076054066779562
+          },
+          {
+            "qty" : 74.325146204030489,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 22:00:00 -0400"
+          },
+          {
+            "qty" : 76.243163913865033,
+            "date" : "2026-04-29 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 71.470383595398346,
+            "date" : "2026-04-30 00:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 01:00:00 -0400",
+            "qty" : 74.214232707920431
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 02:00:00 -0400",
+            "qty" : 70.16619242282529
+          },
+          {
+            "date" : "2026-04-30 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 71.159438237594088
+          },
+          {
+            "qty" : 70.35549769128329,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 04:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 05:00:00 -0400",
+            "qty" : 66.724940572722517
+          },
+          {
+            "date" : "2026-04-30 06:00:00 -0400",
+            "qty" : 66.942999999999984,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 07:00:00 -0400",
+            "qty" : 66.942950025442272
+          },
+          {
+            "qty" : 76.981217372903956,
+            "date" : "2026-04-30 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 89.281127824874588,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 10:00:00 -0400",
+            "qty" : 82.774073430268032
+          },
+          {
+            "date" : "2026-04-30 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 88.840846872037531
+          },
+          {
+            "date" : "2026-04-30 12:00:00 -0400",
+            "qty" : 97.5264787827372,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 86.836791183206984
+          },
+          {
+            "qty" : 84.312869331416266,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 14:00:00 -0400"
+          },
+          {
+            "qty" : 92.766654095955701,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 15:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 16:00:00 -0400",
+            "qty" : 87.215758715452125,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 96.167111804936098,
+            "date" : "2026-04-30 17:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 18:00:00 -0400",
+            "qty" : 94.601177883647821
+          },
+          {
+            "date" : "2026-04-30 19:00:00 -0400",
+            "qty" : 88.740241875602663,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 77.352037217746329,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 20:00:00 -0400"
+          },
+          {
+            "qty" : 69.609245015851712,
+            "date" : "2026-04-30 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 22:00:00 -0400",
+            "qty" : 67.23439852473453,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 23:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 66.942999999999998
+          },
+          {
+            "date" : "2026-05-01 00:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 66.942999999999998
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 66.942999999999998,
+            "date" : "2026-05-01 01:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 02:00:00 -0400",
+            "qty" : 66.942999999999998
+          },
+          {
+            "qty" : 66.942999999999998,
+            "date" : "2026-05-01 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-01 04:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 66.942999999999998
+          },
+          {
+            "qty" : 66.942999999999998,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 05:00:00 -0400"
+          },
+          {
+            "qty" : 66.942889360819848,
+            "date" : "2026-05-01 06:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 07:00:00 -0400",
+            "qty" : 80.035714967506692
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 08:00:00 -0400",
+            "qty" : 91.048169608984693
+          },
+          {
+            "date" : "2026-05-01 09:00:00 -0400",
+            "qty" : 80.650416776783985,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 84.438509026618192,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 10:00:00 -0400"
+          },
+          {
+            "qty" : 78.883904807349367,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 11:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 12:00:00 -0400",
+            "qty" : 83.998633213530439
+          },
+          {
+            "date" : "2026-05-01 13:00:00 -0400",
+            "qty" : 84.24782525153465,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 88.80361561125649,
+            "date" : "2026-05-01 14:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 15:00:00 -0400",
+            "qty" : 84.230162504802394
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 81.273738374703768,
+            "date" : "2026-05-01 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 17:00:00 -0400",
+            "qty" : 87.049684987350048,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 18:00:00 -0400",
+            "qty" : 95.686412338698801
+          },
+          {
+            "qty" : 77.957927834948407,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 19:00:00 -0400"
+          },
+          {
+            "qty" : 74.966478106495273,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 20:00:00 -0400"
+          },
+          {
+            "qty" : 83.205891494483694,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 21:00:00 -0400"
+          },
+          {
+            "qty" : 73.289261782469708,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 23:00:00 -0400",
+            "qty" : 71.309681019916567,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 00:00:00 -0400",
+            "qty" : 71.362753754270315,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-05-02 01:00:00 -0400",
+            "qty" : 70.531997908588579,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 71.317598711021247,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 02:00:00 -0400"
+          },
+          {
+            "qty" : 69.861239690822316,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 03:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 04:00:00 -0400",
+            "qty" : 69.327899266315569,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 05:00:00 -0400",
+            "qty" : 69.160052025141752
+          },
+          {
+            "date" : "2026-05-02 06:00:00 -0400",
+            "qty" : 70.698461130694767,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 73.289019133645951,
+            "date" : "2026-05-02 07:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 08:00:00 -0400",
+            "qty" : 57.138352196077925,
+            "source" : "Avi’s Apple Watch|RENPHO Health"
+          },
+          {
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 09:00:00 -0400",
+            "qty" : 79.193153669525586
+          },
+          {
+            "date" : "2026-05-02 10:00:00 -0400",
+            "qty" : 84.498445891264524,
+            "source" : "Avi’s Apple Watch|RENPHO Health"
+          },
+          {
+            "qty" : 99.105458617147718,
+            "date" : "2026-05-02 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch|RENPHO Health"
+          },
+          {
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 12:00:00 -0400",
+            "qty" : 96.208993415278371
+          },
+          {
+            "date" : "2026-05-02 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "qty" : 101.35139185095812
+          },
+          {
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 14:00:00 -0400",
+            "qty" : 73.517122313635312
+          },
+          {
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 15:00:00 -0400",
+            "qty" : 73.265000000000001
+          },
+          {
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "qty" : 73.265000000000001,
+            "date" : "2026-05-02 16:00:00 -0400"
+          },
+          {
+            "qty" : 73.265000000000001,
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 17:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "qty" : 73.265000000000001,
+            "date" : "2026-05-02 18:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 19:00:00 -0400",
+            "qty" : 73.265016780728033,
+            "source" : "Avi’s Apple Watch|RENPHO Health"
+          },
+          {
+            "qty" : 82.042299358155702,
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 20:00:00 -0400"
+          },
+          {
+            "qty" : 91.589177174952766,
+            "source" : "Avi’s Apple Watch|RENPHO Health",
+            "date" : "2026-05-02 21:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 22:00:00 -0400",
+            "qty" : 78.479489023222669,
+            "source" : "Avi’s Apple Watch|RENPHO Health"
+          },
+          {
+            "date" : "2026-05-02 23:00:00 -0400",
+            "qty" : 71.161689059631328,
+            "source" : "Avi’s Apple Watch|RENPHO Health"
+          }
+        ],
+        "units" : "kcal"
+      },
+      {
+        "units" : "mi",
+        "data" : [
+          {
+            "date" : "2026-04-26 06:00:00 -0400",
+            "qty" : 0.0088144970132987017,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 07:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 0.074375292428620079
+          },
+          {
+            "qty" : 0.17528208250540411,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 08:00:00 -0400"
+          },
+          {
+            "qty" : 0.20577431809945074,
+            "date" : "2026-04-26 09:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.367956505422941
+          },
+          {
+            "date" : "2026-04-26 11:00:00 -0400",
+            "qty" : 1.3138064327768948,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 2.5775808577897141
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 1.8149212975645828,
+            "date" : "2026-04-26 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 14:00:00 -0400",
+            "qty" : 0.50280475803282743
+          },
+          {
+            "qty" : 0.14642338344045666,
+            "date" : "2026-04-26 16:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.26011212455862281,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-26 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.090512637085359268
+          },
+          {
+            "qty" : 0.081933459278820939,
+            "date" : "2026-04-26 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 20:00:00 -0400",
+            "qty" : 0.32990774500387965,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 05:00:00 -0400",
+            "qty" : 0.56762337905875027
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.30352053743192003,
+            "date" : "2026-04-27 06:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.11001853618046906
+          },
+          {
+            "qty" : 0.024526753051357538,
+            "date" : "2026-04-27 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.026064744011929951,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 09:00:00 -0400"
+          },
+          {
+            "qty" : 0.032240880141747211,
+            "date" : "2026-04-27 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 11:00:00 -0400",
+            "qty" : 0.021926291414522573
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.8820197626890619,
+            "date" : "2026-04-27 12:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 13:00:00 -0400",
+            "qty" : 0.11313539461913287
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 14:00:00 -0400",
+            "qty" : 0.020175804863506126
+          },
+          {
+            "date" : "2026-04-27 15:00:00 -0400",
+            "qty" : 0.0028400865308494537,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.032171982915229082,
+            "date" : "2026-04-27 16:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.0040336681747841175,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 18:00:00 -0400",
+            "qty" : 0.073801274126858107,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 19:00:00 -0400",
+            "qty" : 0.15258648071650094,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 20:00:00 -0400",
+            "qty" : 0.16593176800130477,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 21:00:00 -0400",
+            "qty" : 0.032993701616964292
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 22:00:00 -0400",
+            "qty" : 0.09138855304391684
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-27 23:00:00 -0400",
+            "qty" : 0.04441325244097296
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 07:00:00 -0400",
+            "qty" : 0.034827206716828214
+          },
+          {
+            "qty" : 0.039117768556767289,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 08:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 0.26537373177294515
+          },
+          {
+            "qty" : 0.062199050536943412,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 10:00:00 -0400"
+          },
+          {
+            "qty" : 0.19879366102119597,
+            "date" : "2026-04-28 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.00616644443947615,
+            "date" : "2026-04-28 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.027780583811857603,
+            "date" : "2026-04-28 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.057546058543767632,
+            "date" : "2026-04-28 14:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.03967769531037852,
+            "date" : "2026-04-28 15:00:00 -0400"
+          },
+          {
+            "qty" : 0.061701612383000794,
+            "date" : "2026-04-28 16:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 17:00:00 -0400",
+            "qty" : 0.046654180109574894
+          },
+          {
+            "date" : "2026-04-28 18:00:00 -0400",
+            "qty" : 0.021727176536980253,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-28 19:00:00 -0400",
+            "qty" : 0.016343426026315496,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.1568439700284307
+          },
+          {
+            "date" : "2026-04-28 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.17546256737232274
+          },
+          {
+            "qty" : 0.32547379687279626,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-28 22:00:00 -0400"
+          },
+          {
+            "qty" : 0.13689741778437389,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 07:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.31926779026137025
+          },
+          {
+            "date" : "2026-04-29 09:00:00 -0400",
+            "qty" : 0.3446572445803745,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 10:00:00 -0400",
+            "qty" : 0.04677876938897868,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.026024701308708063,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 11:00:00 -0400"
+          },
+          {
+            "qty" : 0.064206847071728496,
+            "date" : "2026-04-29 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.090375944697962729,
+            "date" : "2026-04-29 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.15345077835570436,
+            "date" : "2026-04-29 14:00:00 -0400"
+          },
+          {
+            "qty" : 0.19216806279114088,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 15:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "qty" : 0.18816448146482678,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.0041350544626901188,
+            "date" : "2026-04-29 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-29 18:00:00 -0400",
+            "qty" : 0.099350659116203333
+          },
+          {
+            "date" : "2026-04-29 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.089685474786453903
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.099150292346004934,
+            "date" : "2026-04-29 20:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.009417423075082771,
+            "date" : "2026-04-29 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 23:00:00 -0400",
+            "qty" : 0.02159093404228879,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 01:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.007869447951925802
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.026357053700030643,
+            "date" : "2026-04-30 05:00:00 -0400"
+          },
+          {
+            "qty" : 0.17517400214067641,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 08:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.20031173019071161,
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 10:00:00 -0400",
+            "qty" : 0.011852161545636727,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 11:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.077936457010590737
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 12:00:00 -0400",
+            "qty" : 0.16490716552775858
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.38117274336841989,
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "qty" : 0.0078911714376640567,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 14:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 15:00:00 -0400",
+            "qty" : 0.0060216955750967121,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 16:00:00 -0400",
+            "qty" : 0.012797557446246544
+          },
+          {
+            "qty" : 0.36411393522887242,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-04-30 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 18:00:00 -0400",
+            "qty" : 0.066560559792197035,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.25502188161203043
+          },
+          {
+            "date" : "2026-04-30 20:00:00 -0400",
+            "qty" : 0.11523481176274225,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.083081294920589507
+          },
+          {
+            "qty" : 0.32627551156567447,
+            "date" : "2026-05-01 08:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 09:00:00 -0400",
+            "qty" : 0.020870058938837577,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.016395282139653512,
+            "date" : "2026-05-01 10:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 11:00:00 -0400",
+            "qty" : 0.020963685546997488
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 12:00:00 -0400",
+            "qty" : 0.03894997531016102
+          },
+          {
+            "date" : "2026-05-01 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.0083859819561627365
+          },
+          {
+            "date" : "2026-05-01 14:00:00 -0400",
+            "qty" : 0.026736272142906876,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 15:00:00 -0400",
+            "qty" : 0.0047582409579586529,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.5182434844706435,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 18:00:00 -0400",
+            "qty" : 0.078417173238171864,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.01213912877585036
+          },
+          {
+            "qty" : 0.016092890157868085,
+            "date" : "2026-05-01 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 21:00:00 -0400",
+            "qty" : 0.072116989672397519,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.015113654865838735,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-01 22:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.00779731460263539,
+            "date" : "2026-05-01 23:00:00 -0400"
+          },
+          {
+            "qty" : 0.012341771406621254,
+            "date" : "2026-05-02 03:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 08:00:00 -0400",
+            "qty" : 0.033914867036853008
+          },
+          {
+            "qty" : 0.011657174749023363,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 09:00:00 -0400"
+          },
+          {
+            "qty" : 0.69738825246118008,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 11:00:00 -0400"
+          },
+          {
+            "qty" : 0.74573347086104014,
+            "date" : "2026-05-02 12:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.32094931787115594,
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 13:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 14:00:00 -0400",
+            "qty" : 0.052107953167887022
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 15:00:00 -0400",
+            "qty" : 0.015151644779117219
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "qty" : 0.012744461156696958,
+            "date" : "2026-05-02 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 17:00:00 -0400",
+            "qty" : 0.0045357246732340263,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "source" : "Avi’s Apple Watch|iPhone AB",
+            "date" : "2026-05-02 18:00:00 -0400",
+            "qty" : 0.020811318463766725
+          },
+          {
+            "qty" : 0.11040609012065825,
+            "date" : "2026-05-02 20:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "qty" : 0.41738247736070277,
+            "date" : "2026-05-02 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 22:00:00 -0400",
+            "qty" : 0.043984403505749538,
+            "source" : "Avi’s Apple Watch|iPhone AB"
+          }
+        ],
+        "name" : "walking_running_distance"
+      },
+      {
+        "units" : "ms",
+        "name" : "heart_rate_variability",
+        "data" : [
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 16:00:00 -0400",
+            "qty" : 12.697973594938492
+          },
+          {
+            "date" : "2026-04-26 17:00:00 -0400",
+            "qty" : 13.869500660229942,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 31.969512323999233
+          },
+          {
+            "qty" : 36.465413870697084,
+            "date" : "2026-04-27 06:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 07:00:00 -0400",
+            "qty" : 31.74537350475169
+          },
+          {
+            "qty" : 28.197644651365422,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 11:00:00 -0400",
+            "qty" : 40.098674113064178,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 14:00:00 -0400",
+            "qty" : 50.946388723747333,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-27 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 41.793163626816145
+          },
+          {
+            "qty" : 66.094198255011946,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 19:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-27 21:00:00 -0400",
+            "qty" : 51.60550514419819
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 46.01469072454411
+          },
+          {
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 32.807301491196249,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 31.505701930057022,
+            "date" : "2026-04-28 17:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 65.39579941817199,
+            "date" : "2026-04-28 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 34.316148302185397,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 07:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 32.083818905029318,
+            "date" : "2026-04-29 09:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 27.964798318870322,
+            "date" : "2026-04-29 11:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 13:00:00 -0400",
+            "qty" : 44.288901001496178,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 20.263314873770675,
+            "date" : "2026-04-29 15:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 17:00:00 -0400",
+            "qty" : 26.766198118815893
+          },
+          {
+            "qty" : 51.696047883309824,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 19:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 21:00:00 -0400",
+            "qty" : 20.06601876424002
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-29 23:00:00 -0400",
+            "qty" : 77.028753831620932
+          },
+          {
+            "qty" : 57.906894710630205,
+            "date" : "2026-04-30 01:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 23.631247098703341,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 10:00:00 -0400",
+            "qty" : 29.043755754647272,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "date" : "2026-04-30 13:00:00 -0400",
+            "source" : "Avi’s Apple Watch",
+            "qty" : 33.985947913710426
+          },
+          {
+            "qty" : 43.078062639411399,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-04-30 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 18:00:00 -0400",
+            "qty" : 87.302033077584866,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "qty" : 32.086956406914567,
+            "date" : "2026-04-30 19:00:00 -0400"
+          },
+          {
+            "qty" : 69.285536181476814,
+            "date" : "2026-05-01 07:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 11:00:00 -0400",
+            "qty" : 100.93474637535314
+          },
+          {
+            "date" : "2026-05-01 15:00:00 -0400",
+            "qty" : 42.918898895307258,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 39.75332277922692,
+            "date" : "2026-05-01 19:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-01 23:00:00 -0400",
+            "qty" : 98.848085010988527
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 01:00:00 -0400",
+            "qty" : 39.694961802546068
+          },
+          {
+            "date" : "2026-05-02 03:00:00 -0400",
+            "qty" : 31.881214770681531,
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "qty" : 87.598247849753605,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 05:00:00 -0400"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 08:00:00 -0400",
+            "qty" : 29.750080063557441
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 09:00:00 -0400",
+            "qty" : 56.140166170644818
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 13:00:00 -0400",
+            "qty" : 20.618979917497125
+          },
+          {
+            "qty" : 44.66310344623944,
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 20:00:00 -0400"
+          },
+          {
+            "qty" : 24.886243818703953,
+            "date" : "2026-05-02 21:00:00 -0400",
+            "source" : "Avi’s Apple Watch"
+          },
+          {
+            "source" : "Avi’s Apple Watch",
+            "date" : "2026-05-02 23:00:00 -0400",
+            "qty" : 48.999603505001147
+          }
+        ]
+      },
+      {
+        "name" : "weight_body_mass",
+        "data" : [
+          {
+            "source" : "RENPHO Health",
+            "date" : "2026-05-02 08:00:00 -0400",
+            "qty" : 188.71376000220459
+          }
+        ],
+        "units" : "lb"
+      },
+      {
+        "name" : "apple_stand_hour",
+        "units" : "count",
+        "data" : [
+          {
+            "source" : "",
+            "date" : "2026-04-26 08:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-04-26 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-26 11:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-26 12:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-26 13:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-26 14:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 16:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-26 17:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-26 19:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-26 20:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-27 07:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-27 09:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-04-27 10:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-27 12:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 13:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-27 14:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-04-27 18:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-27 19:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-27 20:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-27 22:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-28 10:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-28 13:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-28 14:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-28 15:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-28 16:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-28 21:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-29 07:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-29 08:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-29 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 10:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-29 12:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-29 13:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-29 14:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-29 15:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-29 18:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-29 19:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-29 20:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "date" : "2026-04-29 23:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-30 01:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-30 08:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-30 11:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-30 12:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-04-30 17:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-30 18:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-04-30 19:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "date" : "2026-04-30 20:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-05-01 07:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 08:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-05-01 12:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-05-01 14:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-05-01 16:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-05-01 17:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 18:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-05-01 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-01 20:00:00 -0400",
+            "qty" : 1,
+            "source" : ""
+          },
+          {
+            "source" : "",
+            "date" : "2026-05-01 21:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-05-02 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 11:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-05-02 12:00:00 -0400",
+            "source" : ""
+          },
+          {
+            "date" : "2026-05-02 13:00:00 -0400",
+            "source" : "",
+            "qty" : 1
+          },
+          {
+            "source" : "",
+            "qty" : 1,
+            "date" : "2026-05-02 14:00:00 -0400"
+          },
+          {
+            "source" : "",
+            "date" : "2026-05-02 20:00:00 -0400",
+            "qty" : 1
+          },
+          {
+            "qty" : 1,
+            "source" : "",
+            "date" : "2026-05-02 21:00:00 -0400"
+          }
+        ]
+      },
+      {
+        "units" : "%",
+        "name" : "walking_asymmetry_percentage",
+        "data" : [
+          {
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 1.3333333333333333,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 7.666666666666667,
+            "date" : "2026-04-26 11:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 14:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 0,
+            "date" : "2026-04-26 18:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 5
+          },
+          {
+            "qty" : 7.0000000000000009,
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 20:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2.5,
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-27 06:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 12:00:00 -0400",
+            "qty" : 2,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 13:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 0
+          },
+          {
+            "date" : "2026-04-27 19:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 0
+          },
+          {
+            "date" : "2026-04-27 20:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 22:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 6,
+            "date" : "2026-04-27 23:00:00 -0400"
+          },
+          {
+            "qty" : 1,
+            "date" : "2026-04-28 09:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 0
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 0,
+            "date" : "2026-04-28 21:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2,
+            "date" : "2026-04-28 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 07:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 08:00:00 -0400",
+            "qty" : 0
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 0,
+            "date" : "2026-04-29 14:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 15:00:00 -0400",
+            "qty" : 0
+          },
+          {
+            "date" : "2026-04-29 20:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 0,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "qty" : 0,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 11:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 12:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 1,
+            "date" : "2026-04-30 13:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 17:00:00 -0400",
+            "qty" : 1.3333333333333333,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 0,
+            "date" : "2026-05-01 08:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 0,
+            "date" : "2026-05-02 11:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-05-02 12:00:00 -0400",
+            "qty" : 1.2
+          },
+          {
+            "date" : "2026-05-02 21:00:00 -0400",
+            "qty" : 0,
+            "source" : "iPhone AB"
+          }
+        ]
+      },
+      {
+        "data" : [
+          {
+            "source" : "iPhone AB",
+            "qty" : 26.300000000000001,
+            "date" : "2026-04-26 09:00:00 -0400"
+          },
+          {
+            "qty" : 28.133333333333336,
+            "date" : "2026-04-26 10:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 11:00:00 -0400",
+            "qty" : 29.642857142857142
+          },
+          {
+            "date" : "2026-04-26 13:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 28.600000000000001
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 14:00:00 -0400",
+            "qty" : 28.400000000000006
+          },
+          {
+            "date" : "2026-04-26 16:00:00 -0400",
+            "qty" : 28.800000000000004,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 17:00:00 -0400",
+            "qty" : 31.424999999999997
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "qty" : 30.850000000000001,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 26.800000000000001
+          },
+          {
+            "qty" : 30.5,
+            "date" : "2026-04-26 20:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 05:00:00 -0400",
+            "qty" : 30.0625
+          },
+          {
+            "qty" : 29.366666666666664,
+            "date" : "2026-04-27 06:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 12:00:00 -0400",
+            "qty" : 28.733333333333334,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 29.399999999999999,
+            "date" : "2026-04-27 13:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 18:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 30.300000000000001
+          },
+          {
+            "date" : "2026-04-27 19:00:00 -0400",
+            "qty" : 28.550000000000001,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 30.060000000000002,
+            "date" : "2026-04-27 20:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 21:00:00 -0400",
+            "qty" : 29.649999999999999
+          },
+          {
+            "qty" : 28.566666666666663,
+            "date" : "2026-04-27 22:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 23:00:00 -0400",
+            "qty" : 30.199999999999999
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 30.699999999999999
+          },
+          {
+            "qty" : 29.100000000000005,
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 09:00:00 -0400",
+            "qty" : 26.833333333333329,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-28 11:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 29.399999999999999
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 14:00:00 -0400",
+            "qty" : 27.200000000000003
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "qty" : 28.800000000000004,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 21:00:00 -0400",
+            "qty" : 28.333333333333332
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 29.43333333333333
+          },
+          {
+            "qty" : 28.800000000000004,
+            "date" : "2026-04-29 07:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 08:00:00 -0400",
+            "qty" : 28.899999999999995
+          },
+          {
+            "qty" : 31,
+            "date" : "2026-04-29 09:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 10:00:00 -0400",
+            "qty" : 29.299999999999997
+          },
+          {
+            "qty" : 29.299999999999997,
+            "date" : "2026-04-29 12:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 30.199999999999999,
+            "date" : "2026-04-29 14:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 29.074999999999996,
+            "date" : "2026-04-29 15:00:00 -0400"
+          },
+          {
+            "qty" : 28.849999999999998,
+            "date" : "2026-04-29 16:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 28.699999999999999,
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 20:00:00 -0400",
+            "qty" : 28.399999999999999,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 33.5,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 05:00:00 -0400"
+          },
+          {
+            "qty" : 30.533333333333331,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 08:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 09:00:00 -0400",
+            "qty" : 29.350000000000001,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 26.800000000000001,
+            "date" : "2026-04-30 11:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 12:00:00 -0400",
+            "qty" : 25.399999999999999,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 13:00:00 -0400",
+            "qty" : 27.528571428571432,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 28.124999999999996,
+            "date" : "2026-04-30 17:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 19:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 32.75
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 20:00:00 -0400",
+            "qty" : 31.25
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-05-01 08:00:00 -0400",
+            "qty" : 27.399999999999999
+          },
+          {
+            "date" : "2026-05-01 21:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 29.349999999999998
+          },
+          {
+            "qty" : 29.960000000000001,
+            "date" : "2026-05-02 11:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 30.029999999999994,
+            "date" : "2026-05-02 12:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 31,
+            "source" : "iPhone AB",
+            "date" : "2026-05-02 13:00:00 -0400"
+          },
+          {
+            "qty" : 30.800000000000001,
+            "date" : "2026-05-02 14:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 21:00:00 -0400",
+            "qty" : 28.049999999999997,
+            "source" : "iPhone AB"
+          }
+        ],
+        "units" : "%",
+        "name" : "walking_double_support_percentage"
+      },
+      {
+        "name" : "walking_speed",
+        "units" : "mi\/hr",
+        "data" : [
+          {
+            "source" : "iPhone AB",
+            "qty" : 3.6685755189692197,
+            "date" : "2026-04-26 09:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 10:00:00 -0400",
+            "qty" : 3.1540801717967075
+          },
+          {
+            "qty" : 2.5153105861767275,
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 11:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 13:00:00 -0400",
+            "qty" : 2.7514316392269147,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 14:00:00 -0400",
+            "qty" : 3.0049510856597474
+          },
+          {
+            "qty" : 2.796170365068003,
+            "date" : "2026-04-26 16:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 2.0132426628489624,
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 17:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 18:00:00 -0400",
+            "qty" : 2.3152290622763063
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 3.4225125268432355,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 20:00:00 -0400",
+            "qty" : 1.9796886184681461
+          },
+          {
+            "qty" : 2.7094890837508947,
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 2.930386542591267,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 12:00:00 -0400",
+            "qty" : 3.1056132188021954,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 13:00:00 -0400",
+            "qty" : 2.9527559055118111,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 2.5053686471009309,
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 18:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 3.0086793128131712,
+            "date" : "2026-04-27 19:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2.6932712956335001,
+            "date" : "2026-04-27 20:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2.6955082319255546,
+            "date" : "2026-04-27 21:00:00 -0400"
+          },
+          {
+            "qty" : 3.0571462658076833,
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 22:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 23:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.4829992841803867
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.3935218324982106
+          },
+          {
+            "date" : "2026-04-28 08:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.7066929133858268
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 3.4075996182295398,
+            "date" : "2026-04-28 09:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 2.7514316392269147
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 3.3106657122405152,
+            "date" : "2026-04-28 14:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 20:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 3.0869720830350751
+          },
+          {
+            "date" : "2026-04-28 21:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 3.0273204485802911
+          },
+          {
+            "date" : "2026-04-28 22:00:00 -0400",
+            "qty" : 2.6197009464726002,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 07:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.9974946313528994
+          },
+          {
+            "qty" : 2.7929747417936395,
+            "date" : "2026-04-29 08:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 1.8119183965640659,
+            "date" : "2026-04-29 09:00:00 -0400"
+          },
+          {
+            "qty" : 2.6619541875447386,
+            "date" : "2026-04-29 10:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 12:00:00 -0400",
+            "qty" : 2.863278453829635,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 14:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.4941839656406586
+          },
+          {
+            "qty" : 2.9080171796707228,
+            "date" : "2026-04-29 15:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "qty" : 2.9527559055118111,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2.8409090909090908,
+            "date" : "2026-04-29 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 20:00:00 -0400",
+            "qty" : 3.1876342161775235,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 05:00:00 -0400",
+            "qty" : 1.6329634931997137
+          },
+          {
+            "qty" : 2.4233476497256023,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 08:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2.8409090909090908,
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 11:00:00 -0400",
+            "qty" : 3.4896206156048679
+          },
+          {
+            "qty" : 3.7692376521116677,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 12:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 13:00:00 -0400",
+            "qty" : 3.2020145209121584,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-30 17:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 3.0757874015748028
+          },
+          {
+            "qty" : 1.7671796707229781,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 19:00:00 -0400"
+          },
+          {
+            "qty" : 2.0244273443092342,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 20:00:00 -0400"
+          },
+          {
+            "qty" : 3.2547423049391555,
+            "date" : "2026-05-01 08:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-05-01 21:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.7066929133858268
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 2.5814244810307807,
+            "date" : "2026-05-02 11:00:00 -0400"
+          },
+          {
+            "qty" : 2.4807623478883327,
+            "date" : "2026-05-02 12:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 13:00:00 -0400",
+            "qty" : 2.5501073729420183,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 2.3935218324982106,
+            "date" : "2026-05-02 14:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-05-02 16:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 2.0803507516105944
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-05-02 21:00:00 -0400",
+            "qty" : 3.3777738010021476
+          }
+        ]
+      },
+      {
+        "units" : "in",
+        "name" : "walking_step_length",
+        "data" : [
+          {
+            "source" : "iPhone AB",
+            "qty" : 34.251968503937007,
+            "date" : "2026-04-26 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 10:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 29.26509186351706
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 26.465441819772533,
+            "date" : "2026-04-26 11:00:00 -0400"
+          },
+          {
+            "qty" : 27.952755905511811,
+            "date" : "2026-04-26 13:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 29.133858267716537,
+            "source" : "iPhone AB",
+            "date" : "2026-04-26 14:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 25.984251968503941,
+            "date" : "2026-04-26 16:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-26 17:00:00 -0400",
+            "qty" : 21.45669291338583,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 18:00:00 -0400",
+            "qty" : 23.228346456692915,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 19:00:00 -0400",
+            "qty" : 30.708661417322837,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-26 20:00:00 -0400",
+            "qty" : 20.275590551181104,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 26.427165354330711,
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 05:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-27 06:00:00 -0400",
+            "qty" : 26.771653543307092,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 28.871391076115486,
+            "date" : "2026-04-27 12:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 13:00:00 -0400",
+            "qty" : 27.952755905511811,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 24.409448818897637,
+            "date" : "2026-04-27 18:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 25,
+            "date" : "2026-04-27 19:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 25.590551181102363,
+            "source" : "iPhone AB",
+            "date" : "2026-04-27 20:00:00 -0400"
+          },
+          {
+            "qty" : 25,
+            "date" : "2026-04-27 21:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 22:00:00 -0400",
+            "qty" : 29.790026246719162,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-27 23:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 23.622047244094489
+          },
+          {
+            "date" : "2026-04-28 07:00:00 -0400",
+            "qty" : 25.984251968503941,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-28 08:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 23.622047244094489
+          },
+          {
+            "qty" : 29.396325459317591,
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-28 11:00:00 -0400",
+            "qty" : 27.165354330708659,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-28 14:00:00 -0400",
+            "qty" : 29.133858267716537
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 31.102362204724411,
+            "date" : "2026-04-28 20:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 28.215223097112858,
+            "date" : "2026-04-28 21:00:00 -0400"
+          },
+          {
+            "qty" : 25.896762904636919,
+            "date" : "2026-04-28 22:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 27.165354330708659,
+            "date" : "2026-04-29 07:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 08:00:00 -0400",
+            "qty" : 26.096737907761533,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 20.275590551181104,
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 09:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-29 10:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 24.803149606299215
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 12:00:00 -0400",
+            "qty" : 25.590551181102363
+          },
+          {
+            "date" : "2026-04-29 14:00:00 -0400",
+            "qty" : 25.787401574803152,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 15:00:00 -0400",
+            "qty" : 26.062992125984248,
+            "source" : "iPhone AB"
+          },
+          {
+            "date" : "2026-04-29 16:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 26.377952755905511
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-29 19:00:00 -0400",
+            "qty" : 28.346456692913385
+          },
+          {
+            "date" : "2026-04-29 20:00:00 -0400",
+            "qty" : 28.937007874015748,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 18.503937007874018,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 05:00:00 -0400"
+          },
+          {
+            "qty" : 22.57217847769029,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 08:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 25.393700787401574,
+            "date" : "2026-04-30 09:00:00 -0400"
+          },
+          {
+            "qty" : 30.314960629921263,
+            "date" : "2026-04-30 11:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 12:00:00 -0400",
+            "qty" : 29.330708661417326
+          },
+          {
+            "date" : "2026-04-30 13:00:00 -0400",
+            "qty" : 26.490438695163103,
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 17:00:00 -0400",
+            "qty" : 27.263779527559052
+          },
+          {
+            "qty" : 17.716535433070867,
+            "source" : "iPhone AB",
+            "date" : "2026-04-30 19:00:00 -0400"
+          },
+          {
+            "date" : "2026-04-30 20:00:00 -0400",
+            "source" : "iPhone AB",
+            "qty" : 20.866141732283467
+          },
+          {
+            "date" : "2026-05-01 08:00:00 -0400",
+            "qty" : 29.7244094488189,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 23.425196850393704,
+            "source" : "iPhone AB",
+            "date" : "2026-05-01 21:00:00 -0400"
+          },
+          {
+            "date" : "2026-05-02 11:00:00 -0400",
+            "qty" : 24.724409448818896,
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 25.551181102362207,
+            "date" : "2026-05-02 12:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "qty" : 26.377952755905515,
+            "date" : "2026-05-02 13:00:00 -0400",
+            "source" : "iPhone AB"
+          },
+          {
+            "source" : "iPhone AB",
+            "date" : "2026-05-02 14:00:00 -0400",
+            "qty" : 22.047244094488192
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 18.503937007874015,
+            "date" : "2026-05-02 16:00:00 -0400"
+          },
+          {
+            "source" : "iPhone AB",
+            "qty" : 30.708661417322837,
+            "date" : "2026-05-02 21:00:00 -0400"
+          }
+        ]
+      }
+    ]
+  }
+}
