@@ -4,6 +4,33 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.20] — 2026-05-04
+
+### Schema cleanup — three deprecated daily_plans columns dropped
+
+v1.8.19 audit verdict:
+- `planned_exercises`: 1 row, **0 unmirrored** → safe drop
+- `actual_exercises`: 3 rows, never mirrored → stash + drop
+- `hevy_routine_id`: 0 rows → trivial drop
+
+### Migration sequence (idempotent)
+
+1. **Stash `actual_exercises` into `metadata.legacy_actual_exercises`** for any row with non-empty data. Guarded by `NOT (metadata ? 'legacy_actual_exercises')` so it only runs once. The 3 audit rows are preserved indefinitely under that key — recoverable via `SELECT id, plan_date, metadata->'legacy_actual_exercises' FROM daily_plans WHERE metadata ? 'legacy_actual_exercises'`.
+2. **`ALTER TABLE daily_plans DROP COLUMN IF EXISTS planned_exercises`**
+3. **`ALTER TABLE daily_plans DROP COLUMN IF EXISTS actual_exercises`**
+4. **`ALTER TABLE daily_plans DROP COLUMN IF EXISTS hevy_routine_id`**
+
+Backfill query (line 1393) wrapped in `information_schema` column-exists check so it doesn't error after the drop or on fresh DBs that never had the columns.
+
+### Other schema hygiene
+- Removed the deprecated `ALTER TABLE ADD COLUMN` statements for the three columns. Fresh DBs no longer create them in the first place.
+- `/api/health/diag/deprecated-columns` updated to report post-drop state. Now tells you whether each column still exists, plus how many rows have data preserved in the metadata stash.
+
+### Schema is now the canonical shape
+Coach reading the API surface or running raw SQL no longer sees three different stale fields competing with the canonical `plan_segments` location. The schema map matches the documented architecture.
+
+---
+
 ## [1.8.19] — 2026-05-04
 
 ### Schema audit before drop (Tier 1 cleanup, paused safely)

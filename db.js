@@ -918,16 +918,11 @@ async function initDB() {
   await safeQuery('coaching drop training_plan_id', `ALTER TABLE coaching_sessions DROP COLUMN IF EXISTS training_plan_id`);
   await safeQuery('drop training_plans', `DROP TABLE IF EXISTS training_plans CASCADE`);
 
-  // -- daily_plans: completion notes + DEPRECATED columns --
+  // -- daily_plans: completion notes --
   // v1.8.1: planned_exercises and actual_exercises moved to plan_segments.
-  // v1.8.19: drop deferred until we audit how much data lives in
-  // actual_exercises (no backfill exists for it). API still strips
-  // these from responses via stripDeprecated() in routes/daily-plans.js.
-  // Settings → "Audit Deprecated Columns" reports row counts so we
-  // know if it's safe to DROP COLUMN in v1.8.20.
-  await safeQuery('daily_plans +planned_exercises (deprecated)', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS planned_exercises JSONB DEFAULT '[]'::jsonb`);
+  // v1.8.20: ALTER ADDs removed (columns dropped below). Fresh DBs
+  // never get them. Existing DBs run the stash + drop migrations once.
   await safeQuery('daily_plans +completion_notes', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
-  await safeQuery('daily_plans +actual_exercises (deprecated)', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS actual_exercises JSONB DEFAULT '[]'::jsonb`);
 
   // -- workouts: link to daily plan --
   await safeQuery('workouts +daily_plan_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS daily_plan_id UUID REFERENCES daily_plans(id) ON DELETE SET NULL`);
@@ -1333,10 +1328,8 @@ async function initDB() {
   // routine the Coach pushed.
   await safeQuery('workouts +hevy_id', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS hevy_id TEXT`);
   await safeQuery('workouts hevy_id unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_hevy_id ON workouts(hevy_id) WHERE hevy_id IS NOT NULL`);
-  // v1.8.1: daily_plans.hevy_routine_id moved to plan_segments
-  // (one routine per Hevy segment). Column kept; DROP deferred to
-  // v1.8.20 after audit.
-  await safeQuery('daily_plans +hevy_routine_id (deprecated)', `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_routine_id TEXT`);
+  // v1.8.20: daily_plans.hevy_routine_id ALTER ADD removed. Audit
+  // showed 0 rows had data — column dropped below.
   // Partial unique index on (started_at) where source='apple_health' so
   // re-ingests deduplicate at the row level.
   await safeQuery('workouts unique apple_health started_at', `CREATE UNIQUE INDEX IF NOT EXISTS uq_workouts_apple_health_started_at ON workouts(started_at) WHERE source = 'apple_health' AND started_at IS NOT NULL`);
@@ -1393,33 +1386,79 @@ async function initDB() {
 
   // Backfill: synth one segment per existing daily_plan that has legacy
   // planned_exercises so historical plans render under the unified
-  // card. Idempotent — guarded by NOT EXISTS.
-  await safeQuery('backfill plan_segments from daily_plans', `
-    INSERT INTO plan_segments (daily_plan_id, block_order, block_label, logging_target, planned_exercises, target_duration_min, target_effort, hevy_routine_id, status)
-    SELECT
-      dp.id,
-      0,
-      COALESCE(NULLIF(dp.workout_type, ''), 'strength'),
-      CASE
-        WHEN dp.workout_type IN ('strength','hybrid','hill') THEN 'hevy'
-        WHEN dp.workout_type IN ('run','recovery','cardio','ride','swim','bike') THEN 'apple_health'
-        ELSE 'manual'
-      END,
-      COALESCE(dp.planned_exercises, '[]'::jsonb),
-      dp.target_duration_min,
-      dp.target_effort,
-      dp.hevy_routine_id,
-      CASE WHEN dp.status = 'completed' THEN 'completed' ELSE 'planned' END
-    FROM daily_plans dp
-    WHERE NOT EXISTS (SELECT 1 FROM plan_segments ps WHERE ps.daily_plan_id = dp.id)
+  // card. Idempotent — guarded by NOT EXISTS. v1.8.20: wrapped in
+  // information_schema check so we don't ERROR after the columns are
+  // dropped (or on fresh DBs that never had them).
+  await safeQuery('backfill plan_segments from daily_plans (guarded)', `
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'daily_plans' AND column_name = 'planned_exercises'
+      ) THEN
+        EXECUTE $sql$
+          INSERT INTO plan_segments (daily_plan_id, block_order, block_label, logging_target, planned_exercises, target_duration_min, target_effort, hevy_routine_id, status)
+          SELECT
+            dp.id,
+            0,
+            COALESCE(NULLIF(dp.workout_type, ''), 'strength'),
+            CASE
+              WHEN dp.workout_type IN ('strength','hybrid','hill') THEN 'hevy'
+              WHEN dp.workout_type IN ('run','recovery','cardio','ride','swim','bike') THEN 'apple_health'
+              ELSE 'manual'
+            END,
+            COALESCE(dp.planned_exercises, '[]'::jsonb),
+            dp.target_duration_min,
+            dp.target_effort,
+            dp.hevy_routine_id,
+            CASE WHEN dp.status = 'completed' THEN 'completed' ELSE 'planned' END
+          FROM daily_plans dp
+          WHERE NOT EXISTS (SELECT 1 FROM plan_segments ps WHERE ps.daily_plan_id = dp.id)
+        $sql$;
+      END IF;
+    END $$;
   `);
 
-  // v1.8.19: DROP COLUMN deferred. Need to audit how many rows have
-  // non-empty data in actual_exercises before we can confidently drop
-  // — that column never had a backfill into workouts/plan_segments,
-  // so historical data could be lost. Run the audit via
-  // POST /api/diag/deprecated-columns from Settings, then drop in
-  // v1.8.20 if numbers are zero/migratable.
+  // v1.8.20: stash any populated actual_exercises into
+  // metadata.legacy_actual_exercises, then drop the 3 deprecated
+  // columns. Audit (v1.8.19) confirmed:
+  //   planned_exercises: 1 row, 0 unmirrored → safe drop
+  //   actual_exercises:  3 rows, no backfill → stash first, then drop
+  //   hevy_routine_id:   0 rows                → trivial drop
+  // All operations idempotent (DROP IF EXISTS, jsonb merge guarded by
+  // NOT (metadata ? 'legacy_actual_exercises')).
+  await safeQuery('stash actual_exercises into metadata.legacy_actual_exercises', `
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'daily_plans' AND column_name = 'actual_exercises'
+      ) THEN
+        EXECUTE $sql$
+          UPDATE daily_plans
+          SET metadata = jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{legacy_actual_exercises}',
+            actual_exercises
+          ),
+          updated_at = NOW()
+          WHERE actual_exercises IS NOT NULL
+            AND jsonb_typeof(actual_exercises) = 'array'
+            AND jsonb_array_length(actual_exercises) > 0
+            AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'legacy_actual_exercises')
+        $sql$;
+      END IF;
+    END $$;
+  `);
+  await safeQuery('drop daily_plans.planned_exercises (v1.8.20)', `
+    ALTER TABLE daily_plans DROP COLUMN IF EXISTS planned_exercises
+  `);
+  await safeQuery('drop daily_plans.actual_exercises (v1.8.20)', `
+    ALTER TABLE daily_plans DROP COLUMN IF EXISTS actual_exercises
+  `);
+  await safeQuery('drop daily_plans.hevy_routine_id (v1.8.20)', `
+    ALTER TABLE daily_plans DROP COLUMN IF EXISTS hevy_routine_id
+  `);
 
   // Backfill: link existing workouts to the first segment of their plan.
   await safeQuery('backfill workouts.plan_segment_id', `
