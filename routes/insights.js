@@ -829,10 +829,17 @@ router.get('/nutrition', async (req, res) => {
       planMap.set(dateOnly(row.plan_date), row);
     }
 
-    // Hard-day detection per date — drives carb-target swing (workout day vs rest)
+    // Hard-day detection per date — drives carb-target swing (workout day vs rest).
+    // ALSO query workout_count separately so a workout with effort=NULL or
+    // effort < 5 still counts as a training day (v1.8.13 fix). Previously
+    // a deadlift session logged with effort=4 was tagged "rest day" because
+    // the threshold was strict >= 5. New rule: any workout row exists OR
+    // effort >= 5 → training day. Plan_segments with status='completed'
+    // also count.
     const wo = await query(
       `SELECT workout_date,
               MAX(effort) AS max_effort,
+              COUNT(*)::int AS workout_count,
               SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS workout_active_kcal
        FROM workouts
        WHERE workout_date >= $1 AND deleted_at IS NULL
@@ -840,6 +847,19 @@ router.get('/nutrition', async (req, res) => {
       [startDate]
     ).catch(() => ({ rows: [] }));
     const effortMap = new Map();
+    const workoutCountMap = new Map();
+    // Also count completed plan_segments as training-day signals.
+    const segR = await query(
+      `SELECT dp.plan_date,
+              COUNT(*) FILTER (WHERE ps.status = 'completed' AND ps.logging_target IN ('hevy','apple_health'))::int AS done_segments
+       FROM plan_segments ps
+       JOIN daily_plans dp ON dp.id = ps.daily_plan_id
+       WHERE dp.plan_date >= $1
+       GROUP BY dp.plan_date`,
+      [startDate]
+    ).catch(() => ({ rows: [] }));
+    const completedSegmentMap = new Map();
+    for (const row of segR.rows) completedSegmentMap.set(dateOnly(row.plan_date), Number(row.done_segments) || 0);
     // v1.8.12: workoutActiveByDate — secondary signal for active calories.
     // HAE Format A often pushes daily_activity.active_energy_kcal only
     // once per day (early), leaving it stuck at a tiny value while
@@ -850,6 +870,7 @@ router.get('/nutrition', async (req, res) => {
     for (const row of wo.rows) {
       const date = dateOnly(row.workout_date);
       effortMap.set(date, Number(row.max_effort) || 0);
+      workoutCountMap.set(date, Number(row.workout_count) || 0);
       const wa = Number(row.workout_active_kcal) || 0;
       if (wa > 0) workoutActiveByDate.set(date, Math.round(wa));
     }
@@ -896,7 +917,17 @@ router.get('/nutrition', async (req, res) => {
       const out = active + (basal || 0);
       const meal = mealMap.get(date) || { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
       const plan = planMap.get(date);
-      const isHardDay = (effortMap.get(date) || 0) >= 5;
+      // v1.8.13: training day if ANY of:
+      //   - effort >= 5 (legacy heuristic, hard sessions)
+      //   - workout exists for the day at all (catches mobility days, easy
+      //     runs, anything where the user moved purposefully)
+      //   - completed plan_segment with logging_target in (hevy, apple_health)
+      // Previously the strict effort >= 5 threshold tagged a real workout
+      // day "rest" if effort wasn't logged, leading to wrong carb targets +
+      // bad recovery-fueling guidance.
+      const hasWorkout = (workoutCountMap.get(date) || 0) > 0;
+      const hasCompletedSegment = (completedSegmentMap.get(date) || 0) > 0;
+      const isHardDay = (effortMap.get(date) || 0) >= 5 || hasWorkout || hasCompletedSegment;
       const fbCalories = weightLb ? weightLb * 14 : null;
       const fbProtein = weightKg ? weightKg * 1.8 : null;
       const fbCarbs = weightKg ? weightKg * (isHardDay ? 4.0 : 2.5) : null;
@@ -1263,6 +1294,16 @@ router.get('/trends', async (req, res) => {
     // via Mifflin-St Jeor using latest weight. HAE's daily payload
     // often omits basal entirely; without this fallback OUT looked
     // ~1500-2000 kcal too low every day.
+    // v1.8.13 fix: query latest weight here too — earlier I assumed
+    // weightKg was in scope from /nutrition handler, but /trends has
+    // its own scope. Result was "weightKg is not defined" runtime
+    // error every time the Trends tab loaded.
+    const weightR = await query(
+      `SELECT weight_lb FROM body_metrics WHERE weight_lb IS NOT NULL
+       ORDER BY measurement_date DESC LIMIT 1`
+    );
+    const weightLbForBmr = weightR.rows[0]?.weight_lb ? Number(weightR.rows[0].weight_lb) : null;
+    const weightKg = weightLbForBmr ? weightLbForBmr / 2.2046226218 : null;
     // Today-only workout active sum (this endpoint only cares about today).
     const todayWorkoutActiveR = await query(
       `SELECT SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS active_kcal

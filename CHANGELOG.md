@@ -4,6 +4,27 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.13] — 2026-05-03
+
+### Fixed — Trends tab crashed with "weightKg is not defined"
+
+v1.8.12 added BMR fallback calls inside `/insights/trends`, but referenced `weightKg` which only existed in `/insights/nutrition`'s scope. Trends tab errored on every load: `Could not load trends: weightKg is not defined`. Added an explicit `body_metrics` weight lookup at the top of the trends-handler block.
+
+### Fixed — REST DAY misclassification on workout days
+
+`is_hard_day` was strictly `effort >= 5`. A real workout logged with `effort=null` or `effort < 5` got tagged "rest day" — target calories dropped from 2400 → 2100, recovery-fueling banner fired wrong guidance, and the macros card showed REST DAY despite the user lifting that morning.
+
+New rule: training day if ANY of:
+1. Workout effort >= 5 (legacy)
+2. Any `workouts` row exists for the date
+3. Any `plan_segments` row with `status='completed'` AND `logging_target IN ('hevy','apple_health')`
+
+### Note on calorie-data freshness (not a code issue)
+
+OUT can lag Apple Health by hours because HAE only pushes on its own schedule. AB Brain is a passive webhook receiver — it can't pull from HAE. **Fix: open HAE on iPhone → Automations → set interval to 15 min.** After that, AB Brain self-corrects every 15 min. No code change in AB Brain can speed this up; the data simply isn't sent.
+
+---
+
 ## [1.8.12] — 2026-05-03
 
 ### Changed — BMR profile now reads from `athlete_profile` (existing table)
