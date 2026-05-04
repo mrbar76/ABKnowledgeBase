@@ -2429,6 +2429,26 @@ async function reviewWorkoutData(days) {
   }
 }
 
+async function runCleanupNow() {
+  const btn = document.getElementById('btn-cleanup-now');
+  const result = document.getElementById('sm-diag-result');
+  if (!confirm('Run catch-up migrations? This dedupes overlapping workouts, re-classifies stale workout_types, and rewrites legacy Hevy titles. Idempotent — safe to run multiple times.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (result) { result.style.display = 'block'; result.style.color = 'var(--text-dim)'; result.textContent = 'Running cleanup migrations…'; }
+  try {
+    const data = await api('/health/cleanup-now', { method: 'POST', body: '{}' });
+    if (result) {
+      result.style.color = data.errors?.length ? 'var(--orange)' : 'var(--green)';
+      const errs = data.errors?.length ? ` · ${data.errors.length} errors` : '';
+      result.innerHTML = `✓ Deduped ${data.dedupe} · re-classified ${data.type_reclassified} · titles fixed ${data.titles_fixed}${errs}`;
+    }
+  } catch (e) {
+    if (result) { result.style.color = 'var(--red)'; result.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Cleanup Migrations'; }
+  }
+}
+
 async function reviewFullDay() {
   const out = document.getElementById('sm-diag-output');
   const result = document.getElementById('sm-diag-result');

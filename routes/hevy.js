@@ -1138,6 +1138,22 @@ async function syncHevyWorkouts(since) {
     );
   }
 
+  // v1.8.18: run Apple-Hevy dedupe after Hevy upserts. Without this,
+  // Apple Watch auto-detected workouts that overlap a Hevy session
+  // stay as separate rows because dedupe used to fire only at the end
+  // of HAE ingest. Lazy-load to avoid a circular require with health.js.
+  let dedupedNow = 0;
+  if (inserted + updated > 0) {
+    try {
+      const { dedupeAppleWorkouts } = require('./health');
+      if (typeof dedupeAppleWorkouts === 'function') {
+        dedupedNow = await dedupeAppleWorkouts();
+      }
+    } catch (err) {
+      console.error(`[hevy/sync] dedupe after sync failed: ${err.message}`);
+    }
+  }
+
   return {
     ok: true,
     inserted,
@@ -1145,6 +1161,7 @@ async function syncHevyWorkouts(since) {
     deleted,
     skipped,
     linked,
+    deduped: dedupedNow,
     since: sinceIso,
     cursor_advanced_to: latestEventTime !== sinceIso ? latestEventTime : null,
   };

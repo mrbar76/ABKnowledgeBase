@@ -2179,6 +2179,69 @@ router.get('/diag/full-day', async (req, res) => {
   }
 });
 
+// ─── POST /api/health/cleanup-now ──────────────────────────────
+// v1.8.18: catch-up migrations triggered manually from Settings.
+// Runs three things over the existing data:
+//   1. dedupeAppleWorkouts() — collapse N Apple rows into a Hevy/manual
+//      parent when overlap >50%
+//   2. workout_type re-classification — runs normalizeWorkoutType()
+//      on title for rows where the type might be stale (e.g. PT/Mobility
+//      Block tagged 'recovery' before v1.8.16's mobility branch shipped)
+//   3. legacy Hevy title cleanup — rewrites the pre-v1.8.0
+//      "🔥 Hybrid Sun May 03 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+//      titles to a clean "May 3 — Hybrid"
+router.post('/cleanup-now', async (req, res) => {
+  try {
+    const result = { dedupe: 0, type_reclassified: 0, titles_fixed: 0, errors: [] };
+
+    // 1. Dedupe
+    try { result.dedupe = await dedupeAppleWorkouts(); }
+    catch (err) { result.errors.push({ phase: 'dedupe', error: err.message }); }
+
+    // 2. Type re-classification — fetch all rows, run normalizeWorkoutType
+    //    on title, update if different. Bounded to last 90 days for safety.
+    try {
+      const cutoff = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+      const { rows } = await query(
+        `SELECT id, title, workout_type FROM workouts
+         WHERE workout_date >= $1 AND deleted_at IS NULL AND title IS NOT NULL`,
+        [cutoff]
+      );
+      for (const r of rows) {
+        const newType = normalizeWorkoutType(r.title);
+        if (newType !== r.workout_type && newType !== 'other') {
+          await query(`UPDATE workouts SET workout_type = $1, updated_at = NOW() WHERE id = $2`, [newType, r.id]);
+          result.type_reclassified++;
+        }
+      }
+    } catch (err) { result.errors.push({ phase: 'reclassify', error: err.message }); }
+
+    // 3. Legacy Hevy title cleanup. Pattern: "{prefix} {dayname} {Mon} {DD} {YYYY}
+    //    00:00:00 GMT+0000 (Coordinated Universal Time)" → "{Mon DD} — {prefix}"
+    try {
+      const { rows } = await query(
+        `SELECT id, title, workout_date FROM workouts
+         WHERE title LIKE '%GMT+0000%' AND title LIKE '%Coordinated Universal Time%'`
+      );
+      for (const r of rows) {
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const d = new Date(r.workout_date);
+        const dateLabel = `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+        // Extract the prefix (before the date garbage). E.g. "🔥 Hybrid"
+        const prefix = String(r.title).split(/\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s/i)[0].trim();
+        const cleaned = `${dateLabel} — ${prefix.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/u, '').trim()}`;
+        await query(`UPDATE workouts SET title = $1, updated_at = NOW() WHERE id = $2`, [cleaned, r.id]);
+        result.titles_fixed++;
+      }
+    } catch (err) { result.errors.push({ phase: 'titles', error: err.message }); }
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error(`[health/cleanup-now] ${err.stack}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
@@ -2192,3 +2255,4 @@ module.exports.mergeBodyMetricDuplicates = mergeBodyMetricDuplicates;
 module.exports.pickEnergyKcal = pickEnergyKcal;
 module.exports.parseFormatDWorkouts = parseFormatDWorkouts;
 module.exports.normalizeWorkoutType = normalizeWorkoutType;
+module.exports.dedupeAppleWorkouts = dedupeAppleWorkouts;

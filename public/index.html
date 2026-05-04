@@ -148,6 +148,10 @@
                   <button class="btn-action btn-action-secondary" onclick="reviewFullDay()" id="btn-diag-fullday">Audit Day</button>
                 </div>
               </div>
+              <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Catch-up migrations — runs Apple/Hevy overlap dedupe, re-runs the workout_type classifier, rewrites legacy Hevy titles ("🔥 Hybrid ... GMT+0000"). Idempotent.</div>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="runCleanupNow()" id="btn-cleanup-now">Run Cleanup Migrations</button>
+              </div>
             </div>
             <div class="sm-card">
               <div class="sm-card-label">Athlete Profile</div>
@@ -850,7 +854,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.17</span>
+          AB Brain <span id="sm-version">v1.8.18</span>
         </div>
 
       </div>

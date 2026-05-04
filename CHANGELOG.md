@@ -4,6 +4,29 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.18] — 2026-05-04
+
+### Fixed — three findings from the v1.8.17 diagnostic dump
+
+User pulled `/api/health/diag/workouts?days=30` (51 rows, 28 anomalies). Three actionable issues:
+
+1. **Today's PT row didn't merge into the Hevy parent (93% time overlap, should have).** Root cause: dedupe ran at the end of HAE ingest only. Hevy /sync added rows AFTER and didn't trigger dedupe. → **Wired `dedupeAppleWorkouts()` into Hevy /sync** (after `inserted+updated > 0`). Lazy-loaded via `require('./health')` to avoid circular import.
+
+2. **PT/Mobility Block row tagged `workout_type='recovery'`, not `mobility`.** v1.8.16 added the mobility branch to `normalizeWorkoutType` but only at write time — existing rows kept their stale type. → **Catch-up migration in `POST /api/health/cleanup-now`**: re-runs the classifier on every row's title from the last 90 days; only updates when the new type differs and isn't `other`.
+
+3. **Legacy `"🔥 Hybrid Sun May 03 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"` titles still on disk.** v1.8.0 stopped *generating* this format but didn't fix existing rows. → Same `cleanup-now` endpoint detects rows with `'GMT+0000'` AND `'Coordinated Universal Time'` in title, rewrites to `"May 3 — Hybrid"` (the v1.8.0 format).
+
+### Added — Settings → Run Cleanup Migrations button
+One click runs all three catch-up migrations. Idempotent. Result panel shows `Deduped N · re-classified M · titles fixed K`.
+
+### Bug #4 (synthetic wrapper) confirmed not a bug
+Today's `2751fa34` is a real Hevy-sourced row (`source='hevy'`, `hevy_id=f79f...`). Coach's hypothesis that it was an AB Brain auto-creation was wrong. The misleading "🔥 Hybrid" title came from the legacy Hevy routine name, fixed by the title cleanup above.
+
+### Apr 26 Vernon double-count remains a manual-data issue
+The two rows have the same duration/distance/calories but `started_at` 4 hours apart (manual entry typo on the 19:42 UTC row). Dedupe correctly doesn't merge non-overlapping windows. User needs to update the manual row's `started_at` to match Apple Watch (`15:47 UTC`).
+
+---
+
 ## [1.8.17] — 2026-05-03
 
 ### Fixed — Path B importer writing seconds into duration_minutes column
