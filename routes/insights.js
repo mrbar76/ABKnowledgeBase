@@ -730,9 +730,11 @@ router.get('/nutrition', async (req, res) => {
     // selected nutritionDate so the card follows the date picker.
     const targetDate = req.query.date || null;
 
-    // Activity output (active + basal kcal)
+    // Activity output (active + basal kcal). Pull updated_at so the UI
+    // can show "synced N min ago" and basal_energy_kcal can fall back
+    // to BMR when null.
     const a = await query(
-      `SELECT activity_date, active_energy_kcal, basal_energy_kcal
+      `SELECT activity_date, active_energy_kcal, basal_energy_kcal, updated_at
        FROM daily_activity
        WHERE activity_date >= $1
        ORDER BY activity_date ASC`,
@@ -809,7 +811,20 @@ router.get('/nutrition', async (req, res) => {
 
     const history = a.rows.map(r => {
       const date = dateOnly(r.activity_date);
-      const out = (Number(r.active_energy_kcal) || 0) + (Number(r.basal_energy_kcal) || 0);
+      const active = Number(r.active_energy_kcal) || 0;
+      // BMR fallback (v1.8.10/.11): when basal_energy_kcal is null (HAE
+      // doesn't always export it), estimate via Mifflin-St Jeor using
+      // latest weight + USER_HEIGHT_CM/USER_AGE/USER_SEX env vars.
+      let basal = r.basal_energy_kcal != null ? Number(r.basal_energy_kcal) : null;
+      let basalSource = basal != null ? 'apple_health' : null;
+      if (basal == null) {
+        const estimate = bmrForDate(weightKg, date);
+        if (estimate != null) {
+          basal = estimate;
+          basalSource = 'bmr_estimated';
+        }
+      }
+      const out = active + (basal || 0);
       const meal = mealMap.get(date) || { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
       const plan = planMap.get(date);
       const isHardDay = (effortMap.get(date) || 0) >= 5;
@@ -822,6 +837,11 @@ router.get('/nutrition', async (req, res) => {
         is_hard_day: isHardDay,
         calories_in: Math.round(meal.kcal),
         calories_out: Math.round(out),
+        // v1.8.11: surface breakdown so UI can show "active X · basal Y est."
+        calories_active: r.active_energy_kcal != null ? Math.round(active) : null,
+        calories_basal: basal != null ? Math.round(basal) : null,
+        basal_source: basalSource,
+        last_synced_at: r.updated_at || null,
         balance: Math.round(meal.kcal - out),
         protein_g: Math.round(meal.protein_g),
         carbs_g: Math.round(meal.carbs_g),

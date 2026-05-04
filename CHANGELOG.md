@@ -4,6 +4,27 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.11] — 2026-05-03
+
+### Fixed — Macros tab still showed "active null · basal null"
+
+v1.8.10 added BMR fallback to `/insights/nutrition/macros/today`, but the Macros tab in the Fitness UI actually calls a different endpoint: `/health/insights/nutrition?days=14&date=...`. That endpoint was unchanged, so it returned `calories_out` summed correctly but never exposed `calories_active`, `calories_basal`, `basal_source`, or `last_synced_at`. UI saw `undefined` and rendered "active null · basal null" even when the underlying numbers were fine.
+
+Patched `/health/insights/nutrition` (`router.get('/nutrition')`) so every `history[]` entry now carries:
+- `calories_active` — real active from `daily_activity.active_energy_kcal`
+- `calories_basal` — real basal OR BMR fallback (Mifflin-St Jeor)
+- `basal_source` — `'apple_health'` | `'bmr_estimated'` | `null`
+- `last_synced_at` — `daily_activity.updated_at`
+
+Same BMR fallback rules as v1.8.10: latest weight from RENPHO + `USER_HEIGHT_CM` / `USER_AGE` / `USER_SEX` env vars (defaults 175 cm / 38 yo / male). Pro-rated by elapsed-day fraction for "today"; full BMR for past dates.
+
+After deploy, hard-refresh the Macros tab — the OUT line will read like:
+> `1757 burned (basal 1757 est.) · synced —`
+
+(active will still be `null` if HAE hasn't synced any active energy for the day yet — that's not BMR's job).
+
+---
+
 ## [1.8.10] — 2026-05-03
 
 ### Fixed — OUT/balance calculation no longer depends on HAE supplying basal

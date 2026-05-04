@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.11 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Macros tab still showed &ldquo;active null &middot; basal null&rdquo; despite v1.8.10.</strong> Two endpoints exist; v1.8.10 patched the wrong one. The Macros UI uses <code>/health/insights/nutrition</code>, not <code>/insights/nutrition/macros/today</code>.</p>
+                  <p>Patched <code>/health/insights/nutrition</code> with the same BMR fallback + breakdown fields (<code>calories_active</code>, <code>calories_basal</code>, <code>basal_source</code>, <code>last_synced_at</code>).</p>
+                  <p>After deploy &amp; hard-refresh, OUT line should read &ldquo;1757 burned (basal 1757 est.)&rdquo; or similar &mdash; basal will be populated either from HAE or BMR.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.10 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -777,7 +790,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.10</span>
+          AB Brain <span id="sm-version">v1.8.11</span>
         </div>
 
       </div>
