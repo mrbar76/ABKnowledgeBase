@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.12 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>BMR profile from <code>athlete_profile</code> instead of made-up env defaults.</strong> Seeded with user-supplied values: 49 yo male, 5&apos;1&quot;. Edit via existing <code>POST /api/athlete/profile</code>.</p>
+                  <p><strong>Active calories no longer held hostage by HAE Format A cadence.</strong> OUT now uses <code>MAX(daily_activity.active, SUM(today&apos;s workouts.active_calories))</code>. Surfaces <code>active_source</code> tag.</p>
+                  <p><strong>Coach found 6 deeper data-pipeline bugs.</strong> Tackling those as v1.8.13: AH dropping calories_burned, seconds-as-minutes regression, Apple Watch dedupe missing, wrong source tags, PT classification, stale title generator.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.11 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -790,7 +803,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.11</span>
+          AB Brain <span id="sm-version">v1.8.12</span>
         </div>
 
       </div>

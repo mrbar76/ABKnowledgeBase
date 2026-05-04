@@ -4,6 +4,40 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.12] — 2026-05-03
+
+### Changed — BMR profile now reads from `athlete_profile` (existing table)
+
+v1.8.10/.11 used `USER_HEIGHT_CM` / `USER_AGE` / `USER_SEX` env vars with made-up defaults (175 cm / 38 yo / male). That was placeholder engineering — the user's real values were never anywhere in the DB.
+
+Refactor:
+- `loadUserProfile()` now queries `athlete_profile` (existing versioned table from `routes/athlete.js`). Picks the row active today via `effective_from`/`effective_to`. Converts `height_in` → cm for the Mifflin-St Jeor formula.
+- Idempotent seed inserted with the user-supplied values from chat: 49 yo male, 5'1" (61 in), birth_date 1977-01-01. Only seeded if no `athlete_profile` row exists.
+- Env vars (`USER_*`) remain as fallback for legacy deploys but `athlete_profile` always wins.
+- Settings UI / Coach can edit profile via existing `POST /api/athlete/profile` (creates new versioned row, auto-closes prior).
+
+### Fixed — active calories no longer held hostage by HAE Format A push cadence
+
+`daily_activity.active_energy_kcal` for today was stuck at 9 kcal because HAE Format A only pushes daily summaries once per day; subsequent pushes don't update active. Apple Watch shows 1,500+ active kcal but AB Brain stays at the early-morning value.
+
+**Augmented OUT calculation:** `active = MAX(daily_activity.active_energy_kcal, SUM(today's workouts.active_calories))`. Workouts log active calories as they're synced; if Hevy/HAE workout sync ran more recently than the Format A daily push, the workout sum is closer to truth. API response surfaces `active_source: 'apple_health' | 'workouts_sum'` so the UI can flag.
+
+**Edge case:** today has no `daily_activity` row at all (HAE silent) → BMR + workout-active still produces a non-zero OUT.
+
+### Note — v1.8.13 will tackle 6 deeper data-pipeline bugs Coach surfaced
+
+This release improves the math on whatever data exists. The actual data is still corrupt:
+1. AH ingest dropping `calories_burned` (every workout shows 0)
+2. Seconds-as-minutes bug regressing on new imports
+3. Apple Watch session not deduped (5 rows for one workout)
+4. Hevy-sourced workouts tagged `source: apple_health`
+5. PT/Mobility blocks tagged `strength`
+6. "Forearm Rebuild" still in auto-titles despite memory edit
+
+Tackling those next as v1.8.13.
+
+---
+
 ## [1.8.11] — 2026-05-03
 
 ### Fixed — Macros tab still showed "active null · basal null"

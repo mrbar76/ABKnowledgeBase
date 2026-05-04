@@ -9,24 +9,71 @@ const express = require('express');
 // depends on the user's HAE app config and which export format is
 // active. When basal is null in daily_activity, we estimate it via
 // Mifflin-St Jeor BMR using the user's latest weight + profile from
-// env vars. Independent of HAE quirks; deterministic.
+// the user_profile table (with env-var fallback for legacy deploys).
+// Independent of HAE quirks; deterministic.
 //
-// Env config (all optional, sensible defaults applied):
-//   USER_HEIGHT_CM   default 175
-//   USER_AGE         default 38
-//   USER_SEX         default 'male'  (other valid: 'female')
+// Profile precedence:
+//   1. user_profile row (set via PUT /api/user-profile or DB seed)
+//   2. USER_HEIGHT_CM / USER_AGE / USER_SEX env vars (legacy)
+//   3. Last-resort defaults (175 cm / 40 yo / male) clearly marked as
+//      placeholder so it's obvious the data wasn't provided.
 //
 // Mifflin-St Jeor (1990) is the most accurate population formula
 // without indirect calorimetry — typically within ±10% for adults:
 //   Men:   10·kg + 6.25·cm − 5·age + 5
 //   Women: 10·kg + 6.25·cm − 5·age − 161
-//
-// Returns null if weightKg is null (can't compute without it).
-function computeBmrKcal(weightKg) {
+
+let _profileCache = null;
+let _profileCacheAt = 0;
+
+async function loadUserProfile() {
+  // Cache for 60s — profile changes rarely. Avoids a query per macros call.
+  // Reads from athlete_profile (existing table — versioned by
+  // effective_from/to). Picks the row active today.
+  if (_profileCache && Date.now() - _profileCacheAt < 60_000) return _profileCache;
+  try {
+    const r = await query(`
+      SELECT height_in, birth_date, sex
+      FROM athlete_profile
+      WHERE effective_from <= CURRENT_DATE
+        AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
+      ORDER BY effective_from DESC LIMIT 1
+    `);
+    const row = r.rows[0];
+    _profileCache = row ? {
+      // Convert height_in (athlete_profile schema) to height_cm (BMR formula).
+      height_cm: row.height_in != null ? Number(row.height_in) * 2.54 : null,
+      birth_date: row.birth_date,
+      sex: row.sex,
+    } : null;
+  } catch (_) { _profileCache = null; }
+  _profileCacheAt = Date.now();
+  return _profileCache;
+}
+
+function ageFromBirthDate(birthDate) {
+  if (!birthDate) return null;
+  const bd = new Date(birthDate);
+  if (isNaN(bd.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - bd.getFullYear();
+  const m = now.getMonth() - bd.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < bd.getDate())) age--;
+  return age;
+}
+
+async function computeBmrKcal(weightKg) {
   if (weightKg == null || !Number.isFinite(Number(weightKg))) return null;
-  const heightCm = Number(process.env.USER_HEIGHT_CM) || 175;
-  const age = Number(process.env.USER_AGE) || 38;
-  const sex = (process.env.USER_SEX || 'male').toLowerCase();
+  const profile = await loadUserProfile();
+  const heightCm = profile?.height_cm != null
+    ? Number(profile.height_cm)
+    : (Number(process.env.USER_HEIGHT_CM) || 175);
+  const age = profile?.birth_date != null
+    ? ageFromBirthDate(profile.birth_date)
+    : (Number(process.env.USER_AGE) || 40);
+  const sex = profile?.sex
+    ? String(profile.sex).toLowerCase()
+    : (process.env.USER_SEX || 'male').toLowerCase();
   const sexAdjust = sex === 'female' ? -161 : 5;
   const bmr = 10 * Number(weightKg) + 6.25 * heightCm - 5 * age + sexAdjust;
   return Math.round(bmr);
@@ -36,8 +83,8 @@ function computeBmrKcal(weightKg) {
 // late evening is essentially full-day BMR + active-so-far. AB Brain
 // has historically shown OUT mid-day too; pro-rating prevents
 // surplus/deficit numbers from looking inflated at 8 AM.
-function bmrForDate(weightKg, dateStr) {
-  const full = computeBmrKcal(weightKg);
+async function bmrForDate(weightKg, dateStr) {
+  const full = await computeBmrKcal(weightKg);
   if (full == null) return null;
   const today = new Date().toISOString().slice(0, 10);
   if (dateStr !== today) return full;
@@ -784,14 +831,28 @@ router.get('/nutrition', async (req, res) => {
 
     // Hard-day detection per date — drives carb-target swing (workout day vs rest)
     const wo = await query(
-      `SELECT workout_date, MAX(effort) AS max_effort
+      `SELECT workout_date,
+              MAX(effort) AS max_effort,
+              SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS workout_active_kcal
        FROM workouts
-       WHERE workout_date >= $1
+       WHERE workout_date >= $1 AND deleted_at IS NULL
        GROUP BY workout_date`,
       [startDate]
     ).catch(() => ({ rows: [] }));
     const effortMap = new Map();
-    for (const row of wo.rows) effortMap.set(dateOnly(row.workout_date), Number(row.max_effort) || 0);
+    // v1.8.12: workoutActiveByDate — secondary signal for active calories.
+    // HAE Format A often pushes daily_activity.active_energy_kcal only
+    // once per day (early), leaving it stuck at a tiny value while
+    // workouts log many active kcal throughout the day. We use
+    // max(daily_activity, workout_sum) so OUT isn't held hostage by
+    // HAE push cadence.
+    const workoutActiveByDate = new Map();
+    for (const row of wo.rows) {
+      const date = dateOnly(row.workout_date);
+      effortMap.set(date, Number(row.max_effort) || 0);
+      const wa = Number(row.workout_active_kcal) || 0;
+      if (wa > 0) workoutActiveByDate.set(date, Math.round(wa));
+    }
 
     // Latest weight for per-kg targets
     const w = await query(
@@ -809,16 +870,24 @@ router.get('/nutrition', async (req, res) => {
       return { actual: Math.round(actual), target, deficit, source };
     }
 
-    const history = a.rows.map(r => {
+    const history = await Promise.all(a.rows.map(async r => {
       const date = dateOnly(r.activity_date);
-      const active = Number(r.active_energy_kcal) || 0;
+      const haeActive = Number(r.active_energy_kcal) || 0;
+      const workoutActive = workoutActiveByDate.get(date) || 0;
+      // v1.8.12: take max(HAE, workouts) so OUT isn't held hostage by
+      // HAE Format A's once-per-day push cadence. When the watch
+      // tracks a workout, HAE eventually catches up — but until then
+      // workout active_calories is a closer estimate than the stale
+      // daily_activity row.
+      const active = Math.max(haeActive, workoutActive);
+      const activeSource = workoutActive > haeActive ? 'workouts_sum' : 'apple_health';
       // BMR fallback (v1.8.10/.11): when basal_energy_kcal is null (HAE
       // doesn't always export it), estimate via Mifflin-St Jeor using
-      // latest weight + USER_HEIGHT_CM/USER_AGE/USER_SEX env vars.
+      // user_profile (set by user) + last-resort defaults.
       let basal = r.basal_energy_kcal != null ? Number(r.basal_energy_kcal) : null;
       let basalSource = basal != null ? 'apple_health' : null;
       if (basal == null) {
-        const estimate = bmrForDate(weightKg, date);
+        const estimate = await bmrForDate(weightKg, date);
         if (estimate != null) {
           basal = estimate;
           basalSource = 'bmr_estimated';
@@ -838,9 +907,12 @@ router.get('/nutrition', async (req, res) => {
         calories_in: Math.round(meal.kcal),
         calories_out: Math.round(out),
         // v1.8.11: surface breakdown so UI can show "active X · basal Y est."
-        calories_active: r.active_energy_kcal != null ? Math.round(active) : null,
+        // v1.8.12: also expose active_source so UI can flag
+        // "(active from workouts — HAE stale)" when applicable.
+        calories_active: active > 0 ? Math.round(active) : null,
         calories_basal: basal != null ? Math.round(basal) : null,
         basal_source: basalSource,
+        active_source: active > 0 ? activeSource : null,
         last_synced_at: r.updated_at || null,
         balance: Math.round(meal.kcal - out),
         protein_g: Math.round(meal.protein_g),
@@ -857,7 +929,7 @@ router.get('/nutrition', async (req, res) => {
           fat:      macroBlock(meal.fat_g, plan?.target_fat_g, fbFat),
         },
       };
-    });
+    }));
 
     // `today` follows the UI date selector when ?date= is passed. Falls back
     // to the most-recent activity row otherwise.
@@ -1191,14 +1263,24 @@ router.get('/trends', async (req, res) => {
     // via Mifflin-St Jeor using latest weight. HAE's daily payload
     // often omits basal entirely; without this fallback OUT looked
     // ~1500-2000 kcal too low every day.
+    // Today-only workout active sum (this endpoint only cares about today).
+    const todayWorkoutActiveR = await query(
+      `SELECT SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS active_kcal
+       FROM workouts WHERE workout_date = $1 AND deleted_at IS NULL`,
+      [today]
+    );
+    const todayWorkoutActive = Math.round(Number(todayWorkoutActiveR.rows[0]?.active_kcal) || 0);
+
     const calBreakdownByDate = new Map();
     for (const r of daRows) {
       const dateKey = dateOnly(r.activity_date);
-      const active = Number(r.active_energy_kcal) || 0;
+      const haeActive = Number(r.active_energy_kcal) || 0;
+      const isToday = dateKey === today;
+      const active = isToday ? Math.max(haeActive, todayWorkoutActive) : haeActive;
       let basal = r.basal_energy_kcal != null ? Number(r.basal_energy_kcal) : null;
       let basalSource = basal != null ? 'apple_health' : null;
       if (basal == null) {
-        const estimate = bmrForDate(weightKg, dateKey);
+        const estimate = await bmrForDate(weightKg, dateKey);
         if (estimate != null) {
           basal = estimate;
           basalSource = 'bmr_estimated';
@@ -1207,21 +1289,24 @@ router.get('/trends', async (req, res) => {
       const out = active + (basal || 0);
       if (out > 0) calBurnByDate.set(dateKey, out);
       calBreakdownByDate.set(dateKey, {
-        active: r.active_energy_kcal != null ? Math.round(active) : null,
+        active: active > 0 ? Math.round(active) : null,
+        active_source: active > 0 ? (active > haeActive ? 'workouts_sum' : 'apple_health') : null,
         basal: basal != null ? Math.round(basal) : null,
         basal_source: basalSource,
         last_synced_at: r.updated_at || null,
       });
     }
     // Special case: if `today` has NO daily_activity row at all (HAE
-    // hasn't synced yet today), still inject a BMR estimate so OUT
-    // isn't suspiciously zero.
+    // hasn't synced yet today), still inject a BMR + workout-active
+    // estimate so OUT isn't suspiciously zero.
     if (!calBreakdownByDate.has(today)) {
-      const estimate = bmrForDate(weightKg, today);
-      if (estimate != null) {
-        calBurnByDate.set(today, estimate);
+      const estimate = await bmrForDate(weightKg, today);
+      const out = (estimate || 0) + todayWorkoutActive;
+      if (out > 0) {
+        calBurnByDate.set(today, out);
         calBreakdownByDate.set(today, {
-          active: null,
+          active: todayWorkoutActive > 0 ? todayWorkoutActive : null,
+          active_source: todayWorkoutActive > 0 ? 'workouts_sum' : null,
           basal: estimate,
           basal_source: 'bmr_estimated',
           last_synced_at: null,
@@ -1253,7 +1338,7 @@ router.get('/trends', async (req, res) => {
     const protein30 = proteinSeries.slice(-30);
     const protein60Prior = proteinSeries.slice(-90, -30);
 
-    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, basal: null, basal_source: null, last_synced_at: null };
+    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, active_source: null, basal: null, basal_source: null, last_synced_at: null };
     const nutrition = {
       today: {
         calories_in: Math.round(Number(todayMeal.kcal) || 0),
@@ -1266,6 +1351,7 @@ router.get('/trends', async (req, res) => {
         calories_active: todayBreakdown.active,
         calories_basal: todayBreakdown.basal,
         basal_source: todayBreakdown.basal_source,
+        active_source: todayBreakdown.active_source,
         last_synced_at: todayBreakdown.last_synced_at,
         balance: Math.round((Number(todayMeal.kcal) || 0) - (calBurnByDate.get(today) || 0)),
         protein_g: Math.round(Number(todayMeal.protein) || 0),

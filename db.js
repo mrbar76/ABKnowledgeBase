@@ -1528,6 +1528,16 @@ async function initDB() {
     )`);
   await safeQuery('athlete_profile index', `CREATE INDEX IF NOT EXISTS idx_athlete_profile_dates ON athlete_profile(effective_from DESC)`);
 
+  // v1.8.12: seed an athlete_profile row from user-supplied values
+  // (49 yo male, 5'1") so BMR computation has real inputs immediately.
+  // Only inserts if NO row exists at all (any existing row wins).
+  await safeQuery('athlete_profile seed', `
+    INSERT INTO athlete_profile (effective_from, height_in, birth_date, sex, set_by, notes)
+    SELECT CURRENT_DATE, 61, '1977-01-01', 'male', 'system',
+           'Seeded v1.8.12 from chat values: 49 yo male, 5''1"'
+    WHERE NOT EXISTS (SELECT 1 FROM athlete_profile)
+  `);
+
   // ===== RACES =====
   // First-class race calendar. Replaces the prior tag-inference pattern
   // (renderRaceCountdownCard scanning daily_plans for workout_type=/race/i).
