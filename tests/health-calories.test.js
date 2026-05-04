@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 
 // Don't require DATABASE_URL; we only test pure parsers.
 process.env.HEVY_API_KEY = process.env.HEVY_API_KEY || 'test';
-const { pickEnergyKcal, parseFormatDWorkouts } = require('../routes/health');
+const { pickEnergyKcal, parseFormatDWorkouts, sanitizeHrText, fixMojibake } = require('../routes/health');
 
 test('pickEnergyKcal handles canonical { qty, units } shape', () => {
   assert.equal(pickEnergyKcal({ activeEnergyBurned: { qty: 365, units: 'kcal' } }, ['activeEnergyBurned']), 365);
@@ -157,4 +157,94 @@ test('NEAT clamps to 0 when workout_sum > daily_active (overlap dedupe failed)',
   const workoutSum = 600;
   const neat = Math.max(0, dailyActive - workoutSum);
   assert.equal(neat, 0);
+});
+
+// v1.8.23: HR object-shape unwrap. The canonical HAE shape is
+// { qty: <number>, units: "count/min" }. Before this fix, every Apple
+// Watch workout's heart_rate_avg/heart_rate_max landed null because
+// Number({qty, units}) → NaN.
+test('sanitizeHrText unwraps {qty, units} HAE objects', () => {
+  assert.equal(sanitizeHrText({ qty: 88.27, units: 'count/min' }), '88');
+  assert.equal(sanitizeHrText({ qty: 116, units: 'count/min' }), '116');
+});
+
+test('sanitizeHrText still handles flat numbers and numeric strings', () => {
+  assert.equal(sanitizeHrText(140), '140');
+  assert.equal(sanitizeHrText('132 bpm'), '132');
+});
+
+test('sanitizeHrText returns null for invalid HR shapes', () => {
+  assert.equal(sanitizeHrText(null), null);
+  assert.equal(sanitizeHrText({ units: 'count/min' }), null); // qty missing
+  assert.equal(sanitizeHrText({ qty: null }), null);
+  assert.equal(sanitizeHrText('NaN'), null);
+  assert.equal(sanitizeHrText(0), null);
+});
+
+test('parseFormatDWorkouts populates HR fields from canonical {qty} shape (regression)', () => {
+  const body = {
+    data: {
+      workouts: [{
+        id: 'w1',
+        name: 'Traditional Strength Training',
+        start: '2026-05-03 14:17:03 -0400',
+        end: '2026-05-03 14:30:40 -0400',
+        duration: 816,
+        activeEnergyBurned: { qty: 63.27, units: 'kcal' },
+        heartRate: {
+          avg: { qty: 88.27, units: 'count/min' },
+          max: { qty: 116, units: 'count/min' },
+        },
+        avgHeartRate: { qty: 88.27, units: 'count/min' },
+        maxHeartRate: { qty: 116, units: 'count/min' },
+      }],
+    },
+  };
+  const out = parseFormatDWorkouts(body);
+  assert.equal(out[0].heart_rate_avg, '88');
+  assert.equal(out[0].heart_rate_max, '116');
+});
+
+// v1.8.23: HAE/Apple Watch device names round-trip through tools that
+// re-decode UTF-8 as Windows-1252, producing strings like "Avi<mojibake>s Apple<mojibake>Watch".
+// The mojibake bytes are: U+00E2 U+20AC U+2122 (apostrophe) and U+00C2 U+00A0 (NBSP).
+// Built via \u escapes so the literal NBSP byte survives any editor/tool
+// that silently coerces NBSP into a regular space.
+const MOJIBAKE_DEVICE = 'Avi\u00E2\u20AC\u2122s Apple\u00C2\u00A0Watch';
+const CLEAN_DEVICE = 'Avi\u2019s Apple\u00A0Watch';
+
+test('fixMojibake repairs UTF-8-as-CP1252 device names', () => {
+  assert.equal(fixMojibake(MOJIBAKE_DEVICE), CLEAN_DEVICE);
+  assert.equal(fixMojibake('GymKit|' + MOJIBAKE_DEVICE), 'GymKit|' + CLEAN_DEVICE);
+});
+
+test('fixMojibake passes through clean strings unchanged', () => {
+  assert.equal(fixMojibake(CLEAN_DEVICE), CLEAN_DEVICE);
+  assert.equal(fixMojibake('iPhone'), 'iPhone');
+  assert.equal(fixMojibake(''), '');
+  assert.equal(fixMojibake(null), null);
+});
+
+test('parseFormatDWorkouts repairs mojibake in nested metadata sources', () => {
+  const body = {
+    data: {
+      workouts: [{
+        id: 'w1',
+        name: 'Indoor Run',
+        start: '2026-05-03 13:22:21 -0400',
+        end: '2026-05-03 13:55:30 -0400',
+        duration: 1989,
+        activeEnergyBurned: { qty: 140, units: 'kcal' },
+        heartRateData: [
+          { Avg: 117, Min: 117, Max: 117, source: MOJIBAKE_DEVICE, units: 'count/min', date: '2026-05-03 13:22:21 -0400' },
+        ],
+        stepCount: [
+          { qty: 1, source: MOJIBAKE_DEVICE + '|iPhone AB', units: 'count', date: '2026-05-03 13:22:30 -0400' },
+        ],
+      }],
+    },
+  };
+  const out = parseFormatDWorkouts(body);
+  assert.equal(out[0].metadata.heartRateData[0].source, CLEAN_DEVICE);
+  assert.equal(out[0].metadata.stepCount[0].source, CLEAN_DEVICE + '|iPhone AB');
 });

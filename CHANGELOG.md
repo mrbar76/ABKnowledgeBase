@@ -4,6 +4,39 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.23] — 2026-05-04
+
+### Apple Watch HR drop + HAE source-name mojibake
+
+User shared a partial HAE export that surfaced two latent parser bugs.
+
+**1. Apple Watch heart rate landed null on every workout.**
+- HAE canonical workout shape ships HR as `heartRate.avg = { qty: 88.27, units: "count/min" }` (and the same shape on `avgHeartRate` / `maxHeartRate`).
+- `sanitizeHrText` only handled strings + numbers; `Number({qty,units}) → NaN → null`.
+- Result: every Apple Watch strength/cardio session had `heart_rate_avg = NULL`, `heart_rate_max = NULL`. Recovery / TSS / zone-time downstream were all running on missing data.
+- Fix: unwrap `.qty` from object-shaped HR values up-front. Same pattern as `pickEnergyKcal`.
+
+**2. HAE device names round-tripped through Windows-1252 → mojibake.**
+- Some pipelines (notably the iOS Shortcut bridge into a couple of automation tools) re-decode UTF-8 source-name bytes as CP1252 then re-encode as UTF-8. `Avi's Apple Watch` becomes `Aviâ€™s AppleÂ Watch` (apostrophe `\xE2\x80\x99` → `â€™`; NBSP `\xC2\xA0` → `Â `).
+- New `fixMojibake()` helper: maps each char back to its CP1252 byte (with the high-page mapping for chars like `€`, `™`, `'`), reinterprets the byte stream as UTF-8, and only adopts the repair if no `U+FFFD` replacement chars appear.
+- Applied via `repairSourceStrings()` walker to every `source` / `sourceName` / `device` string in workout metadata before persistence. Top-level `source: 'apple_health'` constant is unaffected.
+
+**3. More per-second streams retained in metadata.**
+- HAE workout payloads include `heartRateRecovery`, `stepCount`, `activeEnergy`, `walkingAndRunningDistance` as time-series arrays. Only `heartRateData` was being kept; the others were dropped on the floor.
+- These streams now land in `workouts.metadata` so post-hoc analysis (recovery curves, cadence, second-by-second pacing) can use them without re-ingesting the raw HAE payload.
+
+### Tests
+- `sanitizeHrText` regression: `{qty,units}` shape returns the `qty` value rounded.
+- `parseFormatDWorkouts` regression: HR fields populate from canonical shape (was the bug).
+- `fixMojibake`: round-trips a known mojibake string back to clean UTF-8; passes through clean strings unchanged; returns input on null/empty.
+- `parseFormatDWorkouts` end-to-end: mojibake'd `source` strings inside `heartRateData` and `stepCount` come out clean.
+
+### Out of scope
+- Bulk repair of historical workout rows whose `metadata.heartRateData[].source` already shipped mojibake'd (only future ingests are clean). A one-off backfill is trivial if needed: `UPDATE workouts SET metadata = repair(metadata) WHERE source='apple_health'` — defer until a user actually queries against those values.
+- Repairing display strings outside `metadata.*.source` (e.g. user-typed workout notes that happen to contain mojibake). Out of scope for this branch.
+
+---
+
 ## [1.8.22] — 2026-05-04
 
 ### Apple-stale auto-rescue + HAE paste-import

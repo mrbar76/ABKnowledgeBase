@@ -294,6 +294,10 @@ function parseFormatA(body) {
 // an empty list. Returns null for non-finite or string-NaN inputs.
 function sanitizeHrText(v) {
   if (v == null) return null;
+  // HAE canonical shape: { qty, units }. Older versions ship a flat number
+  // or stringified value. Without the .qty unwrap every Apple Watch HR row
+  // landed null (Number({...}) → NaN).
+  if (typeof v === 'object' && v.qty != null) v = v.qty;
   if (typeof v === 'string') {
     const lower = v.trim().toLowerCase();
     if (!lower || ['nan', 'null', 'none', '-', 'undefined'].includes(lower)) return null;
@@ -301,6 +305,62 @@ function sanitizeHrText(v) {
   const n = Number(typeof v === 'string' ? v.replace(/[^\d.]/g, '') : v);
   if (!Number.isFinite(n) || n <= 0) return null;
   return String(Math.round(n));
+}
+
+// HAE serializes device names as UTF-8 but some downstream tools re-decode
+// the bytes as Windows-1252, producing strings like "Aviâ€™s AppleÂ Watch"
+// where every multi-byte UTF-8 sequence shows up as 2-3 garbage chars.
+// Reverse the corruption by mapping each char back to its CP1252 byte and
+// reinterpreting the byte stream as UTF-8.
+const CP1252_HIGH = [
+  0x20AC, 0x0000, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+  0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x0000, 0x017D, 0x0000,
+  0x0000, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+  0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x0000, 0x017E, 0x0178,
+];
+
+function fixMojibake(s) {
+  if (typeof s !== 'string' || !s) return s;
+  // Cheap heuristic: only attempt repair if mojibake markers are present.
+  if (!/â€|Â|Ã[-¿]/.test(s)) return s;
+  const bytes = [];
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (cp <= 0xFF) {
+      bytes.push(cp);
+    } else {
+      const idx = CP1252_HIGH.indexOf(cp);
+      if (idx >= 0) bytes.push(0x80 + idx);
+      else return s; // unknown high codepoint — bail rather than mangle
+    }
+  }
+  try {
+    const repaired = Buffer.from(bytes).toString('utf8');
+    if (/�/.test(repaired)) return s;
+    return repaired;
+  } catch {
+    return s;
+  }
+}
+
+// Walk an object/array and repair any string fields named `source` (and
+// any other obvious display strings) in place. Used on metadata-bound
+// arrays like heartRateData[] before persistence so the stored JSON
+// reflects the user's actual device name instead of the corrupted form.
+function repairSourceStrings(obj) {
+  if (Array.isArray(obj)) {
+    for (const el of obj) repairSourceStrings(el);
+  } else if (obj && typeof obj === 'object') {
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (typeof v === 'string' && (k === 'source' || k === 'sourceName' || k === 'device')) {
+        obj[k] = fixMojibake(v);
+      } else if (v && typeof v === 'object') {
+        repairSourceStrings(v);
+      }
+    }
+  }
+  return obj;
 }
 
 function formatDuration(sec) {
@@ -548,7 +608,7 @@ function parseFormatDWorkouts(body) {
       location: typeof w.location === 'string' ? w.location.toLowerCase() : null,
       source: 'apple_health',
       ai_source: null,
-      metadata: {
+      metadata: repairSourceStrings({
         hae_id: w.id,
         hae_name: w.name,
         avgSpeed: w.avgSpeed,
@@ -558,8 +618,12 @@ function parseFormatDWorkouts(body) {
         humidity: w.humidity,
         elevationDown: w.elevationDown,
         heartRateData: w.heartRateData || [],
+        heartRateRecovery: w.heartRateRecovery || [],
+        stepCount: w.stepCount || [],
+        activeEnergy: w.activeEnergy || [],
+        walkingAndRunningDistance: w.walkingAndRunningDistance || [],
         route: w.route || [],
-      },
+      }),
     });
   }
   return out;
@@ -2397,3 +2461,6 @@ module.exports.pickEnergyKcal = pickEnergyKcal;
 module.exports.parseFormatDWorkouts = parseFormatDWorkouts;
 module.exports.normalizeWorkoutType = normalizeWorkoutType;
 module.exports.dedupeAppleWorkouts = dedupeAppleWorkouts;
+module.exports.sanitizeHrText = sanitizeHrText;
+module.exports.fixMojibake = fixMojibake;
+module.exports.repairSourceStrings = repairSourceStrings;

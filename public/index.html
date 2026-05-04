@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.8.22</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.8.23</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -456,6 +456,19 @@
             </div>
 
             <div class="sm-card expanded">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.23 &mdash; May 4, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Apple Watch HR fields no longer drop.</strong> Canonical HAE export ships heart rate as <code>{ qty, units }</code>, but <code>sanitizeHrText</code> only handled strings/numbers &mdash; <code>Number({...})</code> is <code>NaN</code>, so every Apple Watch workout&rsquo;s <code>heart_rate_avg</code>/<code>heart_rate_max</code> landed null. Now unwraps <code>.qty</code> first.</p>
+                  <p><strong>Mojibake repair on device names.</strong> Some HAE pipelines re-decode UTF-8 device names as Windows-1252, so &ldquo;Avi&rsquo;s Apple&nbsp;Watch&rdquo; arrives as <code>Avi&acirc;&euro;&trade;s Apple&Acirc;&nbsp;Watch</code>. New <code>fixMojibake()</code> reverses the corruption (CP1252 byte-roundtrip + UTF-8 redecode) and is applied to every <code>source</code>/<code>sourceName</code>/<code>device</code> string in workout metadata before persistence.</p>
+                  <p><strong>Workout metadata now retains per-second streams.</strong> <code>heartRateRecovery</code>, <code>stepCount</code>, <code>activeEnergy</code>, and <code>walkingAndRunningDistance</code> arrays are preserved (they were already being parsed but only <code>heartRateData</code> was kept).</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.22 &mdash; May 4, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
@@ -890,7 +903,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.22</span>
+          AB Brain <span id="sm-version">v1.8.23</span>
         </div>
 
       </div>
