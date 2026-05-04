@@ -4,6 +4,61 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.15] — 2026-05-03
+
+### Architecture fix per Coach spec — energy accounting boundaries
+
+Coach's diagnosis: today's "5 workouts for 1 session" was Apple Watch auto-detecting 3 sub-workouts (warmup walk + indoor run + strength) overlapping the same Hevy entry. Old logic:
+- Stored all 4 rows separately
+- v1.8.12's `Math.max(daily_activity.active, sum(workouts.active))` summed those 4 → double-counted what Apple already had in its daily total
+- Lost NEAT entirely (dog walks, ambient — ~993 kcal/day for this user)
+
+Result: workout day showed less "burned" than rest day. Energy balance off by 800-1500 kcal daily.
+
+### Coach's 4 rules, now implemented
+
+1. **Apple Health is sole source of truth for daily energy** (`active = daily_activity.active_energy_kcal`). Reverted v1.8.12's `Math.max` workaround. Workout active sum no longer feeds OUT — that risks double-counting and loses NEAT.
+
+2. **Workouts table = training load only.** Sets/reps/HR/structure. Calorie sum on workouts no longer drives nutrition balance. Per-workout `active_calories` still populated from v1.8.14's robust parser, but they're a *subset* of `daily_active`, not additive to it.
+
+3. **Dedupe by time-window overlap, not start-time proximity.** New `dedupeAppleWorkouts()`:
+   - For each non-Apple workout (Hevy, manual): find apple_health rows whose [started_at, ended_at] overlaps by >50% of the apple row's duration
+   - Merge: SUM Apple calories across overlapping rows (each covers a different slice), MAX HR
+   - Soft-delete merged Apple rows (`workouts.deleted_at`) so they don't get re-summed
+   - Caps at 500 most-recent parents per pass
+
+4. **NEAT line on daily energy record.** New API field `calories_neat = max(0, daily_active − sum(workout_active))`. Captures dog walks, standing, fidgeting — the "missing bucket" that explains workout-day-vs-rest-day comparisons.
+
+### API response shape
+
+`/health/insights/nutrition` and `/insights/nutrition/macros/today` now return per-day:
+```json
+{
+  "calories_active": 1373,    // from Apple Health daily total (truth)
+  "calories_workout": 380,    // sum of today's workout active_calories
+  "calories_neat": 993,       // active − workouts (dog walks etc.)
+  "calories_basal": 1582,     // HAE OR BMR fallback
+  "basal_source": "apple_health" | "bmr_estimated"
+}
+```
+
+### UI
+
+Macros tab OUT line now reads:
+> `2955 burned (workouts 380 · NEAT 993 · basal 1582)`
+
+Instead of:
+> `2408 burned (active 660 · basal 1748 est.)` ← old, double-counted/missing-NEAT shape
+
+### Migration
+
+After deploy:
+1. `Settings → Reparse Health Imports → Reparse All` — fixes today's broken workout calorie data via the v1.8.14 parser.
+2. Hit any insights endpoint — dedupe runs implicitly during HAE sync. Today's 5 dupe rows should collapse to 1 (the Hevy parent) with merged sensor data, others soft-deleted.
+3. The Macros tab will reflect Coach's 4-rule architecture.
+
+---
+
 ## [1.8.14] — 2026-05-03
 
 ### Fixed — Coach bug #1: Apple Health workouts logging zero calories

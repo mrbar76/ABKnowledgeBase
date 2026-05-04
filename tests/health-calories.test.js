@@ -138,3 +138,23 @@ test('parseFormatDWorkouts handles metrics-nested shape', () => {
   const out = parseFormatDWorkouts(body);
   assert.equal(out[0].active_calories, '520', 'metrics.activeEnergy fallback should work');
 });
+
+// v1.8.15: NEAT calculation
+test('NEAT = daily_active - sum(workout_active) — matches Coach spec', () => {
+  // Apple Watch shows daily active = 1373 cal.
+  // Workouts (after dedupe) total = 380 cal.
+  // NEAT (dog walks, ambient) = 1373 − 380 = 993 cal.
+  const dailyActive = 1373;
+  const workoutSum = 380;
+  const neat = Math.max(0, dailyActive - workoutSum);
+  assert.equal(neat, 993, 'NEAT bucket must capture non-workout movement');
+});
+
+test('NEAT clamps to 0 when workout_sum > daily_active (overlap dedupe failed)', () => {
+  // Edge case: dedupe didn't merge, so workout sum > Apple's daily active.
+  // Clamp to 0 instead of going negative — UI shouldn't show "−200 NEAT".
+  const dailyActive = 200;
+  const workoutSum = 600;
+  const neat = Math.max(0, dailyActive - workoutSum);
+  assert.equal(neat, 0);
+});

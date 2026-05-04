@@ -1488,55 +1488,113 @@ router.get('/daily', async (req, res) => {
   }
 });
 
-// Find apple_health workout rows whose started_at overlaps an existing
-// manual workout (within WORKOUT_MERGE_WINDOW_SEC). Merge the apple row's
-// sensor data into the manual row, then delete the apple duplicate.
+// v1.8.15: dedupe by time-window OVERLAP (not just start-time proximity).
+//
+// Apple Watch auto-detects N workouts during one physical session
+// (warmup walk + indoor run + traditional strength). Hevy logs the
+// session as 1 row. Old logic only merged when start times were
+// within 15 min — that caught the 'strength' segment of the Apple
+// trio but left the warmup walk + run as separate rows, so summing
+// their active_calories double-counted what Apple already tallied
+// in its daily total.
+//
+// New rule (per Coach spec):
+//   For each non-apple_health workout (Hevy / manual):
+//     Find all apple_health rows whose [started_at, ended_at] window
+//     overlaps the parent's window by >50% of the apple row's duration.
+//     Merge sensor data (HR avg/max from max value, calories SUMMED
+//     across the Apple rows since they're each measuring different
+//     intervals). Soft-delete the merged Apple rows.
+//
+// Key change: we SUM Apple calories across overlapping rows (not max)
+// because each Apple auto-detected workout covers a different time
+// slice. The sum approximates what Apple's daily active_energy attributes
+// to that session.
 async function dedupeAppleWorkouts() {
-  const pairs = await query(
-    `SELECT DISTINCT ON (a.id)
-            a.id AS apple_id, m.id AS manual_id,
-            a.distance AS apple_distance, a.heart_rate_avg AS apple_hr_avg,
-            a.heart_rate_max AS apple_hr_max, a.elevation_gain AS apple_elev,
-            a.pace_avg AS apple_pace, a.active_calories AS apple_active_cal,
-            a.total_calories AS apple_total_cal, a.time_duration AS apple_dur,
-            a.ended_at AS apple_end, a.metadata AS apple_meta
-       FROM workouts a
-       JOIN workouts m
-         ON m.id <> a.id
-        AND m.source <> 'apple_health'
-        AND m.started_at IS NOT NULL
-        AND ABS(EXTRACT(EPOCH FROM (m.started_at - a.started_at))) < $1
-      WHERE a.source = 'apple_health' AND a.started_at IS NOT NULL
-      ORDER BY a.id, ABS(EXTRACT(EPOCH FROM (m.started_at - a.started_at))) ASC`,
-    [WORKOUT_MERGE_WINDOW_SEC]
+  // For each non-apple parent, collect overlapping apple children.
+  const parents = await query(
+    `SELECT id, started_at, ended_at, source, daily_plan_id, plan_segment_id
+     FROM workouts
+     WHERE source <> 'apple_health'
+       AND started_at IS NOT NULL
+       AND ended_at IS NOT NULL
+       AND deleted_at IS NULL
+     ORDER BY started_at DESC LIMIT 500`
   );
 
   let merged = 0;
-  for (const p of pairs.rows) {
+  for (const parent of parents.rows) {
+    const parentStart = new Date(parent.started_at).getTime();
+    const parentEnd = new Date(parent.ended_at).getTime();
+    if (parentEnd <= parentStart) continue;
+
+    // Pull every apple row that *might* overlap (window padded by 15 min
+    // on each side to catch warmup/cooldown blocks Apple split off).
+    const candidates = await query(
+      `SELECT id, started_at, ended_at, distance, heart_rate_avg, heart_rate_max,
+              elevation_gain, pace_avg, active_calories, total_calories,
+              cal_active, cal_total, time_duration, metadata
+       FROM workouts
+       WHERE source = 'apple_health'
+         AND started_at IS NOT NULL
+         AND ended_at IS NOT NULL
+         AND deleted_at IS NULL
+         AND started_at >= ($1::timestamptz - INTERVAL '15 min')
+         AND ended_at   <= ($2::timestamptz + INTERVAL '15 min')`,
+      [parent.started_at, parent.ended_at]
+    );
+
+    const overlapping = [];
+    for (const c of candidates.rows) {
+      const cStart = new Date(c.started_at).getTime();
+      const cEnd = new Date(c.ended_at).getTime();
+      if (cEnd <= cStart) continue;
+      const cDur = cEnd - cStart;
+      const overlapMs = Math.max(0, Math.min(cEnd, parentEnd) - Math.max(cStart, parentStart));
+      const overlapFrac = overlapMs / cDur;
+      if (overlapFrac > 0.5) overlapping.push(c);
+    }
+    if (!overlapping.length) continue;
+
+    // Merge: sum calories across overlapping apple rows (each covers
+    // a different time slice). Use max for HR (avg/max are scalars
+    // describing the whole session, take the most representative).
+    const sumCalActive = overlapping.reduce((s, r) => s + (Number(r.cal_active) || Number(String(r.active_calories || '').replace(/[^\d.]/g, '')) || 0), 0);
+    const sumCalTotal = overlapping.reduce((s, r) => s + (Number(r.cal_total) || Number(String(r.total_calories || '').replace(/[^\d.]/g, '')) || 0), 0);
+    const maxHrAvg = Math.max(...overlapping.map(r => Number(String(r.heart_rate_avg || '').replace(/[^\d.]/g, '')) || 0));
+    const maxHrMax = Math.max(...overlapping.map(r => Number(String(r.heart_rate_max || '').replace(/[^\d.]/g, '')) || 0));
+
     try {
       await query(
         `UPDATE workouts SET
-           time_duration   = COALESCE($2, time_duration),
-           distance        = COALESCE($3, distance),
-           elevation_gain  = COALESCE($4, elevation_gain),
-           heart_rate_avg  = COALESCE($5, heart_rate_avg),
-           heart_rate_max  = COALESCE($6, heart_rate_max),
-           pace_avg        = COALESCE($7, pace_avg),
-           active_calories = COALESCE($8, active_calories),
-           total_calories  = COALESCE($9, total_calories),
-           ended_at        = COALESCE($10, ended_at),
-           metadata        = metadata || $11::jsonb,
+           heart_rate_avg  = COALESCE($2, heart_rate_avg),
+           heart_rate_max  = COALESCE($3, heart_rate_max),
+           active_calories = COALESCE($4, active_calories),
+           total_calories  = COALESCE($5, total_calories),
+           cal_active      = COALESCE($6, cal_active),
+           cal_total       = COALESCE($7, cal_total),
+           metadata        = metadata || $8::jsonb,
            updated_at      = NOW()
          WHERE id = $1`,
-        [p.manual_id, p.apple_dur, p.apple_distance, p.apple_elev,
-         p.apple_hr_avg, p.apple_hr_max, p.apple_pace,
-         p.apple_active_cal, p.apple_total_cal, p.apple_end,
-         JSON.stringify({ apple_health: p.apple_meta || {} })]
+        [parent.id,
+         maxHrAvg > 0 ? String(maxHrAvg) : null,
+         maxHrMax > 0 ? String(maxHrMax) : null,
+         sumCalActive > 0 ? String(sumCalActive) : null,
+         sumCalTotal > 0 ? String(sumCalTotal) : null,
+         sumCalActive > 0 ? sumCalActive : null,
+         sumCalTotal > 0 ? sumCalTotal : null,
+         JSON.stringify({ apple_health: { merged_from: overlapping.map(r => r.id), overlap_count: overlapping.length } })]
       );
-      await query(`DELETE FROM workouts WHERE id = $1 AND source = 'apple_health'`, [p.apple_id]);
-      merged++;
+      // Soft-delete the merged apple rows so they don't get summed
+      // again by anything else (recovery score, calorie totals).
+      await query(
+        `UPDATE workouts SET deleted_at = NOW(), updated_at = NOW()
+         WHERE id = ANY($1::uuid[]) AND source = 'apple_health'`,
+        [overlapping.map(r => r.id)]
+      );
+      merged += overlapping.length;
     } catch (err) {
-      console.error(`[dedupeAppleWorkouts] failed for apple=${p.apple_id} manual=${p.manual_id}: ${err.message}`);
+      console.error(`[dedupeAppleWorkouts] failed for parent=${parent.id} children=${overlapping.length}: ${err.message}`);
     }
   }
   return merged;

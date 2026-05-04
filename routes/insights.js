@@ -893,15 +893,19 @@ router.get('/nutrition', async (req, res) => {
 
     const history = await Promise.all(a.rows.map(async r => {
       const date = dateOnly(r.activity_date);
+      // v1.8.15: per Coach spec, Apple Health is sole source of truth
+      // for daily energy. Don't take max(haeActive, workoutSum) — that
+      // double-counts when Apple Watch auto-detects N workouts that
+      // overlap a Hevy entry, AND it loses NEAT (dog walks, ambient
+      // activity). v1.8.12's max() approach was a bad workaround for
+      // HAE staleness; the right fix is HAE 15-min push cadence.
       const haeActive = Number(r.active_energy_kcal) || 0;
       const workoutActive = workoutActiveByDate.get(date) || 0;
-      // v1.8.12: take max(HAE, workouts) so OUT isn't held hostage by
-      // HAE Format A's once-per-day push cadence. When the watch
-      // tracks a workout, HAE eventually catches up — but until then
-      // workout active_calories is a closer estimate than the stale
-      // daily_activity row.
-      const active = Math.max(haeActive, workoutActive);
-      const activeSource = workoutActive > haeActive ? 'workouts_sum' : 'apple_health';
+      const active = haeActive;
+      const activeSource = haeActive > 0 ? 'apple_health' : null;
+      // NEAT = daily_active - workout_active. Captures dog walks +
+      // ambient movement that don't fit the workout schema.
+      const neat = Math.max(0, haeActive - workoutActive);
       // BMR fallback (v1.8.10/.11): when basal_energy_kcal is null (HAE
       // doesn't always export it), estimate via Mifflin-St Jeor using
       // user_profile (set by user) + last-resort defaults.
@@ -937,13 +941,16 @@ router.get('/nutrition', async (req, res) => {
         is_hard_day: isHardDay,
         calories_in: Math.round(meal.kcal),
         calories_out: Math.round(out),
-        // v1.8.11: surface breakdown so UI can show "active X · basal Y est."
-        // v1.8.12: also expose active_source so UI can flag
-        // "(active from workouts — HAE stale)" when applicable.
+        // v1.8.15: per Coach spec, breakdown is workouts · NEAT · basal.
+        // calories_active stays for back-compat but the meaningful split
+        // is workouts (logged training) vs NEAT (everything else Apple
+        // Health tracked but no workout was logged for).
         calories_active: active > 0 ? Math.round(active) : null,
+        calories_workout: workoutActive > 0 ? Math.round(workoutActive) : null,
+        calories_neat: Math.round(neat),
         calories_basal: basal != null ? Math.round(basal) : null,
         basal_source: basalSource,
-        active_source: active > 0 ? activeSource : null,
+        active_source: activeSource,
         last_synced_at: r.updated_at || null,
         balance: Math.round(meal.kcal - out),
         protein_g: Math.round(meal.protein_g),
@@ -1317,7 +1324,12 @@ router.get('/trends', async (req, res) => {
       const dateKey = dateOnly(r.activity_date);
       const haeActive = Number(r.active_energy_kcal) || 0;
       const isToday = dateKey === today;
-      const active = isToday ? Math.max(haeActive, todayWorkoutActive) : haeActive;
+      const workoutActive = isToday ? todayWorkoutActive : 0;
+      // v1.8.15: Apple Health daily total IS the source of truth.
+      // workout sum no longer feeds OUT; it's split out as "workouts"
+      // and (haeActive − workoutActive) becomes NEAT.
+      const active = haeActive;
+      const neat = Math.max(0, haeActive - workoutActive);
       let basal = r.basal_energy_kcal != null ? Number(r.basal_energy_kcal) : null;
       let basalSource = basal != null ? 'apple_health' : null;
       if (basal == null) {
@@ -1331,23 +1343,27 @@ router.get('/trends', async (req, res) => {
       if (out > 0) calBurnByDate.set(dateKey, out);
       calBreakdownByDate.set(dateKey, {
         active: active > 0 ? Math.round(active) : null,
-        active_source: active > 0 ? (active > haeActive ? 'workouts_sum' : 'apple_health') : null,
+        workout: workoutActive > 0 ? Math.round(workoutActive) : null,
+        neat: Math.round(neat),
+        active_source: active > 0 ? 'apple_health' : null,
         basal: basal != null ? Math.round(basal) : null,
         basal_source: basalSource,
         last_synced_at: r.updated_at || null,
       });
     }
     // Special case: if `today` has NO daily_activity row at all (HAE
-    // hasn't synced yet today), still inject a BMR + workout-active
-    // estimate so OUT isn't suspiciously zero.
+    // hasn't synced yet today), inject a BMR-only estimate. Don't
+    // include workout active here — that would imply we know total
+    // active, which we don't until HAE pushes the daily summary.
     if (!calBreakdownByDate.has(today)) {
       const estimate = await bmrForDate(weightKg, today);
-      const out = (estimate || 0) + todayWorkoutActive;
-      if (out > 0) {
-        calBurnByDate.set(today, out);
+      if (estimate != null && estimate > 0) {
+        calBurnByDate.set(today, estimate);
         calBreakdownByDate.set(today, {
-          active: todayWorkoutActive > 0 ? todayWorkoutActive : null,
-          active_source: todayWorkoutActive > 0 ? 'workouts_sum' : null,
+          active: null,
+          workout: todayWorkoutActive > 0 ? todayWorkoutActive : null,
+          neat: null,
+          active_source: null,
           basal: estimate,
           basal_source: 'bmr_estimated',
           last_synced_at: null,
@@ -1379,7 +1395,7 @@ router.get('/trends', async (req, res) => {
     const protein30 = proteinSeries.slice(-30);
     const protein60Prior = proteinSeries.slice(-90, -30);
 
-    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, active_source: null, basal: null, basal_source: null, last_synced_at: null };
+    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, workout: null, neat: null, active_source: null, basal: null, basal_source: null, last_synced_at: null };
     const nutrition = {
       today: {
         calories_in: Math.round(Number(todayMeal.kcal) || 0),
@@ -1390,6 +1406,8 @@ router.get('/trends', async (req, res) => {
         // so the UI can distinguish HAE-supplied basal from our
         // Mifflin-St Jeor fallback.
         calories_active: todayBreakdown.active,
+        calories_workout: todayBreakdown.workout,
+        calories_neat: todayBreakdown.neat,
         calories_basal: todayBreakdown.basal,
         basal_source: todayBreakdown.basal_source,
         active_source: todayBreakdown.active_source,

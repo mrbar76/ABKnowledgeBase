@@ -7373,20 +7373,23 @@ function buildMacroDashboard(summary, activityRow) {
           ${TARGET_MARKER_HTML}
         </div>
         ${calOut != null ? (() => {
-          // Diagnostic breakdown. Shows whether basal came from Apple
-          // Health or our Mifflin-St Jeor fallback (v1.8.10), so the
-          // user can tell at a glance that HAE isn't sending basal.
-          const a = activityRow?.calories_active;
+          // v1.8.15: breakdown is workouts · NEAT · basal per Coach
+          // spec. Apple Health daily total is source of truth for
+          // active. Workout sum is a portion of active (logged
+          // training time). NEAT = active − workouts (dog walks,
+          // ambient movement). Basal from HAE or BMR fallback.
+          const w = activityRow?.calories_workout;
+          const n = activityRow?.calories_neat;
           const b = activityRow?.calories_basal;
           const bSource = activityRow?.basal_source;
           const sync = activityRow?.last_synced_at;
           let breakdownTxt = `${Math.round(calOut)} burned`;
           const parts = [];
-          if (a != null) parts.push(`active ${a}`);
-          else parts.push('<span style="color:#f59e0b" title="No active energy synced yet for today. HAE typically lags 5-30 min after activity.">active null</span>');
+          if (w != null && w > 0) parts.push(`workouts ${w}`);
+          if (n != null && n > 0) parts.push(`NEAT ${n}`);
           if (b != null) {
             if (bSource === 'bmr_estimated') {
-              parts.push(`<span title="Basal estimated via Mifflin-St Jeor BMR using latest weight + USER_HEIGHT_CM/USER_AGE/USER_SEX env vars (defaults 175cm/38yo/male). HAE didn\\'t supply basal_energy_kcal — set the metric in HAE app config to use real data.">basal ${b} <span style="opacity:0.7">est.</span></span>`);
+              parts.push(`<span title="Basal estimated via Mifflin-St Jeor BMR (athlete_profile). HAE didn\\'t supply basal_energy_kcal.">basal ${b} <span style="opacity:0.7">est.</span></span>`);
             } else {
               parts.push(`basal ${b}`);
             }
