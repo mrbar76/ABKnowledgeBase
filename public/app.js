@@ -2109,6 +2109,10 @@ async function copyClaudeSchema() {
 }
 
 async function loadSettingsMenuInfo() {
+  // Pre-fill the athlete profile form fields so the user sees what's
+  // currently stored. Best-effort — silent if profile is empty.
+  loadAthleteProfile();
+
   const bkEl = document.getElementById('sm-backend-val');
   const beeEl = document.getElementById('sm-bee-val');
   const oaEl = document.getElementById('sm-openai-val');
@@ -2394,6 +2398,56 @@ async function reparseHealthImports() {
     if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Reparse All'; }
+  }
+}
+
+// ─── Athlete Profile (Settings → BMR-relevant inputs) ────────────
+// Stores height/birth-date/sex in athlete_profile so Mifflin-St Jeor
+// BMR uses the user's real values instead of the made-up env defaults.
+async function loadAthleteProfile() {
+  try {
+    const data = await api('/athlete/profile');
+    if (data) {
+      const h = document.getElementById('profile-height-in');
+      const b = document.getElementById('profile-birth-date');
+      const s = document.getElementById('profile-sex');
+      if (h && data.height_in != null) h.value = data.height_in;
+      if (b && data.birth_date) b.value = String(data.birth_date).slice(0, 10);
+      if (s && data.sex) s.value = data.sex;
+    }
+  } catch (_) { /* missing or empty — fields stay blank */ }
+}
+
+async function saveAthleteProfile() {
+  const btn = document.getElementById('btn-profile-save');
+  const out = document.getElementById('sm-profile-result');
+  const heightIn = document.getElementById('profile-height-in')?.value;
+  const birthDate = document.getElementById('profile-birth-date')?.value;
+  const sex = document.getElementById('profile-sex')?.value;
+  if (!heightIn || !birthDate || !sex) {
+    if (out) { out.style.display = 'block'; out.style.color = 'var(--red)'; out.textContent = 'All three fields required.'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const data = await api('/athlete/profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        height_in: Number(heightIn),
+        birth_date: birthDate,
+        sex,
+        set_by: 'user',
+      }),
+    });
+    if (out) {
+      out.style.display = 'block';
+      out.style.color = 'var(--green)';
+      out.textContent = `✓ Saved. Macros tab basal will recompute from BMR (~1582 kcal for 5'1" 49yo male 188 lb).`;
+    }
+  } catch (e) {
+    if (out) { out.style.display = 'block'; out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Profile'; }
   }
 }
 
