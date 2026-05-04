@@ -4,6 +4,32 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.17] — 2026-05-03
+
+### Fixed — Path B importer writing seconds into duration_minutes column
+
+Coach's deep audit of 63 workout records found **8 rows where `duration_minutes` exactly matched `(ended_at − started_at) seconds`** (e.g. stored 324, true 5.4 min, true 324 seconds). Root cause: the SQL backfill in `db.js:653` used a `<= 12` heuristic to disambiguate `h:mm` from `mm:ss`, which fails for any sub-1-hour mm:ss duration where mm ≤ 12 (every walk under an hour, basically).
+
+- **`backfill duration_minutes v3`** — anchored regex matching v1.8.16's JS fix. Three-segment `^\d+:\d{1,2}:\d{1,2}$` → `h*60 + m + ROUND(s/60)`. Two-segment `^\d+:\d{1,2}$` → `m + ROUND(s/60)`. Two-segment ALWAYS treated as mm:ss (the format `formatDuration()` emits).
+- **`correct duration_minutes from timestamps`** migration — for any row where `started_at` and `ended_at` both exist, `duration_minutes = ROUND((end − start) / 60)`. Skips rows already correct (within ±2 min). This corrects legacy rows polluted by the v2 backfill bug.
+
+### Fixed — literal "nan" string in HR columns
+
+Coach's audit: Vernon walking record had `hr_avg = 'nan'` (literal string), because Python's NaN got string-coerced when an importer averaged an empty list. Two fixes:
+- **`sanitizeHrText()` helper** at every HR write site in `routes/health.js`. Treats `nan/null/none/-/undefined` as null. Returns `Math.round(n)` as string for finite positive numbers only.
+- **`cleanup nan-string heart_rate` migration** — nulls existing rows where `lower(heart_rate_avg) IN ('nan','null','none','-')`. Same for hr_max.
+
+### Added — diagnostic endpoints + Settings UI
+
+- **`GET /api/health/diag/workouts?days=N`** — returns last N days of workout rows with anomaly detection (seconds-as-minutes, NaN strings, missing hae_id, no HR samples, etc.). For paste-back analysis.
+- **`GET /api/health/diag/full-day?date=YYYY-MM-DD`** — comprehensive cross-table audit for one date. Pulls workouts + daily_activity + meals + body_metrics + daily_plans + plan_segments + coaching_sessions + daily_context + raw_imports. Detects anomalies AND overlapping workout windows (>50%). Built for "deep dive" sessions when something doesn't match.
+- **Settings → Workout Data Review card** — three buttons (7d/14d/30d) for the workouts dump, plus a date picker for the full-day audit. Output goes into a textarea you can copy to share with Coach / Claude Code.
+
+### Bug #4 (Hevy rows tagged source=apple_health) downgraded
+No code path auto-creates workout rows on plan completion. Coach's hypothesis was speculative. Today's `2751fa34` synthetic wrapper has unknown origin — needs the new diagnostic endpoint to trace. Removing from the active bug list until reproduced.
+
+---
+
 ## [1.8.16] — 2026-05-03
 
 ### Coach bugs #2, #5, #6 fixed (#4 self-heals via v1.8.15 dedupe)

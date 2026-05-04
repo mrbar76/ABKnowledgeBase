@@ -650,15 +650,23 @@ async function initDB() {
   await safeQuery('workouts +cal_total', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cal_total INTEGER`);
 
   // Backfill numeric columns from TEXT fields (safe: only updates NULLs)
-  await safeQuery('backfill duration_minutes v2', `
+  // v1.8.17: anchored regex matching the JS parseDurationMin fix.
+  // Old version used "h <= 12" heuristic which miscounted any mm:ss
+  // duration where mm <= 12. Coach's audit found stored duration_minutes
+  // matching exact seconds for 8 records (e.g. 324 stored, 5:24 mm:ss
+  // = 324 sec = 5 min). Now: 3-segment = h*60 + m + ROUND(s/60),
+  // 2-segment = m + ROUND(s/60). Two-segment ALWAYS treated as mm:ss
+  // (the format formatDuration() emits in routes/health.js).
+  await safeQuery('backfill duration_minutes v3', `
     UPDATE workouts SET duration_minutes = (
       CASE
-        WHEN time_duration ~ '^\\d+:\\d+:\\d+' THEN
-          SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
-        WHEN time_duration ~ '^\\d+:\\d+' AND SPLIT_PART(time_duration, ':', 1)::int <= 12 THEN
-          SPLIT_PART(time_duration, ':', 1)::int * 60 + SPLIT_PART(time_duration, ':', 2)::int
-        WHEN time_duration ~ '^\\d+:\\d+' THEN
+        WHEN time_duration ~ '^\\d+:\\d{1,2}:\\d{1,2}$' THEN
+          SPLIT_PART(time_duration, ':', 1)::int * 60
+          + SPLIT_PART(time_duration, ':', 2)::int
+          + ROUND(SPLIT_PART(time_duration, ':', 3)::int / 60.0)::int
+        WHEN time_duration ~ '^\\d+:\\d{1,2}$' THEN
           SPLIT_PART(time_duration, ':', 1)::int
+          + ROUND(SPLIT_PART(time_duration, ':', 2)::int / 60.0)::int
         WHEN time_duration ~ '^[\\d.]+ *h' THEN
           ROUND(REGEXP_REPLACE(time_duration, '[^\\d.]', '', 'g')::numeric * 60)::int
         WHEN time_duration ~ '^[\\d.]+' THEN
@@ -666,6 +674,23 @@ async function initDB() {
         ELSE NULL
       END
     ) WHERE time_duration IS NOT NULL AND time_duration != ''
+  `);
+  // Corrective migration: where started_at and ended_at both exist,
+  // duration_minutes can be computed exactly from the timestamps.
+  // This fixes rows polluted by the v2 backfill's seconds-as-minutes
+  // bug. Only updates rows where the stored value disagrees with
+  // timestamps by >2 min (skips rows already correct).
+  await safeQuery('correct duration_minutes from timestamps', `
+    UPDATE workouts SET duration_minutes = ROUND(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60.0)::int
+    WHERE started_at IS NOT NULL
+      AND ended_at IS NOT NULL
+      AND ended_at > started_at
+      AND (
+        duration_minutes IS NULL
+        OR ABS(duration_minutes - ROUND(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60.0)::int) > 2
+      )
+      AND EXTRACT(EPOCH FROM (ended_at - started_at)) > 0
+      AND EXTRACT(EPOCH FROM (ended_at - started_at)) < 86400
   `);
   await safeQuery('backfill distance_value', `
     UPDATE workouts SET distance_value = ROUND(REGEXP_REPLACE(distance, '[^\\d.]', '', 'g')::numeric, 2)
@@ -677,11 +702,29 @@ async function initDB() {
   `);
   await safeQuery('backfill hr_avg', `
     UPDATE workouts SET hr_avg = REGEXP_REPLACE(heart_rate_avg, '[^\\d]', '', 'g')::int
-    WHERE hr_avg IS NULL AND heart_rate_avg IS NOT NULL AND heart_rate_avg ~ '\\d'
+    WHERE hr_avg IS NULL AND heart_rate_avg IS NOT NULL
+      AND heart_rate_avg ~ '\\d'
+      AND lower(heart_rate_avg) NOT IN ('nan','null','none','-')
   `);
   await safeQuery('backfill hr_max', `
     UPDATE workouts SET hr_max = REGEXP_REPLACE(heart_rate_max, '[^\\d]', '', 'g')::int
-    WHERE hr_max IS NULL AND heart_rate_max IS NOT NULL AND heart_rate_max ~ '\\d'
+    WHERE hr_max IS NULL AND heart_rate_max IS NOT NULL
+      AND heart_rate_max ~ '\\d'
+      AND lower(heart_rate_max) NOT IN ('nan','null','none','-')
+  `);
+  // v1.8.17: cleanup — null out the literal "nan" / "null" / "none"
+  // strings that pre-v1.8.17 importers wrote when Python's NaN got
+  // string-coerced into the column. Coach found this on the Vernon
+  // walking record's hr_avg field.
+  await safeQuery('cleanup nan-string heart_rate', `
+    UPDATE workouts SET
+      heart_rate_avg = NULL
+      WHERE heart_rate_avg IS NOT NULL AND lower(heart_rate_avg) IN ('nan','null','none','-')
+  `);
+  await safeQuery('cleanup nan-string hr_max', `
+    UPDATE workouts SET
+      heart_rate_max = NULL
+      WHERE heart_rate_max IS NOT NULL AND lower(heart_rate_max) IN ('nan','null','none','-')
   `);
   await safeQuery('backfill cadence', `
     UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int

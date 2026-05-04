@@ -131,6 +131,25 @@
               <div id="sm-reparse-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
+              <div class="sm-card-label">Workout Data Review</div>
+              <div class="sm-card-desc">Dump recent workouts as JSON with detected anomalies (seconds-as-minutes durations, NaN HR strings, missing hae_id, etc.). Copy the result and paste back to Coach / Claude Code for analysis.</div>
+              <div class="sm-btn-row">
+                <button class="btn-action btn-action-secondary" onclick="reviewWorkoutData(7)" id="btn-diag-7">Last 7 days</button>
+                <button class="btn-action btn-action-secondary" onclick="reviewWorkoutData(14)" id="btn-diag-14">Last 14 days</button>
+                <button class="btn-action btn-action-secondary" onclick="reviewWorkoutData(30)" id="btn-diag-30">Last 30 days</button>
+              </div>
+              <textarea id="sm-diag-output" readonly placeholder="JSON appears here. Click in the box, Cmd-A to select all, Cmd-C to copy."
+                style="width:100%;margin-top:8px;font-family:ui-monospace,monospace;font-size:0.65rem;height:160px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:8px;display:none"></textarea>
+              <div id="sm-diag-result" class="sm-result"></div>
+              <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Deep dive — full-day audit (workouts + activity + meals + body metrics + plan + segments + coaching sessions + raw imports + anomalies + overlap detection):</div>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input id="diag-fullday-date" type="date" style="padding:6px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem">
+                  <button class="btn-action btn-action-secondary" onclick="reviewFullDay()" id="btn-diag-fullday">Audit Day</button>
+                </div>
+              </div>
+            </div>
+            <div class="sm-card">
               <div class="sm-card-label">Athlete Profile</div>
               <div class="sm-card-desc">Height, birth date, and sex. Used by the Mifflin-St Jeor BMR formula on the Macros tab when HAE doesn't supply basal calories. Stored as a versioned row in athlete_profile — saving creates a new row that takes effect today; old values stay on past dates.</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
@@ -831,7 +850,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.16</span>
+          AB Brain <span id="sm-version">v1.8.17</span>
         </div>
 
       </div>

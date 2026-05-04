@@ -2401,6 +2401,61 @@ async function reparseHealthImports() {
   }
 }
 
+// Workout data review — dumps a JSON blob for paste-back analysis.
+// v1.8.17: builds on /api/health/diag/workouts which detects anomalies
+// (seconds-as-minutes, NaN strings, missing hae_id, etc.).
+async function reviewWorkoutData(days) {
+  const out = document.getElementById('sm-diag-output');
+  const result = document.getElementById('sm-diag-result');
+  const btns = ['btn-diag-7','btn-diag-14','btn-diag-30'].map(id => document.getElementById(id));
+  btns.forEach(b => b && (b.disabled = true));
+  if (result) { result.style.display = 'block'; result.style.color = 'var(--text-dim)'; result.textContent = `Pulling last ${days} days…`; }
+  try {
+    const data = await api(`/health/diag/workouts?days=${days}`);
+    const json = JSON.stringify(data, null, 2);
+    if (out) {
+      out.value = json;
+      out.style.display = 'block';
+    }
+    if (result) {
+      const anomColor = data.total_anomalies > 0 ? 'var(--orange)' : 'var(--green)';
+      result.style.color = anomColor;
+      result.innerHTML = `${data.total_rows} rows · <strong>${data.total_anomalies} anomalies flagged</strong> · ${days} day window`;
+    }
+  } catch (e) {
+    if (result) { result.style.color = 'var(--red)'; result.textContent = `✗ ${e.message}`; }
+  } finally {
+    btns.forEach(b => b && (b.disabled = false));
+  }
+}
+
+async function reviewFullDay() {
+  const out = document.getElementById('sm-diag-output');
+  const result = document.getElementById('sm-diag-result');
+  const dateInput = document.getElementById('diag-fullday-date');
+  const btn = document.getElementById('btn-diag-fullday');
+  const date = dateInput?.value || new Date().toISOString().slice(0, 10);
+  if (btn) btn.disabled = true;
+  if (result) { result.style.display = 'block'; result.style.color = 'var(--text-dim)'; result.textContent = `Auditing ${date}…`; }
+  try {
+    const data = await api(`/health/diag/full-day?date=${date}`);
+    if (out) {
+      out.value = JSON.stringify(data, null, 2);
+      out.style.display = 'block';
+    }
+    if (result) {
+      const sum = data.summary || {};
+      const issues = (sum.anomalies_count || 0) + (sum.overlapping_pairs || 0);
+      result.style.color = issues > 0 ? 'var(--orange)' : 'var(--green)';
+      result.innerHTML = `${date}: ${sum.workout_count} workouts (${sum.active_workouts} active) · ${sum.meal_count} meals · ${sum.segment_count} segments · <strong>${issues} issues</strong> (${sum.anomalies_count} anomalies, ${sum.overlapping_pairs} overlapping pairs)`;
+    }
+  } catch (e) {
+    if (result) { result.style.color = 'var(--red)'; result.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ─── Athlete Profile (Settings → BMR-relevant inputs) ────────────
 // Stores height/birth-date/sex in athlete_profile so Mifflin-St Jeor
 // BMR uses the user's real values instead of the made-up env defaults.

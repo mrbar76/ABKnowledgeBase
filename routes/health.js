@@ -250,8 +250,8 @@ function parseFormatA(body) {
       distance: w.distanceKm != null ? `${(w.distanceKm * KM_TO_MI).toFixed(2)} mi` : null,
       time_duration: durSec > 0 ? formatDuration(durSec) : null,
       elevation_gain: w.elevationAscendedM != null ? `${Math.round(w.elevationAscendedM * M_TO_FT)} ft` : null,
-      heart_rate_avg: w.averageHeartRateBpm != null ? String(w.averageHeartRateBpm) : null,
-      heart_rate_max: w.maxHeartRateBpm != null ? String(w.maxHeartRateBpm) : null,
+      heart_rate_avg: sanitizeHrText(w.averageHeartRateBpm),
+      heart_rate_max: sanitizeHrText(w.maxHeartRateBpm),
       pace_avg: w.averagePaceSecPerKm != null ? formatPace(w.averagePaceSecPerKm * MILES_TO_KM, 'mi') : null,
       // v1.8.14: same robust calorie extractor as Format D so workouts
       // populate active_calories regardless of which field name HAE
@@ -286,6 +286,21 @@ function parseFormatA(body) {
   }
 
   return { dailyRows, workouts };
+}
+
+// v1.8.17: never let "nan" / "null" / "none" land in TEXT HR columns.
+// Coach found Vernon walking record had hr_avg = 'nan' (literal string)
+// because Python's NaN got string-coerced when the importer averaged
+// an empty list. Returns null for non-finite or string-NaN inputs.
+function sanitizeHrText(v) {
+  if (v == null) return null;
+  if (typeof v === 'string') {
+    const lower = v.trim().toLowerCase();
+    if (!lower || ['nan', 'null', 'none', '-', 'undefined'].includes(lower)) return null;
+  }
+  const n = Number(typeof v === 'string' ? v.replace(/[^\d.]/g, '') : v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return String(Math.round(n));
 }
 
 function formatDuration(sec) {
@@ -525,8 +540,8 @@ function parseFormatDWorkouts(body) {
       time_duration: durSec > 0 ? formatDuration(durSec) : null,
       distance: distQty != null ? `${Number(distQty).toFixed(2)} ${distUnits || 'mi'}` : null,
       elevation_gain: elevUpQty != null ? `${Math.round(Number(elevUpQty))} ${elevUpUnits || 'ft'}` : null,
-      heart_rate_avg: avgHR != null ? String(Math.round(Number(avgHR))) : null,
-      heart_rate_max: maxHR != null ? String(Math.round(Number(maxHR))) : null,
+      heart_rate_avg: sanitizeHrText(avgHR),
+      heart_rate_max: sanitizeHrText(maxHR),
       pace_avg: null,
       active_calories: activeKcal != null ? String(Math.round(activeKcal)) : null,
       total_calories: totalComputed != null ? String(Math.round(totalComputed)) : null,
@@ -1961,6 +1976,205 @@ router.get('/diagnose-day', async (req, res) => {
     });
   } catch (err) {
     console.error(`[health/diagnose-day] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/health/diag/workouts?days=14 ────────────────────
+// v1.8.17: paste-back diagnostic. Returns all workout rows in the
+// window with key fields + detected anomalies so the user can copy
+// the JSON and share with Coach / Claude Code for analysis. Read-only.
+router.get('/diag/workouts', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(Number(req.query.days) || 14, 90));
+    const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+    const { rows } = await query(
+      `SELECT id, workout_date, workout_type, source, ai_source,
+              title, time_duration, duration_minutes,
+              distance, distance_value,
+              elevation_gain, elevation_gain_ft,
+              heart_rate_avg, heart_rate_max, hr_avg, hr_max,
+              active_calories, total_calories, cal_active, cal_total,
+              effort, started_at, ended_at, deleted_at,
+              daily_plan_id, plan_segment_id, hevy_id,
+              metadata->>'hae_id' AS hae_id,
+              jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) AS hr_samples_count,
+              created_at, updated_at
+       FROM workouts
+       WHERE workout_date >= $1
+       ORDER BY workout_date DESC, started_at DESC NULLS LAST`,
+      [since]
+    );
+
+    // Anomaly detection — flag suspicious rows so the user/Coach can
+    // focus on what's broken.
+    const anomalies = [];
+    for (const r of rows) {
+      const flags = [];
+      // Seconds-as-minutes: stored duration_minutes within ±2 of raw
+      // start-end seconds suggests the bug is still there.
+      if (r.started_at && r.ended_at && r.duration_minutes != null) {
+        const trueSec = (new Date(r.ended_at) - new Date(r.started_at)) / 1000;
+        const trueMin = trueSec / 60;
+        if (Math.abs(r.duration_minutes - trueSec) <= 2 && trueSec > 60) {
+          flags.push(`duration_minutes (${r.duration_minutes}) matches seconds, true=${Math.round(trueMin)}min`);
+        }
+      }
+      // String "nan" in HR text columns
+      if (typeof r.heart_rate_avg === 'string' && /^(nan|null|none)$/i.test(r.heart_rate_avg.trim())) flags.push(`heart_rate_avg = "${r.heart_rate_avg}"`);
+      if (typeof r.heart_rate_max === 'string' && /^(nan|null|none)$/i.test(r.heart_rate_max.trim())) flags.push(`heart_rate_max = "${r.heart_rate_max}"`);
+      // Missing hae_id but source='apple_health' (Path B)
+      if (r.source === 'apple_health' && !r.hae_id) flags.push('source=apple_health but no hae_id (Path B legacy)');
+      // No HR samples on a long workout
+      if (r.duration_minutes >= 20 && r.hr_samples_count === 0 && r.source === 'apple_health') flags.push('no HR samples in metadata');
+      if (flags.length) anomalies.push({ id: r.id, date: r.workout_date, source: r.source, flags });
+    }
+
+    // Group by date for quick scan
+    const byDate = {};
+    for (const r of rows) {
+      const k = String(r.workout_date).slice(0, 10);
+      if (!byDate[k]) byDate[k] = [];
+      byDate[k].push({
+        id: r.id, source: r.source, hae_id: r.hae_id, hevy_id: r.hevy_id,
+        type: r.workout_type, title: r.title,
+        started: r.started_at, ended: r.ended_at,
+        time_duration: r.time_duration, duration_min: r.duration_minutes,
+        distance: r.distance, hr_avg: r.heart_rate_avg, hr_max: r.heart_rate_max,
+        cal_active: r.active_calories, cal_total: r.total_calories,
+        plan_segment_id: r.plan_segment_id, hr_samples: r.hr_samples_count,
+        deleted_at: r.deleted_at,
+      });
+    }
+
+    res.json({
+      window_days: days,
+      since,
+      generated_at: new Date().toISOString(),
+      total_rows: rows.length,
+      total_anomalies: anomalies.length,
+      anomalies,
+      workouts_by_date: byDate,
+    });
+  } catch (err) {
+    console.error(`[health/diag/workouts] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/health/diag/full-day?date=YYYY-MM-DD ──────────────
+// v1.8.17: comprehensive cross-table diagnostic for one date. Pulls
+// workouts, daily_activity, meals, body_metrics, daily_plans +
+// plan_segments, coaching_sessions, daily_context. Designed for
+// paste-back analysis when the data doesn't match expectations.
+router.get('/diag/full-day', async (req, res) => {
+  try {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date YYYY-MM-DD required' });
+
+    const [workouts, daily, meals, bmets, plan, coach, ctx, raw] = await Promise.all([
+      query(`SELECT id, workout_type, source, title, time_duration, duration_minutes,
+                    distance, heart_rate_avg, heart_rate_max, active_calories, total_calories,
+                    effort, started_at, ended_at, deleted_at, daily_plan_id, plan_segment_id,
+                    hevy_id, metadata->>'hae_id' AS hae_id,
+                    jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) AS hr_samples_count
+             FROM workouts WHERE workout_date = $1 ORDER BY started_at NULLS LAST, created_at`, [date]),
+      query(`SELECT activity_date, steps, distance_mi, exercise_minutes, flights_climbed,
+                    active_energy_kcal, basal_energy_kcal, resting_hr_bpm, walking_hr_avg_bpm,
+                    hrv_sdnn_ms, sleep_total_min, sleep_deep_min, sleep_rem_min,
+                    workout_count, sources, updated_at
+             FROM daily_activity WHERE activity_date = $1`, [date]),
+      query(`SELECT id, meal_type, meal_time, calories, protein_g, carbs_g, fat_g, source, notes
+             FROM meals WHERE meal_date = $1 ORDER BY meal_time NULLS LAST`, [date]),
+      query(`SELECT id, measurement_time, source, weight_lb, body_fat_pct, lean_mass_lb, bmi, notes
+             FROM body_metrics WHERE measurement_date = $1 ORDER BY measurement_time NULLS LAST`, [date]),
+      query(`SELECT id, plan_date, status, title, workout_type, intent_type, target_effort,
+                    target_calories, target_protein_g, target_carbs_g, target_fat_g,
+                    workout_notes, completion_notes, rationale, ai_source, updated_at
+             FROM daily_plans WHERE plan_date = $1`, [date]),
+      query(`SELECT id, session_date, session_type, title, summary, ai_source, created_at
+             FROM coaching_sessions WHERE session_date = $1 ORDER BY created_at`, [date]),
+      query(`SELECT date, mood, motivation, soreness_overall, soreness_areas,
+                    life_stress, illness_flag, hydration_liters, day_type, notes, updated_at
+             FROM daily_context WHERE date = $1`, [date]),
+      query(`SELECT id, source_format, ingested_at, file_bytes, parse_result
+             FROM raw_health_imports
+             WHERE date_range_start <= $1::date AND date_range_end >= $1::date
+             ORDER BY ingested_at DESC LIMIT 5`, [date]),
+    ]);
+
+    let segments = { rows: [] };
+    if (plan.rows[0]?.id) {
+      segments = await query(
+        `SELECT id, block_order, block_label, title_suffix, logging_target,
+                planned_exercises, target_duration_min, target_effort,
+                hevy_routine_id, status, notes
+         FROM plan_segments WHERE daily_plan_id = $1 ORDER BY block_order`,
+        [plan.rows[0].id]
+      );
+    }
+
+    // Anomaly detection
+    const anomalies = [];
+    for (const w of workouts.rows) {
+      const flags = [];
+      if (w.started_at && w.ended_at && w.duration_minutes != null) {
+        const trueSec = (new Date(w.ended_at) - new Date(w.started_at)) / 1000;
+        if (Math.abs(w.duration_minutes - trueSec) <= 2 && trueSec > 60) {
+          flags.push(`duration_minutes=${w.duration_minutes} matches seconds (true=${Math.round(trueSec/60)}min)`);
+        }
+      }
+      if (typeof w.heart_rate_avg === 'string' && /^(nan|null|none)$/i.test(w.heart_rate_avg.trim())) flags.push(`hr_avg="${w.heart_rate_avg}"`);
+      if (w.source === 'apple_health' && !w.hae_id) flags.push('no hae_id (Path B legacy)');
+      if (w.duration_minutes >= 20 && w.hr_samples_count === 0 && w.source === 'apple_health') flags.push('no HR samples in metadata');
+      if (flags.length) anomalies.push({ id: w.id, type: w.workout_type, source: w.source, flags });
+    }
+    // Cross-row dupe detection: workouts on the same date with overlapping windows
+    const dupes = [];
+    for (let i = 0; i < workouts.rows.length; i++) {
+      for (let j = i + 1; j < workouts.rows.length; j++) {
+        const a = workouts.rows[i], b = workouts.rows[j];
+        if (!a.started_at || !b.started_at || !a.ended_at || !b.ended_at) continue;
+        if (a.deleted_at || b.deleted_at) continue;
+        const aStart = new Date(a.started_at).getTime(), aEnd = new Date(a.ended_at).getTime();
+        const bStart = new Date(b.started_at).getTime(), bEnd = new Date(b.ended_at).getTime();
+        const overlap = Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+        const minDur = Math.min(aEnd - aStart, bEnd - bStart);
+        if (minDur > 0 && overlap / minDur > 0.5) {
+          dupes.push({ a: a.id, b: b.id, overlap_pct: Math.round(overlap / minDur * 100), a_source: a.source, b_source: b.source });
+        }
+      }
+    }
+
+    res.json({
+      date,
+      generated_at: new Date().toISOString(),
+      summary: {
+        workout_count: workouts.rows.length,
+        active_workouts: workouts.rows.filter(w => !w.deleted_at).length,
+        anomalies_count: anomalies.length,
+        overlapping_pairs: dupes.length,
+        has_daily_activity: daily.rows.length > 0,
+        meal_count: meals.rows.length,
+        plan_status: plan.rows[0]?.status || null,
+        segment_count: segments.rows.length,
+        coaching_session_count: coach.rows.length,
+        raw_imports_count: raw.rows.length,
+      },
+      anomalies,
+      overlapping_workouts: dupes,
+      workouts: workouts.rows,
+      daily_activity: daily.rows[0] || null,
+      meals: meals.rows,
+      body_metrics: bmets.rows,
+      daily_plan: plan.rows[0] || null,
+      plan_segments: segments.rows,
+      coaching_sessions: coach.rows,
+      daily_context: ctx.rows[0] || null,
+      raw_imports: raw.rows,
+    });
+  } catch (err) {
+    console.error(`[health/diag/full-day] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
