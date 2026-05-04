@@ -2429,6 +2429,33 @@ async function reviewWorkoutData(days) {
   }
 }
 
+async function auditDeprecatedColumns() {
+  const btn = document.getElementById('btn-audit-cols');
+  const out = document.getElementById('sm-diag-output');
+  const result = document.getElementById('sm-diag-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Auditing…'; }
+  if (result) { result.style.display = 'block'; result.style.color = 'var(--text-dim)'; result.textContent = 'Counting rows with data in deprecated columns…'; }
+  try {
+    const data = await api('/health/diag/deprecated-columns');
+    if (out) {
+      out.value = JSON.stringify(data, null, 2);
+      out.style.display = 'block';
+    }
+    if (result) {
+      const pe = data.planned_exercises;
+      const ae = data.actual_exercises;
+      const hr = data.hevy_routine_id;
+      const anyRisk = (pe?.rows_NOT_mirrored_in_segments > 0) || (ae?.rows_with_data > 0) || (hr?.rows_NOT_mirrored > 0);
+      result.style.color = anyRisk ? 'var(--orange)' : 'var(--green)';
+      result.innerHTML = `planned_exercises: ${pe?.rows_with_data} (${pe?.rows_NOT_mirrored_in_segments} unmirrored) · actual_exercises: ${ae?.rows_with_data} · hevy_routine_id: ${hr?.rows_with_data} (${hr?.rows_NOT_mirrored} unmirrored). ${anyRisk ? 'See JSON for details before dropping.' : 'Safe to drop.'}`;
+    }
+  } catch (e) {
+    if (result) { result.style.color = 'var(--red)'; result.textContent = `✗ ${e.message}`; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Audit Deprecated Columns'; }
+  }
+}
+
 async function runCleanupNow() {
   const btn = document.getElementById('btn-cleanup-now');
   const result = document.getElementById('sm-diag-result');

@@ -152,6 +152,10 @@
                 <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Catch-up migrations — runs Apple/Hevy overlap dedupe, re-runs the workout_type classifier, rewrites legacy Hevy titles ("🔥 Hybrid ... GMT+0000"). Idempotent.</div>
                 <button class="btn-action btn-action-secondary sm-btn-full" onclick="runCleanupNow()" id="btn-cleanup-now">Run Cleanup Migrations</button>
               </div>
+              <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Audit deprecated columns — reports how many rows still have data in <code>daily_plans.planned_exercises</code> / <code>actual_exercises</code> / <code>hevy_routine_id</code>, and whether that data is already mirrored to <code>plan_segments</code>. Read-only — tells us if it's safe to DROP COLUMN.</div>
+                <button class="btn-action btn-action-secondary sm-btn-full" onclick="auditDeprecatedColumns()" id="btn-audit-cols">Audit Deprecated Columns</button>
+              </div>
             </div>
             <div class="sm-card">
               <div class="sm-card-label">Athlete Profile</div>
@@ -854,7 +858,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.18</span>
+          AB Brain <span id="sm-version">v1.8.19</span>
         </div>
 
       </div>

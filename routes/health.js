@@ -2242,6 +2242,95 @@ router.post('/cleanup-now', async (req, res) => {
   }
 });
 
+// ─── GET /api/health/diag/deprecated-columns ───────────────────
+// v1.8.19: audit before drop. Reports row counts with non-empty data
+// in each deprecated daily_plans column, plus how much of that data
+// is already mirrored in plan_segments. Use this to decide whether
+// the v1.8.20 DROP COLUMN is safe.
+router.get('/diag/deprecated-columns', async (req, res) => {
+  try {
+    // planned_exercises: how many daily_plans have non-empty data, and
+    // is that data already represented in a plan_segment?
+    const peTotal = await query(
+      `SELECT COUNT(*)::int AS n FROM daily_plans
+       WHERE planned_exercises IS NOT NULL
+         AND jsonb_typeof(planned_exercises) = 'array'
+         AND jsonb_array_length(planned_exercises) > 0`
+    );
+    const peNotMirrored = await query(
+      `SELECT COUNT(*)::int AS n, json_agg(json_build_object('id', dp.id, 'plan_date', dp.plan_date, 'exercise_count', jsonb_array_length(dp.planned_exercises))) AS rows
+       FROM daily_plans dp
+       WHERE dp.planned_exercises IS NOT NULL
+         AND jsonb_typeof(dp.planned_exercises) = 'array'
+         AND jsonb_array_length(dp.planned_exercises) > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM plan_segments ps
+           WHERE ps.daily_plan_id = dp.id
+             AND jsonb_typeof(ps.planned_exercises) = 'array'
+             AND jsonb_array_length(ps.planned_exercises) > 0
+         )`
+    );
+
+    // actual_exercises: never had a backfill. If any rows have data
+    // here, the data is unique to this column.
+    const aeRows = await query(
+      `SELECT id, plan_date, jsonb_array_length(actual_exercises) AS exercise_count, completion_notes
+       FROM daily_plans
+       WHERE actual_exercises IS NOT NULL
+         AND jsonb_typeof(actual_exercises) = 'array'
+         AND jsonb_array_length(actual_exercises) > 0
+       ORDER BY plan_date DESC LIMIT 50`
+    );
+
+    // hevy_routine_id: should be safely mirrored to plan_segments.
+    const hevyTotal = await query(
+      `SELECT COUNT(*)::int AS n FROM daily_plans
+       WHERE hevy_routine_id IS NOT NULL AND hevy_routine_id <> ''`
+    );
+    const hevyNotMirrored = await query(
+      `SELECT dp.id, dp.plan_date, dp.hevy_routine_id
+       FROM daily_plans dp
+       WHERE dp.hevy_routine_id IS NOT NULL AND dp.hevy_routine_id <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM plan_segments ps
+           WHERE ps.daily_plan_id = dp.id
+             AND ps.hevy_routine_id = dp.hevy_routine_id
+         )
+       ORDER BY dp.plan_date DESC LIMIT 50`
+    );
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      planned_exercises: {
+        rows_with_data: peTotal.rows[0].n,
+        rows_NOT_mirrored_in_segments: peNotMirrored.rows[0].n,
+        unmirrored_sample: peNotMirrored.rows[0].rows || [],
+        verdict: peNotMirrored.rows[0].n === 0
+          ? 'SAFE TO DROP — every populated row is already represented in plan_segments'
+          : `RISK — ${peNotMirrored.rows[0].n} row(s) have planned_exercises data NOT mirrored in plan_segments. Review the sample before dropping.`,
+      },
+      actual_exercises: {
+        rows_with_data: aeRows.rows.length,
+        sample: aeRows.rows,
+        verdict: aeRows.rows.length === 0
+          ? 'SAFE TO DROP — no rows have actual_exercises data'
+          : `RISK — ${aeRows.rows.length} row(s) have actual_exercises data. This was never backfilled into workouts/plan_segments. Dropping LOSES historical actual-vs-planned diff data unless you migrate it first.`,
+      },
+      hevy_routine_id: {
+        rows_with_data: hevyTotal.rows[0].n,
+        rows_NOT_mirrored: hevyNotMirrored.rows.length,
+        unmirrored_sample: hevyNotMirrored.rows,
+        verdict: hevyNotMirrored.rows.length === 0
+          ? 'SAFE TO DROP — every populated row is mirrored to plan_segments.hevy_routine_id'
+          : `RISK — ${hevyNotMirrored.rows.length} row(s) have hevy_routine_id NOT mirrored. Review the sample.`,
+      },
+    });
+  } catch (err) {
+    console.error(`[health/diag/deprecated-columns] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;

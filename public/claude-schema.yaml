@@ -36,7 +36,7 @@ info:
     ### 4. REVIEW — Coach logs actual workout from Fitbod screenshots
     - User sends Fitbod screenshots to coach
     - Coach logs POST /workouts with structured exercises array + daily_plan_id
-    - Coach updates PUT /daily-plans/{id} with status (completed/partial), actual_exercises, completion_notes
+    - Coach updates PUT /daily-plans/{id} with status (completed/partial) and completion_notes. Actual exercise data lives on workouts (FK-linked via plan_segment_id) — no separate actual_exercises field on daily_plans.
     - For bands: keep resistance labels as-is (Heavy, X-Heavy) — do NOT convert to pounds
     - Recovery reads structured exercises for per-muscle tracking (pre-March 2026 data uses legacy mapping)
     - POST /training/coaching — save the coaching review with key_decisions, adjustments, injury_notes, next_steps
@@ -1495,32 +1495,10 @@ components:
               muscle_secondary: { type: array, items: { type: string } }
               superset_with: { type: string, description: "Name of paired exercise for supersets" }
               notes: { type: string }
-        actual_exercises:
-          type: array
-          description: "What was actually done (from Fitbod screenshots). Same schema as planned but with actual values."
-          items:
-            type: object
-            properties:
-              name: { type: string }
-              status: { type: string, enum: [completed, partial, skipped] }
-              muscle_primary: { type: string }
-              sets:
-                type: array
-                description: "Set-level detail if available from Fitbod detail view"
-                items:
-                  type: object
-                  properties:
-                    reps: { type: integer }
-                    weight: { type: string }
-                    duration: { type: string }
-                    notes: { type: string }
-              highest_weight: { type: string }
-              volume: { type: string }
-              estimated_1rm: { type: string }
-              total_reps: { type: integer }
-              total_time: { type: string }
-              pr: { type: boolean }
-              notes: { type: string }
+        # actual_exercises was removed in v1.8.19. Workouts FK-link to
+        # plan_segments (workouts.plan_segment_id), so the actual data
+        # lives there. Query GET /api/training/day/{date} for actuals
+        # joined to the plan.
         completion_notes:
           type: string
           description: "Coach's review after workout — what changed vs plan, PRs, modifications, injury impact"

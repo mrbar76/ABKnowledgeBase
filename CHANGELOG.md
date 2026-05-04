@@ -4,6 +4,43 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.19] — 2026-05-04
+
+### Schema audit before drop (Tier 1 cleanup, paused safely)
+
+User asked to drop the three deprecated `daily_plans` columns (`planned_exercises`, `actual_exercises`, `hevy_routine_id`). I started writing the DROP COLUMN migration, then paused when asked "I'm assuming I haven't lost valuable data?" — good call. Audit first, drop in v1.8.20.
+
+**Risk profile per column:**
+- `planned_exercises` — has a backfill into `plan_segments` (line 1393, idempotent). Risk only exists if a daily_plan has populated `planned_exercises` AND has plan_segments WITHOUT mirrored exercise data. Probably zero rows but worth checking.
+- `hevy_routine_id` — same backfill mirrors it to `plan_segments.hevy_routine_id`. Same minimal risk.
+- `actual_exercises` — **never had a backfill.** If Coach wrote actual workout structure here pre-v1.8.1 without also POSTing to `/api/workouts`, that data is unique to this column. **Dropping without migration would lose it.**
+
+### Added — `GET /api/health/diag/deprecated-columns`
+
+Reports per-column:
+- `rows_with_data` — count of daily_plans rows with non-empty values
+- `rows_NOT_mirrored_*` — count of rows whose data is unique (would be lost on drop)
+- `unmirrored_sample` — up to 50 example rows with `id`, `plan_date`, exercise count
+- Plain-language `verdict`: `"SAFE TO DROP"` or `"RISK — N row(s) ..."`
+
+Settings → **Audit Deprecated Columns** button. Output goes to the same textarea used by the other diagnostic dumps.
+
+### Schema convention docs (Tier 2 partial)
+
+Added a "Schema convention — dual-representation columns on workouts" section to `claude-schema.json` description. Explains the TEXT (display, with units) vs NUMERIC (query, raw number) duals on `time_duration`/`duration_minutes`, `distance`/`distance_value`, etc. Coach now has the explicit guide.
+
+Updated `claude-schema.yaml`: removed the dead `actual_exercises` field block, replaced with a comment explaining workouts FK-link to plan_segments instead.
+
+### What you do
+1. Deploy v1.8.19
+2. Settings → Audit Deprecated Columns
+3. Paste the JSON to me
+4. Based on the numbers, I either:
+   - Ship v1.8.20 with safe `DROP COLUMN` for columns that show zero risk
+   - Build a migration that copies `actual_exercises` data into a useful place first, THEN drops
+
+---
+
 ## [1.8.18] — 2026-05-04
 
 ### Fixed — three findings from the v1.8.17 diagnostic dump
