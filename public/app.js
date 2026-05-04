@@ -2424,6 +2424,49 @@ async function reparseHealthImports() {
   }
 }
 
+// Paste an HAE export JSON directly to /api/health/ingest. Used when the
+// scheduled HAE auto-export on iPhone is stale and we want to refresh
+// today's daily_activity row right now without waiting for the cadence.
+async function ingestPastedHae() {
+  const ta = document.getElementById('hae-paste-input');
+  const btn = document.getElementById('btn-ingest-hae');
+  const out = document.getElementById('sm-hae-paste-result');
+  if (!ta || !out) return;
+  const raw = (ta.value || '').trim();
+  if (!raw) {
+    out.style.display = 'block'; out.style.color = 'var(--red)';
+    out.textContent = '✗ Paste an HAE export JSON first.';
+    return;
+  }
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch (e) {
+    out.style.display = 'block'; out.style.color = 'var(--red)';
+    out.textContent = '✗ Not valid JSON: ' + e.message;
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Ingesting…'; }
+  out.style.display = 'block'; out.style.color = 'var(--text-dim)';
+  out.textContent = 'Ingesting…';
+  try {
+    const data = await api('/health/ingest', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    out.style.color = 'var(--green)';
+    const w = data.workouts_inserted ?? data.workouts ?? 0;
+    const d = data.daily_rows ?? data.daily ?? 0;
+    out.textContent = `✓ Ingested · ${w} workouts · ${d} daily rows · format ${data.format || '?'}`;
+    ta.value = '';
+  } catch (e) {
+    out.style.color = 'var(--red)';
+    out.textContent = '✗ ' + e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Ingest pasted JSON'; }
+  }
+}
+
 // Workout data review — dumps a JSON blob for paste-back analysis.
 // v1.8.17: builds on /api/health/diag/workouts which detects anomalies
 // (seconds-as-minutes, NaN strings, missing hae_id, etc.).
@@ -7513,18 +7556,22 @@ function buildMacroDashboard(summary, activityRow) {
           // active. Workout sum is a portion of active (logged
           // training time). NEAT = active − workouts (dog walks,
           // ambient movement). Basal from HAE or BMR fallback.
+          // v1.8.22: when apple_stale=true, OUT is floored at the
+          // logged-workouts sum and NEAT is unknown. Chip prompts the
+          // user to refresh HAE on iPhone.
           const w = activityRow?.calories_workout;
           const n = activityRow?.calories_neat;
           const b = activityRow?.calories_basal;
           const bSource = activityRow?.basal_source;
+          const stale = activityRow?.apple_stale === true;
           const sync = activityRow?.last_synced_at;
           let breakdownTxt = `${Math.round(calOut)} burned`;
           const parts = [];
           if (w != null && w > 0) parts.push(`workouts ${w}`);
-          if (n != null && n > 0) parts.push(`NEAT ${n}`);
+          if (!stale && n != null && n > 0) parts.push(`NEAT ${n}`);
           if (b != null) {
             if (bSource === 'bmr_estimated') {
-              parts.push(`<span title="Basal estimated via Mifflin-St Jeor BMR (athlete_profile). HAE didn\\'t supply basal_energy_kcal.">basal ${b} <span style="opacity:0.7">est.</span></span>`);
+              parts.push(`<span title="Basal estimated via Mifflin-St Jeor BMR (athlete_profile). HAE did not supply basal_energy_kcal.">basal ${b} <span style="opacity:0.7">est.</span></span>`);
             } else {
               parts.push(`basal ${b}`);
             }
@@ -7539,10 +7586,13 @@ function buildMacroDashboard(summary, activityRow) {
             const ago = mins < 60 ? `${mins}m` : mins < 60 * 24 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / (60 * 24))}d`;
             syncTxt = ` · synced ${ago} ago`;
           }
+          const staleChip = stale
+            ? `<div class="text-micro" style="margin-top:4px;color:#f59e0b" title="daily_activity.active_energy_kcal is lower than the workouts logged today, which is impossible if Apple Health data is fresh. Open Health Auto Export on iPhone and tap Export to push today's full daily totals.">⚠ Apple Health stale — open HAE on iPhone to refresh today's totals</div>`
+            : '';
           return `<div class="flex-between" style="margin-top:4px">
             <span class="text-micro text-dim">${breakdownTxt}${syncTxt}</span>
             <span class="text-micro" style="color:${calColor};font-weight:500">net ${netLabel}</span>
-          </div>`;
+          </div>${staleChip}`;
         })() : ''}
       </div>`;
     })()}

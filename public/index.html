@@ -33,7 +33,7 @@
     <div class="login-card">
       <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
       <h1 class="login-title">AB Brain</h1>
-      <p class="login-subtitle">Unified AI Knowledge Base · v1.8.21</p>
+      <p class="login-subtitle">Unified AI Knowledge Base · v1.8.22</p>
       <form onsubmit="doLogin(event)">
         <div class="form-group">
           <input type="password" id="login-key" placeholder="API Key" required style="font-family:monospace;text-align:center;font-size:1rem">
@@ -129,6 +129,13 @@
               <div class="sm-card-desc">Re-runs the parser on every stored HAE/LODE payload. Use after parser changes (e.g. new sleep handling) to backfill columns that were previously skipped. Idempotent.</div>
               <button class="btn-action btn-action-secondary sm-btn-full" onclick="reparseHealthImports()" id="btn-reparse-health">Reparse All</button>
               <div id="sm-reparse-result" class="sm-result"></div>
+            </div>
+            <div class="sm-card">
+              <div class="sm-card-label">Paste HAE Export</div>
+              <div class="sm-card-desc">If the auto-export from Health Auto Export on iPhone is stale, paste a fresh HAE JSON export here to ingest immediately. Useful for manual same-day refresh of Apple Health daily totals. Idempotent (file hash dedup).</div>
+              <textarea id="hae-paste-input" placeholder='{"data":{"workouts":[…],"metrics":[…]}}' style="width:100%;min-height:120px;font-family:monospace;font-size:0.75rem;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;resize:vertical;margin-bottom:8px"></textarea>
+              <button class="btn-action btn-action-secondary sm-btn-full" onclick="ingestPastedHae()" id="btn-ingest-hae">Ingest pasted JSON</button>
+              <div id="sm-hae-paste-result" class="sm-result"></div>
             </div>
             <div class="sm-card">
               <div class="sm-card-label">Workout Data Review</div>
@@ -449,6 +456,19 @@
             </div>
 
             <div class="sm-card expanded">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.22 &mdash; May 4, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>Apple-stale auto-rescue.</strong> Yesterday's OUT showed 1,757 kcal but Apple Fitness logged 3,500+. Root cause: <code>daily_activity.active = 9</code> while logged workouts summed to 334 active &mdash; impossible if Apple is fresh, since workouts are a subset of daily active. When <code>workoutActive &gt; haeActive</code>, both <code>/insights/nutrition</code> and <code>/trends</code> now floor active at the workout sum, tag <code>apple_stale=true</code>, and clamp NEAT to 0 (don&rsquo;t fabricate ambient activity).</p>
+                  <p><strong>UI: Apple-stale chip on macros OUT line.</strong> Shows &ldquo;⚠ Apple Health stale &mdash; open HAE on iPhone to refresh today&rsquo;s totals&rdquo; whenever the integrity check trips. NEAT suppressed from the breakdown line in stale state.</p>
+                  <p><strong>Paste HAE Export (Settings).</strong> New textarea + button to POST a fresh HAE JSON straight to <code>/api/health/ingest</code>. Fixes same-day staleness without waiting for HAE&rsquo;s scheduled cadence on iPhone. Idempotent via file-hash dedup.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.21 &mdash; May 4, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
@@ -870,7 +890,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.21</span>
+          AB Brain <span id="sm-version">v1.8.22</span>
         </div>
 
       </div>

@@ -4,6 +4,30 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.22] — 2026-05-04
+
+### Apple-stale auto-rescue + HAE paste-import
+
+User flagged: yesterday's OUT showed 1,757 kcal, but Apple Fitness clearly logged 3,500+ kcal total burned. Diagnosis: `daily_activity.active_energy_kcal = 9` for May 3 in our DB (HAE hadn't pushed the day's complete export), while logged workouts summed to 334 kcal active. Workouts are a strict subset of daily active — `workoutActive > haeActive` is impossible if Apple is fresh, so it's an integrity violation that proves staleness.
+
+**Auto-rescue (backend):** in both `/insights/nutrition` and `/trends`, when `workoutActive > haeActive`:
+- Floor `active = workoutActive` so OUT doesn't fall below logged training
+- Set `active_source = 'workouts_floor_stale_apple'`
+- Set `apple_stale = true` on the day's row
+- NEAT clamped to 0 (we can't separate workouts from ambient when Apple's daily total is unknown — don't fabricate)
+
+**Frontend:** macros card surfaces a `⚠ Apple Health stale — open HAE on iPhone to refresh today's totals` chip below the OUT breakdown when `apple_stale` is true. NEAT is suppressed in the breakdown line in stale state.
+
+**HAE paste-import (UX):** new Settings card "Paste HAE Export" — textarea + button. User pastes any HAE JSON (e.g., from iPhone HAE → Sample Export, or from another tool that has the raw payload) and it POSTs directly to `/api/health/ingest`. Fixes the same-day staleness issue without waiting for HAE's scheduled cadence. Idempotent via existing file-hash dedup.
+
+### Per-date workout active sum in /trends
+Was today-only; now SUM-grouped across all dates. Past days couldn't trigger the stale rescue before because `workoutActive` was always 0 there.
+
+### Out of scope
+- Cross-source dedupe pass for the Spartan/Hiking duplicate (manual race entry without `started_at` colliding with Apple "Hiking" auto-detect on Apr 26). Need the diag JSON to fix precisely.
+
+---
+
 ## [1.8.21] — 2026-05-04
 
 ### Footer mismatch + Reparse 502 timeout

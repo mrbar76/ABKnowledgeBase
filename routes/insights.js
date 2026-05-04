@@ -899,13 +899,23 @@ router.get('/nutrition', async (req, res) => {
       // overlap a Hevy entry, AND it loses NEAT (dog walks, ambient
       // activity). v1.8.12's max() approach was a bad workaround for
       // HAE staleness; the right fix is HAE 15-min push cadence.
+      //
+      // v1.8.22: BUT — workouts are a strict subset of daily active.
+      // If `workoutActive > haeActive`, that's an integrity violation
+      // proving Apple data is stale (HAE hasn't pushed today's full
+      // export yet). In that case, floor `active` at workoutActive so
+      // OUT doesn't fall below logged training, and tag the row
+      // `apple_stale` so the UI can prompt for HAE refresh.
       const haeActive = Number(r.active_energy_kcal) || 0;
       const workoutActive = workoutActiveByDate.get(date) || 0;
-      const active = haeActive;
-      const activeSource = haeActive > 0 ? 'apple_health' : null;
-      // NEAT = daily_active - workout_active. Captures dog walks +
-      // ambient movement that don't fit the workout schema.
-      const neat = Math.max(0, haeActive - workoutActive);
+      const appleStale = workoutActive > haeActive;
+      const active = appleStale ? workoutActive : haeActive;
+      const activeSource = appleStale
+        ? 'workouts_floor_stale_apple'
+        : (haeActive > 0 ? 'apple_health' : null);
+      // NEAT only computable when Apple data is fresh. When stale, we
+      // can't separate workouts vs ambient, so report 0 (don't fabricate).
+      const neat = appleStale ? 0 : Math.max(0, haeActive - workoutActive);
       // BMR fallback (v1.8.10/.11): when basal_energy_kcal is null (HAE
       // doesn't always export it), estimate via Mifflin-St Jeor using
       // user_profile (set by user) + last-resort defaults.
@@ -951,6 +961,7 @@ router.get('/nutrition', async (req, res) => {
         calories_basal: basal != null ? Math.round(basal) : null,
         basal_source: basalSource,
         active_source: activeSource,
+        apple_stale: appleStale,
         last_synced_at: r.updated_at || null,
         balance: Math.round(meal.kcal - out),
         protein_g: Math.round(meal.protein_g),
@@ -1311,25 +1322,34 @@ router.get('/trends', async (req, res) => {
     );
     const weightLbForBmr = weightR.rows[0]?.weight_lb ? Number(weightR.rows[0].weight_lb) : null;
     const weightKg = weightLbForBmr ? weightLbForBmr / 2.2046226218 : null;
-    // Today-only workout active sum (this endpoint only cares about today).
-    const todayWorkoutActiveR = await query(
-      `SELECT SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS active_kcal
-       FROM workouts WHERE workout_date = $1 AND deleted_at IS NULL`,
-      [today]
+    // v1.8.22: per-date workout active sum so the staleness floor also
+    // applies on past days (was today-only — past days couldn't trigger
+    // the apple_stale rescue even when daily_activity was clearly under
+    // the workouts logged on that date).
+    const workoutActiveByDateR = await query(
+      `SELECT workout_date, SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS active_kcal
+       FROM workouts WHERE deleted_at IS NULL
+       GROUP BY workout_date`
     );
-    const todayWorkoutActive = Math.round(Number(todayWorkoutActiveR.rows[0]?.active_kcal) || 0);
+    const workoutActiveByDate = new Map();
+    for (const row of workoutActiveByDateR.rows) {
+      const d = dateOnly(row.workout_date);
+      const k = Math.round(Number(row.active_kcal) || 0);
+      if (k > 0) workoutActiveByDate.set(d, k);
+    }
 
     const calBreakdownByDate = new Map();
     for (const r of daRows) {
       const dateKey = dateOnly(r.activity_date);
       const haeActive = Number(r.active_energy_kcal) || 0;
-      const isToday = dateKey === today;
-      const workoutActive = isToday ? todayWorkoutActive : 0;
-      // v1.8.15: Apple Health daily total IS the source of truth.
-      // workout sum no longer feeds OUT; it's split out as "workouts"
-      // and (haeActive − workoutActive) becomes NEAT.
-      const active = haeActive;
-      const neat = Math.max(0, haeActive - workoutActive);
+      const workoutActive = workoutActiveByDate.get(dateKey) || 0;
+      // v1.8.22: staleness rescue (matches /insights/nutrition logic).
+      // workouts are a strict subset of daily active; if workout sum
+      // exceeds Apple's daily active, HAE hasn't pushed today's full
+      // export yet — floor active at workout sum and tag apple_stale.
+      const appleStale = workoutActive > haeActive;
+      const active = appleStale ? workoutActive : haeActive;
+      const neat = appleStale ? 0 : Math.max(0, haeActive - workoutActive);
       let basal = r.basal_energy_kcal != null ? Number(r.basal_energy_kcal) : null;
       let basalSource = basal != null ? 'apple_health' : null;
       if (basal == null) {
@@ -1345,7 +1365,10 @@ router.get('/trends', async (req, res) => {
         active: active > 0 ? Math.round(active) : null,
         workout: workoutActive > 0 ? Math.round(workoutActive) : null,
         neat: Math.round(neat),
-        active_source: active > 0 ? 'apple_health' : null,
+        active_source: appleStale
+          ? 'workouts_floor_stale_apple'
+          : (active > 0 ? 'apple_health' : null),
+        apple_stale: appleStale,
         basal: basal != null ? Math.round(basal) : null,
         basal_source: basalSource,
         last_synced_at: r.updated_at || null,
@@ -1411,6 +1434,7 @@ router.get('/trends', async (req, res) => {
         calories_basal: todayBreakdown.basal,
         basal_source: todayBreakdown.basal_source,
         active_source: todayBreakdown.active_source,
+        apple_stale: todayBreakdown.apple_stale || false,
         last_synced_at: todayBreakdown.last_synced_at,
         balance: Math.round((Number(todayMeal.kcal) || 0) - (calBurnByDate.get(today) || 0)),
         protein_g: Math.round(Number(todayMeal.protein) || 0),
