@@ -2442,12 +2442,22 @@ async function auditDeprecatedColumns() {
       out.style.display = 'block';
     }
     if (result) {
-      const pe = data.planned_exercises;
-      const ae = data.actual_exercises;
-      const hr = data.hevy_routine_id;
-      const anyRisk = (pe?.rows_NOT_mirrored_in_segments > 0) || (ae?.rows_with_data > 0) || (hr?.rows_NOT_mirrored > 0);
-      result.style.color = anyRisk ? 'var(--orange)' : 'var(--green)';
-      result.innerHTML = `planned_exercises: ${pe?.rows_with_data} (${pe?.rows_NOT_mirrored_in_segments} unmirrored) · actual_exercises: ${ae?.rows_with_data} · hevy_routine_id: ${hr?.rows_with_data} (${hr?.rows_NOT_mirrored} unmirrored). ${anyRisk ? 'See JSON for details before dropping.' : 'Safe to drop.'}`;
+      // v1.8.20+: each column reports column_exists. After the drop,
+      // column_exists=false and rows_with_data is absent. Pre-drop the
+      // shape includes rows_with_data + (rows_NOT_mirrored_* OR sample).
+      const fmt = (label, col) => {
+        if (!col) return `${label}: ?`;
+        if (col.column_exists === false) return `${label}: <span style="color:#10b981">DROPPED</span>`;
+        const n = col.rows_with_data ?? '?';
+        const unmirrored = col.rows_NOT_mirrored_in_segments ?? col.rows_NOT_mirrored;
+        return unmirrored != null ? `${label}: ${n} (${unmirrored} unmirrored)` : `${label}: ${n}`;
+      };
+      const stash = data.legacy_stash?.rows_with_legacy_actual_exercises;
+      const allDropped = data.planned_exercises?.column_exists === false
+        && data.actual_exercises?.column_exists === false
+        && data.hevy_routine_id?.column_exists === false;
+      result.style.color = allDropped ? 'var(--green)' : 'var(--orange)';
+      result.innerHTML = `${fmt('planned_exercises', data.planned_exercises)} · ${fmt('actual_exercises', data.actual_exercises)} · ${fmt('hevy_routine_id', data.hevy_routine_id)}${stash ? ` · stash: ${stash} row${stash === 1 ? '' : 's'}` : ''}${allDropped ? '. Schema clean.' : '.'}`;
     }
   } catch (e) {
     if (result) { result.style.color = 'var(--red)'; result.textContent = `✗ ${e.message}`; }
