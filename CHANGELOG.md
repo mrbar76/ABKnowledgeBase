@@ -4,6 +4,30 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.21] — 2026-05-04
+
+### Footer mismatch + Reparse 502 timeout
+
+After v1.8.20a deployed, two loose ends remained:
+
+**1. Footer label still showed "AB Brain v2.0.0"**
+- The `<span id="sm-version">` is overwritten on Settings open: `loadSettingsMenuInfo()` calls `/api/health-check` and writes `'v' + data.version`.
+- `/api/health-check` reads `require('./package.json').version` — which was still `2.0.0` from the original Coach release.
+- Hardcoding the span in HTML had no effect because the JS runs after.
+- Fixed by bumping `package.json` to `1.8.21`. Single source of truth now: package.json drives the footer.
+
+**2. `POST /api/health/reparse` returned 502**
+- The endpoint loops through every stored `raw_health_imports` row synchronously. With ~36 payloads × `processPayload` (each one runs Format A/B/C/D parsing, multi-table upserts, dedupe), the request blew past the Railway proxy's ~30s ceiling.
+- Reworked to chunk: accepts `?limit=N&offset=M` (capped at 25/call, default 5). Returns `total`, `next_offset` (null when done), and the per-chunk `results[]`.
+- Final-chunk-only triggers `dedupeAppleWorkouts()` + `recomputeMissingTss()` so we don't waste cycles re-deduping after every page.
+- Frontend `reparseHealthImports()` now iterates: kicks off chunk 0, posts each next batch when the prior returns, updates the result line with `Reparsing… X/N`, stops on `next_offset == null`. Hard cap of 200 iterations as a safety.
+
+### Out of scope
+- Background job queue with persistent state (current chunked approach is fine for ≤500 payloads).
+- Single-payload reparse (`{ file_hash }` body) still runs in one shot — single payload doesn't hit the timeout.
+
+---
+
 ## [1.8.20] — 2026-05-04
 
 ### Schema cleanup — three deprecated daily_plans columns dropped

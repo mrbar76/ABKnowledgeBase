@@ -1371,20 +1371,56 @@ router.post('/ingest', async (req, res) => {
 // ─── POST /api/health/reparse ─────────────────────────────────
 // Re-runs the current parser on stored payloads and overwrites parse_result.
 // Body: { file_hash } to reparse one; omit to reparse all imports.
+// Query: ?limit=N&offset=M to chunk a big history (Railway proxy times out
+// around 30s on a synchronous all-payload reparse). Frontend iterates until
+// next_offset is null.
 // Idempotent — all upserts use ON CONFLICT DO UPDATE.
 
 router.post('/reparse', async (req, res) => {
   try {
     const { file_hash } = req.body || {};
-    const params = file_hash ? [file_hash] : [];
-    const where = file_hash ? 'WHERE file_hash = $1' : '';
-    const stored = await query(
-      `SELECT file_hash, payload FROM raw_health_imports ${where} ORDER BY ingested_at ASC`,
-      params
-    );
-    if (!stored.rows.length) {
-      return res.status(404).json({ error: file_hash ? 'No import with that hash' : 'No imports stored' });
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 5, 25));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+    if (file_hash) {
+      const stored = await query(
+        `SELECT file_hash, payload FROM raw_health_imports WHERE file_hash = $1`,
+        [file_hash]
+      );
+      if (!stored.rows.length) {
+        return res.status(404).json({ error: 'No import with that hash' });
+      }
+      const summary = [];
+      for (const row of stored.rows) {
+        try {
+          const { format, result } = await processPayload(row.payload);
+          await query(
+            `UPDATE raw_health_imports SET source_format = $1, parse_result = $2::jsonb WHERE file_hash = $3`,
+            [format, JSON.stringify(result || { error: 'unknown format' }), row.file_hash]
+          );
+          summary.push({ file_hash: row.file_hash, format, ...(result || {}) });
+        } catch (err) {
+          summary.push({ file_hash: row.file_hash, error: err.message });
+        }
+      }
+      const duplicatesMerged = await dedupeAppleWorkouts();
+      const tssUpdated = await recomputeMissingTss().catch(() => 0);
+      return res.json({
+        reparsed: summary.length, total: 1, next_offset: null,
+        duplicates_merged: duplicatesMerged, tss_recomputed: tssUpdated, results: summary
+      });
     }
+
+    // All-payload mode — chunked
+    const totalRes = await query(`SELECT COUNT(*)::int AS n FROM raw_health_imports`);
+    const total = totalRes.rows[0]?.n || 0;
+    if (!total) return res.status(404).json({ error: 'No imports stored' });
+
+    const stored = await query(
+      `SELECT file_hash, payload FROM raw_health_imports
+       ORDER BY ingested_at ASC OFFSET $1 LIMIT $2`,
+      [offset, limit]
+    );
 
     const summary = [];
     for (const row of stored.rows) {
@@ -1399,11 +1435,27 @@ router.post('/reparse', async (req, res) => {
         summary.push({ file_hash: row.file_hash, error: err.message });
       }
     }
-    const duplicatesMerged = await dedupeAppleWorkouts();
-    // Auto-recompute TSS so /trends.training stays current without the
-    // user having to remember to POST /insights/recompute-tss.
-    const tssUpdated = await recomputeMissingTss().catch(() => 0);
-    res.json({ reparsed: summary.length, duplicates_merged: duplicatesMerged, tss_recomputed: tssUpdated, results: summary });
+
+    const nextOffset = offset + stored.rows.length;
+    const done = nextOffset >= total;
+
+    // Only run dedupe + TSS recompute on the final chunk so we don't waste
+    // cycles on every page.
+    let duplicatesMerged = 0, tssUpdated = 0;
+    if (done) {
+      duplicatesMerged = await dedupeAppleWorkouts();
+      tssUpdated = await recomputeMissingTss().catch(() => 0);
+    }
+
+    res.json({
+      reparsed: summary.length,
+      total,
+      offset,
+      next_offset: done ? null : nextOffset,
+      duplicates_merged: duplicatesMerged,
+      tss_recomputed: tssUpdated,
+      results: summary
+    });
   } catch (err) {
     console.error(`[health/reparse] failed: ${err.stack}`);
     res.status(500).json({ error: err.message });

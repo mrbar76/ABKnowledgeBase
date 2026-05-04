@@ -2389,10 +2389,33 @@ async function reparseHealthImports() {
   if (btn) { btn.disabled = true; btn.textContent = 'Reparsing…'; }
   if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Running…'; }
   try {
-    const data = await api('/health/reparse', { method: 'POST', body: '{}' });
+    // Chunked: backend processes max 5 payloads per call to avoid Railway
+    // proxy 30s timeout on synchronous all-payload reparse. Iterate until
+    // next_offset is null.
+    const chunkSize = 5;
+    let offset = 0;
+    let totalReparsed = 0;
+    let total = 0;
+    let dupsMerged = 0;
+    let tssUpdated = 0;
+    let safety = 200; // cap iterations
+    while (safety-- > 0) {
+      const data = await api(`/health/reparse?limit=${chunkSize}&offset=${offset}`,
+        { method: 'POST', body: '{}' });
+      totalReparsed += data.reparsed || 0;
+      total = data.total || total;
+      dupsMerged = data.duplicates_merged || dupsMerged;
+      tssUpdated = data.tss_recomputed || tssUpdated;
+      if (out) {
+        out.style.color = 'var(--text-dim)';
+        out.textContent = `Reparsing… ${totalReparsed}/${total}`;
+      }
+      if (data.next_offset == null) break;
+      offset = data.next_offset;
+    }
     if (out) {
       out.style.color = 'var(--green)';
-      out.textContent = `✓ Reparsed ${data.reparsed} files · ${data.duplicates_merged ?? 0} duplicates merged · ${data.tss_recomputed ?? 0} TSS rows updated`;
+      out.textContent = `✓ Reparsed ${totalReparsed} files · ${dupsMerged} duplicates merged · ${tssUpdated} TSS rows updated`;
     }
   } catch (e) {
     if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
