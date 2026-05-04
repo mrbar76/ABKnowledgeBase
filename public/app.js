@@ -7319,18 +7319,26 @@ function buildMacroDashboard(summary, activityRow) {
           ${TARGET_MARKER_HTML}
         </div>
         ${calOut != null ? (() => {
-          // Diagnostic breakdown surfaced in v1.8.9. Tells you whether
-          // the OUT number is small because the day is incomplete vs
-          // because basal_energy_kcal is missing from the HAE payload.
+          // Diagnostic breakdown. Shows whether basal came from Apple
+          // Health or our Mifflin-St Jeor fallback (v1.8.10), so the
+          // user can tell at a glance that HAE isn't sending basal.
           const a = activityRow?.calories_active;
           const b = activityRow?.calories_basal;
+          const bSource = activityRow?.basal_source;
           const sync = activityRow?.last_synced_at;
           let breakdownTxt = `${Math.round(calOut)} burned`;
           const parts = [];
           if (a != null) parts.push(`active ${a}`);
-          else parts.push('<span style="color:#f59e0b">active null</span>');
-          if (b != null) parts.push(`basal ${b}`);
-          else parts.push('<span style="color:#f59e0b" title="basal_energy_kcal is null. Either HAE config does not export Basal Energy Burned, or no payload received yet today. Run Settings → Reparse Health Imports → Reparse All; if still null, hit /api/health/diagnose-day?date=YYYY-MM-DD to inspect the raw payload.">basal null</span>');
+          else parts.push('<span style="color:#f59e0b" title="No active energy synced yet for today. HAE typically lags 5-30 min after activity.">active null</span>');
+          if (b != null) {
+            if (bSource === 'bmr_estimated') {
+              parts.push(`<span title="Basal estimated via Mifflin-St Jeor BMR using latest weight + USER_HEIGHT_CM/USER_AGE/USER_SEX env vars (defaults 175cm/38yo/male). HAE didn\\'t supply basal_energy_kcal — set the metric in HAE app config to use real data.">basal ${b} <span style="opacity:0.7">est.</span></span>`);
+            } else {
+              parts.push(`basal ${b}`);
+            }
+          } else {
+            parts.push('<span style="color:#f59e0b">basal null</span>');
+          }
           if (parts.length) breakdownTxt += ` (${parts.join(' · ')})`;
           let syncTxt = '';
           if (sync) {

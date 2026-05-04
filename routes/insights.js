@@ -3,6 +3,51 @@
 // no new schema beyond a `tss` column on workouts.
 
 const express = require('express');
+
+// ─── BMR fallback ─────────────────────────────────────────────────
+// HAE's daily payload doesn't reliably include basal_energy_kcal —
+// depends on the user's HAE app config and which export format is
+// active. When basal is null in daily_activity, we estimate it via
+// Mifflin-St Jeor BMR using the user's latest weight + profile from
+// env vars. Independent of HAE quirks; deterministic.
+//
+// Env config (all optional, sensible defaults applied):
+//   USER_HEIGHT_CM   default 175
+//   USER_AGE         default 38
+//   USER_SEX         default 'male'  (other valid: 'female')
+//
+// Mifflin-St Jeor (1990) is the most accurate population formula
+// without indirect calorimetry — typically within ±10% for adults:
+//   Men:   10·kg + 6.25·cm − 5·age + 5
+//   Women: 10·kg + 6.25·cm − 5·age − 161
+//
+// Returns null if weightKg is null (can't compute without it).
+function computeBmrKcal(weightKg) {
+  if (weightKg == null || !Number.isFinite(Number(weightKg))) return null;
+  const heightCm = Number(process.env.USER_HEIGHT_CM) || 175;
+  const age = Number(process.env.USER_AGE) || 38;
+  const sex = (process.env.USER_SEX || 'male').toLowerCase();
+  const sexAdjust = sex === 'female' ? -161 : 5;
+  const bmr = 10 * Number(weightKg) + 6.25 * heightCm - 5 * age + sexAdjust;
+  return Math.round(bmr);
+}
+
+// Pro-rate BMR for a partial day. Apple Health's "Total CAL" by
+// late evening is essentially full-day BMR + active-so-far. AB Brain
+// has historically shown OUT mid-day too; pro-rating prevents
+// surplus/deficit numbers from looking inflated at 8 AM.
+function bmrForDate(weightKg, dateStr) {
+  const full = computeBmrKcal(weightKg);
+  if (full == null) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  if (dateStr !== today) return full;
+  // Mid-day on `today`: pro-rate by hours elapsed.
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const fraction = Math.min(1, (now.getTime() - startOfDay.getTime()) / 86400000);
+  return Math.round(full * fraction);
+}
 const { query } = require('../db');
 const router = express.Router();
 
@@ -1121,18 +1166,47 @@ router.get('/trends', async (req, res) => {
     // Per-day breakdown so the UI can surface "active X · basal Y" and
     // the user can tell at a glance whether basal_energy_kcal is null
     // (HAE export config issue) or just the day is incomplete.
+    //
+    // BMR fallback (v1.8.10): if basal_energy_kcal is null, estimate
+    // via Mifflin-St Jeor using latest weight. HAE's daily payload
+    // often omits basal entirely; without this fallback OUT looked
+    // ~1500-2000 kcal too low every day.
     const calBreakdownByDate = new Map();
     for (const r of daRows) {
-      const active = Number(r.active_energy_kcal) || 0;
-      const basal = Number(r.basal_energy_kcal) || 0;
-      const out = active + basal;
       const dateKey = dateOnly(r.activity_date);
+      const active = Number(r.active_energy_kcal) || 0;
+      let basal = r.basal_energy_kcal != null ? Number(r.basal_energy_kcal) : null;
+      let basalSource = basal != null ? 'apple_health' : null;
+      if (basal == null) {
+        const estimate = bmrForDate(weightKg, dateKey);
+        if (estimate != null) {
+          basal = estimate;
+          basalSource = 'bmr_estimated';
+        }
+      }
+      const out = active + (basal || 0);
       if (out > 0) calBurnByDate.set(dateKey, out);
       calBreakdownByDate.set(dateKey, {
         active: r.active_energy_kcal != null ? Math.round(active) : null,
-        basal: r.basal_energy_kcal != null ? Math.round(basal) : null,
+        basal: basal != null ? Math.round(basal) : null,
+        basal_source: basalSource,
         last_synced_at: r.updated_at || null,
       });
+    }
+    // Special case: if `today` has NO daily_activity row at all (HAE
+    // hasn't synced yet today), still inject a BMR estimate so OUT
+    // isn't suspiciously zero.
+    if (!calBreakdownByDate.has(today)) {
+      const estimate = bmrForDate(weightKg, today);
+      if (estimate != null) {
+        calBurnByDate.set(today, estimate);
+        calBreakdownByDate.set(today, {
+          active: null,
+          basal: estimate,
+          basal_source: 'bmr_estimated',
+          last_synced_at: null,
+        });
+      }
     }
     const calsTarget = tget('calories_kcal', 2600);
     const proteinTarget = tget('protein_g', 138);
@@ -1159,15 +1233,19 @@ router.get('/trends', async (req, res) => {
     const protein30 = proteinSeries.slice(-30);
     const protein60Prior = proteinSeries.slice(-90, -30);
 
-    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, basal: null, last_synced_at: null };
+    const todayBreakdown = calBreakdownByDate.get(today) || { active: null, basal: null, basal_source: null, last_synced_at: null };
     const nutrition = {
       today: {
         calories_in: Math.round(Number(todayMeal.kcal) || 0),
         calories_out: Math.round(calBurnByDate.get(today) || 0),
         // v1.8.9: surface the breakdown so the UI can show
         // "OUT 3275 (active 1526 · basal 1749)" or warn when basal is null.
+        // v1.8.10: basal_source = 'apple_health' | 'bmr_estimated' | null
+        // so the UI can distinguish HAE-supplied basal from our
+        // Mifflin-St Jeor fallback.
         calories_active: todayBreakdown.active,
         calories_basal: todayBreakdown.basal,
+        basal_source: todayBreakdown.basal_source,
         last_synced_at: todayBreakdown.last_synced_at,
         balance: Math.round((Number(todayMeal.kcal) || 0) - (calBurnByDate.get(today) || 0)),
         protein_g: Math.round(Number(todayMeal.protein) || 0),

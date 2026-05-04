@@ -4,6 +4,48 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.8.10] — 2026-05-03
+
+### Fixed — OUT/balance calculation no longer depends on HAE supplying basal
+
+After v1.8.8 (Format A basal capture) + v1.8.9 (diagnostic visibility), basal was still null because **HAE's daily payload simply doesn't include basal_energy_kcal** in many configs. User-visible result: workout days showed less "burned" than rest days, because the dominant ~1,800 kcal/day BMR component was missing from both.
+
+**Solution: stop depending on HAE for basal entirely.** When `basal_energy_kcal` is null, AB Brain now computes BMR via Mifflin-St Jeor:
+
+```
+BMR_kcal = 10·weight_kg + 6.25·height_cm − 5·age + (sex == 'male' ? +5 : -161)
+```
+
+Inputs:
+- **Weight** — latest from `body_metrics` (RENPHO scale)
+- **Height** — `USER_HEIGHT_CM` env var, default **175 cm**
+- **Age** — `USER_AGE` env var, default **38**
+- **Sex** — `USER_SEX` env var, default **male**
+
+For `today`, BMR is pro-rated by elapsed-day fraction so 8 AM doesn't show a full-day basal. For past dates, full BMR.
+
+**API response (`/insights/nutrition/macros/today`):**
+- `calories_basal` — populated either from HAE or from BMR fallback
+- `basal_source` — `'apple_health'` | `'bmr_estimated'` | `null` so clients can show provenance
+
+**UI:** OUT line now reads `OUT 3275 burned (active 1526 · basal 1749 est.) · synced 12m ago`. The `est.` tag (with explanatory tooltip) shows up only when basal came from BMR. When HAE supplies real basal, no tag.
+
+**Edge case handled:** if `daily_activity` row doesn't exist yet for today (HAE hasn't synced anything), AB Brain still injects a BMR-only OUT estimate so the Macros tab isn't suspiciously empty in the morning.
+
+### Action — set your real profile (optional, recommended)
+
+Defaults give a reasonable estimate (~1,800 kcal BMR for a 90 kg adult male). For accuracy, set on Railway:
+
+```
+USER_HEIGHT_CM=180
+USER_AGE=42
+USER_SEX=male
+```
+
+Then redeploy. The estimate adjusts on the next request.
+
+---
+
 ## [1.8.9] — 2026-05-03
 
 ### Added — visibility into why OUT looks wrong on the Macros tab

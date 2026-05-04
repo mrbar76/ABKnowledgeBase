@@ -395,6 +395,19 @@
 
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                v1.8.10 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
+              </div>
+              <div class="sm-collapse">
+                <div class="sm-doc-text">
+                  <p><strong>OUT calculation no longer depends on HAE supplying basal.</strong> v1.8.8 + v1.8.9 weren&rsquo;t enough &mdash; HAE&rsquo;s daily payload simply doesn&rsquo;t include <code>basalEnergyKcal</code> in many configs. Workout days were showing LESS burned than rest days because the ~1,800 kcal BMR was missing from both.</p>
+                  <p><strong>BMR fallback via Mifflin-St Jeor</strong> when <code>basal_energy_kcal</code> is null. Uses latest weight from RENPHO + env vars <code>USER_HEIGHT_CM</code> / <code>USER_AGE</code> / <code>USER_SEX</code> (defaults: 175 cm / 38 yo / male). Pro-rated by elapsed-day fraction for &ldquo;today&rdquo;; full BMR for past dates.</p>
+                  <p>OUT line shows &ldquo;basal 1749 <em>est.</em>&rdquo; with tooltip when the BMR fallback is active. Set the env vars on Railway for your real values.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
                 v1.8.9 &mdash; May 3, 2026 <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
@@ -764,7 +777,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.9</span>
+          AB Brain <span id="sm-version">v1.8.10</span>
         </div>
 
       </div>
