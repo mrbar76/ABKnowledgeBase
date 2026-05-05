@@ -1736,6 +1736,78 @@ async function initDB() {
   // Add ai_source for provenance — was missing.
   await safeQuery('fueling_rehearsals +ai_source', `ALTER TABLE fueling_rehearsals ADD COLUMN IF NOT EXISTS ai_source TEXT`);
 
+  // ===== AB BRAIN v2 — additive schema =====
+  // Phase 1 of the v2 architecture transition. Adds Coach's narrative tables
+  // (snapshots + retros), the off-device daily vitals cache (Shortcut-populated),
+  // alcohol/supplement fields on daily_context, and folds race_results columns
+  // into races. No drops, no data migration, no breaking changes.
+  // See branch claude/fix-health-metrics-parsing-nEUEk for the architecture spec.
+
+  await safeQuery('coaching_snapshots table', `
+    CREATE TABLE IF NOT EXISTS coaching_snapshots (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      snapshot_date DATE NOT NULL,
+      integrated_paragraph TEXT NOT NULL,
+      headline_prescription TEXT,
+      if_then_conditional TEXT,
+      decision_references JSONB DEFAULT '{}'::jsonb,
+      input_freshness JSONB DEFAULT '{}'::jsonb,
+      coaching_session_id UUID REFERENCES coaching_sessions(id) ON DELETE SET NULL,
+      generated_by_skill TEXT,
+      ai_source TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('coaching_snapshots idx date', `CREATE INDEX IF NOT EXISTS idx_snapshots_date ON coaching_snapshots(snapshot_date DESC, snapshot_at DESC)`);
+  await safeQuery('coaching_snapshots idx session', `CREATE INDEX IF NOT EXISTS idx_snapshots_session ON coaching_snapshots(coaching_session_id)`);
+
+  await safeQuery('coaching_retros table', `
+    CREATE TABLE IF NOT EXISTS coaching_retros (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      generated_at TIMESTAMPTZ DEFAULT NOW(),
+      scope TEXT NOT NULL CHECK(scope IN ('weekly','monthly','block_close','race_prep','custom')),
+      period_start DATE NOT NULL,
+      period_end DATE NOT NULL,
+      narrative TEXT NOT NULL,
+      highlights JSONB DEFAULT '[]'::jsonb,
+      chart_references JSONB DEFAULT '[]'::jsonb,
+      data_references JSONB DEFAULT '{}'::jsonb,
+      generated_by_skill TEXT DEFAULT 'generate-retro',
+      ai_source TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('coaching_retros idx period', `CREATE INDEX IF NOT EXISTS idx_retros_period ON coaching_retros(period_end DESC, scope)`);
+
+  // 6 fields × 1 row/day, populated by a 5:30am iOS Shortcut. Off-device
+  // coaching reads from this when HealthKit isn't reachable.
+  await safeQuery('daily_vitals_cache table', `
+    CREATE TABLE IF NOT EXISTS daily_vitals_cache (
+      date DATE PRIMARY KEY,
+      hrv_ms NUMERIC(5,1),
+      rhr_bpm INTEGER,
+      sleep_total_min INTEGER,
+      sleep_deep_min INTEGER,
+      sleep_rem_min INTEGER,
+      source_device TEXT,
+      recorded_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('daily_vitals_cache idx', `CREATE INDEX IF NOT EXISTS idx_vitals_cache_recorded ON daily_vitals_cache(recorded_at DESC)`);
+
+  // daily_context: alcohol + supplement change note (Coach's recommended fold-in
+  // instead of separate tables for these low-volume signals).
+  await safeQuery('dc +alcohol_units', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS alcohol_units NUMERIC(4,1)`);
+  await safeQuery('dc +supplement_change_note', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS supplement_change_note TEXT`);
+
+  // races: fold race_results into races (no separate race_results table).
+  // result_time_seconds + result_notes already exist; adding the rest.
+  await safeQuery('races +splits', `ALTER TABLE races ADD COLUMN IF NOT EXISTS splits JSONB DEFAULT '[]'::jsonb`);
+  await safeQuery('races +placement_overall', `ALTER TABLE races ADD COLUMN IF NOT EXISTS placement_overall INTEGER`);
+  await safeQuery('races +placement_age_group', `ALTER TABLE races ADD COLUMN IF NOT EXISTS placement_age_group INTEGER`);
+  await safeQuery('races +placement_total', `ALTER TABLE races ADD COLUMN IF NOT EXISTS placement_total INTEGER`);
+  await safeQuery('races +post_race_body_notes', `ALTER TABLE races ADD COLUMN IF NOT EXISTS post_race_body_notes TEXT`);
+  await safeQuery('races +post_race_rpe', `ALTER TABLE races ADD COLUMN IF NOT EXISTS post_race_rpe INTEGER`);
+
   // ===== EMAIL INDEX =====
   // Stores pointers + summaries for email threads. Bodies are NOT stored;
   // they are fetched on demand from the source (Gmail/Outlook via MCP).
