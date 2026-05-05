@@ -30,9 +30,20 @@ Re-POSTing the same date is idempotent — `ON CONFLICT (date)` upsert with `COA
 
 ## Heads-up before you start
 
-This runbook is grounded in Apple's official Shortcuts documentation (event triggers, Get Contents of URL with JSON body) and the [Shortcuts actions reference](https://matthewcassinelli.com/actions/find-health-samples/) — but Apple's Shortcuts UI varies slightly across iOS versions and some actions don't have public Apple docs. **Action names below are what I've verified; exact dropdown labels may differ on your device.** When something doesn't match, screenshot it and we'll fix the doc.
+This runbook reflects the action flow verified in iOS 18 Shortcuts on May 5, 2026 (HRV + RHR round-trip proven into `daily_vitals_cache`). Apple's exact labels vary slightly across iOS versions; the *pattern* is what matters: **Find Health Samples → name the magic variable → reference it in the Dictionary with property = Value** (the property picker appears automatically when you tap a magic-variable chip).
 
-The shortcut is small (~10–14 actions). The fragile part is sleep — see Step 3c for the simpler path.
+### Hardware constraints (Apple Watch Series 3)
+
+| Metric | Series 3 | Why |
+|---|---|---|
+| HRV, RHR, sleep total, respiratory rate | ✓ Available | Series 3 sensors record these |
+| Sleep stages (deep/REM/core/awake) | ✗ Not available | Stage detail requires watchOS 9 / Series 4+ |
+| SpO2 / blood oxygen | ✗ Not available | Series 6+ sensor |
+| Wrist temperature | ✗ Not available | Series 8+ sensor |
+
+The schema accepts the missing fields anyway — they sit null until you upgrade. Don't waste Shortcut UI time wiring queries that won't have data.
+
+The shortcut is small (~12 actions on Series 3). The fragile part is sleep stages — Series 3 doesn't record them, so just send `sleep_total_min` and skip stages entirely. See Step 3c.
 
 ## Building the Shortcut on iPhone
 
@@ -51,66 +62,99 @@ Save it to a variable named `date`.
 
 ### Step 3 — query HealthKit
 
-For each of the vitals below, add a **Find Health Samples** action.
+For each vital below, add a **Find Health Samples** action. The pattern is identical for every quantity-type metric — copy-paste-modify is fine.
 
-**Apple confirms** Find Health Samples supports filters on Value / Start Date / End Date / Duration / Source / Name, and sorts by date / value / duration / source / name. The "Type" parameter is what selects the metric (HRV, Resting HR, Sleep Analysis, etc.).
+**Why a 3-day window:** HealthKit records HRV / RHR / respiratory rate at irregular cadence (Apple Watch logs them when conditions are right, sometimes with 1-2 day gaps). A 3-day window ending at "now" reliably catches the latest reading even on slow days.
 
-**Why a 36-hour window:** HealthKit syncs HRV / RHR / sleep on a slight delay. A 36h window ending at "now" catches values even if Apple Watch synced after midnight or you woke up late.
+**Magic-variable + property pattern (verified May 5, 2026):**
+1. Find Health Samples produces a "Health sample" magic variable. Tap the action's variable indicator and **rename the variable** (e.g. to `HRV`, `RHR`, `RespRate`) — this makes downstream references readable.
+2. In the Dictionary action (Step 5), reference that variable. When you tap the variable chip, a property picker opens showing Value / Type / Unit / Start Date / End Date / Duration / Source / Name. **Pick `Value`** for any quantity type. The chip then displays as something like "Get HRV from Value" — that's the correct shape.
+3. **Don't** add a separate "Get Details of Health Sample" action. Newer iOS Shortcuts handles property extraction directly on the magic-variable chip; adding a wrapper action causes property-slot confusion (we lost an hour to this on May 5).
 
 #### 3a. HRV (heart rate variability)
 
 - Action: **Find Health Samples**
 - **Type:** Heart Rate Variability
-- **Sort by:** End Date, Latest First
-- **Limit:** 1
-- Filter: **Start Date is in the last 36 hours**
+- **Unit:** ms
+- **Sort by:** End Date, **Order:** Latest First
+- **Limit:** ON, 1 sample
+- Filter: **Start Date is in the last 3 days**
+- Rename the result variable: **`HRV`**
 
-To extract the number from the returned sample, add a **Get Details of Health Sample** action (or whichever action your iOS version exposes for sample property extraction) → property **Quantity** or **Value**. Save to variable `hrv_ms`.
-
-> If the property dropdown shows different option names than "Quantity"/"Value" on your iPhone, pick the numeric one (HRV is a quantity type — value is in milliseconds).
+In Step 5 you'll reference `HRV` with property = Value (this is HRV in milliseconds).
 
 #### 3b. Resting Heart Rate
 
-- Action: **Find Health Samples** → **Type:** Resting Heart Rate, **Limit:** 1, **Sort:** Latest First, filter Start Date in last 36 hours
-- Extract Quantity / Value → save to variable `rhr_bpm`
+- Action: **Find Health Samples**
+- **Type:** Resting Heart Rate
+- **Unit:** count/min (== BPM under HealthKit's hood; auto-fills correctly)
+- **Sort by:** End Date, **Order:** Latest First
+- **Limit:** ON, 1 sample
+- Filter: **Start Date is in the last 3 days**
+- Rename the result variable: **`RHR`**
 
-#### 3c. Sleep — the simpler path
+In Step 5 you'll reference `RHR` with property = Value.
 
-Sleep is a *category* type (not quantity), with stages: in bed, asleep core, asleep deep, asleep REM, awake. Filtering and summing per-stage durations inside Shortcuts works but is fragile.
+#### 3c. Respiratory Rate
 
-**Simpler approach: send only `sleep_total_min` for now.** The endpoint is happy receiving a partial payload (deep + REM as null is fine). If the simple version works for two weeks of coaching, we don't bother with stage-level detail. If Coach asks for more, we add it.
+- Action: **Find Health Samples**
+- **Type:** Respiratory Rate
+- **Unit:** count/min
+- **Sort by:** End Date, **Order:** Latest First
+- **Limit:** ON, 1 sample
+- Filter: **Start Date is in the last 3 days**
+- Rename the result variable: **`RespRate`**
 
-- Action: **Find Health Samples** → **Type:** Sleep Analysis, **Limit:** unset, filter Start Date in last 36 hours
-- Add a **filter** (using the action's `+ Add Filter` UI): "Value is not In Bed" — keeps only the asleep stages
-- Then either:
-  - **Option A (cleaner if available):** the action exposes a "Total Duration" or sum aggregation → use it
-  - **Option B (works if A isn't available):** add **Repeat with Each** → inside, **Calculate** Sample's End Date − Start Date in minutes → accumulate into a Math variable → after the loop, save the total as `sleep_total_min`
+In Step 5 you'll reference `RespRate` with property = Value.
 
-Leave `sleep_deep_min` and `sleep_rem_min` empty for the first version. The endpoint accepts them as null.
+#### 3d. Sleep total (Series 3 path)
 
-> When you build this in iOS, screenshot the Sleep Analysis filter dropdown — what exact stage labels does it show? Send me the screenshot and I'll rewrite this section verbatim. Right now I'm guessing the label is "In Bed" but it could be "InBed" or "Asleep (In Bed)" depending on iOS version.
-- Get Quantity from Sample → `value` (bpm)
-- Save to variable `rhr_bpm`
+Sleep is a *category* type (not quantity), with stages: in bed, asleep core, asleep deep, asleep REM, awake. **On Series 3, only "asleep" / "in bed" are recorded** — there's no per-stage detail to extract.
 
-### Step 4 — device label (optional)
+Send only `sleep_total_min`. The endpoint is happy with deep / REM / core / awake all null.
 
-Action: **Get Device Details** → property: pick a model/identifier label (UI varies — "Device Model" or similar). Save to `source_device`. Skip this step if your iOS version doesn't expose a clean model property — it's optional in the payload.
+- Action: **Find Health Samples**
+- **Type:** Sleep Analysis
+- **Limit:** unset (you want all sleep periods from last night)
+- Filter: **Start Date is in the last 3 days**
+- Add a filter: **"Value is not In Bed"** — this keeps only asleep stages, excluding bed-time padding
+
+Then sum the durations:
+- **Option A (if available):** the action exposes a "Total Duration" output — use it directly, save as `SleepTotal`
+- **Option B (works on all iOS versions):** add **Repeat with Each** over the result → inside, **Calculate** Sample's End Date − Start Date in minutes → accumulate into a Math variable → after the loop, save the total as `SleepTotal`
+
+In Step 5 you'll reference `SleepTotal` directly (no property pick needed if it's already a Number).
+
+> If you upgrade to Apple Watch Series 4+ later: add 4 more Find Health Samples actions (one per stage: Asleep Core, Asleep Deep, Asleep REM, Awake), each filtered to that stage's value, and sum each stage's durations into `SleepCore`, `SleepDeep`, `SleepREM`, `SleepAwake` magic variables. Schema columns are already in place.
+
+### Step 4 — device label (skip)
+
+This was originally going to use **Get the Device Name**, but Apple's Shortcuts UI doesn't expose a clean device-model variable that lands cleanly in the Dictionary. The endpoint accepts `source_device` as null, and no coaching logic uses it (only the activity log, which falls back to `'shortcut'`). **Skip this step.** Do NOT include `source_device` as a Dictionary key — leave it out entirely.
 
 ### Step 5 — build the JSON body (one action)
 
-Action: **Dictionary** with the following keys. Each value references the variable you saved earlier:
+Action: **Dictionary**. **Key names must match the endpoint validator exactly** — typos here are silent (the field gets ignored as unknown, the row gets created with a null in that column).
 
-```
-date              → date variable from Step 2
-hrv_ms            → hrv_ms variable from Step 3a
-rhr_bpm           → rhr_bpm variable from Step 3b
-sleep_total_min   → sleep_total_min variable from Step 3c (may be empty)
-sleep_deep_min    → leave blank for v1
-sleep_rem_min     → leave blank for v1
-source_device     → source_device variable from Step 4 (may be empty)
-```
+For each value cell: tap the cell, pick the magic variable from Step 3, then set property = **Value** in the picker that appears.
 
-The endpoint validator only requires `date` plus at least one numeric field. Empty/blank values are treated as null.
+| Dictionary key (exact) | Value | Required |
+|---|---|---|
+| `date` | the `date` variable from Step 2 | yes |
+| `hrv_ms` | `HRV` magic var, property = Value | needs ≥ 1 vital |
+| `rhr_bpm` | `RHR` magic var, property = Value | |
+| `respiratory_rate_bpm` | `RespRate` magic var, property = Value | |
+| `sleep_total_min` | `SleepTotal` accumulator (already a number; no property pick) | |
+
+**Common mistakes (we hit each of these on May 5, 2026):**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Field stored as null in DB even though Apple Health has data | Dictionary key misspelled (e.g. `hrv` not `hrv_ms`) — endpoint silently ignores unknown keys | Rename the key exactly per table above |
+| Field stored as `0` | Dictionary value pointing at the wrong magic variable, or property slot accidentally set to a variable instead of "Value" from the dropdown | Tap the value chip → pick the right variable + property = Value |
+| Both chips in "Get [X] from [Y]" have heart icons | You inserted a magic variable into the property slot. Tap it → delete → re-pick "Value" from the property dropdown list (no chip) | |
+| Row's `updated_at` doesn't change after a run | Shortcut errored before reaching the POST step. Check Activity log (long-press the Shortcut tile → Activity) | |
+
+The endpoint validator only requires `date` plus at least one numeric field. Empty/blank values are treated as null. Any key the endpoint doesn't know about gets silently dropped.
 
 ### Step 6 — POST to AB Brain (one action)
 
@@ -187,22 +231,30 @@ If 500: backend error, check Railway logs.
 
 ---
 
-## Why six fields and not more
+## What this Shortcut covers and why
 
-Coach reads HealthKit live for everything when it's running on iPhone. The cache exists for the cases where Coach is running on a Mac/web/Claude Code and HealthKit isn't reachable. Six fields cover the daily readiness signals (HRV, RHR, sleep total + deep + REM). Anything else Coach needs from HealthKit, it queries live.
+| Field | Source | Coverage |
+|---|---|---|
+| `hrv_ms` | Apple Watch HRV reading | Daily readiness (deviation from baseline) |
+| `rhr_bpm` | Apple Watch resting HR | Daily readiness (deviation from baseline) |
+| `respiratory_rate_bpm` | Apple Watch overnight breath rate | Recovery / illness early-warning |
+| `sleep_total_min` | Apple Watch / iPhone sleep tracking | Sleep debt + recovery |
+| `sleep_deep_min` / `sleep_rem_min` / `sleep_core_min` / `sleep_awake_min` | (Series 4+ only) | Sleep quality breakdown |
 
-If you find yourself wanting a seventh field, the question is: **what coaching decision does it enable that the existing six don't?** If the answer is "trend analytics" → it belongs in the Progress tab via live HealthKit query at retro time, not in the morning cache.
+On iPhone, Coach reads HealthKit live via MCP for everything. **This cache exists for off-device coaching** — Mac, web Claude.ai, Claude Code — where HealthKit isn't reachable. Without it, ~60-70% of coaching conversations would have no vital data.
+
+Why these specific fields and not, say, daily steps or workouts? **Different distribution shape.** Daily totals (steps, calories, workouts) are derivative of moment-to-moment activity that HealthKit accumulates in real time; they don't fit the "snapshot at Wake Up" model. Workouts come in via Hevy + Apple Watch direct sync. Body composition comes via RENPHO photo intake. The morning cache is scoped to **readiness signals only** — what Coach needs to decide today's training intensity.
 
 ---
 
 ## What this replaces
 
-| Old | New |
+| Old (retired) | New |
 |---|---|
 | HAE app → Dropbox auto-export | This Shortcut |
 | LODE / HealthDataExport / HealthExportKit | This Shortcut |
 | AB Brain Dropbox poller (`/api/health/dropbox-sync`) | Direct POST to `/api/v2/daily-vitals` |
 | Format A/B/C/D parser dispatch | None — Shortcut sends typed JSON |
-| Mojibake repair, HR object-shape unwrap, stale-rescue | None — Apple HealthKit returns clean values |
+| Mojibake repair, HR object-shape unwrap, stale-rescue | None — Apple HealthKit returns clean values via Shortcut |
 
-Once this Shortcut runs reliably for 7 days, the entire HAE → Dropbox → parser → dedup pipeline gets torn out (Phase 7).
+HAE has been retired (May 2026). The legacy `daily_activity` table still holds historical pre-Shortcut data; insights endpoints UNION it with `daily_vitals_cache` (cache wins on overlapping dates). Phase 7 will drop `daily_activity` once enough cache history accumulates.

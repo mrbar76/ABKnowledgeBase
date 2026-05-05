@@ -426,13 +426,27 @@ router.get('/today', async (req, res) => {
     const lookback = 30;
     const startDate = new Date(Date.now() - lookback * 86400_000).toISOString().slice(0, 10);
 
+    // FULL OUTER JOIN of daily_vitals_cache (Shortcut-fed, post-HAE) with
+    // daily_activity (legacy HAE-fed history). Cache values win on overlap;
+    // daily_activity fills dates the cache hasn't reached yet (historical
+    // baselines). Either table's columns can be null on a given date.
     const r = await query(
-      `SELECT activity_date, hrv_sdnn_ms, resting_hr_bpm,
-              sleep_total_min, sleep_deep_min, sleep_rem_min,
-              sleep_core_min, sleep_awake_min, sleep_efficiency_pct,
-              active_energy_kcal, basal_energy_kcal
-       FROM daily_activity
-       WHERE activity_date >= $1
+      `SELECT
+         COALESCE(c.date, da.activity_date)             AS activity_date,
+         COALESCE(c.hrv_ms, da.hrv_sdnn_ms)             AS hrv_sdnn_ms,
+         COALESCE(c.rhr_bpm, da.resting_hr_bpm)         AS resting_hr_bpm,
+         COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
+         COALESCE(c.sleep_deep_min, da.sleep_deep_min)   AS sleep_deep_min,
+         COALESCE(c.sleep_rem_min, da.sleep_rem_min)     AS sleep_rem_min,
+         COALESCE(c.sleep_core_min, da.sleep_core_min)   AS sleep_core_min,
+         COALESCE(c.sleep_awake_min, da.sleep_awake_min) AS sleep_awake_min,
+         da.sleep_efficiency_pct,
+         da.active_energy_kcal,
+         da.basal_energy_kcal,
+         c.respiratory_rate_bpm
+       FROM daily_vitals_cache c
+       FULL OUTER JOIN daily_activity da ON c.date = da.activity_date
+       WHERE COALESCE(c.date, da.activity_date) >= $1
        ORDER BY activity_date ASC`,
       [startDate]
     );
@@ -1667,15 +1681,25 @@ router.get('/morning', async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
 
-    // Today's readiness — reuse the same logic as /today
+    // Today's readiness — reuse the same logic as /today.
+    // FULL OUTER JOIN: cache values win on overlap; daily_activity fills
+    // historical baselines from the pre-Shortcut era.
     const lookback = 30;
     const startDate = new Date(Date.now() - lookback * 86400_000).toISOString().slice(0, 10);
     const da = await query(
-      `SELECT activity_date, hrv_sdnn_ms, resting_hr_bpm,
-              sleep_total_min, sleep_deep_min, sleep_rem_min, sleep_efficiency_pct
-         FROM daily_activity
-         WHERE activity_date >= $1
-         ORDER BY activity_date ASC`,
+      `SELECT
+         COALESCE(c.date, da.activity_date)             AS activity_date,
+         COALESCE(c.hrv_ms, da.hrv_sdnn_ms)             AS hrv_sdnn_ms,
+         COALESCE(c.rhr_bpm, da.resting_hr_bpm)         AS resting_hr_bpm,
+         COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
+         COALESCE(c.sleep_deep_min, da.sleep_deep_min)   AS sleep_deep_min,
+         COALESCE(c.sleep_rem_min, da.sleep_rem_min)     AS sleep_rem_min,
+         da.sleep_efficiency_pct,
+         c.respiratory_rate_bpm
+       FROM daily_vitals_cache c
+       FULL OUTER JOIN daily_activity da ON c.date = da.activity_date
+       WHERE COALESCE(c.date, da.activity_date) >= $1
+       ORDER BY activity_date ASC`,
       [startDate]
     );
     const rows = da.rows;
@@ -1694,6 +1718,7 @@ router.get('/morning', async (req, res) => {
     const hrvL = latest('hrv_sdnn_ms');
     const rhrL = latest('resting_hr_bpm');
     const sleepL = latest('sleep_total_min');
+    const respL = latest('respiratory_rate_bpm');
     const hrvDevSd = (hrvL.value != null && hrvBase != null && hrvSd) ? (hrvL.value - hrvBase) / hrvSd : null;
     const rhrDevSd = (rhrL.value != null && rhrBase != null && rhrSd) ? (rhrL.value - rhrBase) / rhrSd : null;
 
@@ -1777,6 +1802,7 @@ router.get('/morning', async (req, res) => {
         hrv: { value: hrvL.value, as_of: hrvL.as_of, deviation_sd: hrvDevSd != null ? round1(hrvDevSd) : null, baseline: hrvBase ? round1(hrvBase) : null },
         rhr: { value: rhrL.value, as_of: rhrL.as_of, deviation_sd: rhrDevSd != null ? round1(rhrDevSd) : null, baseline: rhrBase ? round1(rhrBase) : null },
         sleep: { total_min: sleepL.value, as_of: sleepL.as_of },
+        respiratory_rate: { value: respL.value != null ? round1(respL.value) : null, as_of: respL.as_of },
       },
       alerts,
       active_injuries: inj.rows,

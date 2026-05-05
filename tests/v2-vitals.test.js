@@ -14,8 +14,15 @@ const router = require('../routes/v2-vitals');
 // the same validation rules inline to keep them unit-testable without
 // having to export the helper (the route file is a single-purpose module).
 function validateBody(b) {
-  const NUMERIC = ['hrv_ms', 'rhr_bpm', 'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min'];
-  const INT = ['rhr_bpm', 'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min'];
+  const NUMERIC = [
+    'hrv_ms', 'rhr_bpm',
+    'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min', 'sleep_awake_min',
+    'respiratory_rate_bpm',
+  ];
+  const INT = [
+    'rhr_bpm',
+    'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min', 'sleep_awake_min',
+  ];
   const errors = [];
   if (!b.date) errors.push('date is required (YYYY-MM-DD)');
   else if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date)) errors.push('date must be YYYY-MM-DD');
@@ -28,7 +35,7 @@ function validateBody(b) {
     if (INT.includes(f) && !Number.isInteger(v)) errors.push(`${f} must be an integer`);
     hasAtLeastOne = true;
   }
-  if (!hasAtLeastOne) errors.push('at least one of hrv_ms, rhr_bpm, sleep_total_min, sleep_deep_min, sleep_rem_min is required');
+  if (!hasAtLeastOne) errors.push(`at least one of ${NUMERIC.join(', ')} is required`);
   return errors;
 }
 
@@ -89,5 +96,45 @@ test('accepts partial payload (only some vitals)', () => {
 test('treats empty string as absent', () => {
   // iOS Shortcuts sometimes pass empty strings rather than null
   const errors = validateBody({ date: '2026-05-05', hrv_ms: 42, rhr_bpm: '', sleep_total_min: '' });
+  assert.deepEqual(errors, []);
+});
+
+test('accepts respiratory_rate_bpm (decimal allowed)', () => {
+  const errors = validateBody({ date: '2026-05-05', respiratory_rate_bpm: 14.5 });
+  assert.deepEqual(errors, []);
+});
+
+test('accepts sleep_core_min and sleep_awake_min as integers', () => {
+  const errors = validateBody({
+    date: '2026-05-05',
+    sleep_core_min: 220,
+    sleep_awake_min: 18,
+  });
+  assert.deepEqual(errors, []);
+});
+
+test('rejects fractional sleep_core_min', () => {
+  const errors = validateBody({ date: '2026-05-05', sleep_core_min: 220.5 });
+  assert.ok(errors.some(e => e.includes('sleep_core_min must be an integer')));
+});
+
+test('rejects negative respiratory_rate_bpm', () => {
+  const errors = validateBody({ date: '2026-05-05', respiratory_rate_bpm: -1 });
+  assert.ok(errors.some(e => e.includes('respiratory_rate_bpm must be >= 0')));
+});
+
+test('full payload with all fields validates clean', () => {
+  const errors = validateBody({
+    date: '2026-05-05',
+    hrv_ms: 53.1,
+    rhr_bpm: 58,
+    sleep_total_min: 410,
+    sleep_deep_min: 62,
+    sleep_rem_min: 95,
+    sleep_core_min: 220,
+    sleep_awake_min: 18,
+    respiratory_rate_bpm: 14.5,
+    source_device: 'iPhone17,1',
+  });
   assert.deepEqual(errors, []);
 });

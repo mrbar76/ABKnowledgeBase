@@ -1778,8 +1778,11 @@ async function initDB() {
     )`);
   await safeQuery('coaching_retros idx period', `CREATE INDEX IF NOT EXISTS idx_retros_period ON coaching_retros(period_end DESC, scope)`);
 
-  // 6 fields × 1 row/day, populated by a 5:30am iOS Shortcut. Off-device
-  // coaching reads from this when HealthKit isn't reachable.
+  // One row/day, populated by the morning iOS Shortcut (Wake Up trigger +
+  // 10am safety net). With HAE retired, this is the primary persistent store
+  // for off-device readiness signals; on iPhone, Coach reads HealthKit live
+  // via MCP. Insights endpoints UNION this with daily_activity for the
+  // transition while historical daily_activity still holds pre-Shortcut data.
   await safeQuery('daily_vitals_cache table', `
     CREATE TABLE IF NOT EXISTS daily_vitals_cache (
       date DATE PRIMARY KEY,
@@ -1792,6 +1795,9 @@ async function initDB() {
       recorded_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+  await safeQuery('daily_vitals_cache +sleep_core_min', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS sleep_core_min INTEGER`);
+  await safeQuery('daily_vitals_cache +sleep_awake_min', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS sleep_awake_min INTEGER`);
+  await safeQuery('daily_vitals_cache +respiratory_rate_bpm', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS respiratory_rate_bpm NUMERIC(4,1)`);
   await safeQuery('daily_vitals_cache idx', `CREATE INDEX IF NOT EXISTS idx_vitals_cache_recorded ON daily_vitals_cache(recorded_at DESC)`);
 
   // daily_context: alcohol + supplement change note (Coach's recommended fold-in
