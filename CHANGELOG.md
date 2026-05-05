@@ -4,6 +4,86 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.10.4] — 2026-05-05
+
+### Coach-flagged fixes — three composite endpoint gaps + perf
+
+**Bug 1 (highest priority): `/api/people/:idOrName/interactions` returned
+empty for known contacts with data.**
+The original join used exact case-insensitive equality on `speaker_name` /
+`from_name` / `organizer_name`. When transcripts had "Vernon Smith" and
+the contact was just "Vernon" (or vice versa), no match → empty results.
+
+Fix:
+- Added substring (`ILIKE`) match alongside the exact match. "Vernon"
+  contact now matches "Vernon Smith" speaker, and "Vernon Smith" contact
+  matches "Vernon" speaker.
+- When results are still empty, response includes a `diagnostics` block:
+  `bee_speakers_in_window`, `email_senders_in_window`,
+  `calendar_organizers_in_window` (top 20 each, with counts), plus the
+  names that were searched. Lets Avi/Coach see exactly what's there and
+  decide whether to add aliases or run AI speaker identification.
+
+**Bug 2: `/api/coach/race-pulse` missing `taper_phase`, `recommendation`,
+`last_28d_build_summary`.**
+
+Added all three:
+- `taper_phase`: derived from `days_to_race` (recovery / race-day /
+  race-week / taper / sharpen / pre-taper / base) using standard Friel /
+  Galpin / Seiler periodization breakpoints.
+- `recommendation`: short prescription per phase from a constant map
+  (e.g., "Volume −20% week-over-week, intensity preserved" for taper).
+- `last_28d_build_summary`: aggregate from prior 28d workouts —
+  workout_count, total_minutes, total_active_kcal, hard/moderate/easy
+  session counts, avg_effort, hardest_effort, longest_minutes,
+  total_distance.
+- Bonus: `fueling_rehearsal_count_28d` so Coach can flag race-week if
+  zero rehearsals were done.
+
+**Bug 3: `/api/coach/end-of-day` missing plan-vs-actual diff.**
+
+Added `plan_vs_actual`:
+- `segments[]`: per-segment with `target_duration_min`, `target_effort`,
+  `actual_duration_min`, `actual_effort`, `completed`, `workout_count`
+- `segments_completed` / `segments_total` counts
+- `unplanned_workouts[]`: workouts that didn't link to any plan segment
+- `macros_delta`: `kcal` and `protein_g` (target − actual; negative =
+  short, positive = over)
+- `effort_delta`: max actual effort − planned target_effort
+
+Plus `effort_total.max_effort` so the skill can compare directly.
+
+### Perf optimizations
+
+**Truncate large fields in composite responses:**
+- `coaching_sessions.summary` → `LEFT(summary, 200) AS summary` +
+  `summary_truncated` boolean. Full text still queryable via
+  `GET /api/training/coaching/:id` when the skill needs the brief body.
+- `workouts.body_notes` → same 200-char trim across `/coach/morning`,
+  `/coach/midday-amend`, `/coach/end-of-day` (segment subqueries +
+  todayWorkouts list).
+- Replaced `json_agg(w.* ORDER BY ...)` with explicit
+  `json_agg(json_build_object('id', w.id, 'title', w.title, ...))` —
+  no more "select all columns" bloat.
+
+Coach observed `/coach/morning` cold start was 1.4s (~160KB payload).
+With trimming it should fall to ~30KB / ~400ms per Coach's projection.
+
+**Cold-start profiling deferred** — likely an unindexed query path
+(daily_activity range scan?). Will surface specific slow queries in a
+follow-up commit if perf is still an issue post-deploy.
+
+### Tests
+- `tests/phase4-bugfixes.test.js` — 9 regression tests covering all 3
+  bugs + the truncation/narrow-column perf changes. 105/105 pass.
+
+### Out of scope
+- AI speaker identification trigger from `/people/backfill-interactions`
+  — that's a separate workflow via `/api/transcripts/:id/identify-speakers`.
+  Backfill stats only; speaker ID stays explicit.
+
+---
+
 ## [1.10.3] — 2026-05-05
 
 ### Hotfix — four production bugs Coach surfaced post-deploy

@@ -75,9 +75,13 @@ router.get('/:idOrName/interactions', async (req, res) => {
 
     const names = identifierVariations(contact);
     const namesLower = names.map(n => n.toLowerCase());
+    // v1.10.4: also build like-patterns for substring matching. Handles
+    // "Vernon" matching "Vernon Smith" in transcripts where the AI gave
+    // the full name, and vice versa.
+    const namesPatterns = namesLower.map(n => `%${n}%`);
 
     // ─── BEE: transcript_speakers ↔ transcripts ──────────────────
-    // Match on speaker_name (case-insensitive) against contact name+aliases
+    // Match on speaker_name — exact (case-insensitive) OR substring.
     const beePromise = wantBee
       ? query(
           `SELECT
@@ -88,11 +92,17 @@ router.get('/:idOrName/interactions', async (req, res) => {
              COALESCE(t.metadata->'topics', '[]'::jsonb) AS topic_tags
            FROM transcript_speakers ts
            JOIN transcripts t ON t.id = ts.transcript_id
-           WHERE LOWER(ts.speaker_name) = ANY($1)
-             AND COALESCE(t.recorded_at, t.created_at)::date >= $2
+           WHERE COALESCE(t.recorded_at, t.created_at)::date >= $2
+             AND (
+               LOWER(ts.speaker_name) = ANY($1)
+               OR EXISTS (
+                 SELECT 1 FROM unnest($4::text[]) AS pat
+                 WHERE LOWER(ts.speaker_name) ILIKE pat
+               )
+             )
            ORDER BY date DESC, ts.utterance_index
            LIMIT $3`,
-          [namesLower, since, limit]
+          [namesLower, since, limit, namesPatterns]
         )
       : { rows: [] };
 
@@ -112,12 +122,16 @@ router.get('/:idOrName/interactions', async (req, res) => {
                LOWER(em.from_name) = ANY($1)
                OR LOWER(em.from_email) = ANY($1)
                OR EXISTS (
+                 SELECT 1 FROM unnest($4::text[]) AS pat
+                 WHERE LOWER(em.from_name) ILIKE pat OR LOWER(em.from_email) ILIKE pat
+               )
+               OR EXISTS (
                  SELECT 1 FROM jsonb_array_elements(COALESCE(et.participants, '[]'::jsonb)) p
                  WHERE LOWER(p->>'name') = ANY($1) OR LOWER(p->>'email') = ANY($1)
                )
              )
            ORDER BY date DESC LIMIT $3`,
-          [namesLower, since, limit]
+          [namesLower, since, limit, namesPatterns]
         ).catch(() => ({ rows: [] }))
       : { rows: [] };
 
@@ -136,12 +150,16 @@ router.get('/:idOrName/interactions', async (req, res) => {
                LOWER(ce.organizer_name) = ANY($1)
                OR LOWER(ce.organizer_email) = ANY($1)
                OR EXISTS (
+                 SELECT 1 FROM unnest($4::text[]) AS pat
+                 WHERE LOWER(ce.organizer_name) ILIKE pat OR LOWER(ce.organizer_email) ILIKE pat
+               )
+               OR EXISTS (
                  SELECT 1 FROM jsonb_array_elements(COALESCE(ce.attendees, '[]'::jsonb)) a
                  WHERE LOWER(a->>'name') = ANY($1) OR LOWER(a->>'email') = ANY($1)
                )
              )
            ORDER BY date DESC LIMIT $3`,
-          [namesLower, since, limit]
+          [namesLower, since, limit, namesPatterns]
         ).catch(() => ({ rows: [] }))
       : { rows: [] };
 
@@ -174,6 +192,48 @@ router.get('/:idOrName/interactions', async (req, res) => {
       }
     }
 
+    // v1.10.4: when the result is empty, surface a diagnostics block so
+    // Avi/Coach can see what speaker_names / from_names / organizers DO
+    // exist in the time window. This makes "no results" actionable —
+    // either the contact's aliases need updating, or the data really
+    // isn't there.
+    let diagnostics = null;
+    if (capped.length === 0) {
+      const [beeNames, emailNames, calNames] = await Promise.all([
+        wantBee ? query(
+          `SELECT DISTINCT ts.speaker_name, COUNT(*)::int AS n
+           FROM transcript_speakers ts
+           JOIN transcripts t ON t.id = ts.transcript_id
+           WHERE COALESCE(t.recorded_at, t.created_at)::date >= $1
+             AND ts.speaker_name IS NOT NULL AND TRIM(ts.speaker_name) <> ''
+           GROUP BY ts.speaker_name ORDER BY n DESC LIMIT 20`,
+          [since]
+        ).catch(() => ({ rows: [] })) : { rows: [] },
+        wantEmail ? query(
+          `SELECT DISTINCT COALESCE(em.from_name, em.from_email) AS sender, COUNT(*)::int AS n
+           FROM email_messages em
+           WHERE COALESCE(em.date, em.ingested_at)::date >= $1
+           GROUP BY sender ORDER BY n DESC LIMIT 20`,
+          [since]
+        ).catch(() => ({ rows: [] })) : { rows: [] },
+        wantCal ? query(
+          `SELECT DISTINCT COALESCE(ce.organizer_name, ce.organizer_email) AS organizer, COUNT(*)::int AS n
+           FROM calendar_events ce
+           WHERE ce.start_time::date >= $1
+           GROUP BY organizer ORDER BY n DESC LIMIT 20`,
+          [since]
+        ).catch(() => ({ rows: [] })) : { rows: [] },
+      ]);
+      diagnostics = {
+        message: `No interactions matched contact "${contact.name}" (aliases: ${(contact.aliases || []).join(', ') || 'none'}) in window since ${since}.`,
+        looked_for_names: names,
+        bee_speakers_in_window: beeNames.rows,
+        email_senders_in_window: emailNames.rows,
+        calendar_organizers_in_window: calNames.rows,
+        next_step: 'Add unmatched names to contacts.aliases via PATCH /api/contacts/:id, or run /transcripts/:id/identify-speakers if Bee speakers are still "Speaker 1"/"Speaker 2".',
+      };
+    }
+
     res.json({
       person: contact,
       interactions: capped,
@@ -185,6 +245,7 @@ router.get('/:idOrName/interactions', async (req, res) => {
         topics_distribution: topicsDist,
       },
       filters: { since, limit, sources: wantAll ? ['all'] : sources, topic },
+      diagnostics,
     });
   } catch (err) {
     console.error('[GET /people/:idOrName/interactions]', err.stack);

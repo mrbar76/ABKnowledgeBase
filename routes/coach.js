@@ -201,8 +201,14 @@ router.get('/morning', async (req, res) => {
            ORDER BY started_at DESC NULLS LAST, created_at DESC LIMIT 5`,
           [yesterday]
         ),
+        // v1.10.4: truncate summary at 200 chars. Full text still queryable
+        // via GET /api/training/coaching/:id when the skill needs to dive in.
+        // Was inflating /coach/morning to 160KB on cold start.
         query(
-          `SELECT id, session_date, title, summary, key_decisions, next_steps, tags
+          `SELECT id, session_date, title,
+                  LEFT(summary, 200) AS summary,
+                  LENGTH(summary) > 200 AS summary_truncated,
+                  key_decisions, next_steps, tags
            FROM coaching_sessions
            WHERE session_date >= $1
            ORDER BY session_date DESC, created_at DESC LIMIT 2`,
@@ -210,14 +216,27 @@ router.get('/morning', async (req, res) => {
         ),
       ]);
 
-    // Attach plan segments if a plan exists
+    // Attach plan segments if a plan exists. v1.10.4: select narrow workout
+    // columns + truncated body_notes per segment instead of w.* — was
+    // returning 1500+ char prescriptions per workout.
     let todayPlan = planRow.rows[0] || null;
     if (todayPlan) {
       const segR = await query(
-        `SELECT ps.*, COALESCE(
-           (SELECT json_agg(w.* ORDER BY w.started_at NULLS LAST, w.created_at)
-            FROM workouts w WHERE w.plan_segment_id = ps.id), '[]'::json
-         ) AS workouts
+        `SELECT ps.id, ps.block_order, ps.block_label, ps.title_suffix,
+                ps.logging_target, ps.target_duration_min, ps.target_effort,
+                ps.status, ps.planned_exercises,
+                COALESCE(
+                  (SELECT json_agg(json_build_object(
+                     'id', w.id, 'title', w.title, 'effort', w.effort,
+                     'duration_minutes', w.duration_minutes,
+                     'workout_type', w.workout_type,
+                     'body_notes', LEFT(w.body_notes, 200),
+                     'body_notes_truncated', LENGTH(w.body_notes) > 200
+                   ) ORDER BY w.started_at NULLS LAST, w.created_at)
+                   FROM workouts w
+                   WHERE w.plan_segment_id = ps.id AND w.deleted_at IS NULL),
+                  '[]'::json
+                ) AS workouts
          FROM plan_segments ps
          WHERE ps.daily_plan_id = $1
          ORDER BY ps.block_order`,
@@ -279,11 +298,23 @@ router.get('/midday-amend', async (req, res) => {
 
     let todayPlan = planRow.rows[0] || null;
     if (todayPlan) {
+      // v1.10.4: narrow columns + truncated body_notes (perf).
       const segR = await query(
-        `SELECT ps.*, COALESCE(
-           (SELECT json_agg(w.* ORDER BY w.started_at NULLS LAST, w.created_at)
-            FROM workouts w WHERE w.plan_segment_id = ps.id), '[]'::json
-         ) AS workouts
+        `SELECT ps.id, ps.block_order, ps.block_label, ps.title_suffix,
+                ps.logging_target, ps.target_duration_min, ps.target_effort,
+                ps.status, ps.planned_exercises,
+                COALESCE(
+                  (SELECT json_agg(json_build_object(
+                     'id', w.id, 'title', w.title, 'effort', w.effort,
+                     'duration_minutes', w.duration_minutes,
+                     'workout_type', w.workout_type,
+                     'body_notes', LEFT(w.body_notes, 200),
+                     'body_notes_truncated', LENGTH(w.body_notes) > 200
+                   ) ORDER BY w.started_at NULLS LAST, w.created_at)
+                   FROM workouts w
+                   WHERE w.plan_segment_id = ps.id AND w.deleted_at IS NULL),
+                  '[]'::json
+                ) AS workouts
          FROM plan_segments ps
          WHERE ps.daily_plan_id = $1
          ORDER BY ps.block_order`,
@@ -413,6 +444,11 @@ router.get('/postworkout', async (req, res) => {
 // ─── 3e. GET /api/coach/end-of-day ────────────────────────────────
 // Replaces: /daily-plans/by-date/today + /nutrition/daily-summary?date=today
 // + /daily-context?date=today + /workouts?date=today
+//
+// v1.10.4: adds explicit plan_vs_actual diff (per-segment status, unplanned
+// workouts, macro deltas, effort delta). Truncates body_notes to 200 chars
+// in the response — full text is queryable via GET /workouts/:id when the
+// skill needs it.
 router.get('/end-of-day', async (req, res) => {
   try {
     const today = todayISO();
@@ -421,7 +457,9 @@ router.get('/end-of-day', async (req, res) => {
       query(`SELECT * FROM daily_plans WHERE plan_date = $1`, [today]),
       query(
         `SELECT id, title, workout_type, effort, duration_minutes,
-                hr_avg, cal_active, body_notes, plan_segment_id
+                hr_avg, cal_active, LEFT(body_notes, 200) AS body_notes,
+                LENGTH(body_notes) > 200 AS body_notes_truncated,
+                plan_segment_id
          FROM workouts
          WHERE workout_date = $1 AND deleted_at IS NULL
          ORDER BY started_at NULLS LAST, created_at`,
@@ -436,18 +474,28 @@ router.get('/end-of-day', async (req, res) => {
     ]);
 
     let todayPlan = planRow.rows[0] || null;
+    let segments = [];
     if (todayPlan) {
       const segR = await query(
-        `SELECT ps.*, COALESCE(
-           (SELECT json_agg(w.* ORDER BY w.started_at NULLS LAST, w.created_at)
-            FROM workouts w WHERE w.plan_segment_id = ps.id), '[]'::json
-         ) AS workouts
+        `SELECT ps.id, ps.block_order, ps.block_label, ps.title_suffix,
+                ps.logging_target, ps.target_duration_min, ps.target_effort,
+                ps.status, ps.planned_exercises,
+                COALESCE(
+                  (SELECT json_agg(json_build_object(
+                     'id', w.id, 'title', w.title, 'effort', w.effort,
+                     'duration_minutes', w.duration_minutes,
+                     'workout_type', w.workout_type
+                   ) ORDER BY w.started_at NULLS LAST, w.created_at)
+                   FROM workouts w WHERE w.plan_segment_id = ps.id AND w.deleted_at IS NULL),
+                  '[]'::json
+                ) AS workouts
          FROM plan_segments ps
          WHERE ps.daily_plan_id = $1
          ORDER BY ps.block_order`,
         [todayPlan.id]
       ).catch(() => ({ rows: [] }));
-      todayPlan.segments = segR.rows;
+      segments = segR.rows;
+      todayPlan.segments = segments;
     }
 
     const totalKcal = todayMeals.rows.reduce((s, m) => s + (Number(m.calories) || 0), 0);
@@ -455,6 +503,53 @@ router.get('/end-of-day', async (req, res) => {
     const totalCarbs = todayMeals.rows.reduce((s, m) => s + (Number(m.carbs_g) || 0), 0);
     const totalFat = todayMeals.rows.reduce((s, m) => s + (Number(m.fat_g) || 0), 0);
     const totalEffortMin = todayWorkouts.rows.reduce((s, w) => s + (Number(w.duration_minutes) || 0), 0);
+    const maxActualEffort = todayWorkouts.rows.reduce((m, w) => Math.max(m, Number(w.effort) || 0), 0);
+
+    // v1.10.4: explicit plan_vs_actual diff. Coach was composing this manually
+    // from the plan + workouts arrays; now it's computed once server-side.
+    const plannedSegmentIds = new Set(segments.map(s => s.id));
+    const segmentsStatus = segments.map(s => {
+      const linkedWorkouts = Array.isArray(s.workouts) ? s.workouts : [];
+      const completed = linkedWorkouts.length > 0;
+      const actualEffort = linkedWorkouts.reduce((m, w) => Math.max(m, Number(w.effort) || 0), 0);
+      const actualDuration = linkedWorkouts.reduce((sum, w) => sum + (Number(w.duration_minutes) || 0), 0);
+      return {
+        segment_id: s.id,
+        block_label: s.block_label,
+        title_suffix: s.title_suffix,
+        logging_target: s.logging_target,
+        target_duration_min: s.target_duration_min,
+        target_effort: s.target_effort,
+        actual_duration_min: actualDuration || null,
+        actual_effort: actualEffort || null,
+        completed,
+        workout_count: linkedWorkouts.length,
+      };
+    });
+    const unplannedWorkouts = todayWorkouts.rows.filter(w =>
+      !w.plan_segment_id || !plannedSegmentIds.has(w.plan_segment_id)
+    ).map(w => ({
+      id: w.id,
+      title: w.title,
+      workout_type: w.workout_type,
+      effort: w.effort,
+      duration_minutes: w.duration_minutes,
+    }));
+
+    const planVsActual = {
+      segments: segmentsStatus,
+      segments_completed: segmentsStatus.filter(s => s.completed).length,
+      segments_total: segmentsStatus.length,
+      unplanned_workouts: unplannedWorkouts,
+      macros_delta: {
+        kcal: todayPlan?.target_calories
+          ? Math.round(totalKcal) - todayPlan.target_calories : null,
+        protein_g: todayPlan?.target_protein_g
+          ? Math.round(totalProtein) - todayPlan.target_protein_g : null,
+      },
+      effort_delta: todayPlan?.target_effort != null
+        ? maxActualEffort - todayPlan.target_effort : null,
+    };
 
     res.json({
       generated_at: new Date().toISOString(),
@@ -475,7 +570,9 @@ router.get('/end-of-day', async (req, res) => {
       effort_total: {
         total_minutes: totalEffortMin,
         workout_count: todayWorkouts.rows.length,
+        max_effort: maxActualEffort || null,
       },
+      plan_vs_actual: planVsActual,
     });
   } catch (err) {
     console.error('[GET /coach/end-of-day]', err.stack);
@@ -578,14 +675,37 @@ router.get('/weekly', async (req, res) => {
 });
 
 // ─── 3g. GET /api/coach/race-pulse?race_id=X ──────────────────────
-// Thin alias to /api/health/insights/race for canonical naming. Coach
-// calls /api/coach/race-pulse for race-week + race-debrief scenarios.
-// Returns the same payload as /insights/race plus the latest fueling
-// rehearsal for that race so race-week prep doesn't need a 2nd call.
+// Race-week + race-debrief context. v1.10.4 adds derived taper_phase,
+// recommendation, and last_28d_build_summary so the skill doesn't need
+// to compute these from raw queries.
 //
-// v1.10.3: race_id is OPTIONAL. If omitted, defaults to the next upcoming
-// scheduled race — covers the most common race-week pulse case where the
-// skill doesn't need to know which race it is.
+// race_id is OPTIONAL. If omitted, defaults to the next upcoming
+// scheduled race.
+
+// Derive taper phase from days-to-race. Standard endurance periodization
+// from Friel/Galpin/Seiler: pre-taper at T-21, sharpen at T-14, taper at
+// T-7, race-week at T-3, race-day at T-0, recovery after.
+function taperPhaseFor(daysToRace) {
+  if (daysToRace == null) return null;
+  if (daysToRace < 0) return 'recovery';
+  if (daysToRace === 0) return 'race-day';
+  if (daysToRace <= 3) return 'race-week';
+  if (daysToRace <= 7) return 'taper';
+  if (daysToRace <= 14) return 'sharpen';
+  if (daysToRace <= 21) return 'pre-taper';
+  return 'base';
+}
+
+const TAPER_RECOMMENDATIONS = {
+  'recovery':  'Race recovery: 7-10 days easy aerobic + mobility. No intensity until soreness clears + HRV returns to baseline.',
+  'race-day':  'Race day. Pre-fuel per rehearsed plan. Trust taper. No new gear.',
+  'race-week': 'Race-week opener at race intensity 3 days out. Then 2 short shakeouts. Full rest day before. Carbs +20%.',
+  'taper':     'Volume −20% week-over-week, intensity preserved. Last hard session 5-7 days out.',
+  'sharpen':   'Volume hold, sharpen with 1-2 race-pace efforts. Trim recovery work, keep mobility.',
+  'pre-taper': 'Last build week. Hardest session of the block 18-21 days out. Then taper begins.',
+  'base':      'Standard block work — no race-specific adjustment yet.',
+};
+
 router.get('/race-pulse', async (req, res) => {
   try {
     let raceId = req.query.race_id;
@@ -606,7 +726,7 @@ router.get('/race-pulse', async (req, res) => {
       raceId = upcoming.rows[0].id;
     }
 
-    const [race, fuelingRehearsals, currentBlock] = await Promise.all([
+    const [race, fuelingRehearsals, currentBlock, last28dBuild] = await Promise.all([
       query(
         `SELECT *, (race_date - CURRENT_DATE) AS days_to_race
          FROM races WHERE id = $1`,
@@ -626,16 +746,46 @@ router.get('/race-pulse', async (req, res) => {
          ORDER BY start_date DESC LIMIT 1`,
         [raceId]
       ).catch(() => ({ rows: [] })),
+      // last_28d_build_summary: aggregate the prior 4 weeks so the skill can
+      // assess whether the build had enough race-specific load before taper.
+      query(
+        `SELECT
+           COUNT(*)::int                                       AS workout_count,
+           COALESCE(SUM(duration_minutes), 0)::int             AS total_minutes,
+           COALESCE(SUM(cal_active), 0)::int                   AS total_active_kcal,
+           COUNT(*) FILTER (WHERE effort >= 7)::int            AS hard_session_count,
+           COUNT(*) FILTER (WHERE effort >= 5 AND effort < 7)::int AS moderate_session_count,
+           COUNT(*) FILTER (WHERE effort < 5 OR effort IS NULL)::int AS easy_session_count,
+           ROUND(AVG(NULLIF(effort, 0))::numeric, 2)           AS avg_effort,
+           MAX(effort)                                         AS hardest_effort,
+           MAX(duration_minutes)                               AS longest_minutes,
+           ROUND(SUM(distance_value)::numeric, 1)              AS total_distance
+         FROM workouts
+         WHERE workout_date >= CURRENT_DATE - INTERVAL '28 days'
+           AND workout_date < CURRENT_DATE
+           AND deleted_at IS NULL`
+      ).catch(() => ({ rows: [{}] })),
     ]);
 
     if (!race.rows.length) return res.status(404).json({ error: 'Race not found' });
 
+    const raceRow = race.rows[0];
+    const daysToRace = raceRow.days_to_race != null ? Number(raceRow.days_to_race) : null;
+    const phase = taperPhaseFor(daysToRace);
+
     res.json({
       generated_at: new Date().toISOString(),
       resolved_via: req.query.race_id ? 'race_id' : 'upcoming',
-      race: race.rows[0],
+      race: raceRow,
+      taper_phase: phase,
+      recommendation: phase ? TAPER_RECOMMENDATIONS[phase] : null,
       fueling_rehearsals: fuelingRehearsals.rows,
+      fueling_rehearsal_count_28d: fuelingRehearsals.rows.filter(f => {
+        const days = Math.round((Date.now() - new Date(f.rehearsal_date).getTime()) / 86400_000);
+        return days <= 28;
+      }).length,
       training_block: currentBlock.rows[0] || null,
+      last_28d_build_summary: last28dBuild.rows[0] || null,
     });
   } catch (err) {
     console.error('[GET /coach/race-pulse]', err.stack);
