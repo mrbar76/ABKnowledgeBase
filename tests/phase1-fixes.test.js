@@ -32,10 +32,16 @@ test('workouts: splits is NOT in JSONB_FIELDS (column is TEXT)', () => {
   assert.ok(!list.includes('"splits"'), 'splits must not be in JSONB_FIELDS — column is TEXT');
 });
 
-test('workouts: TEXT_JSON_FIELDS handles splits stringification', () => {
+test('workouts: splits column is no longer referenced (Phase 2 dropped it)', () => {
+  // v1.9.3 added TEXT_JSON_FIELDS to handle splits as TEXT-with-JSON.
+  // v1.9.4 dropped the splits column entirely from workouts. If a future
+  // refactor accidentally re-adds splits to WRITABLE_FIELDS or INSERT
+  // statements, that's a regression — splits no longer exists.
   const src = fs.readFileSync(path.join(__dirname, '../routes/workouts.js'), 'utf8');
-  assert.ok(/TEXT_JSON_FIELDS\s*=\s*new Set\([^)]*['"]splits['"]/.test(src),
-    'TEXT_JSON_FIELDS must include splits so PUT/PATCH stringifies it into a TEXT column');
+  // Allow comments mentioning the historical v1.9.3 fix; check INSERT/UPDATE only.
+  const writable = src.match(/const WRITABLE_FIELDS = \[([\s\S]*?)\]/);
+  assert.ok(writable && !/['"]splits['"]/.test(writable[1]),
+    'splits must not be in WRITABLE_FIELDS (column dropped in v1.9.4)');
 });
 
 test('workouts: PATCH /:id is registered alongside PUT', () => {

@@ -14,14 +14,17 @@ const express = require('express');
 const { query, logActivity } = require('../db');
 const router = express.Router();
 
+// Series 3 hardware: HRV, RHR, sleep_total, respiratory_rate. Sleep stages
+// (deep/REM/core/awake), SpO2, wrist temp not available — schema columns
+// dropped in v1.9.4 Phase 2 cleanup. Add back when hardware upgrades.
 const NUMERIC_FIELDS = [
   'hrv_ms', 'rhr_bpm',
-  'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min', 'sleep_awake_min',
+  'sleep_total_min',
   'respiratory_rate_bpm',
 ];
 const INT_FIELDS = [
   'rhr_bpm',
-  'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min', 'sleep_awake_min',
+  'sleep_total_min',
 ];
 
 function validateBody(b) {
@@ -44,12 +47,12 @@ function validateBody(b) {
 }
 
 // POST /api/v2/daily-vitals
-// Body: { date, hrv_ms?, rhr_bpm?,
-//         sleep_total_min?, sleep_deep_min?, sleep_rem_min?, sleep_core_min?, sleep_awake_min?,
-//         respiratory_rate_bpm?,
-//         source_device? }
+// Body: { date, hrv_ms?, rhr_bpm?, sleep_total_min?, respiratory_rate_bpm? }
 // Idempotent: re-POSTing the same date overwrites (UPSERT on date PK).
 // COALESCE merge means partial re-POSTs don't blank earlier fields.
+//
+// Unknown keys are silently ignored — old payloads sending sleep_deep_min
+// etc. won't error, the fields just get dropped.
 router.post('/daily-vitals', async (req, res) => {
   const errors = validateBody(req.body || {});
   if (errors.length) return res.status(400).json({ errors });
@@ -62,40 +65,28 @@ router.post('/daily-vitals', async (req, res) => {
     numOrNull(b.hrv_ms),
     intOrNull(b.rhr_bpm),
     intOrNull(b.sleep_total_min),
-    intOrNull(b.sleep_deep_min),
-    intOrNull(b.sleep_rem_min),
-    intOrNull(b.sleep_core_min),
-    intOrNull(b.sleep_awake_min),
     numOrNull(b.respiratory_rate_bpm),
-    typeof b.source_device === 'string' ? b.source_device.slice(0, 100) : null,
   ];
 
   const sql = `
     INSERT INTO daily_vitals_cache (
-      date, hrv_ms, rhr_bpm,
-      sleep_total_min, sleep_deep_min, sleep_rem_min, sleep_core_min, sleep_awake_min,
-      respiratory_rate_bpm,
-      source_device, recorded_at, updated_at
+      date, hrv_ms, rhr_bpm, sleep_total_min, respiratory_rate_bpm,
+      recorded_at, updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+    VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
     ON CONFLICT (date) DO UPDATE SET
       hrv_ms               = COALESCE(EXCLUDED.hrv_ms,               daily_vitals_cache.hrv_ms),
       rhr_bpm              = COALESCE(EXCLUDED.rhr_bpm,              daily_vitals_cache.rhr_bpm),
       sleep_total_min      = COALESCE(EXCLUDED.sleep_total_min,      daily_vitals_cache.sleep_total_min),
-      sleep_deep_min       = COALESCE(EXCLUDED.sleep_deep_min,       daily_vitals_cache.sleep_deep_min),
-      sleep_rem_min        = COALESCE(EXCLUDED.sleep_rem_min,        daily_vitals_cache.sleep_rem_min),
-      sleep_core_min       = COALESCE(EXCLUDED.sleep_core_min,       daily_vitals_cache.sleep_core_min),
-      sleep_awake_min      = COALESCE(EXCLUDED.sleep_awake_min,      daily_vitals_cache.sleep_awake_min),
       respiratory_rate_bpm = COALESCE(EXCLUDED.respiratory_rate_bpm, daily_vitals_cache.respiratory_rate_bpm),
-      source_device        = COALESCE(EXCLUDED.source_device,        daily_vitals_cache.source_device),
       updated_at           = NOW()
     RETURNING *`;
 
   try {
     const result = await query(sql, params);
     const row = result.rows[0];
-    logActivity('upsert', 'daily_vitals_cache', b.date, b.source_device || 'shortcut',
-      `vitals for ${b.date}: HRV=${row.hrv_ms ?? '—'} RHR=${row.rhr_bpm ?? '—'} sleep=${row.sleep_total_min ?? '—'}min`).catch(() => {});
+    logActivity('upsert', 'daily_vitals_cache', b.date, 'shortcut',
+      `vitals for ${b.date}: HRV=${row.hrv_ms ?? '—'} RHR=${row.rhr_bpm ?? '—'} sleep=${row.sleep_total_min ?? '—'}min resp=${row.respiratory_rate_bpm ?? '—'}`).catch(() => {});
     res.json({ ok: true, row });
   } catch (err) {
     console.error('[v2/daily-vitals] insert failed:', err.message);

@@ -14,15 +14,10 @@ const router = require('../routes/v2-vitals');
 // the same validation rules inline to keep them unit-testable without
 // having to export the helper (the route file is a single-purpose module).
 function validateBody(b) {
-  const NUMERIC = [
-    'hrv_ms', 'rhr_bpm',
-    'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min', 'sleep_awake_min',
-    'respiratory_rate_bpm',
-  ];
-  const INT = [
-    'rhr_bpm',
-    'sleep_total_min', 'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min', 'sleep_awake_min',
-  ];
+  // v1.9.4: Series 3 hardware can't populate sleep stages (deep/REM/core/awake),
+  // SpO2, or wrist temp — schema columns dropped. Validator follows.
+  const NUMERIC = ['hrv_ms', 'rhr_bpm', 'sleep_total_min', 'respiratory_rate_bpm'];
+  const INT = ['rhr_bpm', 'sleep_total_min'];
   const errors = [];
   if (!b.date) errors.push('date is required (YYYY-MM-DD)');
   else if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date)) errors.push('date must be YYYY-MM-DD');
@@ -49,9 +44,7 @@ test('validates valid payload from morning Shortcut', () => {
     hrv_ms: 42.7,
     rhr_bpm: 56,
     sleep_total_min: 410,
-    sleep_deep_min: 62,
-    sleep_rem_min: 95,
-    source_device: 'iPhone17,1',
+    respiratory_rate_bpm: 14.5,
   });
   assert.deepEqual(errors, []);
 });
@@ -104,37 +97,34 @@ test('accepts respiratory_rate_bpm (decimal allowed)', () => {
   assert.deepEqual(errors, []);
 });
 
-test('accepts sleep_core_min and sleep_awake_min as integers', () => {
-  const errors = validateBody({
-    date: '2026-05-05',
-    sleep_core_min: 220,
-    sleep_awake_min: 18,
-  });
-  assert.deepEqual(errors, []);
-});
-
-test('rejects fractional sleep_core_min', () => {
-  const errors = validateBody({ date: '2026-05-05', sleep_core_min: 220.5 });
-  assert.ok(errors.some(e => e.includes('sleep_core_min must be an integer')));
-});
-
 test('rejects negative respiratory_rate_bpm', () => {
   const errors = validateBody({ date: '2026-05-05', respiratory_rate_bpm: -1 });
   assert.ok(errors.some(e => e.includes('respiratory_rate_bpm must be >= 0')));
 });
 
-test('full payload with all fields validates clean', () => {
+test('full payload (v1.9.4 — Series 3 fields only) validates clean', () => {
   const errors = validateBody({
     date: '2026-05-05',
     hrv_ms: 53.1,
     rhr_bpm: 58,
     sleep_total_min: 410,
-    sleep_deep_min: 62,
-    sleep_rem_min: 95,
-    sleep_core_min: 220,
-    sleep_awake_min: 18,
     respiratory_rate_bpm: 14.5,
-    source_device: 'iPhone17,1',
+  });
+  assert.deepEqual(errors, []);
+});
+
+test('silently ignores dropped fields (sleep stages, source_device)', () => {
+  // Old payloads with v1.9.2 fields shouldn't error; the validator only
+  // checks NUMERIC fields it knows about. Unknown keys are dropped at the
+  // INSERT layer.
+  const errors = validateBody({
+    date: '2026-05-05',
+    hrv_ms: 50,
+    sleep_deep_min: 60,
+    sleep_rem_min: 90,
+    sleep_core_min: 200,
+    sleep_awake_min: 15,
+    source_device: 'iPhone',
   });
   assert.deepEqual(errors, []);
 });

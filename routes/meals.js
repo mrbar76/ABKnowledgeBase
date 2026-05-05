@@ -9,10 +9,14 @@ function validateMeal(b) {
   if (!b.title) errors.push('title is required');
   if (!b.meal_date) errors.push('meal_date is required');
   if (b.calories != null && (isNaN(Number(b.calories)) || Number(b.calories) < 0)) errors.push('calories must be a non-negative number');
-  for (const f of ['protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g']) {
+  // v1.9.4: fiber_g, sugar_g, sodium_mg, serving_size dropped from schema.
+  // Sodium is logged via races.fueling_plan / fueling_rehearsals when it
+  // matters (race day); fiber/sugar/serving_size never drove a coaching
+  // decision. Validators omit them so old payloads sending these keys
+  // silently drop instead of erroring.
+  for (const f of ['protein_g', 'carbs_g', 'fat_g']) {
     if (b[f] != null && b[f] !== '' && (isNaN(Number(b[f])) || Number(b[f]) < 0)) errors.push(`${f} must be a non-negative number`);
   }
-  if (b.sodium_mg != null && b.sodium_mg !== '' && (isNaN(Number(b.sodium_mg)) || Number(b.sodium_mg) < 0)) errors.push('sodium_mg must be a non-negative number');
   for (const f of ['hunger_before', 'fullness_after', 'energy_after']) {
     if (b[f] != null && b[f] !== '') {
       const v = Number(b[f]);
@@ -38,10 +42,6 @@ function buildInsertParams(b) {
     num(b.protein_g),
     num(b.carbs_g),
     num(b.fat_g),
-    num(b.fiber_g),
-    num(b.sugar_g),
-    num(b.sodium_mg),
-    b.serving_size || null,
     int(b.hunger_before),
     int(b.fullness_after),
     int(b.energy_after),
@@ -55,14 +55,14 @@ function buildInsertParams(b) {
 
 const INSERT_SQL = `INSERT INTO meals (
   meal_date, meal_time, meal_type, title,
-  calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg,
-  serving_size, hunger_before, fullness_after, energy_after,
+  calories, protein_g, carbs_g, fat_g,
+  hunger_before, fullness_after, energy_after,
   notes, tags, source, ai_source, metadata
 ) VALUES (
   $1, $2, $3, $4,
-  $5, $6, $7, $8, $9, $10, $11,
-  $12, $13, $14, $15,
-  $16, $17, $18, $19, $20
+  $5, $6, $7, $8,
+  $9, $10, $11,
+  $12, $13, $14, $15, $16
 )`;
 
 // ─── List / Search Meals ─────────────────────────────────────
@@ -188,12 +188,12 @@ router.patch('/:id', async (req, res) => {
 
     const allowed = [
       'meal_date', 'meal_time', 'meal_type', 'title',
-      'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg',
-      'serving_size', 'hunger_before', 'fullness_after', 'energy_after',
+      'calories', 'protein_g', 'carbs_g', 'fat_g',
+      'hunger_before', 'fullness_after', 'energy_after',
       'notes', 'tags', 'source', 'ai_source', 'metadata',
     ];
 
-    const numericFields = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg'];
+    const numericFields = ['calories', 'protein_g', 'carbs_g', 'fat_g'];
     const intFields = ['hunger_before', 'fullness_after', 'energy_after'];
     const jsonFields = ['tags', 'metadata'];
 

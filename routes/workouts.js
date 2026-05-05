@@ -46,14 +46,16 @@ async function autoLinkWorkout(workoutRow) {
   }
 }
 
-// Canonical writable fields (matches read schema)
+// Canonical writable fields (matches read schema). v1.9.4 dropped:
+// pace_avg, splits, cadence_avg (text duals — keep numeric `cadence`),
+// adjustment (replaced by body_notes free-text).
 const WRITABLE_FIELDS = [
   'title', 'workout_date', 'workout_type', 'location', 'elevation', 'focus',
   'warmup', 'main_sets', 'carries', 'exercises',
   'time_duration', 'distance', 'elevation_gain',
-  'heart_rate_avg', 'heart_rate_max', 'pace_avg', 'splits', 'cadence_avg',
+  'heart_rate_avg', 'heart_rate_max',
   'active_calories', 'total_calories',
-  'effort', 'body_notes', 'adjustment',
+  'effort', 'body_notes',
   'slowdown_notes', 'failure_first',
   'grip_feedback', 'legs_feedback', 'cardio_feedback', 'shoulder_feedback',
   'completion_status', 'plan_comparison_notes',
@@ -64,11 +66,6 @@ const WRITABLE_FIELDS = [
 ];
 
 const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata']);
-// `splits` is a TEXT column that holds a JSON-stringified array (POST writes
-// it via JSON.stringify without ::jsonb cast). PUT used to include it in
-// JSONB_FIELDS, which produced `splits = $N::jsonb` against a TEXT column —
-// every workout update with splits returned 500. Stringify into TEXT instead.
-const TEXT_JSON_FIELDS = new Set(['splits']);
 
 // Parse text duration into minutes.
 // v1.8.16: regex was unanchored and treated mm:ss the same as h:mm,
@@ -174,9 +171,9 @@ router.post('/', async (req, res) => {
         title, workout_date, workout_type, location, elevation, focus,
         warmup, main_sets, carries, exercises,
         time_duration, distance, elevation_gain,
-        heart_rate_avg, heart_rate_max, pace_avg, splits, cadence_avg,
+        heart_rate_avg, heart_rate_max,
         active_calories, total_calories,
-        effort, body_notes, adjustment,
+        effort, body_notes,
         slowdown_notes, failure_first,
         grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
         completion_status, plan_comparison_notes,
@@ -187,15 +184,15 @@ router.post('/', async (req, res) => {
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10,
         $11, $12, $13,
-        $14, $15, $16, $17, $18,
-        $19, $20,
-        $21, $22, $23,
-        $24, $25,
-        $26, $27, $28, $29,
-        $30, $31,
-        $32, $33, $34, $35,
-        $36, $37, $38,
-        $39, $40, $41, $42, $43
+        $14, $15,
+        $16, $17,
+        $18, $19,
+        $20, $21,
+        $22, $23, $24, $25,
+        $26, $27,
+        $28, $29, $30, $31,
+        $32, $33, $34,
+        $35, $36, $37, $38, $39
       ) RETURNING *`,
       [
         title,
@@ -213,14 +210,10 @@ router.post('/', async (req, res) => {
         b.elevation_gain || null,
         b.heart_rate_avg || null,
         b.heart_rate_max || null,
-        b.pace_avg || null,
-        b.splits ? JSON.stringify(b.splits) : null,
-        b.cadence_avg || null,
         b.active_calories || null,
         b.total_calories || null,
         b.effort ? parseInt(b.effort, 10) : null,
-        b.body_notes || b.notes || null,
-        b.adjustment || b.adjustment_next_time || null,
+        b.body_notes || b.notes || b.adjustment || b.adjustment_next_time || null,
         b.slowdown_notes || null,
         b.failure_first || null,
         b.grip_feedback || null,
@@ -238,7 +231,7 @@ router.post('/', async (req, res) => {
         b.elevation_gain_ft != null ? parseInt(b.elevation_gain_ft, 10) : parseIntFrom(b.elevation_gain),
         b.hr_avg != null ? parseInt(b.hr_avg, 10) : parseIntFrom(b.heart_rate_avg),
         b.hr_max != null ? parseInt(b.hr_max, 10) : parseIntFrom(b.heart_rate_max),
-        b.cadence != null ? parseInt(b.cadence, 10) : parseIntFrom(b.cadence_avg),
+        b.cadence != null ? parseInt(b.cadence, 10) : null,
         b.cal_active != null ? parseInt(b.cal_active, 10) : parseIntFrom(b.active_calories),
         b.cal_total != null ? parseInt(b.cal_total, 10) : parseIntFrom(b.total_calories),
       ]
@@ -277,9 +270,9 @@ router.post('/bulk', async (req, res) => {
             title, workout_date, workout_type, location, elevation, focus,
             warmup, main_sets, carries, exercises,
             time_duration, distance, elevation_gain,
-            heart_rate_avg, heart_rate_max, pace_avg, splits, cadence_avg,
+            heart_rate_avg, heart_rate_max,
             active_calories, total_calories,
-            effort, body_notes, adjustment,
+            effort, body_notes,
             slowdown_notes, failure_first,
             grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
             completion_status, plan_comparison_notes,
@@ -290,15 +283,15 @@ router.post('/bulk', async (req, res) => {
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9, $10,
             $11, $12, $13,
-            $14, $15, $16, $17, $18,
-            $19, $20,
-            $21, $22, $23,
-            $24, $25,
-            $26, $27, $28, $29,
-            $30, $31,
-            $32, $33, $34, $35,
-            $36, $37, $38,
-            $39, $40, $41, $42, $43
+            $14, $15,
+            $16, $17,
+            $18, $19,
+            $20, $21,
+            $22, $23, $24, $25,
+            $26, $27,
+            $28, $29, $30, $31,
+            $32, $33, $34,
+            $35, $36, $37, $38, $39
           ) RETURNING id, title, workout_date, workout_type`,
           [
             title,
@@ -316,14 +309,10 @@ router.post('/bulk', async (req, res) => {
             b.elevation_gain || null,
             b.heart_rate_avg || null,
             b.heart_rate_max || null,
-            b.pace_avg || null,
-            b.splits ? JSON.stringify(b.splits) : null,
-            b.cadence_avg || null,
             b.active_calories || null,
             b.total_calories || null,
             b.effort ? parseInt(b.effort, 10) : null,
-            b.body_notes || b.notes || null,
-            b.adjustment || b.adjustment_next_time || null,
+            b.body_notes || b.notes || b.adjustment || b.adjustment_next_time || null,
             b.slowdown_notes || null,
             b.failure_first || null,
             b.grip_feedback || null,
@@ -341,7 +330,7 @@ router.post('/bulk', async (req, res) => {
             b.elevation_gain_ft != null ? parseInt(b.elevation_gain_ft, 10) : parseIntFrom(b.elevation_gain),
             b.hr_avg != null ? parseInt(b.hr_avg, 10) : parseIntFrom(b.heart_rate_avg),
             b.hr_max != null ? parseInt(b.hr_max, 10) : parseIntFrom(b.heart_rate_max),
-            b.cadence != null ? parseInt(b.cadence, 10) : parseIntFrom(b.cadence_avg),
+            b.cadence != null ? parseInt(b.cadence, 10) : null,
             b.cal_active != null ? parseInt(b.cal_active, 10) : parseIntFrom(b.active_calories),
             b.cal_total != null ? parseInt(b.cal_total, 10) : parseIntFrom(b.total_calories),
           ]
@@ -384,9 +373,6 @@ const updateWorkoutHandler = async (req, res) => {
         if (JSONB_FIELDS.has(key)) {
           fields.push(`${key} = $${i++}::jsonb`);
           params.push(JSON.stringify(b[key]));
-        } else if (TEXT_JSON_FIELDS.has(key)) {
-          fields.push(`${key} = $${i++}`);
-          params.push(b[key] != null ? JSON.stringify(b[key]) : null);
         } else if (key === 'effort') {
           fields.push(`effort = $${i++}`);
           params.push(b.effort ? parseInt(b.effort, 10) : null);
@@ -404,7 +390,6 @@ const updateWorkoutHandler = async (req, res) => {
       elevation_gain: ['elevation_gain_ft', v => parseIntFrom(v)],
       heart_rate_avg: ['hr_avg', v => parseIntFrom(v)],
       heart_rate_max: ['hr_max', v => parseIntFrom(v)],
-      cadence_avg: ['cadence', v => parseIntFrom(v)],
       active_calories: ['cal_active', v => parseIntFrom(v)],
       total_calories: ['cal_total', v => parseIntFrom(v)],
     };

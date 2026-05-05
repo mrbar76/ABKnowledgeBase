@@ -7,11 +7,13 @@ const express = require('express');
 const { query, logActivity } = require('../db');
 const router = express.Router();
 
+// v1.9.4: dropped expected_weather (pulled live from forecast at race-pulse
+// time) and goal_process (duplicated by goal_outcome + training_blocks.thesis).
 const RACE_FIELDS = [
   'race_date','name','discipline','distance_value','distance_unit',
   'elevation_gain_ft','terrain','target_time_seconds','priority',
-  'status','location','course_notes','expected_weather','fueling_plan',
-  'gear_list','goal_outcome','goal_process','result_time_seconds',
+  'status','location','course_notes','fueling_plan',
+  'gear_list','goal_outcome','result_time_seconds',
   'result_notes','tags',
 ];
 

@@ -429,17 +429,19 @@ router.get('/today', async (req, res) => {
     // FULL OUTER JOIN of daily_vitals_cache (Shortcut-fed, post-HAE) with
     // daily_activity (legacy HAE-fed history). Cache values win on overlap;
     // daily_activity fills dates the cache hasn't reached yet (historical
-    // baselines). Either table's columns can be null on a given date.
+    // baselines). v1.9.4: cache no longer holds sleep stages or efficiency;
+    // those come exclusively from daily_activity (historical) until that
+    // table is dropped in Phase 8 (~Aug 5, 2026).
     const r = await query(
       `SELECT
-         COALESCE(c.date, da.activity_date)             AS activity_date,
-         COALESCE(c.hrv_ms, da.hrv_sdnn_ms)             AS hrv_sdnn_ms,
-         COALESCE(c.rhr_bpm, da.resting_hr_bpm)         AS resting_hr_bpm,
+         COALESCE(c.date, da.activity_date)              AS activity_date,
+         COALESCE(c.hrv_ms, da.hrv_sdnn_ms)              AS hrv_sdnn_ms,
+         COALESCE(c.rhr_bpm, da.resting_hr_bpm)          AS resting_hr_bpm,
          COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
-         COALESCE(c.sleep_deep_min, da.sleep_deep_min)   AS sleep_deep_min,
-         COALESCE(c.sleep_rem_min, da.sleep_rem_min)     AS sleep_rem_min,
-         COALESCE(c.sleep_core_min, da.sleep_core_min)   AS sleep_core_min,
-         COALESCE(c.sleep_awake_min, da.sleep_awake_min) AS sleep_awake_min,
+         da.sleep_deep_min,
+         da.sleep_rem_min,
+         da.sleep_core_min,
+         da.sleep_awake_min,
          da.sleep_efficiency_pct,
          da.active_energy_kcal,
          da.basal_energy_kcal,
@@ -1688,17 +1690,18 @@ router.get('/morning', async (req, res) => {
 
     // Today's readiness — reuse the same logic as /today.
     // FULL OUTER JOIN: cache values win on overlap; daily_activity fills
-    // historical baselines from the pre-Shortcut era.
+    // historical baselines. Sleep stages live only in daily_activity
+    // post-v1.9.4 (cache columns dropped).
     const lookback = 30;
     const startDate = new Date(Date.now() - lookback * 86400_000).toISOString().slice(0, 10);
     const da = await query(
       `SELECT
-         COALESCE(c.date, da.activity_date)             AS activity_date,
-         COALESCE(c.hrv_ms, da.hrv_sdnn_ms)             AS hrv_sdnn_ms,
-         COALESCE(c.rhr_bpm, da.resting_hr_bpm)         AS resting_hr_bpm,
+         COALESCE(c.date, da.activity_date)              AS activity_date,
+         COALESCE(c.hrv_ms, da.hrv_sdnn_ms)              AS hrv_sdnn_ms,
+         COALESCE(c.rhr_bpm, da.resting_hr_bpm)          AS resting_hr_bpm,
          COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
-         COALESCE(c.sleep_deep_min, da.sleep_deep_min)   AS sleep_deep_min,
-         COALESCE(c.sleep_rem_min, da.sleep_rem_min)     AS sleep_rem_min,
+         da.sleep_deep_min,
+         da.sleep_rem_min,
          da.sleep_efficiency_pct,
          c.respiratory_rate_bpm
        FROM daily_vitals_cache c

@@ -4,6 +4,82 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.9.4] — 2026-05-05
+
+### Phase 2 — schema cleanup
+
+Coach's audit produced a list of straggler columns no coaching decision
+relied on. Migration is idempotent (`IF EXISTS` / `IF NOT EXISTS`), safe to
+re-run, and route handlers updated in lockstep so INSERT statements never
+reference dropped columns.
+
+**Override of Coach's drop list:** Avi explicitly preserved all 12 RENPHO
+BIA columns on `body_metrics` (bmi, fat_free_mass_lb, visceral_fat,
+body_water_pct, muscle_mass_lb, bone_mass_lb, protein_pct, metabolic_age,
+measurement_context, vendor_user_mode, lean_mass_lb, subcutaneous_fat_pct).
+The detail UI surfaces them in `showBodyMetricDetail`; Avi tracks them
+monthly. Coach can ignore the columns in coaching decisions but the data
+stays visible.
+
+**Dropped columns** (data preserved up to drop time; rebuild as empty if
+hardware/use case changes):
+- `workouts`: cadence_avg (canonical numeric `cadence` kept), splits (segments
+  via plan_segments), pace_avg (derive from duration/distance), adjustment
+  (folded into body_notes)
+- `meals`: fiber_g, sugar_g, sodium_mg (race fueling logs sodium separately),
+  serving_size (kcal + macros sufficient)
+- `injuries`: treatment (folded into modifications), tags
+- `races`: expected_weather (live forecast), goal_process (training_blocks.thesis)
+- `daily_vitals_cache`: sleep_deep_min, sleep_rem_min, sleep_core_min,
+  sleep_awake_min (Series 3 doesn't record stages — watchOS 9+ only),
+  wrist_temp_c (Series 8+), spo2_pct (Series 6+), source_device (never read
+  by coaching logic)
+
+**New columns:**
+- `daily_vitals_cache`: `is_stale BOOLEAN GENERATED` — true when row is
+  more than 6 hours old; Coach uses to decide subjective-Q&A fallback.
+- `body_metrics`: photo_url, photo_date for monthly progress photos from
+  Body 360 / similar via image-intake skill (Phase 4 build).
+- `contacts`: role_tags, last_interaction_date, last_interaction_source,
+  interaction_count_30d, topics_tagged for Phase 4 people layer.
+
+**Deprecation marker:** `daily_activity` table commented as deprecated.
+Drop scheduled for ~Aug 5, 2026 once `daily_vitals_cache` has 90 days of
+HRV-not-null history (Phase 8).
+
+**Route handlers updated:**
+- `routes/v2-vitals.js`: validator + INSERT shrunk from 7 → 4 numeric fields
+  (HRV, RHR, sleep_total, respiratory). Old payloads with sleep stages or
+  source_device silently ignored at validator (no error).
+- `routes/workouts.js`: WRITABLE_FIELDS, POST INSERT, bulk INSERT, numericMap
+  all cleaned of cadence_avg/splits/pace_avg/adjustment. Folded
+  `b.adjustment` into body_notes for backwards compat.
+- `routes/meals.js`: validator, buildInsertParams, INSERT_SQL, PATCH
+  `allowed` list cleaned of fiber_g/sugar_g/sodium_mg/serving_size.
+- `routes/training.js`: injuries POST INSERT + PATCH allowed cleaned of
+  treatment + tags. Folded `b.treatment` into modifications for backwards
+  compat.
+- `routes/races.js`: RACE_FIELDS cleaned of expected_weather, goal_process.
+- `routes/insights.js`: FULL OUTER JOIN queries in `/morning` and `/today`
+  pull sleep stages from daily_activity only (cache no longer has them).
+
+### Tests
+- `tests/phase2-schema.test.js` — 7 regression tests asserting INSERT
+  statements + field lists no longer reference dropped columns; RENPHO
+  BIA columns preserved; is_stale generated column present.
+- `tests/v2-vitals.test.js` — validator tests updated to current Series-3
+  field set; new test confirms dropped fields are silently ignored.
+- `tests/phase1-fixes.test.js` — TEXT_JSON_FIELDS test rewritten to
+  assert splits is no longer in WRITABLE_FIELDS (Phase 2 dropped it).
+- 71/71 tests pass.
+
+### Out of scope
+- Phase 3 composite endpoints (next).
+- Phase 4 people layer (`/api/people/{id}/interactions`).
+- Phase 8 — `daily_activity` drop (90-day timer).
+
+---
+
 ## [1.9.3] — 2026-05-05
 
 ### Phase 1 — fix three production 500s

@@ -1795,10 +1795,79 @@ async function initDB() {
       recorded_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
-  await safeQuery('daily_vitals_cache +sleep_core_min', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS sleep_core_min INTEGER`);
-  await safeQuery('daily_vitals_cache +sleep_awake_min', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS sleep_awake_min INTEGER`);
   await safeQuery('daily_vitals_cache +respiratory_rate_bpm', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS respiratory_rate_bpm NUMERIC(4,1)`);
   await safeQuery('daily_vitals_cache idx', `CREATE INDEX IF NOT EXISTS idx_vitals_cache_recorded ON daily_vitals_cache(recorded_at DESC)`);
+
+  // ─── v1.9.4 — Phase 2 schema cleanup ──────────────────────────
+  // Drop straggler columns Coach's audit confirmed unused. Idempotent
+  // (IF EXISTS); safe to re-run. Body_metrics RENPHO BIA columns
+  // intentionally PRESERVED per Avi's override of Coach's drop list — the
+  // detail UI surfaces all 12 fields for monthly tracking. Series-3-impossible
+  // sleep stages dropped (deep/REM/core/awake — watchOS 9+ only); add back
+  // when hardware upgrades.
+
+  // workouts — replaced by canonical numeric columns (cadence→cadence numeric,
+  // splits→workout segments via plan_segments, pace_avg→duration/distance derive,
+  // adjustment→body_notes free-text)
+  await safeQuery('workouts -cadence_avg', `ALTER TABLE workouts DROP COLUMN IF EXISTS cadence_avg`);
+  await safeQuery('workouts -splits', `ALTER TABLE workouts DROP COLUMN IF EXISTS splits`);
+  await safeQuery('workouts -pace_avg', `ALTER TABLE workouts DROP COLUMN IF EXISTS pace_avg`);
+  await safeQuery('workouts -adjustment', `ALTER TABLE workouts DROP COLUMN IF EXISTS adjustment`);
+
+  // meals — fiber/sugar/sodium tracked at race-fueling level instead;
+  // serving_size never drove a coaching decision (kcal + macros are enough)
+  await safeQuery('meals -fiber_g', `ALTER TABLE meals DROP COLUMN IF EXISTS fiber_g`);
+  await safeQuery('meals -sugar_g', `ALTER TABLE meals DROP COLUMN IF EXISTS sugar_g`);
+  await safeQuery('meals -sodium_mg', `ALTER TABLE meals DROP COLUMN IF EXISTS sodium_mg`);
+  await safeQuery('meals -serving_size', `ALTER TABLE meals DROP COLUMN IF EXISTS serving_size`);
+
+  // injuries — treatment merged into modifications (single free-text field)
+  await safeQuery('injuries -treatment', `ALTER TABLE injuries DROP COLUMN IF EXISTS treatment`);
+  await safeQuery('injuries -tags', `ALTER TABLE injuries DROP COLUMN IF EXISTS tags`);
+
+  // races — expected_weather pulled live from forecast at race-pulse time;
+  // goal_process duplicated by goal_outcome+training_blocks.thesis
+  await safeQuery('races -expected_weather', `ALTER TABLE races DROP COLUMN IF EXISTS expected_weather`);
+  await safeQuery('races -goal_process', `ALTER TABLE races DROP COLUMN IF EXISTS goal_process`);
+
+  // daily_vitals_cache — Series 3 hardware can't populate sleep stages,
+  // SpO2, or wrist temp. v1.9.2 added sleep_core/awake speculatively; drop.
+  // source_device never read by coaching logic (activity log falls back
+  // to 'shortcut' string).
+  await safeQuery('daily_vitals_cache -sleep_deep_min', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS sleep_deep_min`);
+  await safeQuery('daily_vitals_cache -sleep_rem_min', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS sleep_rem_min`);
+  await safeQuery('daily_vitals_cache -sleep_core_min', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS sleep_core_min`);
+  await safeQuery('daily_vitals_cache -sleep_awake_min', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS sleep_awake_min`);
+  await safeQuery('daily_vitals_cache -wrist_temp_c', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS wrist_temp_c`);
+  await safeQuery('daily_vitals_cache -spo2_pct', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS spo2_pct`);
+  await safeQuery('daily_vitals_cache -source_device', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS source_device`);
+
+  // is_stale generated column — true when last update is more than 6 hours old.
+  // Coach uses this to decide whether to fall back to subjective Q&A or
+  // re-prompt the user to run the Shortcut.
+  await safeQuery('daily_vitals_cache +is_stale', `
+    ALTER TABLE daily_vitals_cache
+    ADD COLUMN IF NOT EXISTS is_stale BOOLEAN
+    GENERATED ALWAYS AS (updated_at < NOW() - INTERVAL '6 hours') STORED`);
+
+  // body_metrics — additive: monthly progress photo from Body 360 / similar.
+  // Photo arrives via image-intake skill; AI describes visible change in
+  // posture/lean/muscle definition over time.
+  await safeQuery('body_metrics +photo_url', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS photo_url TEXT`);
+  await safeQuery('body_metrics +photo_date', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS photo_date DATE`);
+
+  // contacts — people-layer fields used by Phase 4 /api/people/{id}/interactions.
+  // Backfilled nightly from transcript_speakers + email_threads + calendar_events.
+  await safeQuery('contacts +role_tags', `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS role_tags TEXT[]`);
+  await safeQuery('contacts +last_interaction_date', `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_date DATE`);
+  await safeQuery('contacts +last_interaction_source', `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_source TEXT`);
+  await safeQuery('contacts +interaction_count_30d', `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS interaction_count_30d INTEGER DEFAULT 0`);
+  await safeQuery('contacts +topics_tagged', `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS topics_tagged TEXT[]`);
+
+  // daily_activity — deprecation marker. Drop scheduled for ~Aug 5, 2026
+  // once daily_vitals_cache has 90 days of HRV-not-null history.
+  await safeQuery('daily_activity deprecation comment', `
+    COMMENT ON TABLE daily_activity IS 'DEPRECATED — HAE retired May 2026. Drop after Aug 5, 2026 once daily_vitals_cache has 90d baseline.'`);
 
   // daily_context: alcohol + supplement change note (Coach's recommended fold-in
   // instead of separate tables for these low-volume signals).

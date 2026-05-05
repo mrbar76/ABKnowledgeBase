@@ -197,13 +197,15 @@ router.post('/injuries', async (req, res) => {
     const b = req.body;
     if (!b.title || !b.body_area) return res.status(400).json({ error: 'title and body_area are required' });
 
+    // v1.9.4: dropped injuries.treatment (merged into modifications) and tags.
+    // Old payloads sending b.treatment fold into b.modifications (or notes).
     const result = await query(
       `INSERT INTO injuries (
         title, body_area, side, injury_type, severity, status,
-        onset_date, resolved_date, symptoms, treatment, notes,
+        onset_date, resolved_date, symptoms, notes,
         mechanism, aggravating_movements, relieving_factors, modifications, prevention_notes,
-        tags, ai_source, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        ai_source, metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [
         b.title,
         b.body_area,
@@ -214,14 +216,13 @@ router.post('/injuries', async (req, res) => {
         b.onset_date || null,
         b.resolved_date || null,
         b.symptoms || null,
-        b.treatment || null,
         b.notes || null,
         b.mechanism || null,
         b.aggravating_movements || null,
         b.relieving_factors || null,
-        b.modifications || null,
+        // Fold legacy `treatment` into modifications if modifications wasn't set
+        b.modifications || b.treatment || null,
         b.prevention_notes || null,
-        JSON.stringify(b.tags || []),
         b.ai_source || null,
         JSON.stringify(b.metadata || {}),
       ]
@@ -242,16 +243,19 @@ router.put('/injuries/:id', async (req, res) => {
     const params = [];
     let i = 1;
 
+    // v1.9.4: dropped injuries.treatment + tags. PUT silently ignores them
+    // (not in `allowed`); old clients sending treatment can fold it into
+    // modifications client-side.
     const allowed = [
       'title', 'body_area', 'side', 'injury_type', 'severity', 'status',
-      'onset_date', 'resolved_date', 'symptoms', 'treatment', 'notes',
+      'onset_date', 'resolved_date', 'symptoms', 'notes',
       'mechanism', 'aggravating_movements', 'relieving_factors', 'modifications', 'prevention_notes',
-      'tags', 'ai_source', 'metadata',
+      'ai_source', 'metadata',
     ];
 
     for (const key of allowed) {
       if (b[key] !== undefined) {
-        if (['tags', 'metadata'].includes(key)) {
+        if (['metadata'].includes(key)) {
           fields.push(`${key} = $${i++}::jsonb`);
           params.push(JSON.stringify(b[key]));
         } else if (key === 'severity') {
