@@ -28,6 +28,12 @@ Re-POSTing the same date is idempotent — `ON CONFLICT (date)` upsert with `COA
 
 ---
 
+## Heads-up before you start
+
+This runbook is grounded in Apple's official Shortcuts documentation (event triggers, Get Contents of URL with JSON body) and the [Shortcuts actions reference](https://matthewcassinelli.com/actions/find-health-samples/) — but Apple's Shortcuts UI varies slightly across iOS versions and some actions don't have public Apple docs. **Action names below are what I've verified; exact dropdown labels may differ on your device.** When something doesn't match, screenshot it and we'll fix the doc.
+
+The shortcut is small (~10–14 actions). The fragile part is sleep — see Step 3c for the simpler path.
+
 ## Building the Shortcut on iPhone
 
 ### Step 1 — create the Shortcut
@@ -37,90 +43,90 @@ Re-POSTing the same date is idempotent — `ON CONFLICT (date)` upsert with `COA
 
 ### Step 2 — get the date (one action)
 
-Action: **Get Current Date**
-→ Format Date: `Custom`, Format String: `yyyy-MM-dd`
-→ This gives you the day's date string (`2026-05-05`).
+Action: **Format Date** (input: Current Date)
+→ Format: `Custom`, Format String: `yyyy-MM-dd`
+→ This gives you the day's date string (e.g. `2026-05-05`).
 
-### Step 3 — query each HealthKit metric (five actions)
+Save it to a variable named `date`.
 
-For each of the five vitals below, add: **Find Health Samples** action with these settings.
+### Step 3 — query HealthKit
 
-Note: HealthKit reports HRV / RHR / sleep on a slight delay. Query a 36-hour window ending at "now" so the morning's values land even if Apple Watch synced after midnight.
+For each of the vitals below, add a **Find Health Samples** action.
 
-#### 3a. HRV (heart rate variability SDNN)
+**Apple confirms** Find Health Samples supports filters on Value / Start Date / End Date / Duration / Source / Name, and sorts by date / value / duration / source / name. The "Type" parameter is what selects the metric (HRV, Resting HR, Sleep Analysis, etc.).
 
-- **Find** Health Samples
+**Why a 36-hour window:** HealthKit syncs HRV / RHR / sleep on a slight delay. A 36h window ending at "now" catches values even if Apple Watch synced after midnight or you woke up late.
+
+#### 3a. HRV (heart rate variability)
+
+- Action: **Find Health Samples**
 - **Type:** Heart Rate Variability
 - **Sort by:** End Date, Latest First
 - **Limit:** 1
-- **Date range:** Started in the last `36 hours`
+- Filter: **Start Date is in the last 36 hours**
 
-Then: **Get Quantity from Sample** → take the `value` (in milliseconds).
+To extract the number from the returned sample, add a **Get Details of Health Sample** action (or whichever action your iOS version exposes for sample property extraction) → property **Quantity** or **Value**. Save to variable `hrv_ms`.
 
-Save to variable `hrv_ms`.
+> If the property dropdown shows different option names than "Quantity"/"Value" on your iPhone, pick the numeric one (HRV is a quantity type — value is in milliseconds).
 
 #### 3b. Resting Heart Rate
 
-- **Find** Health Samples → Resting Heart Rate, latest 1, last 36 hours
+- Action: **Find Health Samples** → **Type:** Resting Heart Rate, **Limit:** 1, **Sort:** Latest First, filter Start Date in last 36 hours
+- Extract Quantity / Value → save to variable `rhr_bpm`
+
+#### 3c. Sleep — the simpler path
+
+Sleep is a *category* type (not quantity), with stages: in bed, asleep core, asleep deep, asleep REM, awake. Filtering and summing per-stage durations inside Shortcuts works but is fragile.
+
+**Simpler approach: send only `sleep_total_min` for now.** The endpoint is happy receiving a partial payload (deep + REM as null is fine). If the simple version works for two weeks of coaching, we don't bother with stage-level detail. If Coach asks for more, we add it.
+
+- Action: **Find Health Samples** → **Type:** Sleep Analysis, **Limit:** unset, filter Start Date in last 36 hours
+- Add a **filter** (using the action's `+ Add Filter` UI): "Value is not In Bed" — keeps only the asleep stages
+- Then either:
+  - **Option A (cleaner if available):** the action exposes a "Total Duration" or sum aggregation → use it
+  - **Option B (works if A isn't available):** add **Repeat with Each** → inside, **Calculate** Sample's End Date − Start Date in minutes → accumulate into a Math variable → after the loop, save the total as `sleep_total_min`
+
+Leave `sleep_deep_min` and `sleep_rem_min` empty for the first version. The endpoint accepts them as null.
+
+> When you build this in iOS, screenshot the Sleep Analysis filter dropdown — what exact stage labels does it show? Send me the screenshot and I'll rewrite this section verbatim. Right now I'm guessing the label is "In Bed" but it could be "InBed" or "Asleep (In Bed)" depending on iOS version.
 - Get Quantity from Sample → `value` (bpm)
 - Save to variable `rhr_bpm`
 
-#### 3c. Sleep total minutes (asleep stages)
+### Step 4 — device label (optional)
 
-- **Find** Health Samples → Sleep Analysis, **all matching**, last 36 hours
-- Filter: where Sleep Stage is one of `Asleep Core`, `Asleep Deep`, `Asleep REM`, `Asleep Unspecified`
-- For each filtered sample, compute `(End Date − Start Date)` in minutes
-- Sum the durations
-- Save to variable `sleep_total_min`
-
-#### 3d. Sleep Deep minutes
-
-- Same Find as above (Sleep Analysis, last 36 hours)
-- Filter: where Sleep Stage is `Asleep Deep`
-- Sum durations in minutes
-- Save to variable `sleep_deep_min`
-
-#### 3e. Sleep REM minutes
-
-- Same Find (Sleep Analysis, last 36 hours)
-- Filter: where Sleep Stage is `Asleep REM`
-- Sum durations in minutes
-- Save to variable `sleep_rem_min`
-
-> **Tip:** rather than running Find Health Samples three times for sleep, run it once with `all matching` last 36 hours, save the result list to a variable, then derive `sleep_total_min` / `sleep_deep_min` / `sleep_rem_min` by filtering the same list three different ways. Faster + more reliable.
-
-### Step 4 — get the device model (one action)
-
-Action: **Get Device Details** → Model
-Save to variable `source_device`.
+Action: **Get Device Details** → property: pick a model/identifier label (UI varies — "Device Model" or similar). Save to `source_device`. Skip this step if your iOS version doesn't expose a clean model property — it's optional in the payload.
 
 ### Step 5 — build the JSON body (one action)
 
-Action: **Dictionary** with these keys (each value is the variable from above):
+Action: **Dictionary** with the following keys. Each value references the variable you saved earlier:
 
 ```
-date              → [Formatted Current Date]
-hrv_ms            → [hrv_ms variable]
-rhr_bpm           → [rhr_bpm variable]
-sleep_total_min   → [sleep_total_min variable]
-sleep_deep_min    → [sleep_deep_min variable]
-sleep_rem_min     → [sleep_rem_min variable]
-source_device     → [source_device variable]
+date              → date variable from Step 2
+hrv_ms            → hrv_ms variable from Step 3a
+rhr_bpm           → rhr_bpm variable from Step 3b
+sleep_total_min   → sleep_total_min variable from Step 3c (may be empty)
+sleep_deep_min    → leave blank for v1
+sleep_rem_min     → leave blank for v1
+source_device     → source_device variable from Step 4 (may be empty)
 ```
+
+The endpoint validator only requires `date` plus at least one numeric field. Empty/blank values are treated as null.
 
 ### Step 6 — POST to AB Brain (one action)
 
-Action: **Get Contents of URL**
-- URL: `{API_BASE}/api/v2/daily-vitals` (your Railway URL, e.g. `https://abrain-production.up.railway.app/api/v2/daily-vitals`)
-- Method: POST
-- Headers:
+Action: **Get Contents of URL** (Apple confirms POST request body supports JSON):
+- **URL:** `{API_BASE}/api/v2/daily-vitals` (your Railway URL, e.g. `https://abrain-production.up.railway.app/api/v2/daily-vitals`)
+- **Method:** POST
+- **Headers:**
   - `Content-Type` → `application/json`
   - `x-api-key` → your API key (from Railway env var `API_KEY`)
-- Request Body: **JSON** → the dictionary from Step 5
+- **Request Body:** JSON → reference the Dictionary from Step 5
+
+> Apple's docs note that JSON Request Body in this action only supports objects at the top level (not arrays). Our payload is an object — fine.
 
 ### Step 7 — confirm success
 
-Optional: add **Show Notification** with the response body so you see "✓ vitals for 2026-05-05" each morning. Feels nice. Catches failures early.
+Optional: add **Show Notification** with the response body so you see `{"ok":true,"row":...}` each morning. Catches silent failures.
 
 ---
 
@@ -128,16 +134,19 @@ Optional: add **Show Notification** with the response body so you see "✓ vital
 
 Sleep data only finalizes in HealthKit *after* Apple Watch detects you waking up. If we fire too early (e.g. 5:30 AM while you're still asleep), sleep is null. So we use two automations and let the endpoint's `COALESCE` merge handle re-runs.
 
-### Trigger 1 — Wake Up (primary)
+### Trigger 1 — Sleep → Waking Up (primary)
 
-Shortcuts → Automation tab → `+` → Create Personal Automation
-- **When I Wake Up** (fires when your Sleep Schedule alarm goes off)
+Apple offers two related triggers; the one we want is under **Sleep**, not Alarm:
+
+Shortcuts → Automation tab → `+` → Create Personal Automation → **Sleep** category → **Waking Up**
 - **Run Immediately** (no confirmation prompt)
 - **Notify When Run**: optional
 
 Pick **Run Shortcut** → select `Morning Vitals → AB Brain`.
 
-> Requires you to have a Sleep Schedule set in the Health app (most people do — Health → Sleep → Your Schedule). The Wake Up trigger is more robust than a fixed time because it fires after Apple Watch has closed the night's sleep session, so sleep deep/REM/total are populated.
+> Per Apple's [event triggers documentation](https://support.apple.com/guide/shortcuts/event-triggers-apd932ff833f/ios), the Sleep "Waking Up" trigger fires when your Wake Up alarm sounds (or, with no alarm, per your Sleep Schedule). Requires a Sleep Schedule set in the Health app (Health → Sleep → Your Schedule). This is more robust than a fixed time because by the time it fires, Apple Watch has closed the night's sleep session and HRV / RHR / sleep stages are populated.
+>
+> **Note on timing:** Apple's docs warn that "Waking Up" fires at the *scheduled* wake time, not necessarily when you physically get out of bed. So if you sleep through your alarm, the trigger still fires at the schedule time — the safety-net 10am run below covers the case where Apple Watch hadn't yet closed the sleep session at scheduled wake time.
 
 ### Trigger 2 — 10:00 AM safety net
 
