@@ -1842,13 +1842,16 @@ async function initDB() {
   await safeQuery('daily_vitals_cache -spo2_pct', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS spo2_pct`);
   await safeQuery('daily_vitals_cache -source_device', `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS source_device`);
 
-  // is_stale generated column — true when last update is more than 6 hours old.
-  // Coach uses this to decide whether to fall back to subjective Q&A or
-  // re-prompt the user to run the Shortcut.
-  await safeQuery('daily_vitals_cache +is_stale', `
-    ALTER TABLE daily_vitals_cache
-    ADD COLUMN IF NOT EXISTS is_stale BOOLEAN
-    GENERATED ALWAYS AS (updated_at < NOW() - INTERVAL '6 hours') STORED`);
+  // v1.10.3: is_stale was originally added in v1.9.4 as a GENERATED ALWAYS AS
+  // (updated_at < NOW() - INTERVAL '6 hours') STORED column, but Postgres
+  // rejects volatile functions (NOW()) in STORED generated expressions. The
+  // migration silently failed via safeQuery, leaving the column absent and
+  // crashing every /api/coach/* call that referenced c.is_stale. Fix: derive
+  // is_stale inline at SELECT time in the route handlers (`(updated_at <
+  // NOW() - INTERVAL '6 hours') AS is_stale`). Drop any partial column that
+  // somehow got created so the schema is unambiguous.
+  await safeQuery('daily_vitals_cache -is_stale (NOW() not immutable)',
+    `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS is_stale`);
 
   // body_metrics — additive: monthly progress photo from Body 360 / similar.
   // Photo arrives via image-intake skill; AI describes visible change in

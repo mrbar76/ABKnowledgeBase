@@ -804,14 +804,16 @@ router.get('/nutrition', async (req, res) => {
       [startDate]
     );
 
-    // Nutrition input — sum all macros per day
+    // Nutrition input — sum all macros per day. v1.10.3: fiber_g dropped from
+    // schema (v1.9.4 cleanup); was breaking the entire /insights/nutrition
+    // call because the catch() swallowed the SQL error and returned empty
+    // rows, zeroing out the Macros & Balance card.
     const m = await query(
       `SELECT meal_date,
               COALESCE(SUM(calories), 0) AS kcal,
               COALESCE(SUM(protein_g), 0) AS protein_g,
               COALESCE(SUM(carbs_g), 0) AS carbs_g,
-              COALESCE(SUM(fat_g), 0) AS fat_g,
-              COALESCE(SUM(fiber_g), 0) AS fiber_g
+              COALESCE(SUM(fat_g), 0) AS fat_g
        FROM meals
        WHERE meal_date >= $1
        GROUP BY meal_date
@@ -829,7 +831,6 @@ router.get('/nutrition', async (req, res) => {
         protein_g: Number(row.protein_g) || 0,
         carbs_g: Number(row.carbs_g) || 0,
         fat_g: Number(row.fat_g) || 0,
-        fiber_g: Number(row.fiber_g) || 0,
       });
     }
 
@@ -945,7 +946,7 @@ router.get('/nutrition', async (req, res) => {
         }
       }
       const out = active + (basal || 0);
-      const meal = mealMap.get(date) || { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+      const meal = mealMap.get(date) || { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
       const plan = planMap.get(date);
       // v1.8.13: training day if ANY of:
       //   - effort >= 5 (legacy heuristic, hard sessions)
@@ -983,7 +984,6 @@ router.get('/nutrition', async (req, res) => {
         protein_g: Math.round(meal.protein_g),
         carbs_g: Math.round(meal.carbs_g),
         fat_g: Math.round(meal.fat_g),
-        fiber_g: Math.round(meal.fiber_g),
         protein_per_kg: weightKg ? round1(meal.protein_g / weightKg) : null,
         carbs_per_kg: weightKg ? round1(meal.carbs_g / weightKg) : null,
         fat_per_kg: weightKg ? round1(meal.fat_g / weightKg) : null,

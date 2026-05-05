@@ -41,6 +41,9 @@ function mostRecentNonNull(rows, field) {
 // Phase 8 (~Aug 5, 2026).
 async function loadMergedVitals(lookbackDays = 30) {
   const startDate = daysAgoISO(lookbackDays);
+  // is_stale derived inline (NOW() can't live in a STORED generated column).
+  // Threshold: cache row > 6h old means we should re-prompt the Shortcut or
+  // fall back to subjective Q&A.
   const r = await query(
     `SELECT
        COALESCE(c.date, da.activity_date)              AS activity_date,
@@ -49,7 +52,7 @@ async function loadMergedVitals(lookbackDays = 30) {
        COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
        da.sleep_efficiency_pct,
        c.respiratory_rate_bpm,
-       c.is_stale AS cache_is_stale,
+       (c.updated_at < NOW() - INTERVAL '6 hours') AS cache_is_stale,
        c.updated_at AS cache_updated_at
      FROM daily_vitals_cache c
      FULL OUTER JOIN daily_activity da ON c.date = da.activity_date
@@ -579,10 +582,29 @@ router.get('/weekly', async (req, res) => {
 // calls /api/coach/race-pulse for race-week + race-debrief scenarios.
 // Returns the same payload as /insights/race plus the latest fueling
 // rehearsal for that race so race-week prep doesn't need a 2nd call.
+//
+// v1.10.3: race_id is OPTIONAL. If omitted, defaults to the next upcoming
+// scheduled race — covers the most common race-week pulse case where the
+// skill doesn't need to know which race it is.
 router.get('/race-pulse', async (req, res) => {
   try {
-    const raceId = req.query.race_id;
-    if (!raceId) return res.status(400).json({ error: 'race_id is required' });
+    let raceId = req.query.race_id;
+
+    // No race_id → resolve to next upcoming scheduled race
+    if (!raceId) {
+      const upcoming = await query(
+        `SELECT id FROM races
+         WHERE status = 'scheduled' AND race_date >= CURRENT_DATE
+         ORDER BY race_date ASC LIMIT 1`
+      );
+      if (!upcoming.rows.length) {
+        return res.status(404).json({
+          error: 'No race_id provided and no upcoming scheduled race found.',
+          hint: 'POST /api/races to schedule the next race, or pass ?race_id=<id>.',
+        });
+      }
+      raceId = upcoming.rows[0].id;
+    }
 
     const [race, fuelingRehearsals, currentBlock] = await Promise.all([
       query(
@@ -610,6 +632,7 @@ router.get('/race-pulse', async (req, res) => {
 
     res.json({
       generated_at: new Date().toISOString(),
+      resolved_via: req.query.race_id ? 'race_id' : 'upcoming',
       race: race.rows[0],
       fueling_rehearsals: fuelingRehearsals.rows,
       training_block: currentBlock.rows[0] || null,

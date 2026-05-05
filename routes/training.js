@@ -90,9 +90,28 @@ router.post('/coaching', async (req, res) => {
     // `snapshot` object alongside the session, we write a coaching_snapshots
     // row tagged to this session so retros stay reproducible — re-reading
     // current vitals later would lie about what drove this decision.
+    //
+    // v1.10.3: validate the snapshot contract. If `snapshot` is provided but
+    // missing the required fields (integrated_paragraph at minimum), reject
+    // — silent acceptance produces useless retro rows. Keep `decision_
+    // references` and `input_freshness` permissive (any JSONB shape) so the
+    // skill can evolve those without touching the endpoint.
     let snapshot = null;
-    if (b.snapshot && typeof b.snapshot === 'object') {
+    if (b.snapshot != null) {
+      if (typeof b.snapshot !== 'object' || Array.isArray(b.snapshot)) {
+        return res.status(400).json({
+          error: 'snapshot must be an object',
+          required_fields: ['integrated_paragraph'],
+          optional_fields: ['headline_prescription', 'if_then_conditional', 'decision_references', 'input_freshness', 'snapshot_date', 'generated_by_skill'],
+        });
+      }
       const s = b.snapshot;
+      if (!s.integrated_paragraph || typeof s.integrated_paragraph !== 'string') {
+        return res.status(400).json({
+          error: 'snapshot.integrated_paragraph is required (non-empty string)',
+          got: { integrated_paragraph: s.integrated_paragraph },
+        });
+      }
       const snapResult = await query(
         `INSERT INTO coaching_snapshots (
            snapshot_date, integrated_paragraph, headline_prescription, if_then_conditional,
@@ -101,7 +120,7 @@ router.post('/coaching', async (req, res) => {
          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [
           s.snapshot_date || b.session_date || req.getToday(),
-          s.integrated_paragraph || b.summary,
+          s.integrated_paragraph,
           s.headline_prescription || null,
           s.if_then_conditional || null,
           JSON.stringify(s.decision_references || {}),

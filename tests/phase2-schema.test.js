@@ -130,6 +130,20 @@ test('db.js: Phase 2 migrations are idempotent (IF EXISTS / IF NOT EXISTS)', () 
   assert.ok(!/body_metrics -bmi/.test(src), 'body_metrics.bmi must not be dropped');
   assert.ok(!/body_metrics -visceral_fat/.test(src), 'body_metrics.visceral_fat must not be dropped');
   assert.ok(!/body_metrics -metabolic_age/.test(src), 'body_metrics.metabolic_age must not be dropped');
-  // is_stale generated column added
-  assert.ok(/daily_vitals_cache \+is_stale/.test(src), 'is_stale generated column must be added');
+  // v1.10.3: is_stale GENERATED column dropped (NOW() not immutable for STORED).
+  // Replaced with inline derivation in coach.js queries.
+  assert.ok(/daily_vitals_cache -is_stale/.test(src),
+    'is_stale must be dropped (GENERATED + NOW() incompatible)');
+  assert.ok(!/daily_vitals_cache \+is_stale/.test(src),
+    'must NOT attempt to add is_stale as a generated column');
+});
+
+test('coach.js: is_stale derived inline (not from a column)', () => {
+  const coachSrc = fs.readFileSync(path.join(__dirname, '../routes/coach.js'), 'utf8');
+  // The cache_is_stale alias must be derived from updated_at, not selected
+  // from a non-existent column.
+  assert.ok(/\(c\.updated_at < NOW\(\) - INTERVAL '6 hours'\)\s+AS\s+cache_is_stale/i.test(coachSrc),
+    'coach.js must derive cache_is_stale inline from updated_at');
+  assert.ok(!/c\.is_stale\s+AS/i.test(coachSrc),
+    'coach.js must not select c.is_stale as a column (does not exist)');
 });

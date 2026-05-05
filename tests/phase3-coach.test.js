@@ -53,9 +53,15 @@ test('coach: /preworkout accepts in_minutes query param', () => {
   assert.ok(handler.includes("req.query.in_minutes"), 'preworkout must accept in_minutes');
 });
 
-test('coach: /race-pulse requires race_id', () => {
+test('coach: /race-pulse defaults to upcoming race when race_id omitted', () => {
+  // v1.10.3: race_id became optional. If omitted, the handler resolves to
+  // the next upcoming scheduled race. If no upcoming race, returns 404
+  // with a helpful hint.
   const handler = coachSrc.split("router.get('/race-pulse'")[1].split('module.exports')[0];
-  assert.ok(handler.includes('race_id is required'), 'race-pulse must validate race_id');
+  assert.ok(/status\s*=\s*'scheduled'/.test(handler),
+    'race-pulse must query for upcoming scheduled race when race_id absent');
+  assert.ok(/No race_id provided/.test(handler),
+    'race-pulse must return helpful error when no upcoming race');
 });
 
 test('coach: every endpoint uses Promise.all for parallel queries', () => {

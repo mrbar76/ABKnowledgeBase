@@ -4,6 +4,40 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.10.3] — 2026-05-05
+
+### Hotfix — four production bugs Coach surfaced post-deploy
+
+**1. `daily_vitals_cache.is_stale` column never created → `/coach/morning` 500**
+- v1.9.4 attempted `ADD COLUMN is_stale BOOLEAN GENERATED ALWAYS AS (updated_at < NOW() - INTERVAL '6 hours') STORED`. Postgres rejects: `NOW()` isn't immutable, STORED generated columns require immutable expressions. The migration silently failed via `safeQuery`'s catch.
+- `routes/coach.js`'s `loadMergedVitals()` referenced `c.is_stale AS cache_is_stale` → 500 on every `/coach/morning` and `/coach/midday-amend` call.
+- Fix: drop the GENERATED column attempt entirely. Derive `is_stale` inline at SELECT: `(c.updated_at < NOW() - INTERVAL '6 hours') AS cache_is_stale`. No schema dependency; no immutability constraint; same coaching semantics.
+- Migration: `ALTER TABLE daily_vitals_cache DROP COLUMN IF EXISTS is_stale` (idempotent, no-op if it never got created).
+
+**2. `/health/insights/nutrition` returned 0s on Macros & Balance card**
+- v1.9.4 dropped `meals.fiber_g`. The `/insights/nutrition` aggregator's SQL still summed it: `COALESCE(SUM(fiber_g), 0) AS fiber_g`. Postgres rejects with "column fiber_g does not exist". The handler's `.catch(() => ({ rows: [] }))` swallowed the error and returned an empty meal map → every day's Macros & Balance card showed `IN: 0, protein: 0, carbs: 0, fat: 0` even though meals existed.
+- Visible symptom: top "Calories" card showed real macros (different endpoint); "Macros & Balance" card showed all zeros (this endpoint).
+- Fix: drop `fiber_g` from the SUM, the `mealMap` row shape, and the response key. Per-day rows now return `{kcal, protein_g, carbs_g, fat_g}` only.
+
+**3. `/coach/race-pulse` required `race_id` even when one upcoming race exists**
+- The endpoint returned 400 on missing `race_id`, forcing skills to first call `/api/races/upcoming` to get the ID, then call `/coach/race-pulse?race_id=X`. Two calls when one would do.
+- Fix: when `race_id` is omitted, resolve to the next upcoming scheduled race automatically. If no upcoming race exists, return 404 with a hint to schedule one or pass `race_id` explicitly. Response now includes `resolved_via: 'race_id' | 'upcoming'` so the skill knows which path was taken.
+
+**4. `POST /api/training/coaching` accepted any-shape `snapshot` field**
+- v1.10.1 added optional snapshot pinning but didn't validate the shape — Coach noticed posting `{hrv_ms, rhr_bpm, sleep_total_min}` as the snapshot returned 201, silently producing useless `coaching_snapshots` rows missing `integrated_paragraph`, `headline_prescription`, `if_then_conditional`. Weekly retros built on these would have nothing to read.
+- Fix: when `snapshot` is provided, require `snapshot.integrated_paragraph` (non-empty string). Return 400 with field list if violated. `decision_references` and `input_freshness` stay permissive (any JSONB shape) so the skill can evolve those without endpoint changes.
+
+### Tests
+- `tests/phase2-schema.test.js` updated: assert `is_stale` column drop is present, GENERATED add is gone, and `coach.js` derives the value inline.
+- `tests/phase3-coach.test.js` updated: race-pulse default-to-upcoming behavior assertion.
+- 96/96 tests pass.
+
+### Out of scope
+- `/insights/trends` 500 (Coach reported still failing). v1.9.3 fixed the two bugs Explore identified (undefined `todayWorkoutActive`, monotony NaN). If Coach still sees 500s post-deploy, surface the specific error and I'll trace.
+- Manual cleanup of test coaching session row Coach asked to remove (one-off DELETE from prod, not a code change).
+
+---
+
 ## [1.10.2] — 2026-05-05
 
 ### Phase 5 — skill rewrite specs
