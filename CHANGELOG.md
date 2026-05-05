@@ -4,6 +4,60 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.9.3] — 2026-05-05
+
+### Phase 1 — fix three production 500s
+
+Coach's audit surfaced three endpoints returning 500 on every call. Root
+causes diagnosed and fixed; regression tests added.
+
+**1. `PUT /api/workouts/:id` — JSONB cast against TEXT column**
+- `JSONB_FIELDS` in `routes/workouts.js` included `'splits'`, which
+  produced `splits = $N::jsonb` in the dynamic UPDATE — but `workouts.splits`
+  is a TEXT column. Postgres rejected every PUT that included `splits`.
+- POST handler stringifies `splits` without the `::jsonb` cast (correct
+  for TEXT). PUT diverged.
+- Fix: split `JSONB_FIELDS` (true JSONB: exercises/tags/metadata) from new
+  `TEXT_JSON_FIELDS` (TEXT columns holding JSON: splits). PUT now matches
+  POST behavior.
+
+**2. `PATCH /api/workouts/:id` — route didn't exist**
+- Coach was calling PATCH for partial edits; Express returned 404 →
+  surfaced as 500 upstream.
+- Fix: extracted handler into shared `updateWorkoutHandler`, registered on
+  both PUT and PATCH.
+
+**3. `GET /api/transcripts/speakers` — endpoint didn't exist**
+- Coach was hitting it for the people-context layer (Phase 4 dependency).
+- Built: aggregates distinct speakers across all transcripts with
+  `transcript_count`, `last_seen`, `total_text_chars`, plus left-joins
+  `contacts` on name + alias for `contact_id` and `alias_matched`.
+
+**4. `GET /api/health/insights/trends` — ReferenceError + NaN cascade**
+- Line 1401 referenced `todayWorkoutActive` without declaring it. Threw
+  `ReferenceError` on every call where today had no `daily_activity` row,
+  which is now permanent post-HAE-retirement → 100% of calls 500'd.
+- Fix: declare `const todayWorkoutActive = workoutActiveByDate.get(today) || 0`
+  before the conditional.
+- Secondary: monotony calc (`meanLast7 / sdLast7`) produced NaN when
+  `meanLast7 = 0` (all rest days). Added explicit `meanLast7 > 0` guard.
+- **Deferred to Phase 3:** rewriting `/trends` to FULL-OUTER-JOIN
+  `daily_vitals_cache` with `daily_activity`. Phase 1 scope is "make it
+  return 200"; Phase 3 makes the vitals history correct post-HAE.
+
+### Tests
+- `tests/phase1-fixes.test.js` — 9 regression tests asserting bug patterns
+  are gone (JSONB_FIELDS shape, TEXT_JSON_FIELDS, PATCH route, /speakers
+  endpoint shape, todayWorkoutActive declaration, monotony guard). 64/64
+  tests pass.
+
+### Out of scope
+- Full `/insights/trends` rewrite to read `daily_vitals_cache` (Phase 3).
+- Phase 2 schema cleanup (next commit).
+- Skill rewrites (Phase 5).
+
+---
+
 ## [1.8.23] — 2026-05-04
 
 ### Apple Watch HR drop + HAE source-name mojibake

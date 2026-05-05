@@ -1389,10 +1389,13 @@ router.get('/trends', async (req, res) => {
       });
     }
     // Special case: if `today` has NO daily_activity row at all (HAE
-    // hasn't synced yet today), inject a BMR-only estimate. Don't
-    // include workout active here — that would imply we know total
-    // active, which we don't until HAE pushes the daily summary.
+    // hasn't synced yet today, which is permanent now post-retirement),
+    // inject a BMR-only estimate. Don't include workout active here —
+    // that would imply we know total active, which we don't until HAE
+    // pushes the daily summary (it never will). Workout subtotal only
+    // surfaces if we logged a workout today.
     if (!calBreakdownByDate.has(today)) {
+      const todayWorkoutActive = workoutActiveByDate.get(today) || 0;
       const estimate = await bmrForDate(weightKg, today);
       if (estimate != null && estimate > 0) {
         calBurnByDate.set(today, estimate);
@@ -1533,7 +1536,9 @@ router.get('/trends', async (req, res) => {
     const last7 = dailyTss.slice(-7);
     const meanLast7 = mean(last7);
     const sdLast7 = stddev(last7);
-    const monotony = (sdLast7 && sdLast7 > 0) ? meanLast7 / sdLast7 : null;
+    // Guard against meanLast7 = 0 (all rest days) which produced 0/0 = NaN
+    // and cascaded through downstream JSON serialization.
+    const monotony = (sdLast7 && sdLast7 > 0 && meanLast7 != null && meanLast7 > 0) ? meanLast7 / sdLast7 : null;
     const strain = monotony != null ? monotony * last7.reduce((a, b) => a + b, 0) : null;
 
     // Polarization: % of weekly zone-time in low (Z1+Z2), gray (Z3),

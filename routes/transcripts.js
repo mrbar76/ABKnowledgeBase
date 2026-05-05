@@ -106,6 +106,62 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ─── GET /api/transcripts/speakers ───────────────────────────────
+// Aggregates distinct speakers across all transcripts. Used by the
+// `/api/people/{id}/interactions` endpoint (Phase 4 people layer) and by
+// Coach when surfacing person-context queries ("what did Vernon say...").
+//
+// Joins transcript_speakers → contacts via name/alias match so callers see
+// both raw speaker names and the contact_id when one exists. Speakers with
+// no matching contact are returned with contact_id=null and become
+// candidates for the unrecognized-speaker UI.
+router.get('/speakers', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 200, 1000);
+    const r = await query(
+      `WITH speaker_stats AS (
+         SELECT
+           ts.speaker_name,
+           COUNT(DISTINCT ts.transcript_id)::int AS transcript_count,
+           MAX(COALESCE(ts.spoken_at, t.recorded_at, t.created_at)) AS last_seen,
+           SUM(LENGTH(COALESCE(ts.text, '')))::int AS total_text_chars
+         FROM transcript_speakers ts
+         LEFT JOIN transcripts t ON t.id = ts.transcript_id
+         WHERE ts.speaker_name IS NOT NULL
+           AND TRIM(ts.speaker_name) <> ''
+         GROUP BY ts.speaker_name
+       )
+       SELECT
+         s.speaker_name,
+         s.transcript_count,
+         s.last_seen,
+         s.total_text_chars,
+         c.id              AS contact_id,
+         c.name            AS contact_name,
+         CASE
+           WHEN c.id IS NULL THEN NULL
+           WHEN LOWER(c.name) = LOWER(s.speaker_name) THEN 'name'
+           ELSE 'alias'
+         END               AS alias_matched
+       FROM speaker_stats s
+       LEFT JOIN contacts c ON (
+         LOWER(c.name) = LOWER(s.speaker_name)
+         OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements_text(COALESCE(c.aliases, '[]'::jsonb)) AS a(alias)
+           WHERE LOWER(a.alias) = LOWER(s.speaker_name)
+         )
+       )
+       ORDER BY s.last_seen DESC NULLS LAST, s.transcript_count DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json({ count: r.rows.length, speakers: r.rows });
+  } catch (err) {
+    console.error('[GET /transcripts/speakers]', err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Find transcripts with broken utterance ordering
 router.get('/misordered', async (req, res) => {
   try {

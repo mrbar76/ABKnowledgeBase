@@ -63,7 +63,12 @@ const WRITABLE_FIELDS = [
   'hr_avg', 'hr_max', 'cadence', 'cal_active', 'cal_total',
 ];
 
-const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata', 'splits']);
+const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata']);
+// `splits` is a TEXT column that holds a JSON-stringified array (POST writes
+// it via JSON.stringify without ::jsonb cast). PUT used to include it in
+// JSONB_FIELDS, which produced `splits = $N::jsonb` against a TEXT column —
+// every workout update with splits returned 500. Stringify into TEXT instead.
+const TEXT_JSON_FIELDS = new Set(['splits']);
 
 // Parse text duration into minutes.
 // v1.8.16: regex was unanchored and treated mm:ss the same as h:mm,
@@ -364,7 +369,10 @@ router.post('/bulk', async (req, res) => {
 });
 
 // ─── Update Workout ──────────────────────────────────────────
-router.put('/:id', async (req, res) => {
+// PUT and PATCH both accept partial bodies (only present keys are updated)
+// and share one handler. PATCH is the semantically correct verb for partial
+// updates; PUT stays for backwards compatibility with existing skills.
+const updateWorkoutHandler = async (req, res) => {
   try {
     const b = req.body;
     const fields = [];
@@ -376,6 +384,9 @@ router.put('/:id', async (req, res) => {
         if (JSONB_FIELDS.has(key)) {
           fields.push(`${key} = $${i++}::jsonb`);
           params.push(JSON.stringify(b[key]));
+        } else if (TEXT_JSON_FIELDS.has(key)) {
+          fields.push(`${key} = $${i++}`);
+          params.push(b[key] != null ? JSON.stringify(b[key]) : null);
         } else if (key === 'effort') {
           fields.push(`effort = $${i++}`);
           params.push(b.effort ? parseInt(b.effort, 10) : null);
@@ -422,9 +433,12 @@ router.put('/:id', async (req, res) => {
     await logActivity('update', 'workout', req.params.id, b.ai_source || 'manual', `Updated workout`);
     res.json(result.rows[0]);
   } catch (err) {
+    console.error('[PUT/PATCH /workouts/:id]', err.stack);
     res.status(500).json({ error: err.message });
   }
-});
+};
+router.put('/:id', updateWorkoutHandler);
+router.patch('/:id', updateWorkoutHandler);
 
 // ─── Delete Workout ──────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
