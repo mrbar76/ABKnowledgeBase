@@ -4,6 +4,61 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.10.0] — 2026-05-05
+
+### Phase 3 — composite `/api/coach/*` endpoints
+
+Coach's audit revealed every skill made 4-7 sequential API calls before
+responding. Latency budget is broken; ADHD-aware fast coaching needs
+≤3 items of context fetched in one round trip. New `routes/coach.js`
+delivers seven scenario-shaped endpoints, each Promise.all'd internally.
+
+| Endpoint | Replaces | Used by scenario |
+|---|---|---|
+| `GET /api/coach/morning` | 7 calls (insights/morning + recovery/score + injuries × 2 + daily-plans + workouts + training/coaching) | "Good morning" / morning-check-in skill |
+| `GET /api/coach/midday-amend` | 5 calls (insights/today + recovery + training/day + daily-plans + injuries) | Mid-day amend skill |
+| `GET /api/coach/preworkout?in_minutes=N` | 4 calls (daily-plans + body-metrics + meals + fueling) | Pre-workout fueling check |
+| `GET /api/coach/postworkout` | 3 calls (workouts + meals + daily-context) | Post-workout fueling check |
+| `GET /api/coach/end-of-day` | 4 calls (daily-plans/by-date + nutrition-summary + daily-context + workouts) | end-of-day-review skill |
+| `GET /api/coach/weekly` | 4 calls (insights/weekly-review + targets + races/upcoming + races/blocks/current) | Sunday weekly scorecard |
+| `GET /api/coach/race-pulse?race_id=X` | 2 calls (insights/race + fueling/list) | Race-week pulse + race-debrief |
+
+Each composite returns the scenario-shaped payload Coach actually needs
+(no superset bloat). Readiness object includes `is_stale` per metric so
+the skill knows when to fall back to subjective Q&A or re-prompt the
+Shortcut.
+
+**Architecture decisions:**
+- `Promise.all` everywhere — no sequential awaits inside handlers.
+  Latency target: <500ms p95 for all seven.
+- Self-contained: doesn't call other route modules. Direct SQL only.
+  Means /insights/* can deprecate over time without breaking coach.
+- `loadMergedVitals(N)` helper consolidates the cache+activity FULL OUTER
+  JOIN logic that's now in two places (insights.js + coach.js). Both
+  produce the same merged source.
+- `readinessFromRows()` helper computes deviation_sd + baselines + is_stale
+  in one pass. Exported once, used by `/morning` and `/midday-amend`.
+
+**Mount:** `app.use('/api/coach', coachRoutes)` after the existing routes.
+No changes to other endpoints — old endpoints continue to work for
+backwards compat during skill migration.
+
+### Tests
+- `tests/phase3-coach.test.js` — 14 regression tests asserting all 7
+  endpoints register, mount, use Promise.all (latency contract), include
+  expected response keys, and surface is_stale per readiness metric.
+- 85/85 tests pass.
+
+### Out of scope
+- Skill rewrites (Phase 5 — describes which composite each skill should
+  call and what to drop).
+- People layer endpoint (Phase 4 — builds on the `/transcripts/speakers`
+  endpoint added in v1.9.3).
+- Deprecating the old fan-out endpoints (parallel for now; deprecate
+  after all skills migrate).
+
+---
+
 ## [1.9.4] — 2026-05-05
 
 ### Phase 2 — schema cleanup
