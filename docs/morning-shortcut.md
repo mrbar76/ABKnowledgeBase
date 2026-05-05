@@ -1,6 +1,6 @@
 # Morning Vitals Shortcut
 
-**Purpose:** every morning at 5:30am, pull six fields from Apple HealthKit and POST them to AB Brain's `daily_vitals_cache`. Coach reads from this cache when off-device.
+**Purpose:** each morning, pull six fields from Apple HealthKit and POST them to AB Brain's `daily_vitals_cache`. Coach reads from this cache when off-device.
 
 **Replaces:** all the old HAE / LODE / HealthDataExport / HealthExportKit auto-export to Dropbox automations. Direct 6-field POST instead of file generation + Dropbox round-trip.
 
@@ -124,15 +124,45 @@ Optional: add **Show Notification** with the response body so you see "✓ vital
 
 ---
 
-## Schedule it
+## Schedule it — two triggers, primary + safety net
+
+Sleep data only finalizes in HealthKit *after* Apple Watch detects you waking up. If we fire too early (e.g. 5:30 AM while you're still asleep), sleep is null. So we use two automations and let the endpoint's `COALESCE` merge handle re-runs.
+
+### Trigger 1 — Wake Up (primary)
 
 Shortcuts → Automation tab → `+` → Create Personal Automation
-- **Time of Day**: 5:30 AM
-- **Repeat**: Daily
+- **When I Wake Up** (fires when your Sleep Schedule alarm goes off)
 - **Run Immediately** (no confirmation prompt)
-- **Run when device is locked**: enabled if your iPhone supports it
+- **Notify When Run**: optional
 
-Pick "Run Shortcut" → select `Morning Vitals → AB Brain`.
+Pick **Run Shortcut** → select `Morning Vitals → AB Brain`.
+
+> Requires you to have a Sleep Schedule set in the Health app (most people do — Health → Sleep → Your Schedule). The Wake Up trigger is more robust than a fixed time because it fires after Apple Watch has closed the night's sleep session, so sleep deep/REM/total are populated.
+
+### Trigger 2 — 10:00 AM safety net
+
+Same Automation flow:
+- **Time of Day**: 10:00 AM
+- **Repeat**: Daily
+- **Run Immediately**
+- **Run when device is locked**: enabled
+
+Pick **Run Shortcut** → select `Morning Vitals → AB Brain`.
+
+> If you woke up before 10, the Wake Up trigger already filled the row and this 10am run is a harmless no-op (idempotent UPSERT). If you slept past 10 (or didn't have a Sleep Schedule), this run catches whatever's available.
+
+### Why this is safe to run twice
+
+The endpoint is idempotent — `INSERT ... ON CONFLICT (date) DO UPDATE` with `COALESCE` per field. Re-POSTing the same date with partial data doesn't blank existing values. Concretely:
+
+| Run | What it sends | Result in `daily_vitals_cache` |
+|---|---|---|
+| 7:15 AM (Wake Up fires) | hrv=42, rhr=56, sleep_total=410, deep=62, rem=95 | row created, all fields filled |
+| 10:00 AM (safety net) | hrv=42, rhr=56, sleep_total=410, deep=62, rem=95 | identical → no change |
+| 10:00 AM (when you slept in) | hrv=42, rhr=56, sleep blank | row created with HRV/RHR; sleep null |
+| 11:30 AM (you wake up; Wake Up fires) | sleep_total=520, deep=80, rem=110 | sleep fields populated; HRV/RHR preserved |
+
+Worst case: you sleep all day and never wake up. Then only the 10am partial row exists. Coach surfaces `is_stale` on the sleep card and asks you about it next time you're online.
 
 ---
 
