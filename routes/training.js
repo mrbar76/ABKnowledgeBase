@@ -84,8 +84,41 @@ router.post('/coaching', async (req, res) => {
       ]
     );
 
-    await logActivity('create', 'coaching_session', result.rows[0].id, b.ai_source || 'chatgpt', `Session: ${b.title}`);
-    res.status(201).json(result.rows[0]);
+    const session = result.rows[0];
+
+    // v1.10.1 — Phase 6: optional snapshot pinning. When the skill posts a
+    // `snapshot` object alongside the session, we write a coaching_snapshots
+    // row tagged to this session so retros stay reproducible — re-reading
+    // current vitals later would lie about what drove this decision.
+    let snapshot = null;
+    if (b.snapshot && typeof b.snapshot === 'object') {
+      const s = b.snapshot;
+      const snapResult = await query(
+        `INSERT INTO coaching_snapshots (
+           snapshot_date, integrated_paragraph, headline_prescription, if_then_conditional,
+           decision_references, input_freshness, coaching_session_id,
+           generated_by_skill, ai_source
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [
+          s.snapshot_date || b.session_date || req.getToday(),
+          s.integrated_paragraph || b.summary,
+          s.headline_prescription || null,
+          s.if_then_conditional || null,
+          JSON.stringify(s.decision_references || {}),
+          JSON.stringify(s.input_freshness || {}),
+          session.id,
+          s.generated_by_skill || (Array.isArray(b.tags) && b.tags[0]) || null,
+          b.ai_source || 'chatgpt',
+        ]
+      ).catch(err => {
+        console.error('[POST /coaching snapshot]', err.message);
+        return { rows: [] };
+      });
+      snapshot = snapResult.rows[0] || null;
+    }
+
+    await logActivity('create', 'coaching_session', session.id, b.ai_source || 'chatgpt', `Session: ${b.title}`);
+    res.status(201).json(snapshot ? { ...session, snapshot } : session);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

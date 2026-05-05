@@ -4,6 +4,87 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.10.1] — 2026-05-05
+
+### Phase 4 — people layer + Phase 6 — `coaching_snapshots` write path
+
+**Phase 4** ships the unified person-context query Coach uses for "what
+did Vernon say about pacing", "when's my sister flying in", "what did
+the PT recommend last visit". One `contacts` row per person; interactions
+joined across Bee transcripts + email_threads + calendar_events.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/people` | List contacts ordered by last_interaction_date DESC |
+| `GET /api/people/:idOrName/interactions` | Unified interaction view across Bee + email + calendar with topic + date filters |
+| `POST /api/people/backfill-interactions` | Rewrites `contacts.last_interaction_date / source / count_30d / topics_tagged` from current sources. Idempotent. Run nightly via cron OR manually after bulk imports. |
+
+`/interactions` query params:
+- `topic` — substring match on interaction `topic_tags`
+- `since` — ISO date (default = 30 days ago)
+- `sources` — csv: `bee,email,calendar,all` (default = all)
+- `limit` — default 20, max 100
+
+Response shape:
+```
+{
+  person: { /* contacts row + role_tags + last_interaction_* + topics_tagged */ },
+  interactions: [ { source, ref_id, date, speaker_attribution, summary_excerpt, topic_tags } ],
+  stats: { interaction_count_30d, bee_count, email_count, calendar_count, topics_distribution }
+}
+```
+
+Contact resolution: tries UUID match → exact name (case-insensitive) →
+alias match against `contacts.aliases` JSONB. 404 with helpful error when
+no contact resolves.
+
+All three source queries run in `Promise.all` for sub-500ms latency. Topic
+filter applies post-aggregation since topics live in JSONB across sources.
+
+**Phase 6** extends `POST /api/training/coaching` to optionally pin a
+`coaching_snapshots` row to the new session. When the skill posts a
+`snapshot` field, AB Brain writes a snapshot row tagged to the session
+ID. Retros can then re-read the pinned values instead of relying on
+current vitals (which may have shifted since the decision was made).
+
+`coaching_snapshots` schema (already existed from v1.9.0):
+- `integrated_paragraph`, `headline_prescription`, `if_then_conditional`
+- `decision_references` JSONB — what data the brief cited
+- `input_freshness` JSONB — is_stale flags at decision time
+- `coaching_session_id` FK → coaching_sessions
+
+The skill posts:
+```
+POST /api/training/coaching
+{
+  ...session fields,
+  snapshot: {
+    integrated_paragraph: "...",
+    headline_prescription: "Train as planned, Z2 ceiling 145.",
+    if_then_conditional: "If knee twinges past hour 1, swap to bike.",
+    decision_references: { hrv: 53.1, rhr: 58, ... },
+    input_freshness: { hrv: { is_stale: false, as_of: "2026-05-05" }, ... }
+  }
+}
+```
+
+If `snapshot` is omitted (existing callers), behavior unchanged.
+
+### Tests
+- `tests/phase4-people.test.js` — 10 regression tests asserting routes
+  registered, mounted, all 3 sources joined, Promise.all used,
+  contact resolution by UUID/name/alias, response shape complete,
+  backfill writes the right contact fields.
+- 95/95 tests pass.
+
+### Out of scope
+- Nightly cron for `backfill-interactions` (manual run via curl works;
+  schedule deferred until Avi confirms cadence).
+- Phase 5 skill spec doc (next).
+- Phase 7 subjective-Shortcut runbook (next).
+
+---
+
 ## [1.10.0] — 2026-05-05
 
 ### Phase 3 — composite `/api/coach/*` endpoints

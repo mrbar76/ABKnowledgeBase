@@ -37,6 +37,7 @@ const racesRoutes = require('./routes/races');
 const hevyRoutes = require('./routes/hevy');
 const v2VitalsRoutes = require('./routes/v2-vitals');
 const coachRoutes = require('./routes/coach');
+const peopleRoutes = require('./routes/people');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -269,6 +270,7 @@ app.use('/api/races', racesRoutes);
 app.use('/api/hevy', hevyRoutes);
 app.use('/api/v2', v2VitalsRoutes);
 app.use('/api/coach', coachRoutes);
+app.use('/api/people', peopleRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
