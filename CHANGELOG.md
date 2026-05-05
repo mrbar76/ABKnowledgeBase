@@ -4,6 +4,58 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.10.2] — 2026-05-05
+
+### Phase 5 — skill rewrite specs
+
+`docs/skill-rewrite-specs.md` describes how each of the 6 Spartan skills
+should be updated to call the v1.10.0 composite endpoints instead of
+fanning out 4-7 calls per scenario. Skills live in the Claude Project's
+Skills section (not in this repo since `chore: remove /skills/` on
+2026-05-05); apply these changes there.
+
+Per-skill updates:
+- `morning-check-in` — collapses Step 1's 7 GETs to one `/api/coach/morning`
+  call. Adds stale-vitals branch for scenario #13. Adds Phase 6 snapshot
+  payload to the coaching session POST.
+- `end-of-day-review` — new skill, single `/api/coach/end-of-day` call.
+- `amend-day` — collapses Step 1's 6 GETs to one `/api/coach/midday-amend`.
+  Workout corrections use the v1.9.3-fixed PUT/PATCH /workouts/{id}.
+- `log-fueling-rehearsal` — no changes (clean per audit).
+- `image-intake` — drops references to deprecated daily_plans columns
+  (`planned_exercises`, `actual_exercises`); workouts link via
+  `plan_segment_id`. Adds quarterly progress photo path writing
+  `body_metrics.photo_url + photo_date`.
+- `race-debrief` — new skill, single `/api/coach/race-pulse?race_id=X`
+  call. PUTs race result; POSTs debrief session with snapshot.
+
+### Phase 7 — subjective vitals Shortcut runbook
+
+`docs/subjective-shortcut.md` describes the 5-question one-tap iOS
+Shortcut that POSTs to the existing `/api/nutrition/daily-context`
+endpoint. Five fields:
+
+| Field | Range |
+|---|---|
+| `sleep_quality` | 1-10 |
+| `mood` | 1-10 |
+| `motivation` | 1-10 |
+| `soreness_overall` | 1-10 |
+| `life_stress` | 1-10 |
+
+No backend changes — endpoint already does upsert-on-date with COALESCE
+per field. Runs manually whenever Avi has a moment; idempotent across
+re-runs.
+
+Closes the gap on subjective signals HealthKit can't measure. Coach reads
+via `/api/coach/end-of-day.subjective_context`.
+
+### Out of scope
+- Phase 8 (drop `daily_activity`) — scheduled for Aug 5, 2026 once
+  `daily_vitals_cache` has 90 days of HRV-not-null data.
+
+---
+
 ## [1.10.1] — 2026-05-05
 
 ### Phase 4 — people layer + Phase 6 — `coaching_snapshots` write path
