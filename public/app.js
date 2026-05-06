@@ -5926,6 +5926,7 @@ function loadFitness() {
     { key: 'trends', label: 'Trends', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>' },
     { key: 'plans', label: 'Plans', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>' },
     { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
+    { key: 'goals', label: 'Goals', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>' },
   ];
   main.innerHTML = `
     <div class="fitness-tabs">
@@ -5940,6 +5941,30 @@ function loadFitness() {
   else if (fitnessSubTab === 'history') loadFitnessHistory();
   else if (fitnessSubTab === 'trends') loadFitnessTrends();
   else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
+  else if (fitnessSubTab === 'goals') loadFitnessGoals();
+}
+
+// ─── Fitness > Goals sub-tab (v1.11.1) ────────────────────────────
+// Same dashboard as the home-tab Goals card, plus a Phase Timeline button
+// at top so the periodization view is one tap away from the training UI.
+async function loadFitnessGoals() {
+  const content = document.getElementById('fitness-content');
+  if (!content) return;
+  content.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+      <h3 style="margin:0">Goals</h3>
+      <button onclick="showPhaseTimeline()" class="btn-secondary" style="font-size:12px">Phase Timeline</button>
+    </div>
+    <div id="fitness-goals-section">Loading...</div>
+  `;
+  try {
+    const data = await api('/api/goals/dashboard');
+    document.getElementById('fitness-goals-section').innerHTML = renderGoalsCard(data);
+    renderIcons();
+  } catch (err) {
+    document.getElementById('fitness-goals-section').innerHTML =
+      `<div class="muted" style="padding:12px">Goals dashboard unavailable: ${esc(err.message || String(err))}</div>`;
+  }
 }
 
 // ─── Exercise Import (Settings menu) ─────────────────────────

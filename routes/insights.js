@@ -852,12 +852,19 @@ router.get('/nutrition', async (req, res) => {
     // a deadlift session logged with effort=4 was tagged "rest day" because
     // the threshold was strict >= 5. New rule: any workout row exists OR
     // effort >= 5 → training day. Plan_segments with status='completed'
-    // also count.
+    // also count. v1.11.1: prefer cal_active (numeric dual column) over the
+    // TEXT active_calories field — some rows have unit suffixes ("75 kcal")
+    // that crash the ::numeric cast. Falls back to a regex-stripped numeric
+    // cast if cal_active is null but active_calories has digits.
     const wo = await query(
       `SELECT workout_date,
               MAX(effort) AS max_effort,
               COUNT(*)::int AS workout_count,
-              SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS workout_active_kcal
+              SUM(COALESCE(
+                cal_active,
+                NULLIF(REGEXP_REPLACE(COALESCE(active_calories, ''), '[^0-9.]', '', 'g'), '')::numeric,
+                0
+              )) AS workout_active_kcal
        FROM workouts
        WHERE workout_date >= $1 AND deleted_at IS NULL
        GROUP BY workout_date`,
@@ -1343,7 +1350,11 @@ router.get('/trends', async (req, res) => {
     // the apple_stale rescue even when daily_activity was clearly under
     // the workouts logged on that date).
     const workoutActiveByDateR = await query(
-      `SELECT workout_date, SUM(COALESCE(NULLIF(active_calories, '')::numeric, 0)) AS active_kcal
+      `SELECT workout_date, SUM(COALESCE(
+        cal_active,
+        NULLIF(REGEXP_REPLACE(COALESCE(active_calories, ''), '[^0-9.]', '', 'g'), '')::numeric,
+        0
+      )) AS active_kcal
        FROM workouts WHERE deleted_at IS NULL
        GROUP BY workout_date`
     );

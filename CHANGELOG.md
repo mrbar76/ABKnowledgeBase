@@ -4,6 +4,34 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.1] — 2026-05-06
+
+### Hotfix — `/insights/trends` 500 + Goals visibility
+
+**1. `/insights/trends` 500 on text-with-unit numeric cast.**
+- Workouts schema has `active_calories TEXT` (legacy) and `cal_active NUMERIC`
+  (canonical numeric dual). The `/insights/trends` aggregator was casting
+  the TEXT column directly: `NULLIF(active_calories, '')::numeric`. Some
+  rows have unit suffixes ("75 kcal") that crash the cast → entire trends
+  page errored with `invalid input syntax for type numeric: "75 kcal"`.
+- Fix: prefer `cal_active` (numeric) first; if null, fall back to a
+  regex-stripped numeric cast on `active_calories` (`REGEXP_REPLACE` strips
+  any non-digit/non-dot before casting). Two query sites updated (workout
+  effort aggregate at line ~860, workout active sum at line ~1352).
+
+**2. Goals visible on Fitness tab (was Home tab only).**
+- v1.11.0 placed the Goals card on the Home tab between today-actions
+  and the gamification rings. Avi naturally lands on Fitness for training
+  context — Goals weren't reachable from there.
+- Fix: added Goals as a Fitness sub-tab alongside Today / Log / Macros /
+  History / Trends / Plans / Coaching. Same dashboard render as the
+  home-tab card, plus a "Phase Timeline" button at top for one-tap
+  access to the periodization view.
+
+131/131 tests pass.
+
+---
+
 ## [1.11.0] — 2026-05-06
 
 ### Goals Tracking System (Phases A + B + C in one commit)
