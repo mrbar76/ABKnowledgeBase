@@ -6271,32 +6271,232 @@ function searchSnippet(text, query, maxLen) {
 // ─── Fitness (unified tab — 4 tabs: Today/Log/History/Coaching) ────
 let fitnessSubTab = 'today';
 
-function loadFitness() {
+// v2 Foundation Phase 2: unified Training surface. Replaces the old
+// 8-sub-tab fitness UI. Tap-throughs into existing detail screens.
+async function loadFitness() {
   const main = document.getElementById('main-content');
-  const tabs = [
-    { key: 'today', label: 'Today', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/></svg>' },
-    { key: 'log', label: 'Log', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>' },
-    { key: 'nutrition', label: 'Macros', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg>' },
-    { key: 'history', label: 'History', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>' },
-    { key: 'trends', label: 'Trends', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>' },
-    { key: 'plans', label: 'Plans', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>' },
-    { key: 'coaching', label: 'Coaching', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>' },
-    { key: 'goals', label: 'Goals', icon: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>' },
-  ];
-  main.innerHTML = `
-    <div class="fitness-tabs">
-      ${tabs.map(t => `<button class="fitness-tab ${fitnessSubTab === t.key ? 'active' : ''}" onclick="fitnessSubTab='${t.key}';loadFitness()">${t.icon}<span>${t.label}</span></button>`).join('')}
-    </div>
-    <div id="fitness-content"></div>
-  `;
-  if (fitnessSubTab === 'today') loadFitnessToday();
-  else if (fitnessSubTab === 'log') loadFitnessLog();
-  else if (fitnessSubTab === 'nutrition') loadNutrition();
-  else if (fitnessSubTab === 'plans') loadUnifiedPlans();
-  else if (fitnessSubTab === 'history') loadFitnessHistory();
-  else if (fitnessSubTab === 'trends') loadFitnessTrends();
-  else if (fitnessSubTab === 'coaching') loadFitnessCoaching();
-  else if (fitnessSubTab === 'goals') loadFitnessGoals();
+  if (!main) return;
+
+  main.innerHTML = renderTrainingSkeleton();
+  const today = localDateStr();
+  const weekStart = mondayOfWeek(new Date());
+
+  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [];
+  try {
+    [dayData, goals, recovery, fuel, body, weekPlans] = await Promise.all([
+      api('/training/day/' + today).catch(() => null),
+      api('/goals/dashboard').catch(() => null),
+      api('/recovery/score?date=' + today).catch(() => null),
+      api('/nutrition/daily-summary?date=' + today).catch(() => null),
+      api('/body-metrics?limit=1').catch(() => null),
+      api('/daily-plans?week_start=' + weekStart).catch(() => [])
+    ]);
+  } catch (e) {
+    main.innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Training.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    return;
+  }
+
+  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, today });
+  renderIcons();
+}
+
+// ─── Training helpers (Phase 2) ───────────────────────────────
+
+function mondayOfWeek(d) {
+  const dt = new Date(d);
+  const day = dt.getDay();          // 0 Sun ... 6 Sat
+  const diff = (day === 0 ? -6 : 1 - day);
+  dt.setDate(dt.getDate() + diff);
+  return localDateStr(dt);
+}
+
+function renderTrainingSkeleton() {
+  return '<div class="ab-big-picture"><div class="ab-big-picture-eyebrow">Training</div><div class="ab-big-picture-title">Loading…</div></div>';
+}
+
+function renderTraining(data) {
+  return [
+    renderTrainingBigPicture(data.goals),
+    renderTrainingWeekStrip(data.weekPlans, data.today),
+    renderTrainingTodaySession(data.dayData),
+    renderTrainingGoalsSection(data.goals),
+    renderTrainingRecoverySection(data.recovery),
+    renderTrainingFuelSection(data.fuel),
+    renderTrainingBodySection(data.body)
+  ].join('');
+}
+
+function renderTrainingBigPicture(goals) {
+  if (!goals) return '';
+  const phase = goals.active_phase;
+  const next = goals.next_phase;
+  if (!phase && !next) {
+    return '<div class="ab-big-picture ab-pillar-training">' +
+      '<div class="ab-big-picture-eyebrow">Training</div>' +
+      '<div class="ab-big-picture-title">No active phase.</div>' +
+      '<div class="ab-big-picture-meta">Plan a race in Settings → Races to start a block.</div>' +
+      '</div>';
+  }
+  if (phase) {
+    const eyebrow = `Phase ${phase.phase_number} · ${esc(phase.phase_name || 'Active')}`;
+    const meta = phase.end_date ? `Ends ${esc(formatDateShort(phase.end_date))}` : '';
+    const days = phase.end_date ? Math.max(0, Math.round((new Date(phase.end_date + 'T12:00:00') - new Date()) / 86400000)) : null;
+    const countdown = days != null ? `<span class="ab-big-picture-countdown">${days}d left</span>` : '';
+    return '<div class="ab-big-picture ab-pillar-training">' +
+      `<div class="ab-big-picture-eyebrow">${eyebrow}</div>` +
+      `<div class="ab-big-picture-title">${esc(phase.description || phase.phase_name || 'Active phase')}</div>` +
+      (meta ? `<div class="ab-big-picture-meta">${meta}</div>` : '') +
+      countdown +
+      '</div>';
+  }
+  // next_phase only
+  const days = next.start_date ? Math.max(0, Math.round((new Date(next.start_date + 'T12:00:00') - new Date()) / 86400000)) : null;
+  const countdown = days != null ? `<span class="ab-big-picture-countdown">starts in ${days}d</span>` : '';
+  return '<div class="ab-big-picture ab-pillar-training">' +
+    `<div class="ab-big-picture-eyebrow">Up next · Phase ${esc(String(next.phase_number || ''))}</div>` +
+    `<div class="ab-big-picture-title">${esc(next.phase_name || 'Next phase')}</div>` +
+    `<div class="ab-big-picture-meta">Starts ${esc(formatDateShort(next.start_date))}</div>` +
+    countdown +
+    '</div>';
+}
+
+function renderTrainingWeekStrip(plans, today) {
+  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const monday = new Date(mondayOfWeek(new Date()) + 'T12:00:00');
+  let html = '<div class="ab-week-strip">';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dStr = localDateStr(d);
+    const plan = Array.isArray(plans) ? plans.find(p => p.plan_date && String(p.plan_date).slice(0, 10) === dStr) : null;
+    const status = plan?.status || (dStr < today ? 'missed' : 'planned');
+    const isToday = dStr === today;
+    const stateClass = ['completed','partial','missed','planned'].includes(status) ? `ab-state-${status}` : '';
+    html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}">` +
+      `<div class="ab-week-day-label">${labels[i]}</div>` +
+      `<div class="ab-week-day-mark"></div>` +
+      `</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderTrainingTodaySession(dayData) {
+  const plan = dayData?.daily_plan;
+  if (!plan) {
+    return '<div class="ab-section-label">Today</div>' +
+      '<div class="ab-list-row" style="cursor:default">' +
+        '<div class="ab-list-row-dot"></div>' +
+        '<div class="ab-list-row-body">' +
+          '<div class="ab-list-row-title">Rest day.</div>' +
+          '<div class="ab-list-row-meta">No session planned.</div>' +
+        '</div>' +
+      '</div>';
+  }
+  const title = plan.title || plan.workout_focus || plan.workout_type || 'Today\'s session';
+  const status = plan.status || 'planned';
+  const meta = [plan.workout_type, plan.workout_focus].filter(Boolean).join(' · ');
+  const onclick = plan.id ? `onclick="showDailyPlanForm(${esc(JSON.stringify(localDateStr()))}, ${plan.id})"` : '';
+  return '<div class="ab-section-label">Today</div>' +
+    `<div class="ab-hero-card ab-pillar-training" ${onclick}>` +
+      `<div class="ab-hero-card-eyebrow">Training · <span class="ab-status-badge" data-state="${esc(status)}">${esc(status)}</span></div>` +
+      `<div class="ab-hero-card-title">${esc(title)}</div>` +
+      (meta ? `<div class="ab-hero-card-meta">${esc(meta)}</div>` : '') +
+    '</div>';
+}
+
+function renderTrainingGoalsSection(goals) {
+  const list = goals?.goals_active || [];
+  if (list.length === 0) {
+    return '<div class="ab-section-label">Goals</div>' +
+      '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-dot"></div>' +
+      '<div class="ab-list-row-body"><div class="ab-list-row-title">No active goals.</div>' +
+      '<div class="ab-list-row-meta">Set a goal in the Goals area.</div></div></div>';
+  }
+  let html = '<div class="ab-section-label">Goals</div>';
+  for (const g of list.slice(0, 5)) {
+    const days = g.days_left != null ? `${g.days_left}d left` : '';
+    const hasData = g.current_value != null;
+    const progress = hasData && g.target_value ? Math.min(100, Math.round((Number(g.current_value) / Number(g.target_value)) * 100)) : 0;
+    const status = g.status || (g.is_at_baseline ? 'pending' : 'on_track');
+    html += `<div class="ab-goal-row" onclick="showGoalDetail(${g.id})">` +
+      `<div class="ab-goal-row-head">` +
+        `<div class="ab-goal-row-title">${esc(g.title || 'Goal')}</div>` +
+        `<span class="ab-status-badge" data-state="${esc(status)}">${esc(String(status).replace('_',' '))}</span>` +
+      `</div>` +
+      (hasData
+        ? `<div class="ab-progress-bar ab-pillar-training"><div class="ab-progress-bar-fill" style="width:${progress}%"></div></div>`
+        : ''
+      ) +
+      `<div class="ab-goal-row-meta"><span>${esc(hasData ? `${g.current_value} / ${g.target_value || '?'}` : 'no data yet')}</span>${days ? `<span>${esc(days)}</span>` : ''}</div>` +
+      `</div>`;
+  }
+  return html;
+}
+
+function renderTrainingRecoverySection(recovery) {
+  if (!recovery) return '';
+  const score = recovery.score != null ? recovery.score : '—';
+  const label = recovery.label || '';
+  const sleep = recovery.components?.sleep?.detail || '—';
+  const tload = recovery.components?.training_load?.detail || '—';
+  const muscle = recovery.components?.muscle_freshness?.detail || '—';
+  return '<div class="ab-section-label">Recovery</div>' +
+    `<div class="ab-list-row" onclick="loadRecovery()">` +
+      `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+      '<div class="ab-list-row-body">' +
+        `<div class="ab-list-row-title">${esc(String(score))} <span style="font-weight:400;color:var(--ab-muted)">${esc(label)}</span></div>` +
+        `<div class="ab-list-row-meta">${esc(recovery.recommendation || '')}</div>` +
+      '</div>' +
+    '</div>' +
+    '<div class="ab-glance-row">' +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Sleep</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(sleep, 16))}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Load</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(tload, 16))}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(muscle, 16))}</div></div>` +
+    '</div>';
+}
+
+function renderTrainingFuelSection(fuel) {
+  if (!fuel) return '';
+  const cal = Math.round(Number(fuel.total_calories || fuel.calories || 0));
+  const protein = Math.round(Number(fuel.total_protein_g || fuel.protein_g || 0));
+  const hydration = Number(fuel.hydration_liters || 0).toFixed(1);
+  const calTarget = fuel.target_calories ? `/ ${Math.round(fuel.target_calories)}` : '';
+  const proTarget = fuel.target_protein_g ? `/ ${Math.round(fuel.target_protein_g)}g` : '';
+  return '<div class="ab-section-label">Fuel</div>' +
+    '<div class="ab-glance-row">' +
+      `<div class="ab-glance-card" onclick="showMealForm()" style="cursor:pointer"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${esc(calTarget) || 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${esc(proTarget) || 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Hydration</div><div class="ab-glance-card-value">${hydration}L</div><div class="ab-glance-card-sub">today</div></div>` +
+    '</div>';
+}
+
+function renderTrainingBodySection(body) {
+  const latest = Array.isArray(body) ? body[0] : (body?.latest || (body?.rows ? body.rows[0] : null));
+  if (!latest) {
+    return '<div class="ab-section-label">Body</div>' +
+      '<div class="ab-list-row" onclick="showBodyMetricForm()"><div class="ab-list-row-dot ab-pillar-training"></div>' +
+      '<div class="ab-list-row-body"><div class="ab-list-row-title">No weigh-in logged.</div>' +
+      '<div class="ab-list-row-meta">Tap to log →</div></div></div>';
+  }
+  const w = latest.weight_lb || latest.weight_kg ? Number(latest.weight_lb || latest.weight_kg).toFixed(1) : '—';
+  const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
+  const bf = latest.body_fat_pct != null ? `${Number(latest.body_fat_pct).toFixed(1)}%` : '—';
+  const sm = latest.skeletal_muscle_lb || latest.skeletal_muscle_kg ? Number(latest.skeletal_muscle_lb || latest.skeletal_muscle_kg).toFixed(1) : '—';
+  const bmr = latest.bmr || '—';
+  return '<div class="ab-section-label">Body</div>' +
+    `<div class="ab-list-row" onclick="showBodyMetricForm()">` +
+      '<div class="ab-list-row-dot ab-pillar-training"></div>' +
+      '<div class="ab-list-row-body">' +
+        `<div class="ab-list-row-title">${esc(w)} ${esc(unit)}</div>` +
+        `<div class="ab-list-row-meta">${esc(latest.measurement_date || '')}</div>` +
+      '</div>' +
+    '</div>' +
+    '<div class="ab-glance-row">' +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">BF%</div><div class="ab-glance-card-value">${esc(bf)}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value">${esc(sm)}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">BMR</div><div class="ab-glance-card-value">${esc(bmr)}</div></div>` +
+    '</div>';
 }
 
 // ─── Fitness > Goals sub-tab (v1.11.1) ────────────────────────────
