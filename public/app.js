@@ -6468,10 +6468,10 @@ function renderTrainingBigPicture(goals) {
       '</div>';
   }
   if (phase) {
-    const eyebrow = `Phase ${phase.phase_number} · ${esc(phase.phase_name || 'Active')}`;
-    const meta = phase.end_date ? `Ends ${esc(formatDateShort(phase.end_date))}` : '';
-    const days = phase.end_date ? Math.max(0, Math.round((new Date(phase.end_date + 'T12:00:00') - new Date()) / 86400000)) : null;
-    const countdown = days != null ? `<span class="ab-big-picture-countdown">${days}d left</span>` : '';
+    const eyebrow = `Active phase · ${esc(phase.phase_name || 'Phase ' + (phase.phase_number ?? ''))}`;
+    const meta = phase.end_date ? `Through ${esc(formatDateShort(phase.end_date))}` : '';
+    const days = daysBetween(new Date(), phase.end_date);
+    const countdown = days != null ? `<span class="ab-big-picture-countdown">${days}d remaining</span>` : '';
     const onclick = phase.linked_race_id ? ` onclick="showRaceDetail(${phase.linked_race_id})" style="cursor:pointer"` : '';
     return `<div class="ab-big-picture ab-pillar-training"${onclick}>` +
       `<div class="ab-big-picture-eyebrow">${eyebrow}</div>` +
@@ -6480,15 +6480,29 @@ function renderTrainingBigPicture(goals) {
       countdown +
       '</div>';
   }
-  // next_phase only
-  const days = next.start_date ? Math.max(0, Math.round((new Date(next.start_date + 'T12:00:00') - new Date()) / 86400000)) : null;
-  const countdown = days != null ? `<span class="ab-big-picture-countdown">starts in ${days}d</span>` : '';
+  // Between phases — next phase coming up
+  const days = daysBetween(new Date(), next.start_date);
+  const countdown = days != null && days >= 0
+    ? `<span class="ab-big-picture-countdown">${days === 0 ? 'starts today' : 'starts in ' + days + 'd'}</span>`
+    : '';
   return '<div class="ab-big-picture ab-pillar-training">' +
-    `<div class="ab-big-picture-eyebrow">Up next · Phase ${esc(String(next.phase_number || ''))}</div>` +
+    `<div class="ab-big-picture-eyebrow">Between phases</div>` +
     `<div class="ab-big-picture-title">${esc(next.phase_name || 'Next phase')}</div>` +
-    `<div class="ab-big-picture-meta">Starts ${esc(formatDateShort(next.start_date))}</div>` +
+    (next.start_date ? `<div class="ab-big-picture-meta">Starts ${esc(formatDateShort(next.start_date))}</div>` : '') +
     countdown +
     '</div>';
+}
+
+function daysBetween(from, toDateStr) {
+  if (!toDateStr) return null;
+  const s = String(toDateStr);
+  // Accept YYYY-MM-DD or full ISO string. Normalize to noon local to avoid TZ rounding bugs.
+  const tail = s.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tail)) return null;
+  const target = new Date(tail + 'T12:00:00');
+  if (isNaN(target.getTime())) return null;
+  const ref = new Date(localDateStr(from) + 'T12:00:00');
+  return Math.round((target - ref) / 86400000);
 }
 
 function renderTrainingWeekStrip(plans, today) {
@@ -6527,9 +6541,9 @@ function renderTrainingTodaySession(dayData) {
   const title = plan.title || plan.workout_focus || plan.workout_type || 'Today\'s session';
   const status = plan.status || 'planned';
   const meta = [plan.workout_type, plan.workout_focus].filter(Boolean).join(' · ');
-  const onclick = plan.id ? `onclick="showDailyPlanForm(${esc(JSON.stringify(localDateStr()))}, ${plan.id})"` : '';
+  const onclick = plan.id ? ` onclick="showDailyPlanDetail(${plan.id})" style="cursor:pointer"` : '';
   return '<div class="ab-section-label">Today</div>' +
-    `<div class="ab-hero-card ab-pillar-training" ${onclick}>` +
+    `<div class="ab-hero-card ab-pillar-training"${onclick}>` +
       `<div class="ab-hero-card-eyebrow">Training · <span class="ab-status-badge" data-state="${esc(status)}">${esc(status)}</span></div>` +
       `<div class="ab-hero-card-title">${esc(title)}</div>` +
       (meta ? `<div class="ab-hero-card-meta">${esc(meta)}</div>` : '') +
@@ -6589,21 +6603,25 @@ function renderTrainingRecoverySection(recovery) {
 
 function renderTrainingFuelSection(fuel) {
   if (!fuel) return '';
-  const cal = Math.round(Number(fuel.total_calories || fuel.calories || 0));
-  const protein = Math.round(Number(fuel.total_protein_g || fuel.protein_g || 0));
-  const hydration = Number(fuel.hydration_liters || 0).toFixed(1);
-  const calTarget = fuel.target_calories ? `/ ${Math.round(fuel.target_calories)}` : '';
-  const proTarget = fuel.target_protein_g ? `/ ${Math.round(fuel.target_protein_g)}g` : '';
+  const cal = Math.round(Number(fuel.total_calories || 0));
+  const protein = Math.round(Number(fuel.total_protein_g || 0));
+  const hydration = Number(fuel.context?.hydration_liters || fuel.hydration_liters || 0).toFixed(1);
+  const targets = fuel.plan_targets || {};
+  const calTarget = targets.calories ? `/ ${Math.round(targets.calories)}` : '';
+  const proTarget = targets.protein_g ? `/ ${Math.round(targets.protein_g)}g` : '';
+  const hydrTarget = targets.hydration_liters ? `/ ${Number(targets.hydration_liters).toFixed(1)}L` : '';
   return '<div class="ab-section-label">Fuel</div>' +
     '<div class="ab-glance-row">' +
       `<div class="ab-glance-card" onclick="showNutritionDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${esc(calTarget) || 'today'}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${esc(proTarget) || 'today'}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Hydration</div><div class="ab-glance-card-value">${hydration}L</div><div class="ab-glance-card-sub">today</div></div>` +
+      `<div class="ab-glance-card" onclick="showNutritionDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${esc(proTarget) || 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Hydration</div><div class="ab-glance-card-value">${hydration}L</div><div class="ab-glance-card-sub">${esc(hydrTarget) || 'today'}</div></div>` +
     '</div>';
 }
 
 function renderTrainingBodySection(body) {
-  const latest = Array.isArray(body) ? body[0] : (body?.latest || (body?.rows ? body.rows[0] : null));
+  // /api/body-metrics returns { total, count, body_metrics: [...] } sorted DESC by date.
+  const rows = body?.body_metrics || (Array.isArray(body) ? body : []);
+  const latest = rows[0];
   if (!latest) {
     return '<div class="ab-section-label">Body</div>' +
       '<div class="ab-list-row" onclick="showBodyMetricForm()"><div class="ab-list-row-dot ab-pillar-training"></div>' +
@@ -6615,12 +6633,15 @@ function renderTrainingBodySection(body) {
   const bf = latest.body_fat_pct != null ? `${Number(latest.body_fat_pct).toFixed(1)}%` : '—';
   const sm = latest.skeletal_muscle_lb || latest.skeletal_muscle_kg ? Number(latest.skeletal_muscle_lb || latest.skeletal_muscle_kg).toFixed(1) : '—';
   const bmr = latest.bmr || '—';
+  const dateStr = latest.measurement_date ? formatDateShort(latest.measurement_date) : '';
+  const today = localDateStr();
+  const stale = latest.measurement_date && String(latest.measurement_date).slice(0,10) !== today;
   return '<div class="ab-section-label">Body</div>' +
     `<div class="ab-list-row" onclick="showBodyMetricForm()">` +
       '<div class="ab-list-row-dot ab-pillar-training"></div>' +
       '<div class="ab-list-row-body">' +
-        `<div class="ab-list-row-title">${esc(w)} ${esc(unit)}</div>` +
-        `<div class="ab-list-row-meta">${esc(latest.measurement_date || '')}</div>` +
+        `<div class="ab-list-row-title">${esc(w)} ${esc(unit)}${stale ? ' <span style="color:var(--ab-muted);font-weight:400;font-size:12px">(' + esc(dateStr) + ')</span>' : ''}</div>` +
+        `<div class="ab-list-row-meta">${stale ? 'Latest weigh-in. Tap to log a fresh one.' : 'Logged today.'}</div>` +
       '</div>' +
     '</div>' +
     '<div class="ab-glance-row">' +
@@ -9940,34 +9961,49 @@ async function showNutritionDetail() {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No nutrition logged today.</div><div class="ab-list-row-meta">Tap + to capture a meal.</div></div></div>';
       return;
     }
-    const cal = Math.round(Number(summary.total_calories || summary.calories || 0));
-    const protein = Math.round(Number(summary.total_protein_g || summary.protein_g || 0));
-    const carbs = Math.round(Number(summary.total_carbs_g || summary.carbs_g || 0));
-    const fat = Math.round(Number(summary.total_fat_g || summary.fat_g || 0));
-    const calTarget = summary.target_calories ? Math.round(summary.target_calories) : null;
-    const proTarget = summary.target_protein_g ? Math.round(summary.target_protein_g) : null;
+    const cal     = Math.round(Number(summary.total_calories || 0));
+    const protein = Math.round(Number(summary.total_protein_g || 0));
+    const carbs   = Math.round(Number(summary.total_carbs_g || 0));
+    const fat     = Math.round(Number(summary.total_fat_g || 0));
+    const targets = summary.plan_targets || {};
+    const calTarget = targets.calories || null;
+    const proTarget = targets.protein_g || null;
+    const carbTarget = targets.carbs_g || null;
+    const fatTarget = targets.fat_g || null;
 
     let body = '<div class="ab-glance-row" style="padding:0 0 12px">' +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${calTarget ? '/ ' + calTarget : 'today'}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${proTarget ? '/ ' + proTarget + 'g' : 'today'}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Net</div><div class="ab-glance-card-value" style="font-size:18px">${esc(summary.net_balance != null ? String(Math.round(summary.net_balance)) : '—')}</div><div class="ab-glance-card-sub">balance</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${calTarget ? '/ ' + Math.round(calTarget) : 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${proTarget ? '/ ' + Math.round(proTarget) + 'g' : 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Meals</div><div class="ab-glance-card-value">${summary.total_meals || 0}</div><div class="ab-glance-card-sub">logged</div></div>` +
       '</div>';
 
     body += '<div class="ab-section-label">Macros</div>';
     body += renderMacroRow('Protein', protein, proTarget, 'g');
-    body += renderMacroRow('Carbs', carbs, null, 'g');
-    body += renderMacroRow('Fat', fat, null, 'g');
+    body += renderMacroRow('Carbs',   carbs,   carbTarget, 'g');
+    body += renderMacroRow('Fat',     fat,     fatTarget,  'g');
 
-    if (Array.isArray(summary.meals) && summary.meals.length > 0) {
+    const meals = Array.isArray(summary.meals) ? summary.meals : [];
+    if (meals.length > 0) {
       body += '<div class="ab-section-label">Today\'s meals</div>';
-      for (const m of summary.meals) {
-        body += `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-dot ab-pillar-training"></div>` +
-          `<div class="ab-list-row-body"><div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')}</div>` +
-          `<div class="ab-list-row-meta">${esc(String(Math.round(m.calories || 0)))} cal · ${esc(String(Math.round(m.protein_g || 0)))}g protein</div></div></div>`;
+      for (const m of meals) {
+        const mc  = Math.round(Number(m.calories || 0));
+        const mp  = Math.round(Number(m.protein_g || 0));
+        const mca = Math.round(Number(m.carbs_g || 0));
+        const mf  = Math.round(Number(m.fat_g || 0));
+        const time = m.eaten_at || m.meal_time || '';
+        const timeStr = time ? new Date(time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : (m.meal_type || '');
+        body += `<div class="ab-list-row" onclick="closeModal();showMealDetail('${esc(String(m.id))}')">` +
+          `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+          `<div class="ab-list-row-body">` +
+            `<div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')} <span style="color:var(--ab-muted);font-weight:400;font-size:12px">${esc(timeStr)}</span></div>` +
+            `<div class="ab-list-row-meta" style="font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${mc} cal · ${mp}p · ${mca}c · ${mf}f</div>` +
+          `</div></div>`;
       }
+    } else {
+      body += '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-meta">No meals logged today.</div></div></div>';
     }
 
-    body += '<div style="padding:16px"><button class="ab-icon-btn" style="width:auto;padding:0 16px;border:1px solid var(--ab-border)" onclick="closeModal();showMealForm()">Log meal</button></div>';
+    body += '<div style="padding:16px"><button class="ab-icon-btn" style="width:auto;padding:8px 16px;border:1px solid var(--ab-border);font-weight:500" onclick="closeModal();showMealForm()">Log meal</button></div>';
     document.getElementById('modal-body').innerHTML = body;
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load nutrition.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
