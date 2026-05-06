@@ -3572,25 +3572,40 @@ function copyDebugRaw() {
 // ─── Tasks (List / Kanban / Calendar) ────────────────────────
 let tasksSubTab = 'today';
 function tasksTabsHtml() {
-  return `<div class="brain-tabs">
-    <button class="brain-tab${tasksSubTab==='today'?' active':''}" onclick="tasksSubTab='today';loadTasks()">Today</button>
-    <button class="brain-tab${tasksSubTab==='waiting'?' active':''}" onclick="tasksSubTab='waiting';loadTasks()">Waiting</button>
-    <button class="brain-tab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
-    <button class="brain-tab${tasksSubTab==='kanban'?' active':''}" onclick="tasksSubTab='kanban';loadTasks()">Kanban</button>
-    <button class="brain-tab${tasksSubTab==='calendar'?' active':''}" onclick="tasksSubTab='calendar';loadTasks()">Calendar</button>
-    <button class="brain-tab${tasksSubTab==='review'?' active':''}" onclick="tasksSubTab='review';loadTasks()">Review</button>
+  // v2 Foundation Phase 3: 4 sub-tabs. Kanban + Calendar removed.
+  return `<div class="ab-subtabs">
+    <button class="ab-subtab${tasksSubTab==='today'?' active':''}" onclick="tasksSubTab='today';loadTasks()">Today</button>
+    <button class="ab-subtab${tasksSubTab==='waiting'?' active':''}" onclick="tasksSubTab='waiting';loadTasks()">Waiting</button>
+    <button class="ab-subtab${tasksSubTab==='list'?' active':''}" onclick="tasksSubTab='list';loadTasks()">List</button>
+    <button class="ab-subtab${tasksSubTab==='review'?' active':''}" onclick="tasksSubTab='review';loadTasks()">Review</button>
   </div>`;
 }
 
+// v2 Foundation Phase 3: 4-tab Productivity nav (Today/Waiting/List/
+// Review). Kanban + Calendar dropped from the user-facing nav. Sub-
+// view loaders unchanged. BigPicture banner + Key Signals + dot-icon
+// row redesign deferred — they'd require rewriting every sub-view's
+// DOM-overwrite pattern.
 async function loadTasks() {
   const main = document.getElementById('main-content');
+  if (!main) return;
+
+  const validSubs = ['today','waiting','list','review'];
+  if (!validSubs.includes(tasksSubTab)) tasksSubTab = 'today';
+
   main.innerHTML = tasksTabsHtml() + '<div class="loading">Loading...</div>';
-  if (tasksSubTab === 'today') return loadTasksToday();
-  if (tasksSubTab === 'waiting') return loadTasksWaiting();
-  if (tasksSubTab === 'kanban') return loadTasksKanban();
-  if (tasksSubTab === 'calendar') return loadTasksCalendar();
-  if (tasksSubTab === 'review') return loadTasksWeeklyReview();
-  return loadTasksList();
+  if      (tasksSubTab === 'today')   return loadTasksToday();
+  else if (tasksSubTab === 'waiting') return loadTasksWaiting();
+  else if (tasksSubTab === 'review')  return loadTasksWeeklyReview();
+  else                                return loadTasksList();
+}
+
+function cleanTaskTitle(title) {
+  if (!title) return '';
+  let t = String(title);
+  t = t.replace(/^\s*PROMPT\s+AVI[:\s]+/i, '');
+  t = t.replace(/\s*\[WAITING ON:\s*[^\]]+\]\s*/gi, '').trim();
+  return t;
 }
 
 // ── Today Focus View ──

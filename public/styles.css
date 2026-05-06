@@ -4083,6 +4083,32 @@ body { font-family: var(--ab-font-ui); }
   color: var(--ab-body);
 }
 
+/* ── Sub-tabs (Productivity, etc.) ── */
+.ab-subtabs {
+  display: flex; gap: 4px;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid var(--ab-border-soft);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ab-subtab {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--ab-border);
+  color: var(--ab-body);
+  font-family: var(--ab-font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.ab-subtab:hover { color: var(--ab-ink); }
+.ab-subtab.active {
+  background: var(--ab-ink); color: var(--ab-bg); border-color: var(--ab-ink);
+}
+
 /* End v2 Foundation */
 
 /* ═══ Responsive ═══ */
