@@ -4,6 +4,33 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.3] — 2026-05-06
+
+### Hotfix — service worker cache invalidation
+
+**Root cause: PWA cache name `abkb-v33` was unchanged across v1.10.x and
+v1.11.0/1/2.** Service workers only prune their precache when the
+CACHE_NAME string changes. Since I shipped 5 releases with UI changes
+(home Goals card, Fitness Goals sub-tab, pending status colors) without
+bumping the cache name, every installed PWA kept serving the stale v33
+copy of `app.js`. New code shipped but never reached the device.
+
+Fix: bumped `CACHE_NAME` to `abkb-v1.11.3`. On next visit, browsers
+detect the sw.js content change, install the new SW, and the activate
+handler prunes v33. Fresh `app.js` (with `loadGoalsCard`, `loadFitnessGoals`,
+pending color, all the Goals UI from v1.11.0–2) downloads on first fetch.
+
+User-facing: **after this deploy lands, force-refresh once** (pull-to-refresh
+on iPhone PWA, or Cmd+Shift+R desktop). Subsequent visits hit the fresh
+cache automatically.
+
+**Convention going forward: bump CACHE_NAME on every release that touches
+anything in `public/*`.** Adding the version string (`abkb-v{semver}`)
+makes the link explicit. CHANGELOG entry now flags this as a recurring
+checklist item.
+
+---
+
 ## [1.11.2] — 2026-05-06
 
 ### Coach-flagged: pending status + schema docs gap + Coach guide

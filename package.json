@@ -1,6 +1,6 @@
 {
   "name": "ab-knowledge-base",
-  "version": "1.11.2",
+  "version": "1.11.3",
   "description": "Unified AI knowledge base — connects Claude, Gemini, ChatGPT, Bee to a shared PostgreSQL brain",
   "main": "server.js",
   "scripts": {
