@@ -6452,7 +6452,8 @@ function renderTrainingBigPicture(goals) {
     const meta = phase.end_date ? `Ends ${esc(formatDateShort(phase.end_date))}` : '';
     const days = phase.end_date ? Math.max(0, Math.round((new Date(phase.end_date + 'T12:00:00') - new Date()) / 86400000)) : null;
     const countdown = days != null ? `<span class="ab-big-picture-countdown">${days}d left</span>` : '';
-    return '<div class="ab-big-picture ab-pillar-training">' +
+    const onclick = phase.linked_race_id ? ` onclick="showRaceDetail(${phase.linked_race_id})" style="cursor:pointer"` : '';
+    return `<div class="ab-big-picture ab-pillar-training"${onclick}>` +
       `<div class="ab-big-picture-eyebrow">${eyebrow}</div>` +
       `<div class="ab-big-picture-title">${esc(phase.description || phase.phase_name || 'Active phase')}</div>` +
       (meta ? `<div class="ab-big-picture-meta">${meta}</div>` : '') +
@@ -6552,7 +6553,7 @@ function renderTrainingRecoverySection(recovery) {
   const tload = recovery.components?.training_load?.detail || '—';
   const muscle = recovery.components?.muscle_freshness?.detail || '—';
   return '<div class="ab-section-label">Recovery</div>' +
-    `<div class="ab-list-row" onclick="loadRecovery()">` +
+    `<div class="ab-list-row" onclick="showRecoveryDetail()">` +
       `<div class="ab-list-row-dot ab-pillar-training"></div>` +
       '<div class="ab-list-row-body">' +
         `<div class="ab-list-row-title">${esc(String(score))} <span style="font-weight:400;color:var(--ab-muted)">${esc(label)}</span></div>` +
@@ -6575,7 +6576,7 @@ function renderTrainingFuelSection(fuel) {
   const proTarget = fuel.target_protein_g ? `/ ${Math.round(fuel.target_protein_g)}g` : '';
   return '<div class="ab-section-label">Fuel</div>' +
     '<div class="ab-glance-row">' +
-      `<div class="ab-glance-card" onclick="showMealForm()" style="cursor:pointer"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${esc(calTarget) || 'today'}</div></div>` +
+      `<div class="ab-glance-card" onclick="showNutritionDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${esc(calTarget) || 'today'}</div></div>` +
       `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${esc(proTarget) || 'today'}</div></div>` +
       `<div class="ab-glance-card"><div class="ab-glance-card-label">Hydration</div><div class="ab-glance-card-value">${hydration}L</div><div class="ab-glance-card-sub">today</div></div>` +
     '</div>';
@@ -9827,6 +9828,139 @@ function closeModal() {
   const overlay = document.getElementById('modal-overlay');
   overlay.classList.remove('open');
   overlay.classList.remove('ab-modal-sheet');
+}
+
+// ─── Detail surfaces (v2 Foundation Phase 5) ──────────────────
+
+async function showRaceDetail(id) {
+  if (!id) return abToast('No race linked.');
+  openModal('Race', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
+  try {
+    const race = await api('/races/' + id);
+    if (!race) {
+      document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Race not found.</div></div></div>';
+      return;
+    }
+    const days = race.race_date ? Math.max(0, Math.round((new Date(String(race.race_date).slice(0,10) + 'T12:00:00') - new Date()) / 86400000)) : null;
+    const rows = [];
+    rows.push(['Date', race.race_date ? formatDateShort(race.race_date) + (days != null ? ` · ${days}d away` : '') : '—']);
+    if (race.distance) rows.push(['Distance', String(race.distance)]);
+    if (race.terrain) rows.push(['Terrain', String(race.terrain)]);
+    if (race.target_time) rows.push(['Target', String(race.target_time)]);
+    if (race.priority) rows.push(['Priority', String(race.priority).toUpperCase()]);
+    if (race.location) rows.push(['Location', String(race.location)]);
+    let body = `<div class="ab-hero-card ab-pillar-training" style="cursor:default;margin:0 0 12px">` +
+      `<div class="ab-hero-card-eyebrow">Race</div>` +
+      `<div class="ab-hero-card-title">${esc(race.race_name || race.title || 'Race')}</div>` +
+      (days != null ? `<div class="ab-hero-card-meta">${days}d away</div>` : '') +
+      '</div>';
+    body += '<div style="padding:0 4px">';
+    for (const [k, v] of rows) {
+      body += `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">${esc(k)}</div><div class="ab-list-row-title" style="font-size:14px">${esc(v)}</div></div></div>`;
+    }
+    if (race.course_notes) body += renderRaceField('Course notes', race.course_notes);
+    if (race.gear_list)    body += renderRaceField('Gear list', race.gear_list);
+    if (race.fueling_plan) body += renderRaceField('Fueling plan', race.fueling_plan);
+    if (race.notes)        body += renderRaceField('Notes', race.notes);
+    body += '</div>';
+    document.getElementById('modal-body').innerHTML = body;
+  } catch (e) {
+    document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load race.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+  }
+}
+
+function renderRaceField(label, text) {
+  return `<div style="padding:12px 16px;border-top:1px solid var(--ab-border-soft)">` +
+    `<div class="ab-section-label" style="padding:0 0 4px">${esc(label)}</div>` +
+    `<div style="font-size:14px;line-height:1.5;color:var(--ab-body);white-space:pre-wrap">${esc(text)}</div>` +
+    `</div>`;
+}
+
+async function showRecoveryDetail() {
+  openModal('Recovery', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
+  try {
+    const r = await api('/recovery/score?date=' + localDateStr());
+    if (!r) {
+      document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No recovery data yet.</div></div></div>';
+      return;
+    }
+    const score = r.score != null ? r.score : '—';
+    const label = r.label || '';
+    let body = `<div class="ab-hero-card ab-pillar-training" style="cursor:default;margin:0 0 12px">` +
+      `<div class="ab-hero-card-eyebrow">Recovery score</div>` +
+      `<div class="ab-hero-card-title" style="font-size:48px;font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${esc(String(score))}</div>` +
+      `<div class="ab-hero-card-meta">${esc(label)} · ${esc(r.recommendation || '')}</div>` +
+      '</div>';
+    body += '<div class="ab-section-label">Components</div>';
+    const comps = r.components || {};
+    const order = ['sleep','training_load','muscle_freshness','injury','nutrition','subjective'];
+    for (const key of order) {
+      const c = comps[key];
+      if (!c) continue;
+      const pct = c.weight ? Math.round((c.score / c.weight) * 100) : c.score;
+      body += `<div class="ab-goal-row" style="cursor:default">` +
+        `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(key.replace('_',' '))}</div>` +
+        `<div class="ab-goal-row-meta"><span>${esc(String(c.score))} / ${esc(String(c.weight || 100))}</span></div></div>` +
+        `<div class="ab-progress-bar ab-pillar-training"><div class="ab-progress-bar-fill" style="width:${Math.min(100, pct)}%"></div></div>` +
+        (c.detail ? `<div class="ab-goal-row-meta" style="margin-top:2px"><span>${esc(c.detail)}</span></div>` : '') +
+        `</div>`;
+    }
+    document.getElementById('modal-body').innerHTML = body;
+  } catch (e) {
+    document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load recovery.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+  }
+}
+
+async function showNutritionDetail() {
+  openModal('Nutrition', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
+  try {
+    const today = localDateStr();
+    const summary = await api('/nutrition/daily-summary?date=' + today).catch(() => null);
+    if (!summary) {
+      document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No nutrition logged today.</div><div class="ab-list-row-meta">Tap + to capture a meal.</div></div></div>';
+      return;
+    }
+    const cal = Math.round(Number(summary.total_calories || summary.calories || 0));
+    const protein = Math.round(Number(summary.total_protein_g || summary.protein_g || 0));
+    const carbs = Math.round(Number(summary.total_carbs_g || summary.carbs_g || 0));
+    const fat = Math.round(Number(summary.total_fat_g || summary.fat_g || 0));
+    const calTarget = summary.target_calories ? Math.round(summary.target_calories) : null;
+    const proTarget = summary.target_protein_g ? Math.round(summary.target_protein_g) : null;
+
+    let body = '<div class="ab-glance-row" style="padding:0 0 12px">' +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${calTarget ? '/ ' + calTarget : 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${proTarget ? '/ ' + proTarget + 'g' : 'today'}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Net</div><div class="ab-glance-card-value" style="font-size:18px">${esc(summary.net_balance != null ? String(Math.round(summary.net_balance)) : '—')}</div><div class="ab-glance-card-sub">balance</div></div>` +
+      '</div>';
+
+    body += '<div class="ab-section-label">Macros</div>';
+    body += renderMacroRow('Protein', protein, proTarget, 'g');
+    body += renderMacroRow('Carbs', carbs, null, 'g');
+    body += renderMacroRow('Fat', fat, null, 'g');
+
+    if (Array.isArray(summary.meals) && summary.meals.length > 0) {
+      body += '<div class="ab-section-label">Today\'s meals</div>';
+      for (const m of summary.meals) {
+        body += `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-dot ab-pillar-training"></div>` +
+          `<div class="ab-list-row-body"><div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')}</div>` +
+          `<div class="ab-list-row-meta">${esc(String(Math.round(m.calories || 0)))} cal · ${esc(String(Math.round(m.protein_g || 0)))}g protein</div></div></div>`;
+      }
+    }
+
+    body += '<div style="padding:16px"><button class="ab-icon-btn" style="width:auto;padding:0 16px;border:1px solid var(--ab-border)" onclick="closeModal();showMealForm()">Log meal</button></div>';
+    document.getElementById('modal-body').innerHTML = body;
+  } catch (e) {
+    document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load nutrition.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+  }
+}
+
+function renderMacroRow(label, value, target, unit) {
+  const pct = target ? Math.min(100, Math.round((value / target) * 100)) : 0;
+  return `<div class="ab-goal-row" style="cursor:default">` +
+    `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
+    `<div class="ab-goal-row-meta"><span>${value}${esc(unit)}${target ? ' / ' + target + esc(unit) : ''}</span></div></div>` +
+    (target ? `<div class="ab-progress-bar ab-pillar-training"><div class="ab-progress-bar-fill" style="width:${pct}%"></div></div>` : '') +
+    `</div>`;
 }
 
 // ─── Training Tab ─────────────────────────────────────────────
