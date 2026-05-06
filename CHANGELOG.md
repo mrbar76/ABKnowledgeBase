@@ -4,6 +4,38 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.6] — 2026-05-06
+
+### Permanent fix — version drift detection on app boot
+
+After three rounds of "deploy shipped but PWA didn't get the new code"
+(v1.10.4 → v1.11.0 → v1.11.5), shipping the architectural fix that
+prevents this class of bug entirely.
+
+**How it works:**
+- `APP_VERSION = '1.11.6'` constant baked into `app.js`
+- On every app boot, `checkVersionDrift()` fetches `/api/health-check`
+  with `cache: 'no-store'` and reads `data.version`
+- If server version ≠ APP_VERSION, a purple banner pins to the top:
+  "App is on vX.Y.Z, server is on vA.B.C. Reload to get the latest."
+  with a one-tap **Reload** button
+- Reload calls `forceReload()` which:
+  1. Unregisters all service workers
+  2. Reloads with cache-busting query string `?v=<timestamp>`
+  3. Browser fetches fresh `app.js` and `sw.js` — no cache hits
+
+User-facing: next time a deploy ships ahead of your installed PWA,
+you'll SEE the version mismatch and reload in one tap. No more
+silent staleness; no more nuclear cache resets.
+
+**Convention going forward:** bump `APP_VERSION` in app.js to match
+`package.json` on every release that touches `public/*`. The mismatch
+detection makes the link automatic for users.
+
+133/133 tests pass.
+
+---
+
 ## [1.11.5] — 2026-05-06
 
 ### Hotfix — browser HTTP cache serving stale API responses

@@ -1,6 +1,11 @@
 // --- AB Brain — Full SPA with bottom tabs ---
 
 const API = '/api';
+// v1.11.6: baked-in client version. Compared against /api/health-check on
+// every app boot. On mismatch, the user sees a banner "New version available"
+// with a one-tap reload that bypasses cache. Prevents the PWA from quietly
+// running stale code after a deploy (which has bitten us multiple times).
+const APP_VERSION = '1.11.6';
 let currentTab = 'home';
 
 // Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
@@ -11157,16 +11162,58 @@ document.addEventListener('click', e => {
   if (_fabOpen && !e.target.closest('.fab-container')) toggleFab();
 });
 
+// ─── Version check (v1.11.6) ──────────────────────────────────
+// Compare the baked-in APP_VERSION against the deployed server version.
+// If the server is ahead, the PWA is running stale cached app.js — show
+// a banner offering one-tap reload that bypasses cache.
+async function checkVersionDrift() {
+  try {
+    const r = await fetch(API + '/health-check', { cache: 'no-store' });
+    const d = await r.json();
+    const serverVersion = d.version;
+    if (!serverVersion || serverVersion === APP_VERSION) return;
+    // Server has shipped past us — banner the user
+    const existing = document.getElementById('version-drift-banner');
+    if (existing) return;
+    const banner = document.createElement('div');
+    banner.id = 'version-drift-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#8b5cf6;color:white;padding:10px 16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
+    banner.innerHTML = `
+      <span>App is on v${APP_VERSION}, server is on v${serverVersion}. Reload to get the latest.</span>
+      <button onclick="forceReload()" style="background:white;color:#8b5cf6;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;margin-left:12px">Reload</button>
+    `;
+    document.body.insertBefore(banner, document.body.firstChild);
+  } catch (_) { /* network blip — try again next boot */ }
+}
+
+// Bypasses HTTP cache + service worker by forcing a hard reload with a
+// cache-busting query string. Service worker's fetch handler skips /api/*
+// and the timestamp query forces fresh fetch of the shell.
+function forceReload() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      Promise.all(regs.map(r => r.unregister())).then(() => {
+        window.location.replace(window.location.pathname + '?v=' + Date.now());
+      });
+    });
+  } else {
+    window.location.replace(window.location.pathname + '?v=' + Date.now());
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────
 (async function init() {
   const key = getStoredKey();
   if (!key) { showLogin(); return; }
   try {
-    const test = await fetch(API + '/dashboard', { headers: { 'X-Api-Key': key } });
+    const test = await fetch(API + '/dashboard', { headers: { 'X-Api-Key': key }, cache: 'no-store' });
     if (test.status === 401) { sessionStorage.removeItem('ab_api_key'); localStorage.removeItem('ab_api_key'); showLogin('API key expired.'); return; }
   } catch {}
   hideLogin();
   switchTab('home');
+  // Boot-time version drift check — surfaces the "your PWA is stale" banner
+  // when the deployed server has shipped past the bundled APP_VERSION.
+  checkVersionDrift();
 
   // Set default dates for conversation sync
   const convStart = document.getElementById('sm-conv-start');
