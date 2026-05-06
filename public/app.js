@@ -275,6 +275,7 @@ async function loadDashboard() {
 // Home-view card + tap-to-expand detail modal with trajectory chart.
 // Backend: /api/goals/dashboard, /api/goals/:id/trajectory.
 const GOAL_STATUS_COLOR = {
+  pending:  '#6b7280',
   on_track: 'var(--green)',
   ahead:    '#3b82f6',
   behind:   '#facc15',
@@ -284,6 +285,7 @@ const GOAL_STATUS_COLOR = {
   failed:   '#6b7280',
 };
 const GOAL_STATUS_LABEL = {
+  pending:  'No data',
   on_track: 'On track',
   ahead:    'Ahead',
   behind:   'Behind',

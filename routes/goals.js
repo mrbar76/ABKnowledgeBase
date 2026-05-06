@@ -16,8 +16,10 @@ const {
 const router = express.Router();
 
 // ─── helpers ──────────────────────────────────────────────────────
+// Sort: surface at_risk first, then behind, then pending (needs data),
+// then on_track / ahead. Paused / complete / failed at the bottom.
 const STATUS_URGENCY = {
-  at_risk: 0, behind: 1, on_track: 2, ahead: 3, paused: 4, complete: 5, failed: 6,
+  at_risk: 0, behind: 1, pending: 2, on_track: 3, ahead: 4, paused: 5, complete: 6, failed: 7,
 };
 
 function dateOnly(d) {

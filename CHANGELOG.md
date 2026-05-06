@@ -4,6 +4,46 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.2] — 2026-05-06
+
+### Coach-flagged: pending status + schema docs gap + Coach guide
+
+**1. New `pending` status when current_value is null.**
+Coach reported: Deadlift showed `on_track` despite `current_value: null` —
+"on_track with no data is misleading." Was the result of `computeStatus`
+returning `goal.status || 'on_track'` default. Now returns `pending`
+explicitly. Migration includes:
+- `ALTER TABLE goals` CHECK constraint expanded to allow `pending`
+- One-time backfill: `UPDATE goals SET status='pending' WHERE current_value IS NULL`
+- Default for new rows changed to `pending` (was `on_track`)
+- UI: new color (gray) + label ("No data") for pending status
+- Sort order: at_risk → behind → **pending** → on_track → ahead → paused → complete → failed
+
+**2. `claude-schema.json` v2.0.0 → v2.1.0.**
+Coach noted /goals + /people + /coach endpoints weren't in the schema.
+Added a "v1.10–1.11 endpoint families" section to the description with
+endpoint-by-endpoint summaries. Full OpenAPI path expansion deferred —
+the description text is what Coach reads first.
+
+**3. `docs/coach-goals-guide.md` (NEW)** — full operating contract for
+Coach × Goals interaction. 11 sections covering read patterns, write
+patterns, per-goal manual update logic, phase awareness, status
+interpretation, anchor recalibration triggers, common mistakes, snapshot
+integration, example session flows, and quick-reference endpoint table.
+
+### Tests
+- `goals.test.js` — 2 new tests asserting pending semantics + backfill
+  migration present. 133/133 across full suite pass.
+
+### Note on phase visibility
+Coach observed `active_phase: null` when running the dashboard.
+**This is correct behavior**, not a bug. Phase 1 (Riverdale prep) starts
+May 11; today is May 6. Between phases (or before all phases) the
+`active_phase` field returns null and `focus_summary` says "No active
+phase." The dashboard handles this state gracefully.
+
+---
+
 ## [1.11.1] — 2026-05-06
 
 ### Hotfix — `/insights/trends` 500 + Goals visibility

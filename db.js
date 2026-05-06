@@ -1903,8 +1903,8 @@ async function initDB() {
          'total_volume','manual')),
       phase_primary TEXT[] DEFAULT '{}',
       phase_maintenance TEXT[] DEFAULT '{}',
-      status TEXT NOT NULL DEFAULT 'on_track' CHECK(status IN
-        ('on_track','ahead','behind','at_risk','paused','complete','failed')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN
+        ('pending','on_track','ahead','behind','at_risk','paused','complete','failed')),
       evidence_label TEXT CHECK(evidence_label IN
         ('strong','heuristic','pattern_reasoning','speculation')),
       notes TEXT,
@@ -1938,6 +1938,18 @@ async function initDB() {
       source_note TEXT
     )`);
   await safeQuery('goal_history idx goal_time', `CREATE INDEX IF NOT EXISTS idx_goal_history_goal_time ON goal_history(goal_id, recorded_at DESC)`);
+
+  // v1.11.2: add 'pending' status. Goals with current_value=null should
+  // surface as pending, not on_track — coach was reading "on_track" with
+  // no data as a positive signal, which is misleading. ALTER existing
+  // CHECK constraint + one-time backfill of seeded rows that have null
+  // current_value.
+  await safeQuery('goals drop old status check', `ALTER TABLE goals DROP CONSTRAINT IF EXISTS goals_status_check`);
+  await safeQuery('goals add status check with pending', `
+    ALTER TABLE goals ADD CONSTRAINT goals_status_check CHECK(status IN
+      ('pending','on_track','ahead','behind','at_risk','paused','complete','failed'))`);
+  await safeQuery('goals backfill pending where no data', `
+    UPDATE goals SET status = 'pending' WHERE current_value IS NULL`);
 
   // Seed: 5 locked goals + 6 phases. Insert ONLY if respective table is empty
   // (first deploy). Idempotent — re-runs are no-ops once seeded.

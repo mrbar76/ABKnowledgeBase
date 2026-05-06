@@ -35,6 +35,25 @@ test('computeStatus: paused/failed are passthrough', () => {
   assert.equal(compute.computeStatus({ status: 'failed', metric: 'reps', current_value: 5, anchor_value: 0, target_value: 10, anchor_date: '2026-01-01', target_date: '2026-12-31' }), 'failed');
 });
 
+test('computeStatus: pending when current_value is null (v1.11.2)', () => {
+  // Regression: was returning "on_track" default with no data — looked like
+  // a positive signal when there was actually no signal. Pending is honest.
+  const status = compute.computeStatus({
+    metric: 'reps', anchor_value: 4, target_value: 8, current_value: null,
+    anchor_date: '2025-03-02', target_date: '2026-09-12',
+  });
+  assert.equal(status, 'pending');
+});
+
+test('db.js: goals status enum includes pending + backfill migration present', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  assert.ok(/'pending','on_track'/.test(src), 'pending must be in goals status CHECK constraint');
+  assert.ok(/goals backfill pending where no data/.test(src),
+    'one-time UPDATE to set pending where current_value IS NULL must be present');
+});
+
 test('computeStatus: at_risk when actual < expected − 25%', () => {
   // anchor 0, target 100 over 100 days. 50 days in → expected 50.
   // current = 20 → progress 20% vs expected 50% → deviation -30%
