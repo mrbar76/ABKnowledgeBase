@@ -6,7 +6,7 @@ const API = '/api';
 // with a one-tap reload that bypasses cache. Prevents the PWA from quietly
 // running stale code after a deploy (which has bitten us multiple times).
 const APP_VERSION = '1.11.10';
-let currentTab = 'home';
+let currentTab = 'today';
 
 // Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
 function localDateStr(d) {
@@ -74,14 +74,14 @@ function getStoredKey() { return sessionStorage.getItem('ab_api_key') || localSt
 
 function showLogin(message) {
   document.getElementById('login-screen').style.display = 'flex';
-  document.querySelector('.app-header').style.display = 'none';
+  document.getElementById('ab-topbar').style.display = 'none';
   document.getElementById('main-content').style.display = 'none';
   document.getElementById('bottom-nav').style.display = 'none';
   if (message) { const e = document.getElementById('login-error'); e.textContent = message; e.style.display = 'block'; }
 }
 function hideLogin() {
   document.getElementById('login-screen').style.display = 'none';
-  document.querySelector('.app-header').style.display = '';
+  document.getElementById('ab-topbar').style.display = '';
   document.getElementById('main-content').style.display = '';
   document.getElementById('bottom-nav').style.display = '';
   showFab();
@@ -163,39 +163,98 @@ document.addEventListener('touchmove', e => {
 }, { passive: true });
 document.addEventListener('touchend', () => { _ptrStartY = 0; }, { passive: true });
 
-// ─── Tab Navigation ───────────────────────────────────────────
+// ─── Tab Navigation (v2 Foundation) ───────────────────────────
+// 4 primary tabs: today / productivity / training / personal.
+// Old names (home/tasks/fitness/brain/badges and fitness sub-tab
+// shortcuts) are aliased so existing in-content onclick handlers
+// keep working until each phase rewrites them.
 function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  const main = document.getElementById('main-content');
-  main.scrollTop = 0;
-  // Re-trigger fade-in animation on tab switch
-  main.style.animation = 'none';
-  main.offsetHeight; // force reflow
-  main.style.animation = '';
+  // Primary alias: old top-level tab names -> new
+  const primaryAlias = { home: 'today', tasks: 'productivity', fitness: 'training' };
+  if (primaryAlias[tab]) tab = primaryAlias[tab];
 
-  // Map legacy fitness sub-tab names to the new structure
-  const legacyFitnessMap = { workouts: 'history', nutrition: 'nutrition', body: 'history', training: 'plans', recovery: 'today' };
-  if (legacyFitnessMap[tab]) {
-    fitnessSubTab = legacyFitnessMap[tab];
+  // Fitness sub-tab shortcuts redirect to Training and set the sub-state
+  const fitnessSubAlias = { workouts: 'history', nutrition: 'nutrition', body: 'history', recovery: 'today' };
+  if (fitnessSubAlias[tab] !== undefined) {
+    fitnessSubTab = fitnessSubAlias[tab];
     if (tab === 'workouts') historyFilter = 'workouts';
     else if (tab === 'body') historyFilter = 'body';
-    tab = 'fitness';
-    currentTab = 'fitness';
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'fitness'));
+    tab = 'training';
   }
 
-  // Map legacy tab names
-  if (tab === 'kanban') { tab = 'tasks'; currentTab = 'tasks'; tasksSubTab = 'kanban';
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'tasks'));
+  // Tasks sub-tab shortcut
+  if (tab === 'kanban') { tasksSubTab = 'kanban'; tab = 'productivity'; }
+
+  currentTab = tab;
+  document.querySelectorAll('.ab-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+
+  const main = document.getElementById('main-content');
+  if (main) {
+    main.scrollTop = 0;
+    main.style.animation = 'none';
+    main.offsetHeight; // force reflow
+    main.style.animation = '';
   }
 
-  if (tab === 'home') loadDashboard();
-  else if (tab === 'tasks') loadTasks();
-  else if (tab === 'brain') loadBrain();
-  else if (tab === 'transcripts') { brainSubTab = 'transcripts'; loadBrain(); }
-  else if (tab === 'badges') loadBadges();
-  else if (tab === 'fitness') loadFitness();
+  updateTopbar(tab);
+
+  if      (tab === 'today')        loadDashboard();
+  else if (tab === 'productivity') loadTasks();
+  else if (tab === 'training')     loadFitness();
+  else if (tab === 'personal')     loadPersonalStub();
+  // Brain/Badges removed from nav. Load functions still callable from
+  // in-content links (search results, dashboard cards) until cutover PR.
+  else if (tab === 'brain')        loadBrain();
+  else if (tab === 'transcripts')  { brainSubTab = 'transcripts'; loadBrain(); }
+  else if (tab === 'badges')       loadBadges();
+}
+
+// ─── Topbar updater + helpers (v2 Foundation) ─────────────────
+function updateTopbar(tab) {
+  const titleEl = document.getElementById('ab-topbar-title');
+  const kickerEl = document.getElementById('ab-topbar-kicker');
+  if (!titleEl || !kickerEl) return;
+  if (tab === 'today') {
+    const now = new Date();
+    titleEl.textContent = greetingForHour(now.getHours());
+    kickerEl.textContent = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  } else {
+    const titles = { productivity: 'Productivity', training: 'Training', personal: 'Personal' };
+    titleEl.textContent = titles[tab] || '';
+    kickerEl.textContent = '';
+  }
+}
+
+function greetingForHour(h) {
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function loadPersonalStub() {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+  main.innerHTML =
+    '<div class="ab-section-label">Personal</div>' +
+    '<div class="ab-list-row" style="cursor:default">' +
+      '<div class="ab-list-row-dot ab-pillar-personal"></div>' +
+      '<div class="ab-list-row-body">' +
+        '<div class="ab-list-row-title">Personal tab arrives in Phase 4.</div>' +
+        '<div class="ab-list-row-meta">Shabbat times, family, and personal commitments still live in their existing places for now.</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function showCaptureStub() { abToast('Capture sheet ships in Phase 6.'); }
+
+function abToast(msg) {
+  const host = document.getElementById('ab-toast-host');
+  if (!host) return;
+  const t = document.createElement('div');
+  t.className = 'ab-toast';
+  t.textContent = msg;
+  host.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
 }
 
 // ─── Badges (Gamification) ─────────────────────────────────────
@@ -3323,7 +3382,7 @@ async function loadUnrecognizedSpeakers() {
 async function showDebugPanel() {
   const main = document.getElementById('main-content');
   // Deselect tabs since this is a non-tab view
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ab-tab').forEach(b => b.classList.remove('active'));
   main.innerHTML = '<div class="loading">Running diagnostics...</div>';
 
   const results = {};
@@ -9345,8 +9404,21 @@ async function executeWorkoutImport() {
 }
 
 // ─── Modal ────────────────────────────────────────────────────
-function openModal(title, bodyHtml) { document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-overlay').classList.add('open'); }
-function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+// v2 Foundation: optional 3rd arg { variant: 'sheet' } toggles
+// the .ab-modal-sheet bottom-sheet styling. Backward-compatible
+// with all existing 2-arg call sites.
+function openModal(title, bodyHtml, options = {}) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.toggle('ab-modal-sheet', options.variant === 'sheet');
+  overlay.classList.add('open');
+}
+function closeModal() {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.remove('open');
+  overlay.classList.remove('ab-modal-sheet');
+}
 
 // ─── Training Tab ─────────────────────────────────────────────
 // ─── Recovery ──────────────────────────────────────────────────

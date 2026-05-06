@@ -19,7 +19,7 @@
   <meta name="format-detection" content="telephone=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="/styles.css">
@@ -47,17 +47,23 @@
     </div>
   </div>
 
-  <!-- Header -->
-  <header class="app-header">
-    <img src="/icons/brand/icon-app.svg" alt="AB" class="header-logo" onclick="toggleSettingsMenu()" style="cursor:pointer">
-    <div class="header-text">
-      <h1>AB Brain</h1>
-      <span class="subtitle">Unified AI Knowledge Base</span>
+  <!-- Topbar (v2 Foundation — per-screen title + action cluster) -->
+  <header id="ab-topbar" class="ab-topbar">
+    <div class="ab-topbar-text">
+      <h1 class="ab-topbar-title" id="ab-topbar-title">Today</h1>
+      <span class="ab-topbar-kicker" id="ab-topbar-kicker"></span>
     </div>
-    <button class="global-search-btn" onclick="openGlobalSearch()" title="Search (Ctrl+K)">
-      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-      <span class="search-hint">Ctrl+K</span>
-    </button>
+    <div class="ab-topbar-actions">
+      <button class="ab-icon-btn" id="ab-action-search" onclick="openGlobalSearch()" aria-label="Search" title="Search (Ctrl+K)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+      <button class="ab-icon-btn" id="ab-action-capture" onclick="showCaptureStub()" aria-label="Capture">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="ab-icon-btn ab-profile-chip" id="ab-action-profile" onclick="toggleSettingsMenu()" aria-label="Settings">
+        <span class="ab-profile-initial">A</span>
+      </button>
+    </div>
   </header>
 
   <!-- Settings Menu (tap logo to open) -->
@@ -931,46 +937,38 @@
   <!-- Single Page Content — rendered by app.js -->
   <main id="main-content" class="page-content"></main>
 
-  <!-- Bottom Tab Navigation -->
-  <nav id="bottom-nav" class="bottom-nav">
-    <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 9.5L12 3l9 6.5V21a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"/>
-        <polyline points="9 22 9 13 15 13 15 22"/>
+  <!-- Bottom Tab Navigation (v2 Foundation — 4 tabs) -->
+  <nav id="bottom-nav" class="ab-tabbar">
+    <button class="ab-tab active" data-tab="today" onclick="switchTab('today')" aria-label="Today">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v5l3 2"/>
       </svg>
-      <span>Home</span>
+      <span>Today</span>
     </button>
-    <button class="tab-btn" data-tab="tasks" onclick="switchTab('tasks')">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <button class="ab-tab" data-tab="productivity" onclick="switchTab('productivity')" aria-label="Productivity">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 11l3 3L22 4"/>
-        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
       </svg>
-      <span>Tasks</span>
+      <span>Productivity</span>
     </button>
-    <button class="tab-btn" data-tab="brain" onclick="switchTab('brain')">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9.5 2A2.5 2.5 0 007 4.5v.25A3.25 3.25 0 004.5 8a3.25 3.25 0 001.75 2.87A3.25 3.25 0 008.5 17H9v3h6v-3h.5a3.25 3.25 0 002.25-5.55A3.25 3.25 0 0019.5 8a3.25 3.25 0 00-2.5-3.18V4.5A2.5 2.5 0 0014.5 2h-5z"/>
-        <line x1="12" y1="9" x2="12" y2="17"/>
-        <line x1="9.5" y1="12" x2="14.5" y2="12"/>
-      </svg>
-      <span>Brain</span>
-    </button>
-    <button class="tab-btn" data-tab="fitness" onclick="switchTab('fitness')">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <button class="ab-tab" data-tab="training" onclick="switchTab('training')" aria-label="Training">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <line x1="6.5" y1="12" x2="17.5" y2="12"/>
         <rect x="3.5" y="9" width="3" height="6" rx="1.5"/>
         <rect x="17.5" y="9" width="3" height="6" rx="1.5"/>
         <line x1="2" y1="12" x2="3.5" y2="12"/>
         <line x1="20.5" y1="12" x2="22" y2="12"/>
       </svg>
-      <span>Fitness</span>
+      <span>Training</span>
     </button>
-    <button class="tab-btn" data-tab="badges" onclick="switchTab('badges')">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="8" r="7"/>
-        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>
+    <button class="ab-tab" data-tab="personal" onclick="switchTab('personal')" aria-label="Personal">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 21a8 8 0 0 1 16 0"/>
       </svg>
-      <span>Badges</span>
+      <span>Personal</span>
     </button>
   </nav>
 
@@ -1017,6 +1015,9 @@
       <div class="modal-body" id="modal-body"></div>
     </div>
   </div>
+
+  <!-- Toast host (v2 Foundation) -->
+  <div id="ab-toast-host" class="ab-toast-host" aria-live="polite"></div>
 
   <script src="/app.js"></script>
   <script>
