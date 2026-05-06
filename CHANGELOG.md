@@ -4,6 +4,89 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.9] — 2026-05-06
+
+### Bug C — Hevy sync `exercises[]` transform + backfill
+
+Coach reported: Hevy-synced workouts had lifts only in
+`metadata.hevy.raw_exercises`, never in the structured `exercises[]`
+column that `lib/goal-compute.js` drivers scan. Goal auto-compute
+silently missed every Hevy workout — Goals 1 (pull-ups) and 2
+(deadlift) never updated despite real sessions landing.
+
+**`transformHevyExercises(rawExercises)` helper** — pure function in
+`routes/hevy.js`. Maps:
+```
+Hevy:    { exercise_template_id, title, sets:[{weight_kg, reps, type}] }
+   ↓
+ABBrain: { name, hevy_exercise_template_id, sets:[{weight_lbs, weight_kg, reps, warmup, set_type, rpe}] }
+```
+- `weight_kg` → `weight_lbs` (× 2.2046, rounded to 1 decimal)
+- `type === 'warmup'` → `warmup: true` (so `max_reps_single_set` driver
+  skips warmup sets, matching the convention from manual workout posts)
+- `set_type` preserved so Coach can distinguish failure / dropset /
+  normal in audit / coaching context
+
+**`mapHevyWorkoutToAB` now populates the structured fields:**
+- `exercises` ← `transformHevyExercises(hw.exercises)`
+- `duration_minutes` ← derived from start/end times (numeric dual; was
+  only writing `time_duration` text — `/insights/trends` and goal
+  compute paths read the numeric column)
+
+**INSERT shape updated:**
+- `JSONB_COLS = new Set(['exercises', 'metadata'])` — both stringified
+  and `::jsonb` cast at insert time. Was only handling metadata; new
+  exercises column landed null because pg rejected the JS-array →
+  jsonb_column write.
+- `ON CONFLICT (hevy_id) DO UPDATE` now refreshes `exercises` and
+  `duration_minutes` on re-sync, so editing a Hevy workout (changing
+  weights/reps) propagates back to AB Brain.
+
+**`POST /api/hevy/backfill-exercises` — one-shot recovery endpoint.**
+Walks every workout where `source = 'hevy'` and `exercises` is
+null/empty, transforms `metadata.hevy.raw_exercises` via the same
+helper, writes back to the structured columns. Idempotent: skips
+rows already populated. Refreshes `total_volume_lb` + `total_sets`
+to canonical values. After completion, fires `recomputeAllGoals()`
+in background so Goals 1, 2 pick up the newly-visible data.
+
+```
+curl -X POST -H "x-api-key: $KEY" \
+  https://ab-brain.up.railway.app/api/hevy/backfill-exercises
+```
+
+Response: `{ ok, total_candidates, updated, skipped, failed[], note }`.
+
+### Tests
+
+`tests/phase1-fixes.test.js` — 4 new assertions:
+- `transformHevyExercises` helper exists with kg→lb conversion + warmup
+  detection
+- INSERT JSONB_COLS includes both `exercises` + `metadata`
+- ON CONFLICT updates `exercises` on re-sync
+- `mapHevyWorkoutToAB` populates `exercises` + `duration_minutes`
+- `POST /backfill-exercises` registered with proper filter + recompute
+
+142/142 tests pass.
+
+### What you do after deploy
+
+```
+# 1. Backfill existing Hevy workouts (idempotent, ~seconds for ~100 rows)
+curl -X POST -H "x-api-key: $KEY" \
+  https://ab-brain.up.railway.app/api/hevy/backfill-exercises
+
+# 2. Verify Goals 1+2 picked up the data
+curl -H "x-api-key: $KEY" \
+  https://ab-brain.up.railway.app/api/goals/dashboard \
+  | python3 -m json.tool | grep -A2 'pull-ups\|deadlift'
+```
+
+Future Hevy syncs will populate `exercises[]` automatically — no
+backfill needed past the one-shot.
+
+---
+
 ## [1.11.8] — 2026-05-06
 
 ### Coach handoff — Bug A + Goals UI fixes 1-6 + Bug B contract clarification

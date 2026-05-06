@@ -153,3 +153,51 @@ test('app.js: renderGoalRow surfaces baseline marker + last-attempt line', () =>
   assert.ok(/relativeDateLabel/.test(src), 'must define client-side relativeDateLabel for local-TZ rendering');
   assert.ok(/statusLabelFor/.test(src), 'must define dynamic statusLabelFor (Baseline vs No data)');
 });
+
+// ─── v1.11.9: Hevy sync exercises[] transform (Bug C) ─────────────
+test('hevy: transformHevyExercises maps Hevy → AB Brain shape', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/hevy.js'), 'utf8');
+  assert.ok(/function transformHevyExercises/.test(src),
+    'transformHevyExercises helper must exist');
+  // Must convert weight_kg → weight_lbs
+  assert.ok(/weight_lbs/.test(src), 'transform must produce weight_lbs');
+  assert.ok(/2\.2046226218/.test(src), 'kg → lb conversion factor must be applied');
+  // Must distinguish warmup sets so goal-compute can skip them
+  assert.ok(/type === 'warmup'/.test(src) || /set_type === 'warmup'/.test(src),
+    'must detect warmup set type');
+});
+
+test('hevy: sync INSERT writes exercises[] as JSONB + ON CONFLICT updates it', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/hevy.js'), 'utf8');
+  // Insert column list must include exercises (was metadata-only before)
+  assert.ok(/JSONB_COLS = new Set\(\[['"]exercises['"], ?['"]metadata['"]\]\)/.test(src),
+    'JSONB_COLS Set must include both exercises and metadata');
+  // ON CONFLICT must refresh exercises so re-syncs of the same workout
+  // get the latest set data
+  assert.ok(/exercises = EXCLUDED\.exercises/.test(src),
+    'ON CONFLICT must update exercises on re-sync');
+});
+
+test('hevy: POST /backfill-exercises endpoint exists', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/hevy.js'), 'utf8');
+  assert.ok(src.includes("router.post('/backfill-exercises'"),
+    'POST /backfill-exercises must be registered for Bug C recovery');
+  // Must skip rows that already have exercises
+  assert.ok(/jsonb_array_length\(exercises\) = 0/.test(src),
+    'backfill must filter to rows with empty exercises[]');
+  // Must trigger goal recompute after to update Goals 1, 2, etc.
+  assert.ok(/recomputeAllGoals/.test(src),
+    'backfill must trigger goal recompute after rebuilding exercises');
+});
+
+test('hevy: mapHevyWorkoutToAB now populates exercises field', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/hevy.js'), 'utf8');
+  // The function should call transformHevyExercises and put result on
+  // the row object that gets inserted.
+  const fnBody = src.split('function mapHevyWorkoutToAB')[1].split('// ─── GET')[0];
+  assert.ok(/exercises:\s*transformHevyExercises\(hw\.exercises\)/.test(fnBody),
+    'mapHevyWorkoutToAB must populate exercises via transformHevyExercises');
+  // Also writes duration_minutes (numeric dual)
+  assert.ok(/duration_minutes:\s*durMin/.test(fnBody),
+    'mapHevyWorkoutToAB should write duration_minutes for trends + goals');
+});

@@ -218,9 +218,50 @@ function mapSegmentToHevyRoutine(plan, segment, planned_exercises, folder_id) {
   return routine;
 }
 
+// v1.11.9: Hevy raw exercise shape → AB Brain canonical exercises[] shape.
+// Hevy: { exercise_template_id, title, sets: [{ weight_kg, reps, type, ... }] }
+// AB Brain: { name, sets: [{ weight_lbs, reps, warmup }] }
+//
+// Why: lib/goal-compute.js drivers (max_weight, max_reps_single_set, etc.)
+// scan workouts.exercises to recompute goals on each insert. Without this
+// transform, Hevy-synced workouts had empty `exercises` and Goals 1+2
+// (pull-ups, deadlift) silently never auto-updated. The data was sitting
+// in metadata.hevy.raw_exercises but nothing read it.
+function transformHevyExercises(hevyExercises) {
+  if (!Array.isArray(hevyExercises)) return [];
+  return hevyExercises.map(ex => {
+    const name = ex.title || ex.exercise_template_id || 'Unknown';
+    const sets = (Array.isArray(ex.sets) ? ex.sets : []).map(s => {
+      const weight_kg = s.weight_kg != null ? Number(s.weight_kg) : null;
+      const weight_lbs = weight_kg != null
+        ? Math.round(weight_kg * 2.2046226218 * 10) / 10
+        : null;
+      const reps = s.reps != null ? Number(s.reps) : null;
+      const isWarmup = s.type === 'warmup' || s.set_type === 'warmup';
+      return {
+        reps,
+        weight_lbs,
+        weight_kg,
+        warmup: isWarmup || undefined,
+        rpe: s.rpe ?? undefined,
+        // Preserve set_type so Coach can distinguish failure / dropset / normal
+        set_type: s.type || s.set_type || 'normal',
+        distance_meters: s.distance_meters ?? undefined,
+        duration_seconds: s.duration_seconds ?? undefined,
+      };
+    });
+    return {
+      name,
+      hevy_exercise_template_id: ex.exercise_template_id || null,
+      sets,
+      notes: ex.notes || undefined,
+    };
+  });
+}
+
 // Map a Hevy completed workout into an AB Brain workouts row.
-// Hevy workout shape (assumed): { id, title, description, start_time,
-// end_time, exercises: [{ exercise_template_id, title, sets: [...] }] }.
+// Hevy workout shape: { id, title, description, start_time, end_time,
+// exercises: [{ exercise_template_id, title, sets: [...] }] }.
 function mapHevyWorkoutToAB(hw) {
   const startedAt = hw.start_time || hw.start_date || null;
   const endedAt = hw.end_time || hw.end_date || null;
@@ -228,6 +269,7 @@ function mapHevyWorkoutToAB(hw) {
   const endMs = endedAt ? new Date(endedAt).getTime() : null;
   const durSec = (startMs && endMs) ? Math.max(0, Math.round((endMs - startMs) / 1000)) : null;
   const durStr = durSec != null ? new Date(durSec * 1000).toISOString().substring(11, 19) : null;
+  const durMin = durSec != null ? Math.round(durSec / 60) : null;
 
   // Compute total volume (sum of weight_kg × reps) so coach has a
   // strength-load proxy. Convert weight_kg → lb for AB Brain consistency.
@@ -250,7 +292,10 @@ function mapHevyWorkoutToAB(hw) {
     title: hw.title || 'Hevy workout',
     workout_type: 'strength',
     time_duration: durStr,
+    duration_minutes: durMin,  // numeric dual so /trends + goals see it
     body_notes: hw.description || null,
+    // v1.11.9: populate exercises[] from Hevy's structured set data.
+    exercises: transformHevyExercises(hw.exercises),
     total_volume_lb: Math.round(totalVolumeLb),
     total_sets: totalSets,
     source: 'hevy',
@@ -1054,22 +1099,29 @@ async function syncHevyWorkouts(since) {
         const row = mapHevyWorkoutToAB(hw);
         if (!row.hevy_id) { skipped++; continue; }
 
-        const cols = Object.keys(row).filter(k => k !== 'metadata');
-        const placeholders = cols.map((_, i) => `$${i + 1}`);
-        const values = cols.map(c => row[c]);
-        values.push(JSON.stringify(row.metadata));
+        // v1.11.9: exercises and metadata are both JSONB; stringify and cast
+        // each at INSERT time. Was only handling metadata before — exercises
+        // arrived as a JS array, postgres rejected the JSONB write, exercises
+        // landed null. Goal auto-compute silently missed Hevy workouts.
+        const JSONB_COLS = new Set(['exercises', 'metadata']);
+        const cols = Object.keys(row);
+        const placeholders = cols.map((c, i) => JSONB_COLS.has(c) ? `$${i + 1}::jsonb` : `$${i + 1}`);
+        const values = cols.map(c => JSONB_COLS.has(c) ? JSON.stringify(row[c] || (c === 'exercises' ? [] : {})) : row[c]);
+
         // Conflict resolution: Hevy is the source of execution truth,
-        // so its sets/reps/weight/timing/volume OVERWRITE on each
-        // sync. AB Brain owns the coaching context (body_notes) — that
-        // is preserved if Hevy returns null.
+        // so its sets/reps/weight/timing/volume OVERWRITE on each sync.
+        // AB Brain owns the coaching context (body_notes) — preserved if
+        // Hevy returns null.
         const upsert = await query(
-          `INSERT INTO workouts (${cols.join(', ')}, metadata)
-           VALUES (${placeholders.join(', ')}, $${cols.length + 1}::jsonb)
+          `INSERT INTO workouts (${cols.join(', ')})
+           VALUES (${placeholders.join(', ')})
            ON CONFLICT (hevy_id) WHERE hevy_id IS NOT NULL DO UPDATE SET
              title = EXCLUDED.title,
              time_duration = EXCLUDED.time_duration,
+             duration_minutes = EXCLUDED.duration_minutes,
              started_at = EXCLUDED.started_at,
              ended_at = EXCLUDED.ended_at,
+             exercises = EXCLUDED.exercises,
              total_volume_lb = EXCLUDED.total_volume_lb,
              total_sets = EXCLUDED.total_sets,
              body_notes = COALESCE(workouts.body_notes, EXCLUDED.body_notes),
@@ -1166,6 +1218,93 @@ async function syncHevyWorkouts(since) {
     cursor_advanced_to: latestEventTime !== sinceIso ? latestEventTime : null,
   };
 }
+
+// ─── POST /api/hevy/backfill-exercises ────────────────────────
+// One-shot backfill for the v1.11.9 fix. Walks every Hevy-source workout
+// where `exercises` is empty/null and rebuilds it from
+// `metadata.hevy.raw_exercises` using the same transform as live sync.
+// After running, POST /api/goals/recompute-all picks up max weight + reps
+// from these rebuilt exercises[] arrays — restoring auto-compute for
+// Goals 1, 2, etc.
+//
+// Idempotent. Safe to run multiple times. Skips rows that already have
+// non-empty exercises.
+router.post('/backfill-exercises', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const r = await query(
+      `SELECT id, hevy_id, metadata
+         FROM workouts
+        WHERE source = 'hevy'
+          AND deleted_at IS NULL
+          AND (exercises IS NULL
+               OR jsonb_typeof(exercises) IS DISTINCT FROM 'array'
+               OR jsonb_array_length(exercises) = 0)
+          AND metadata IS NOT NULL`
+    );
+
+    let updated = 0;
+    let skipped = 0;
+    const failed = [];
+
+    for (const row of r.rows) {
+      try {
+        const raw = row.metadata?.hevy?.raw_exercises;
+        if (!Array.isArray(raw) || raw.length === 0) {
+          skipped++;
+          continue;
+        }
+        const exercises = transformHevyExercises(raw);
+        // Recompute volume/set count on backfill so they're consistent
+        let volumeLb = 0, setCount = 0;
+        for (const ex of raw) {
+          for (const s of (ex.sets || [])) {
+            if (s.weight_kg != null && s.reps != null) {
+              volumeLb += Number(s.weight_kg) * 2.2046226218 * Number(s.reps);
+              setCount++;
+            }
+          }
+        }
+        await query(
+          `UPDATE workouts
+              SET exercises = $1::jsonb,
+                  total_volume_lb = COALESCE(total_volume_lb, $2),
+                  total_sets = COALESCE(total_sets, $3),
+                  updated_at = NOW()
+            WHERE id = $4`,
+          [JSON.stringify(exercises), Math.round(volumeLb), setCount, row.id]
+        );
+        updated++;
+      } catch (err) {
+        failed.push({ id: row.id, hevy_id: row.hevy_id, error: err.message });
+      }
+    }
+
+    // After backfill, fire goal recompute so Goals 1+2 pick up the
+    // newly-visible exercise data. Fire-and-forget.
+    try {
+      const goals = require('./goals');
+      if (typeof goals.recomputeAllGoals === 'function') {
+        goals.recomputeAllGoals().catch(err =>
+          console.error('[hevy backfill → goals recompute]', err.message));
+      }
+    } catch (_) { /* goals not loaded — fine */ }
+
+    res.json({
+      ok: true,
+      total_candidates: r.rows.length,
+      updated,
+      skipped,
+      failed,
+      note: updated
+        ? `Rebuilt exercises[] on ${updated} Hevy workouts. Goal recompute kicked off in background.`
+        : 'No Hevy workouts needed backfill.',
+    });
+  } catch (err) {
+    console.error('[POST /hevy/backfill-exercises]', err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── POST /api/hevy/sync ──────────────────────────────────────
 // Pull recent Hevy workouts into AB Brain workouts table. Idempotent

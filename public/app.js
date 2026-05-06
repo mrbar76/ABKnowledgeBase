@@ -5,7 +5,7 @@ const API = '/api';
 // every app boot. On mismatch, the user sees a banner "New version available"
 // with a one-tap reload that bypasses cache. Prevents the PWA from quietly
 // running stale code after a deploy (which has bitten us multiple times).
-const APP_VERSION = '1.11.8';
+const APP_VERSION = '1.11.9';
 let currentTab = 'home';
 
 // Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
