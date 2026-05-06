@@ -102,7 +102,14 @@ async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', 'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone, ...opts.headers };
   if (key) headers['X-Api-Key'] = key;
   let res;
-  try { res = await fetch(API + path, { ...opts, headers }); } catch (e) { throw new Error(`Network error: ${e.message}`); }
+  try {
+    // v1.11.5: cache: 'no-store' bypasses browser HTTP cache entirely.
+    // Was causing Goals/Train/Effort cards to render stale data even after
+    // the backend was updated — fetch returned a cached response from a
+    // previous load. Caller can override via opts.cache if needed for
+    // a specific endpoint.
+    res = await fetch(API + path, { cache: 'no-store', ...opts, headers });
+  } catch (e) { throw new Error(`Network error: ${e.message}`); }
   if (res.status === 401) { showLogin('Session expired.'); throw new Error('Unauthorized'); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `${res.status}`);

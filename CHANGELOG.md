@@ -4,6 +4,40 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.5] — 2026-05-06
+
+### Hotfix — browser HTTP cache serving stale API responses
+
+Coach confirmed UI bug. Backend healthy (`/api/goals/dashboard` returns
+5 active goals + correct counts), but the home tab Goals widget showed
+the empty placeholder. Same symptom on Train ring (0% despite logged
+workout) and Effort indicator (0/7 despite effort 6.5 patched). Fuel +
+Recover cards were current — those happen to be loaded fresh by other
+code paths.
+
+Root cause: `app.js`'s `api()` helper called `fetch()` with no cache
+directive. Browser's HTTP cache happily served stale GET responses
+captured during earlier loads. Service worker correctly passes `/api/*`
+through (no SW caching) — but the browser layer was caching anyway.
+
+Fix: pass `cache: 'no-store'` in the default fetch options inside `api()`.
+Bypasses HTTP cache entirely on every API call. Caller can override via
+`opts.cache` for specific endpoints if needed.
+
+```js
+res = await fetch(API + path, { cache: 'no-store', ...opts, headers });
+```
+
+Also bumped `CACHE_NAME` to `abkb-v1.11.5` so the new `app.js` reaches
+installed PWAs.
+
+After Railway deploys + force-refresh once, Goals card + Train ring +
+Effort indicator all render fresh data on every load.
+
+133/133 tests pass.
+
+---
+
 ## [1.11.4] — 2026-05-06
 
 ### Hotfix — `POST /api/goals/seed-defaults` for empty-table recovery
