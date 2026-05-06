@@ -5,7 +5,7 @@ const API = '/api';
 // every app boot. On mismatch, the user sees a banner "New version available"
 // with a one-tap reload that bypasses cache. Prevents the PWA from quietly
 // running stale code after a deploy (which has bitten us multiple times).
-const APP_VERSION = '1.11.9';
+const APP_VERSION = '1.11.10';
 let currentTab = 'home';
 
 // Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
@@ -475,39 +475,154 @@ function unitFor(metric) {
   }
 }
 
+// v1.11.10: SMART detail view. Server returns structured `detail` block
+// with 7 sections (header, trajectory, where_you_are, where_you_need_to_be,
+// what_moves_the_needle, why_it_matters, recent). UI just lays them out
+// — no UUIDs, no ISO timestamps, no debug strings.
 async function showGoalDetail(goalId) {
   try {
-    const traj = await api(`/goals/${goalId}/trajectory`);
-    const g = traj.goal;
-    const projectionLabel = traj.projection && traj.projection.projected_target_date
-      ? `Projected: ${traj.projection.projected_target_date}`
-      : 'Projection: insufficient data';
-    openModal(g.title, `
-      <div class="muted" style="font-size:13px;margin-bottom:12px">
-        ${anchor_label(g)} · target ${g.target_value}${unitFor(g.metric)} by ${g.target_date}
+    const g = await api(`/goals/${goalId}`);
+    const detail = g.detail;
+    if (!detail) {
+      showToast('Detail block missing — server may be on older version', 'error');
+      return;
+    }
+    const color = GOAL_STATUS_COLOR[detail.header.status] || '#9ca3af';
+    const lockChip = detail.header.manual_locked
+      ? `<span title="Coach manually set this value; auto-compute is locked." style="background:#f59e0b;color:white;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px">🔒 LOCKED</span>`
+      : '';
+    const milestonesHTML = (detail.where_you_need_to_be.milestones || []).map(m =>
+      `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0">
+         <span class="muted">${esc(m.fraction)} mark · ${esc(m.date_display)}</span>
+         <strong>${esc(m.value_with_unit)}</strong>
+       </div>`
+    ).join('');
+
+    openModal(detail.header.title, `
+      <!-- Section 1: header status -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="background:${color};color:white;font-size:11px;padding:3px 10px;border-radius:8px;font-weight:600">${esc(detail.header.status_label)}</div>
+        <span class="muted" style="font-size:13px">target ${esc(detail.header.target_date_display)} · ${detail.header.days_to_target}d left</span>
+        ${lockChip}
       </div>
-      <div style="background:rgba(139,92,246,0.1);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:12px">
-        ${projectionLabel}
+
+      <!-- Section 2: trajectory chart -->
+      <canvas id="goal-traj-chart" height="200" style="margin-bottom:20px"></canvas>
+
+      <!-- Section 3: where you are -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8b5cf6;margin-bottom:4px">Where you are</div>
+        <div style="font-size:14px;line-height:1.4">${esc(detail.where_you_are)}</div>
       </div>
-      <canvas id="goal-traj-chart" height="220" style="margin-bottom:16px"></canvas>
-      <h4 style="margin-bottom:8px">History (${(traj.history || []).length})</h4>
-      <div style="max-height:220px;overflow-y:auto">
-        ${(traj.history || []).slice().reverse().map(h => `
-          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span>${h.value}${unitFor(g.metric)}</span>
-            <span class="muted" style="font-size:11px">${(h.recorded_at || '').slice(0, 10)} · ${esc(h.source_note || '')}</span>
+
+      <!-- Section 4: where you need to be -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8b5cf6;margin-bottom:4px">Where you need to be</div>
+        <div style="font-size:14px;line-height:1.4;margin-bottom:8px">Required pace: <strong>${esc(detail.where_you_need_to_be.pace_phrase)}</strong></div>
+        ${milestonesHTML ? `<div style="background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:6px">${milestonesHTML}</div>` : ''}
+      </div>
+
+      <!-- Section 5: what moves the needle -->
+      ${detail.what_moves_the_needle ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8b5cf6;margin-bottom:4px">What moves the needle</div>
+          <div style="font-size:14px;line-height:1.4">${esc(detail.what_moves_the_needle)}</div>
+        </div>` : ''}
+
+      <!-- Section 6: why it matters -->
+      ${detail.why_it_matters ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8b5cf6;margin-bottom:4px">Why it matters</div>
+          <div style="font-size:14px;line-height:1.4;font-style:italic;color:rgba(255,255,255,0.85)">${esc(detail.why_it_matters)}</div>
+        </div>` : ''}
+
+      <!-- Section 7: recent -->
+      ${(detail.recent || []).length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8b5cf6;margin-bottom:4px">Recent</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            ${detail.recent.map(r => `
+              <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
+                <strong>${esc(r.value_with_unit)}</strong>
+                <span class="muted" style="font-size:11px">${esc(r.date_display)}${r.source_note_short ? ` · ${esc(r.source_note_short)}` : ''}</span>
+              </div>
+            `).join('')}
           </div>
-        `).join('') || '<div class="muted">No history yet.</div>'}
-      </div>
+        </div>` : ''}
+
+      <!-- Actions -->
       <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
         <button onclick="goalManualUpdate('${g.id}', '${g.metric}')" class="btn-primary">Manual update</button>
-        <button onclick="goalRecompute('${g.id}')" class="btn-secondary">Recompute</button>
+        ${detail.header.manual_locked
+          ? `<button onclick="goalUnlock('${g.id}')" class="btn-secondary">Unlock auto-compute</button>`
+          : `<button onclick="goalRecompute('${g.id}')" class="btn-secondary">Recompute</button>`}
         ${g.status !== 'paused' ? `<button onclick="goalPauseToggle('${g.id}', 'paused')" class="btn-secondary">Pause</button>` : `<button onclick="goalPauseToggle('${g.id}', 'on_track')" class="btn-secondary">Resume</button>`}
       </div>
     `);
-    setTimeout(() => drawGoalTrajectoryChart('goal-traj-chart', traj), 60);
+    // Use the structured trajectory data from detail block (no separate fetch needed)
+    setTimeout(() => drawGoalTrajectoryChartFromDetail('goal-traj-chart', g, detail.trajectory), 60);
   } catch (err) {
     showToast(`Goal detail failed: ${err.message || err}`, 'error');
+  }
+}
+
+// v1.11.10: chart now reads from server-composed trajectory block.
+// Actual line uses goal_history points; target line is anchor → target.
+function drawGoalTrajectoryChartFromDetail(canvasId, goal, trajectory) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  const actualPoints = (trajectory.actual_points || []).map(p => ({
+    x: new Date(p.date + 'T00:00:00'),
+    y: Number(p.value),
+  }));
+  const targetLine = [
+    { x: new Date(trajectory.anchor.date + 'T00:00:00'), y: Number(trajectory.anchor.value) },
+    { x: new Date(trajectory.target.date + 'T00:00:00'), y: Number(trajectory.target.value) },
+  ];
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Actual',
+          data: actualPoints,
+          borderColor: GOAL_STATUS_COLOR[goal.status] || '#8b5cf6',
+          backgroundColor: 'rgba(139,92,246,0.1)',
+          tension: 0.2,
+          pointRadius: 4,
+        },
+        {
+          label: 'Target trajectory',
+          data: targetLine,
+          borderColor: 'rgba(255,255,255,0.4)',
+          borderDash: [6, 4],
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'week' }, ticks: { color: '#9ca3af' } },
+        y: { ticks: { color: '#9ca3af' } },
+      },
+      plugins: { legend: { labels: { color: '#9ca3af' } } },
+    },
+  });
+}
+
+async function goalUnlock(goalId) {
+  try {
+    await api(`/goals/${goalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ manual_locked: false }),
+    });
+    showToast('Auto-compute unlocked', 'success');
+    closeModal();
+    loadGoalsCard();
+  } catch (err) {
+    showToast(`Unlock failed: ${err.message}`, 'error');
   }
 }
 

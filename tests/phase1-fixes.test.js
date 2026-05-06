@@ -201,3 +201,87 @@ test('hevy: mapHevyWorkoutToAB now populates exercises field', () => {
   assert.ok(/duration_minutes:\s*durMin/.test(fnBody),
     'mapHevyWorkoutToAB should write duration_minutes for trends + goals');
 });
+
+// ─── v1.11.10: SMART detail view + manual_locked guard ──────────
+test('goals: schema adds coaching_action + race_relevance + manual_locked', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  assert.ok(/goals \+coaching_action/.test(src), 'coaching_action migration must be present');
+  assert.ok(/goals \+race_relevance/.test(src), 'race_relevance migration must be present');
+  assert.ok(/goals \+manual_locked/.test(src), 'manual_locked migration must be present');
+  assert.ok(/manual_locked BOOLEAN DEFAULT false/.test(src),
+    'manual_locked must default false');
+  // Seeds present for the 5 goals
+  assert.ok(/seed coaching_action pull-ups/.test(src));
+  assert.ok(/seed race_relevance pull-ups/.test(src));
+  assert.ok(/seed coaching_action deadlift/.test(src));
+  assert.ok(/seed coaching_action farmers walk/.test(src));
+  assert.ok(/seed coaching_action stair climber/.test(src));
+  assert.ok(/seed coaching_action run pace/.test(src));
+});
+
+test('goals recompute: manual_locked guard skips locked goals', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  assert.ok(/manual_locked\s*===\s*true/.test(src),
+    'recomputeOneGoal must short-circuit when manual_locked === true');
+  // SQL filter in recomputeForWorkout
+  assert.ok(/AND manual_locked = false/.test(src),
+    'recomputeForWorkout must SQL-filter to manual_locked = false');
+});
+
+test('goals PUT: source_note auto-locks when manual_locked not explicit', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  assert.ok(/b\.source_note\s*&&\s*b\.manual_locked\s*===\s*undefined/.test(src),
+    'PUT must auto-set manual_locked when source_note present and manual_locked not set explicitly');
+});
+
+test('goals GET /:id: returns structured detail block with 7 sections', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  assert.ok(/function composeGoalDetail/.test(src), 'composeGoalDetail helper must exist');
+  for (const section of [
+    'header', 'trajectory', 'where_you_are', 'where_you_need_to_be',
+    'what_moves_the_needle', 'why_it_matters', 'recent',
+  ]) {
+    const re = new RegExp(`\\b${section}[,:]`);
+    assert.ok(re.test(src), `detail must include ${section} section`);
+  }
+});
+
+test('goals detail: pace phrasing inverts when slow rate (+1 every X weeks)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  assert.ok(/\+1.*every.*weeks/.test(src),
+    'composeWhereYouNeedToBe must phrase slow rates as "+1 every X weeks"');
+  // Milestones at 1/3 and 2/3
+  assert.ok(/'1\/3'/.test(src) && /'2\/3'/.test(src),
+    'milestones at 1/3 and 2/3 of remaining time must be present');
+});
+
+test('goals detail: smart-formatted dates (no UUIDs / ISO timestamps in display strings)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  assert.ok(/function smartDateDisplay/.test(src),
+    'smartDateDisplay helper must exist');
+  // Returns "today" / "yesterday" / "Nd ago" / month-day for older
+  assert.ok(/return 'today'/.test(src));
+  assert.ok(/return 'yesterday'/.test(src));
+  assert.ok(/d ago/.test(src));
+});
+
+test('app.js: SMART detail modal renders structured sections, not debug dump', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8');
+  // Section labels appear in the modal HTML
+  for (const label of [
+    'Where you are', 'Where you need to be', 'What moves the needle',
+    'Why it matters', 'Recent',
+  ]) {
+    assert.ok(src.includes(label), `modal must render section: ${label}`);
+  }
+  // No raw recorded_at ISO strings displayed
+  const detailFn = src.split('function showGoalDetail')[1].split('async function goalUnlock')[0];
+  assert.ok(!/recorded_at \|\| ''/.test(detailFn),
+    'detail modal must not display raw recorded_at — server provides date_display');
+  // Lock chip present
+  assert.ok(/manual_locked/.test(detailFn) && /LOCKED/.test(detailFn),
+    'detail modal must surface lock state when manual_locked is true');
+  // goalUnlock action exists
+  assert.ok(/async function goalUnlock/.test(src),
+    'goalUnlock helper must POST PUT { manual_locked: false }');
+});

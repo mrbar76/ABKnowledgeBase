@@ -299,6 +299,11 @@ router.post('/phases', async (req, res) => {
 });
 
 // ─── GET /api/goals/:id ───────────────────────────────────────────
+// v1.11.10: returns goal + history + structured `detail` block with the
+// 7 SMART sections the UI renders (header, trajectory, where_you_are,
+// where_you_need_to_be, what_moves_the_needle, why_it_matters, recent).
+// All copy is computed server-side — no UUIDs, ISO timestamps, or raw
+// debug data leak into the response strings the UI displays.
 router.get('/:id', async (req, res) => {
   try {
     const goal = await query(`SELECT * FROM goals WHERE id = $1`, [req.params.id]);
@@ -307,12 +312,248 @@ router.get('/:id', async (req, res) => {
       `SELECT * FROM goal_history WHERE goal_id = $1 ORDER BY recorded_at ASC`,
       [req.params.id]
     );
-    res.json({ ...goal.rows[0], history: history.rows });
+    const detail = composeGoalDetail(goal.rows[0], history.rows);
+    res.json({ ...goal.rows[0], history: history.rows, detail });
   } catch (err) {
     console.error('[GET /goals/:id]', err.stack);
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Detail composer (v1.11.10) ───────────────────────────────────
+// All 7 sections rendered server-side as plain strings + structured data.
+// UI just lays out what we send; no string formatting needed in the client
+// beyond placement.
+function composeGoalDetail(goal, history) {
+  const today = new Date();
+  const todayISO = today.toISOString().slice(0, 10);
+  const targetDate = new Date(goal.target_date);
+  const anchorDate = new Date(goal.anchor_date);
+  const isPace = goal.metric === 'pace_min_per_mi';
+  const unit = unitForMetric(goal.metric);
+
+  const daysLeft = Math.max(0, Math.round((targetDate - today) / 86400_000));
+  const weeksLeft = Math.max(0.1, daysLeft / 7);
+
+  // Section 1 — header
+  const header = {
+    title: goal.title,
+    target_date_display: smartDateDisplay(goal.target_date, today, /*includeYearAlways*/ true),
+    days_to_target: daysLeft,
+    status: goal.status,
+    status_label: friendlyStatusLabel(goal),
+    manual_locked: !!goal.manual_locked,
+  };
+
+  // Section 2 — trajectory chart points (UI consumes via Chart.js)
+  const trajectory = {
+    anchor: { value: Number(goal.anchor_value), date: dateOnly(goal.anchor_date) },
+    target: { value: Number(goal.target_value), date: dateOnly(goal.target_date) },
+    expected_today: expectedToday(goal, todayISO),
+    actual_points: history.map(h => ({
+      date: dateOnly(h.recorded_at),
+      value: Number(h.value),
+      source_note: h.source_note || null,
+    })),
+  };
+
+  // Section 3 — Where you are. 1-2 sentences. Reads like coaching.
+  const where_you_are = composeWhereYouAre(goal, history, today);
+
+  // Section 4 — Where you need to be. Pace required + milestones.
+  const where_you_need_to_be = composeWhereYouNeedToBe(goal, today, daysLeft, weeksLeft, unit);
+
+  // Sections 5 + 6 — author-controlled coaching guidance
+  const what_moves_the_needle = goal.coaching_action || null;
+  const why_it_matters = goal.race_relevance || null;
+
+  // Section 7 — last 3 history rows, smart-formatted
+  const recent = history.slice(-3).reverse().map(h => ({
+    date_display: smartDateDisplay(h.recorded_at, today, /*includeYearAlways*/ false),
+    value: Number(h.value),
+    value_with_unit: `${Number(h.value)}${unit}`,
+    source_note_short: shortenNote(h.source_note),
+  }));
+
+  return {
+    header,
+    trajectory,
+    where_you_are,
+    where_you_need_to_be,
+    what_moves_the_needle,
+    why_it_matters,
+    recent,
+  };
+}
+
+// ─── detail-composer helpers ──────────────────────────────────────
+function unitForMetric(metric) {
+  switch (metric) {
+    case 'weight_lb': return 'lb';
+    case 'reps': return '';
+    case 'duration_sec': return 's';
+    case 'duration_min': return 'min';
+    case 'distance_mi': return 'mi';
+    case 'pace_min_per_mi': return '/mi';
+    case 'hr_avg': return 'bpm';
+    case 'bf_pct': return '%';
+    default: return '';
+  }
+}
+
+function friendlyStatusLabel(goal) {
+  // Match the UI's statusLabelFor logic: "Baseline" when pending + at-baseline
+  if (goal.status === 'pending'
+      && goal.current_value != null
+      && Number(goal.current_value) === Number(goal.anchor_value)) {
+    return 'Baseline';
+  }
+  const map = {
+    pending: 'No data yet',
+    on_track: 'On track',
+    ahead: 'Ahead',
+    behind: 'Behind',
+    at_risk: 'At risk',
+    paused: 'Paused',
+    complete: 'Complete',
+    failed: 'Past target',
+  };
+  return map[goal.status] || goal.status;
+}
+
+function expectedToday(goal, todayISO) {
+  const a = Number(goal.anchor_value);
+  const t = Number(goal.target_value);
+  const aD = new Date(goal.anchor_date).getTime();
+  const tD = new Date(goal.target_date).getTime();
+  const total = tD - aD;
+  if (total <= 0) return { value: t, date: dateOnly(todayISO) };
+  const elapsed = Math.max(0, Math.min(total, new Date(todayISO).getTime() - aD));
+  const v = a + (t - a) * (elapsed / total);
+  return { value: Math.round(v * 100) / 100, date: dateOnly(todayISO) };
+}
+
+// Smart relative-or-absolute date formatting. Inside a week → "today",
+// "yesterday", "Nd ago". Older → "Mar 26" or "Mar 26 2025" (year only
+// when needed for disambiguation).
+function smartDateDisplay(dateLike, today, includeYearAlways) {
+  if (!dateLike) return '—';
+  const d = new Date(typeof dateLike === 'string' ? dateLike.slice(0, 10) + 'T00:00:00' : dateLike);
+  if (isNaN(d.getTime())) return '—';
+  const t = new Date(today);
+  t.setHours(0, 0, 0, 0);
+  const days = Math.round((t.getTime() - d.getTime()) / 86400_000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days > 1 && days < 7) return `${days}d ago`;
+  if (days < 0 && days > -7) return `in ${-days}d`;
+  // Older / further-out — month + day, year only when crossing year boundaries
+  const sameYear = d.getFullYear() === t.getFullYear();
+  const fmt = { month: 'short', day: 'numeric' };
+  if (!sameYear || includeYearAlways) fmt.year = 'numeric';
+  return d.toLocaleDateString(undefined, fmt);
+}
+
+function shortenNote(s) {
+  if (!s) return null;
+  const trimmed = String(s).trim();
+  if (trimmed === 'anchor') return 'baseline anchor';
+  if (trimmed.length <= 60) return trimmed;
+  return trimmed.slice(0, 57) + '...';
+}
+
+function composeWhereYouAre(goal, history, today) {
+  const unit = unitForMetric(goal.metric);
+  if (goal.current_value == null) {
+    return `No data point yet. Anchor was ${goal.anchor_value}${unit} on ${smartDateDisplay(goal.anchor_date, today, true)}.`;
+  }
+  const isAtBaseline = Number(goal.current_value) === Number(goal.anchor_value);
+  const dateLabel = smartDateDisplay(goal.current_value_date, today, false);
+  if (isAtBaseline) {
+    return `Currently at ${goal.current_value}${unit} — baseline. Block hasn't accumulated training data yet.`;
+  }
+  // Look for "recalibrated" in notes for context
+  const wasRecalibrated = goal.notes && /recalibrat/i.test(goal.notes);
+  const baseSentence = `Currently at ${goal.current_value}${unit}, set ${dateLabel}.`;
+  let context = '';
+  // Look at last history note for color
+  if (history.length) {
+    const last = history[history.length - 1];
+    if (last.source_note && last.source_note !== 'anchor' && last.source_note.length < 120) {
+      context = ` ${last.source_note}.`;
+    }
+  }
+  if (wasRecalibrated && goal.notes) {
+    // Pull the recalibration phrase if present
+    const m = goal.notes.match(/[Rr]ecalibrat[^.]*\./);
+    if (m) context = ` ${m[0]}`;
+  }
+  return baseSentence + context;
+}
+
+function composeWhereYouNeedToBe(goal, today, daysLeft, weeksLeft, unit) {
+  const target = Number(goal.target_value);
+  const current = goal.current_value != null ? Number(goal.current_value) : Number(goal.anchor_value);
+  const isPace = goal.metric === 'pace_min_per_mi';
+  const delta = isPace ? current - target : target - current;
+  // Target reached?
+  if ((isPace && current <= target) || (!isPace && current >= target)) {
+    return {
+      pace_phrase: 'Target hit. Lock in or set a stretch target.',
+      milestones: [],
+      weekly_required: 0,
+    };
+  }
+  if (daysLeft <= 0) {
+    return {
+      pace_phrase: 'Target date passed.',
+      milestones: [],
+      weekly_required: null,
+    };
+  }
+  const perWeek = Math.abs(delta) / weeksLeft;
+  let pace_phrase;
+  if (perWeek === 0) {
+    pace_phrase = 'No gap to close.';
+  } else if (perWeek < 0.5) {
+    // Slow rate — invert phrasing: "+1 unit every X weeks"
+    const weeksPerUnit = 1 / perWeek;
+    const noun = unit ? unit : (goal.metric === 'reps' ? 'rep' : 'unit');
+    pace_phrase = `+1 ${noun} every ${weeksPerUnit < 10 ? weeksPerUnit.toFixed(1) : Math.round(weeksPerUnit)} weeks`;
+  } else {
+    // Faster rate — "+X units per week"
+    const decimals = perWeek < 5 ? 1 : 0;
+    pace_phrase = `+${perWeek.toFixed(decimals)}${unit}/week`;
+  }
+  // Milestones at 1/3 and 2/3 of remaining time
+  const oneThirdDate = new Date(today.getTime() + (daysLeft / 3) * 86400_000);
+  const twoThirdDate = new Date(today.getTime() + (daysLeft * 2 / 3) * 86400_000);
+  const oneThirdValue = isPace
+    ? current - (Math.abs(delta) / 3)
+    : current + (Math.abs(delta) / 3);
+  const twoThirdValue = isPace
+    ? current - (Math.abs(delta) * 2 / 3)
+    : current + (Math.abs(delta) * 2 / 3);
+  const round = (v) => goal.metric === 'reps' ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100;
+  return {
+    pace_phrase,
+    weekly_required: Math.round(perWeek * 100) / 100,
+    milestones: [
+      {
+        fraction: '1/3',
+        date_display: smartDateDisplay(oneThirdDate.toISOString(), today, false),
+        value_target: round(oneThirdValue),
+        value_with_unit: `${round(oneThirdValue)}${unit}`,
+      },
+      {
+        fraction: '2/3',
+        date_display: smartDateDisplay(twoThirdDate.toISOString(), today, false),
+        value_target: round(twoThirdValue),
+        value_with_unit: `${round(twoThirdValue)}${unit}`,
+      },
+    ],
+  };
+}
 
 // ─── POST /api/goals ──────────────────────────────────────────────
 router.post('/', async (req, res) => {
@@ -372,7 +613,18 @@ router.put('/:id', async (req, res) => {
       'current_value_source_id','linked_exercise_names','linked_workout_types',
       'compute_method','phase_primary','phase_maintenance','status',
       'evidence_label','notes',
+      'coaching_action','race_relevance','manual_locked',
     ];
+
+    // v1.11.10: when source_note is in the body and manual_locked isn't
+    // explicitly set, auto-lock. Today's pull-up incident: Coach patched
+    // current_value to 3 strict with a source_note explaining the Hevy
+    // discrepancy; the next sync overwrote back to 5 (raw set count).
+    // Auto-lock prevents that silent override. Caller can opt out by
+    // explicitly passing manual_locked: false alongside source_note.
+    if (b.source_note && b.manual_locked === undefined) {
+      b.manual_locked = true;
+    }
     const fields = []; const params = []; let i = 1;
     for (const k of allowed) {
       if (b[k] === undefined) continue;
@@ -488,6 +740,13 @@ router.post('/recompute-all', async (req, res) => {
 
 // ─── recompute internals (also exported for hooks) ────────────────
 async function recomputeOneGoal(goal) {
+  // v1.11.10: manual_locked guard. Coach patches with source_note are
+  // protected from being silently overwritten by raw aggregator output
+  // on the next workout sync. Unlock via PUT { manual_locked: false }.
+  if (goal.manual_locked === true) {
+    return goal;
+  }
+
   if (goal.compute_method === 'manual') {
     // Manual goals: just recompute status from existing current_value
     const newStatus = computeStatus(goal);
@@ -598,10 +857,13 @@ async function recomputeForWorkout(workoutRow) {
   })();
   const workoutType = (workoutRow.workout_type || '').toLowerCase();
 
+  // v1.11.10: filter out manual_locked goals at the query level so we
+  // don't even consider them for recompute.
   const goals = await query(
     `SELECT * FROM goals
      WHERE status NOT IN ('complete','failed','paused')
-       AND compute_method <> 'manual'`
+       AND compute_method <> 'manual'
+       AND manual_locked = false`
   );
   const matching = goals.rows.filter(g => {
     const namesOverlap = (g.linked_exercise_names || []).some(n =>

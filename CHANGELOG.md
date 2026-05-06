@@ -4,6 +4,97 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.10] — 2026-05-06
+
+### Goal detail view (SMART) + manual_locked override guard
+
+Coach handoff. Two deliverables.
+
+**Part A — `GET /api/goals/:id` returns a structured `detail` block.**
+
+Composer in `routes/goals.js`. Seven sections, all server-rendered to
+plain strings + structured data. UI just lays them out — no UUIDs, ISO
+timestamps, or raw debug data leak into display.
+
+| Section | Content |
+|---|---|
+| `header` | title, target_date_display ("Sep 12, 2026"), days_to_target, status_label ("On track" / "At risk" / "Baseline" / etc.), manual_locked flag |
+| `trajectory` | anchor + target endpoints + expected_today + actual_points[] from goal_history. Chart.js consumes directly. |
+| `where_you_are` | 1–2 sentence narrative. "Currently at 3 strict, set today. Hevy note specifies 3 strict unassisted, rest 40 lb assisted." Reads recalibration context from `notes` field. |
+| `where_you_need_to_be` | pace_phrase + milestones. Slow rate inverts: "+1 rep every 4.3 weeks" not "+0.23/week". Milestones at 1/3 and 2/3 of remaining time. |
+| `what_moves_the_needle` | author-controlled `coaching_action` field, surfaced verbatim |
+| `why_it_matters` | author-controlled `race_relevance` field |
+| `recent` | last 3 history rows, smart-formatted ("today" / "5d ago" / "Mar 26") with shortened source_note. No timestamps. |
+
+**Part B — `manual_locked` guard.**
+
+New boolean column on `goals`, default `false`. When `true`,
+`recomputeOneGoal` short-circuits and `recomputeForWorkout`
+SQL-filters the goal out. Manual coach patches no longer get silently
+overwritten by raw aggregator output.
+
+`PUT /api/goals/:id` auto-sets `manual_locked: true` when `source_note`
+is present in the body and `manual_locked` isn't explicitly set.
+Explicit unlock via `PUT { manual_locked: false }`. UI surfaces a
+🔒 LOCKED chip in the detail header and replaces "Recompute" button
+with "Unlock auto-compute" when locked.
+
+**Schema additions:**
+- `goals.coaching_action TEXT`
+- `goals.race_relevance TEXT`
+- `goals.manual_locked BOOLEAN DEFAULT false`
+
+**Seed migrations** (idempotent — only writes where columns are null):
+the 5 active goals get the canonical `coaching_action` + `race_relevance`
+copy from the spec. Avi can edit later via `PUT /api/goals/:id`; the
+WHERE-NULL guard prevents the seed from clobbering edits.
+
+**UI changes (`public/app.js`):**
+- `showGoalDetail` rewritten — fetches `/goals/:id` (single call) and
+  renders the 7-section layout instead of the old debug-dump modal.
+- `drawGoalTrajectoryChartFromDetail` reads from the server-composed
+  trajectory block (no separate `/trajectory` fetch).
+- `goalUnlock` helper for the unlock action.
+
+### Tests
+8 new assertions: schema migrations present, recompute guards (both
+sites), PUT auto-lock condition, detail composer with all 7 sections,
+slow-rate pace phrasing, smart-formatted dates, modal renders structured
+sections + lock chip + unlock action. 149/149 tests pass.
+
+### What you do after deploy
+
+```
+# 1. Re-patch the pull-up incident from this morning. Coach observed:
+#    - Manual patch: 3 strict (honest count from Hevy note)
+#    - Auto-compute overwrote to 5 (raw set count)
+#    Now safe to patch — manual_locked auto-fires from source_note.
+curl -X PUT -H "x-api-key: $KEY" -H "Content-Type: application/json" \
+  -d '{
+    "current_value": 3,
+    "current_value_date": "2026-05-06",
+    "source_note": "Hevy note specifies 3 strict unassisted, rest 40 lb assisted. Honest strict count = 3."
+  }' \
+  https://ab-brain.up.railway.app/api/goals/c2777efe-2061-4a76-9ea7-69e039fdf459
+
+# 2. Verify the lock landed
+curl -s -H "x-api-key: $KEY" \
+  https://ab-brain.up.railway.app/api/goals/c2777efe-2061-4a76-9ea7-69e039fdf459 \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print('current:', d['current_value'], '· locked:', d['manual_locked'])"
+# Expected: current: 3 · locked: True
+
+# 3. Trigger a recompute to confirm the lock holds
+curl -X POST -H "x-api-key: $KEY" https://ab-brain.up.railway.app/api/goals/recompute-all
+# Pull-up goal current_value stays 3, even though raw set count = 5.
+```
+
+### Out of scope
+- Trajectory chart confidence bands (cosmetic, future)
+- AI-generated `coaching_action`/`race_relevance` (manual seed only)
+- Phase-aware projected pace adjustments (separate task)
+
+---
+
 ## [1.11.9] — 2026-05-06
 
 ### Bug C — Hevy sync `exercises[]` transform + backfill

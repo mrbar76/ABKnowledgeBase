@@ -1939,6 +1939,57 @@ async function initDB() {
     )`);
   await safeQuery('goal_history idx goal_time', `CREATE INDEX IF NOT EXISTS idx_goal_history_goal_time ON goal_history(goal_id, recorded_at DESC)`);
 
+  // v1.11.10 — SMART detail view + manual override guard
+  // - coaching_action / race_relevance: text Coach + Avi author per goal,
+  //   surfaced verbatim in the detail view "what moves the needle" + "why
+  //   it matters" sections
+  // - manual_locked: when true, auto-recompute SKIPS the goal so a manual
+  //   patch (e.g., honest strict-rep count after Hevy note review) can't
+  //   be silently overwritten by raw aggregator output. PUT with source_note
+  //   automatically sets this true; explicit unlock via PUT { manual_locked: false }.
+  await safeQuery('goals +coaching_action', `ALTER TABLE goals ADD COLUMN IF NOT EXISTS coaching_action TEXT`);
+  await safeQuery('goals +race_relevance', `ALTER TABLE goals ADD COLUMN IF NOT EXISTS race_relevance TEXT`);
+  await safeQuery('goals +manual_locked', `ALTER TABLE goals ADD COLUMN IF NOT EXISTS manual_locked BOOLEAN DEFAULT false`);
+
+  // Seed coaching_action + race_relevance for the 5 known goals. Idempotent
+  // — only writes when those columns are still null. Avi can edit later via
+  // PUT /api/goals/:id and the WHERE NULL guard means the seed won't clobber
+  // any edits.
+  await safeQuery('seed coaching_action pull-ups', `
+    UPDATE goals SET coaching_action = 'Strict-rep accumulation, not max sets with assist. 5 sets x max strict + assisted to fail, twice a week, until you hit 5 strict in a single set.'
+     WHERE title LIKE 'Pull-ups%' AND coaching_action IS NULL`);
+  await safeQuery('seed race_relevance pull-ups', `
+    UPDATE goals SET race_relevance = 'Failed rig = 30 burpee penalty (Spartan published rule). Killington has multiple rigs. 8 strict = obstacle clean without grinder.'
+     WHERE title LIKE 'Pull-ups%' AND race_relevance IS NULL`);
+
+  await safeQuery('seed coaching_action deadlift', `
+    UPDATE goals SET coaching_action = '5x5 progression, 3.5 lb/week, RPE <=8 cap. Weekly working set or back-off set. Don''t grind sets — leave 1-2 reps in the tank.'
+     WHERE title LIKE 'Deadlift%' AND coaching_action IS NULL`);
+  await safeQuery('seed race_relevance deadlift', `
+    UPDATE goals SET race_relevance = 'Atlas stones, log carry, sandbag and bucket pickups all start from the floor. Strong hinge = clean obstacle pickups without back rounding.'
+     WHERE title LIKE 'Deadlift%' AND race_relevance IS NULL`);
+
+  await safeQuery('seed coaching_action farmers walk', `
+    UPDATE goals SET coaching_action = '2 sessions per week, build either weight (65->70->75) or duration (40s->50s->60s). Don''t chase both at once.'
+     WHERE title LIKE 'Farmer%walk%' AND coaching_action IS NULL`);
+  await safeQuery('seed race_relevance farmers walk', `
+    UPDATE goals SET race_relevance = 'Killington bucket carry is 60-80 lb up steep grade. 75 x 60s = clean carry without grip failure.'
+     WHERE title LIKE 'Farmer%walk%' AND race_relevance IS NULL`);
+
+  await safeQuery('seed coaching_action stair climber', `
+    UPDATE goals SET coaching_action = 'Build duration before intensity. Add 5 min Z3 every 7-10 days. Verify HR with sample analysis, not perceived effort.'
+     WHERE title LIKE 'Stair climber%' AND coaching_action IS NULL`);
+  await safeQuery('seed race_relevance stair climber', `
+    UPDATE goals SET race_relevance = 'Killington Beast = 5+ hours sustained vertical. 90 min Z3 = half race effort = minimum viable race prep.'
+     WHERE title LIKE 'Stair climber%' AND race_relevance IS NULL`);
+
+  await safeQuery('seed coaching_action run pace', `
+    UPDATE goals SET coaching_action = 'Execute one 5-mile run at sub-9:30 pace and the goal is met. Currently a logistics goal, not a fitness goal.'
+     WHERE title LIKE 'Run 5mi%' AND coaching_action IS NULL`);
+  await safeQuery('seed race_relevance run pace', `
+    UPDATE goals SET race_relevance = 'Killington has ~7 mi running between obstacles. OCR is 60-70% running by time. Pace floor matters.'
+     WHERE title LIKE 'Run 5mi%' AND race_relevance IS NULL`);
+
   // v1.11.2: add 'pending' status. Goals with current_value=null should
   // surface as pending, not on_track — coach was reading "on_track" with
   // no data as a positive signal, which is misleading. ALTER existing
