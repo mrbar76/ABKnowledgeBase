@@ -88,16 +88,36 @@ function hideLogin() {
 }
 async function doLogin(e) {
   if (e) e.preventDefault();
-  const key = document.getElementById('login-key').value.trim();
-  if (!key) return;
+  const username = document.getElementById('login-username')?.value.trim();
+  const password = document.getElementById('login-password')?.value;
+  const errEl = document.getElementById('login-error');
+  if (!username || !password) {
+    if (errEl) { errEl.textContent = 'Username and password required.'; errEl.style.display = 'block'; }
+    return;
+  }
   try {
-    const res = await fetch(API + '/dashboard', { headers: { 'X-Api-Key': key } });
-    if (res.status === 401) { document.getElementById('login-error').textContent = 'Invalid API key.'; document.getElementById('login-error').style.display = 'block'; return; }
-    const remember = document.getElementById('login-remember').checked;
-    sessionStorage.setItem('ab_api_key', key);
-    if (remember) localStorage.setItem('ab_api_key', key);
-    hideLogin(); switchTab('home');
-  } catch { document.getElementById('login-error').textContent = 'Connection error.'; document.getElementById('login-error').style.display = 'block'; }
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (errEl) { errEl.textContent = body.error || 'Login failed.'; errEl.style.display = 'block'; }
+      return;
+    }
+    if (!body.api_key) {
+      if (errEl) { errEl.textContent = 'Server returned no token.'; errEl.style.display = 'block'; }
+      return;
+    }
+    const remember = document.getElementById('login-remember')?.checked;
+    sessionStorage.setItem('ab_api_key', body.api_key);
+    if (remember) localStorage.setItem('ab_api_key', body.api_key);
+    hideLogin();
+    switchTab('today');
+  } catch {
+    if (errEl) { errEl.textContent = 'Connection error.'; errEl.style.display = 'block'; }
+  }
 }
 function logout() { sessionStorage.removeItem('ab_api_key'); localStorage.removeItem('ab_api_key'); showLogin(); }
 

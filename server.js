@@ -5,6 +5,7 @@ const path = require('path');
 const { initDB, query, logActivity, logActivityWith, withTransaction } = require('./db');
 const syncStatus = require('./sync-status');
 
+const authRoutes = require('./routes/auth');
 const knowledgeRoutes = require('./routes/knowledge');
 const taskRoutes = require('./routes/tasks');
 const transcriptRoutes = require('./routes/transcripts');
@@ -151,6 +152,7 @@ app.get('/dropbox-auth', (req, res) => dropboxRoutes.renderAuthPage(req, res));
 // browser history, and Referer headers.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health-check') return next();
+  if (req.path === '/auth/login') return next();
   if (!API_KEY) return next();
   let provided = req.headers['x-api-key'];
   if (!provided) {
@@ -238,6 +240,7 @@ app.get('/api/purge/status', (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/transcripts', transcriptRoutes);
