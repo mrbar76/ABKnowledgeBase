@@ -91,3 +91,65 @@ test('insights /trends: monotony null-guards meanLast7', () => {
   assert.ok(/meanLast7\s*!=\s*null\s*&&\s*meanLast7\s*>\s*0/.test(src),
     'monotony calculation must guard against meanLast7 = 0 / null');
 });
+
+// ─── Bug A (v1.11.8): no alias-column collision in PUT/PATCH ──────
+test('workouts PUT/PATCH: NUMERIC_FIELDS handles dual columns inline (no third loop)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/workouts.js'), 'utf8');
+  // The bug was a third loop that re-wrote duration_minutes/hr_avg/etc.
+  // even though WRITABLE_FIELDS already covered them, producing
+  // "multiple assignments to same column" Postgres errors. v1.11.8 moved
+  // numeric coercion into the first loop via NUMERIC_FIELDS Set.
+  assert.ok(/const NUMERIC_FIELDS = new Set\(/.test(src),
+    'NUMERIC_FIELDS Set must declare numeric duals for inline coercion');
+  for (const col of ['duration_minutes', 'hr_avg', 'hr_max', 'cal_active', 'cadence']) {
+    const re = new RegExp(`'${col}'`);
+    assert.ok(re.test(src), `NUMERIC_FIELDS must include ${col}`);
+  }
+  // The redundant third loop should be gone — was iterating these same
+  // numeric columns and pushing duplicate SET clauses.
+  assert.ok(!/Allow direct numeric field updates/.test(src),
+    'redundant "Allow direct numeric field updates" loop must be removed');
+});
+
+// ─── Bug B (v1.11.8): merge-on-undefined semantics, regression test ───
+test('workouts PUT/PATCH: merge semantics — only present keys land in SET clause', () => {
+  // Static check: handler iterates WRITABLE_FIELDS guarded by
+  // `b[key] !== undefined`. Keys not in body are skipped, leaving the
+  // existing column value intact. Documents the contract — if Coach saw
+  // fields wiping, the request body was sending null/empty-string for
+  // those keys (explicit clear, by design).
+  const src = fs.readFileSync(path.join(__dirname, '../routes/workouts.js'), 'utf8');
+  assert.ok(/b\[key\]\s*!==\s*undefined/.test(src),
+    'handler must guard SET clause with b[key] !== undefined for merge-on-undefined');
+  assert.ok(/Merge semantics/.test(src),
+    'merge contract should be documented in handler comment block');
+});
+
+// ─── v1.11.8 dashboard adds last_attempt + is_at_baseline + next_phase ───
+test('goals dashboard: emits last_attempt, is_at_baseline, current_value_date_iso, next_phase', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  assert.ok(/is_at_baseline:/.test(src), 'decorate() must emit is_at_baseline');
+  assert.ok(/current_value_date_iso:/.test(src), 'decorate() must emit current_value_date_iso for client-TZ rendering');
+  // last_attempt attached via property assignment (decorated.last_attempt = ...)
+  assert.ok(/decorated\.last_attempt\s*=\s*await\s*lastAttemptFor/.test(src),
+    'decorate flow must attach last_attempt from lastAttemptFor');
+  assert.ok(/next_phase:/.test(src), 'dashboard response must include next_phase for between-phases header');
+  assert.ok(/async function lastAttemptFor/.test(src), 'lastAttemptFor helper must exist');
+});
+
+// ─── v1.11.8 STATUS_URGENCY new sort order ────────────────────────
+test('goals STATUS_URGENCY: at_risk → behind → on_track → pending → ahead', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/goals.js'), 'utf8');
+  // Coach wants on_track before pending — most-needs-attention floats up,
+  // pending falls below since it's awaiting first data point not stalled.
+  const m = src.match(/at_risk:\s*0,\s*behind:\s*1,\s*on_track:\s*2,\s*pending:\s*3,\s*ahead:\s*4/);
+  assert.ok(m, 'STATUS_URGENCY must order: at_risk(0) → behind(1) → on_track(2) → pending(3) → ahead(4)');
+});
+
+test('app.js: renderGoalRow surfaces baseline marker + last-attempt line', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8');
+  assert.ok(/BASELINE SET/.test(src), 'progress bar must render baseline marker when is_at_baseline');
+  assert.ok(/last attempt:/.test(src), 'renderGoalRow must include last-attempt line for sub-anchor sessions');
+  assert.ok(/relativeDateLabel/.test(src), 'must define client-side relativeDateLabel for local-TZ rendering');
+  assert.ok(/statusLabelFor/.test(src), 'must define dynamic statusLabelFor (Baseline vs No data)');
+});

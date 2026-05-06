@@ -4,6 +4,77 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.8] — 2026-05-06
+
+### Coach handoff — Bug A + Goals UI fixes 1-6 + Bug B contract clarification
+
+**Bug A — `PUT /api/workouts/:id` alias-column collision (high priority).**
+The PUT/PATCH handler had a redundant third loop that wrote
+`duration_minutes`, `hr_avg`, `cal_active`, etc. to the SET clause —
+even though those columns were already covered by `WRITABLE_FIELDS` in
+the first loop. Result: Postgres "multiple assignments to same column
+duration_minutes" → 500 on every PUT that included a numeric dual.
+
+Fix: introduced `NUMERIC_FIELDS` Set inside the handler. First loop now
+detects numeric duals and applies `Number()` coercion inline. Removed
+the redundant third loop entirely. The `numericMap` (auto-derive numeric
+from text fields when only the text was provided) stays — it correctly
+guards on `b[numCol] === undefined` to avoid double-write.
+
+**Bug B — `PUT` merge semantics clarified.**
+Coach reported sending `{body_notes: "..."}` wiped other fields. After
+re-checking, the handler is correctly merge-on-undefined — keys not
+present in the body are skipped, leaving the existing column value
+intact. **`null` and empty-string in the body ARE explicit clears.**
+If you saw fields wiping, the client sent null/empty-string. To leave
+a field unchanged, omit the key entirely. Added regression test +
+explicit comment block documenting the contract.
+
+**Goals UI fixes 1-6 (Coach's UX list):**
+1. **Day-zero progress bar** — when `current_value == anchor_value`
+   (`is_at_baseline` true), the bar renders as `— BASELINE SET —` text
+   marker instead of an empty 0% fill. The trio anchor → anchor → target
+   reads as the starting line, not absence of data.
+2. **Date timezone** — `current_value_date_iso` sent raw from server;
+   client computes "today / yesterday / N days ago" via new
+   `relativeDateLabel()` in user's local TZ.
+3. **"No data" vs "Baseline" badge** — new `statusLabelFor(g)` returns
+   "Baseline" when `status === 'pending' && is_at_baseline`. "No data"
+   only when there's truly no anchor either.
+4. **Last-attempt line for sub-anchor sessions** — dashboard composite
+   now attaches `last_attempt` per goal via new `lastAttemptFor()` query
+   that scans workouts matching `linked_exercise_names` OR
+   `linked_workout_types` since `anchor_date`. UI renders italic
+   "last attempt: 60lb × 5 on yesterday (sub-anchor)" line under the
+   trio when applicable.
+5. **Sort order** — `STATUS_URGENCY` updated:
+   `at_risk(0) → behind(1) → on_track(2) → pending(3) → ahead(4) →
+   paused(5) → complete(6) → failed(7)`. Most-needs-attention first;
+   pending sinks below in-progress goals.
+6. **Between-phases header + empty state** — when `active_phase` is null,
+   dashboard surfaces `next_phase` and `focus_summary` says
+   "Between phases. Phase X (Name) starts in N days on YYYY-MM-DD."
+   Header label flips to "Phase X starts YYYY-MM-DD." Dev placeholder
+   ("POST /api/goals to create one") replaced with user copy:
+   "No goals tracked yet. Coach can add one — or open a goal in
+   Settings."
+
+### Tests
+- `tests/phase1-fixes.test.js` — 6 new assertions covering Bug A's
+  NUMERIC_FIELDS pattern, Bug B's documented merge contract, dashboard
+  emits new fields, STATUS_URGENCY new order, app.js renders baseline
+  marker + last-attempt line + relativeDateLabel + statusLabelFor.
+  138/138 tests pass.
+
+### Out of scope (next commit)
+- **Bug C — Hevy sync `exercises[]` empty.** Hevy-synced workouts have
+  lifts in `metadata.hevy.raw_exercises` but not in the structured
+  `exercises[]` field, so `recomputeForWorkout` silently misses them.
+  Fix: a Hevy → AB Brain transform helper applied during sync + a
+  one-shot backfill endpoint for existing rows. Shipping as v1.11.9.
+
+---
+
 ## [1.11.7] — 2026-05-06
 
 ### Real fix — duplicate /api/ prefix in Goals UI fetch paths

@@ -5,7 +5,7 @@ const API = '/api';
 // every app boot. On mismatch, the user sees a banner "New version available"
 // with a one-tap reload that bypasses cache. Prevents the PWA from quietly
 // running stale code after a deploy (which has bitten us multiple times).
-const APP_VERSION = '1.11.7';
+const APP_VERSION = '1.11.8';
 let currentTab = 'home';
 
 // Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
@@ -321,20 +321,39 @@ async function loadGoalsCard() {
 
 function renderGoalsCard(data) {
   const phase = data.active_phase;
+  const nextPhase = data.next_phase;
   const active = Array.isArray(data.goals_active) ? data.goals_active : [];
   const complete = Array.isArray(data.goals_complete) ? data.goals_complete : [];
+
+  // v1.11.8 Fix 6: better empty state. When there are truly zero goals,
+  // show user-friendly copy. When goals exist but no active phase,
+  // surface the next phase countdown.
   if (!active.length && !complete.length) {
-    return `<div class="dash-section"><div class="muted" style="padding:12px">No goals yet. POST /api/goals to create one.</div></div>`;
+    return `<div class="dash-section">
+      <div class="dash-section-header">
+        <div class="dash-section-pill" style="background:color-mix(in srgb, #8b5cf6 10%, transparent);color:#8b5cf6">
+          ${icon('target', 12)} Goals
+        </div>
+      </div>
+      <div class="muted" style="padding:12px;font-size:13px">
+        No goals tracked yet. Coach can add one — or open a goal in Settings.
+      </div>
+    </div>`;
   }
+
+  const headerLabel = phase
+    ? `Phase ${phase.phase_number}: ${esc(phase.phase_name)}`
+    : nextPhase
+      ? `Phase ${nextPhase.phase_number} starts ${esc(String(nextPhase.start_date).slice(0, 10))}`
+      : 'No active phase';
+
   return `
     <div class="dash-section">
       <div class="dash-section-header" onclick="showPhaseTimeline()" style="cursor:pointer">
         <div class="dash-section-pill" style="background:color-mix(in srgb, #8b5cf6 10%, transparent);color:#8b5cf6">
           ${icon('target', 12)} Goals
         </div>
-        <div class="muted" style="font-size:12px;margin-left:8px">
-          ${phase ? `Phase ${phase.phase_number}: ${esc(phase.phase_name)}` : 'No active phase'}
-        </div>
+        <div class="muted" style="font-size:12px;margin-left:8px">${headerLabel}</div>
       </div>
       ${data.focus_summary ? `<div class="muted" style="font-size:12px;padding:0 12px 8px">${esc(data.focus_summary)}</div>` : ''}
       <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
@@ -351,14 +370,37 @@ function renderGoalsCard(data) {
   `;
 }
 
+// v1.11.8 Fix 2 + 3: client-side relative date in user's local TZ + status
+// label that reflects baseline-vs-no-data.
+function relativeDateLabel(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(isoDate + 'T00:00:00');  // anchor at local midnight
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - d.getTime()) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  // > 1 week — show date in user's locale
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function statusLabelFor(g) {
+  // Fix 3: when status='pending' but there IS an anchor, the trio anchor →
+  // anchor → target IS data (the starting line). Badge says "Baseline"
+  // not "No data."
+  if (g.status === 'pending' && g.is_at_baseline) return 'Baseline';
+  return GOAL_STATUS_LABEL[g.status] || g.status;
+}
+
 function renderGoalRow(g) {
   const color = GOAL_STATUS_COLOR[g.status] || '#9ca3af';
-  const label = GOAL_STATUS_LABEL[g.status] || g.status;
+  const label = statusLabelFor(g);  // v1.11.8: dynamic — "Baseline" when at anchor
   const anchor = Number(g.anchor_value);
   const target = Number(g.target_value);
   const current = g.current_value != null ? Number(g.current_value) : anchor;
   const expected = g.expected_today != null ? Number(g.expected_today) : null;
-  // Direction-aware progress: pace metrics (lower=better) flip
   const isPace = g.metric === 'pace_min_per_mi';
   const range = Math.abs(target - anchor);
   const fracOf = (v) => {
@@ -375,20 +417,46 @@ function renderGoalRow(g) {
     : g.active_phase_role === 'maintenance'
       ? `<span style="background:color-mix(in srgb, #8b5cf6 15%, transparent);color:#8b5cf6;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px">maint</span>`
       : '';
+
+  // v1.11.8 Fix 1: when at baseline (current==anchor), the progress bar
+  // would render empty (0% fill). Instead, show an explicit baseline
+  // marker so user understands the trio is the starting line, not absence.
+  const progressBar = g.is_at_baseline
+    ? `<div style="position:relative;height:10px;background:rgba(255,255,255,0.06);border-radius:5px;margin:8px 0 4px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+         <span style="font-size:10px;color:rgba(255,255,255,0.7);letter-spacing:0.5px">— BASELINE SET —</span>
+       </div>`
+    : `<div style="position:relative;height:10px;background:rgba(255,255,255,0.06);border-radius:5px;margin:8px 0 4px;overflow:hidden">
+         <div style="position:absolute;inset:0;width:${currentPct}%;background:${color};border-radius:5px"></div>
+         ${expectedPct != null ? `<div title="expected today" style="position:absolute;top:-2px;left:${expectedPct}%;width:2px;height:14px;background:rgba(255,255,255,0.6)"></div>` : ''}
+       </div>`;
+
+  // v1.11.8 Fix 2: client-side relative date in local TZ, not server-side label
+  const dateLabel = g.current_value_date_iso
+    ? `updated ${relativeDateLabel(g.current_value_date_iso)}`
+    : (g.last_update_label || 'no data yet');
+
+  // v1.11.8 Fix 4: last-attempt line for sub-anchor sessions. Surfaces
+  // workouts that touched this goal's exercises but didn't move the math
+  // (e.g., farmer's walk at 60lb when anchor is 65lb).
+  const lastAttempt = g.last_attempt;
+  const lastAttemptLine = lastAttempt && lastAttempt.is_sub_anchor && lastAttempt.metric_label
+    ? `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px;font-style:italic">
+         last attempt: ${esc(lastAttempt.metric_label)} on ${esc(relativeDateLabel(lastAttempt.date) || lastAttempt.date)} (sub-anchor)
+       </div>`
+    : '';
+
   return `
     <div onclick="showGoalDetail('${g.id}')" style="cursor:pointer;padding:10px;background:var(--surface-subtle, rgba(255,255,255,0.02));border-radius:8px;border:1px solid var(--border, rgba(255,255,255,0.05))">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="font-weight:500;flex:1">${esc(g.title)}${phaseChip}</div>
         <div style="background:${color};color:white;font-size:10px;padding:2px 8px;border-radius:8px;white-space:nowrap">${label}</div>
       </div>
-      <div style="position:relative;height:10px;background:rgba(255,255,255,0.06);border-radius:5px;margin:8px 0 4px;overflow:hidden">
-        <div style="position:absolute;inset:0;width:${currentPct}%;background:${color};border-radius:5px"></div>
-        ${expectedPct != null ? `<div title="expected today" style="position:absolute;top:-2px;left:${expectedPct}%;width:2px;height:14px;background:rgba(255,255,255,0.6)"></div>` : ''}
-      </div>
+      ${progressBar}
       <div style="display:flex;justify-content:space-between;font-size:11px" class="muted">
         <span>${anchor}${unitFor(g.metric)} → <strong style="color:var(--text)">${current}${unitFor(g.metric)}</strong> / ${target}${unitFor(g.metric)}</span>
-        <span>${g.days_left != null ? `${g.days_left}d left` : ''} · ${esc(g.last_update_label || '')}</span>
+        <span>${g.days_left != null ? `${g.days_left}d left` : ''} · ${esc(dateLabel)}</span>
       </div>
+      ${lastAttemptLine}
     </div>
   `;
 }

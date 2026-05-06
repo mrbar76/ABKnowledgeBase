@@ -371,12 +371,27 @@ router.post('/bulk', async (req, res) => {
 // PUT and PATCH both accept partial bodies (only present keys are updated)
 // and share one handler. PATCH is the semantically correct verb for partial
 // updates; PUT stays for backwards compatibility with existing skills.
+//
+// Merge semantics: only keys explicitly present in the body get UPDATE'd.
+// Keys omitted are left as-is. Sending null explicitly clears a field.
+// Sending undefined (or omitting the key entirely) is treated as "no change."
 const updateWorkoutHandler = async (req, res) => {
   try {
     const b = req.body;
     const fields = [];
     const params = [];
     let i = 1;
+
+    // v1.11.8: Bug A fix — alias-column collision. WRITABLE_FIELDS includes
+    // both the TEXT display column (heart_rate_avg) AND the NUMERIC dual
+    // (hr_avg). The third loop below used to also push numeric columns,
+    // resulting in `duration_minutes = $N, ..., duration_minutes = $M` →
+    // Postgres "multiple assignments to same column" → 500. Fix: handle
+    // numeric coercion inline in the first loop, drop the third loop.
+    const NUMERIC_FIELDS = new Set([
+      'duration_minutes', 'distance_value', 'elevation_gain_ft',
+      'hr_avg', 'hr_max', 'cadence', 'cal_active', 'cal_total',
+    ]);
 
     for (const key of WRITABLE_FIELDS) {
       if (b[key] !== undefined) {
@@ -385,7 +400,10 @@ const updateWorkoutHandler = async (req, res) => {
           params.push(JSON.stringify(b[key]));
         } else if (key === 'effort') {
           fields.push(`effort = $${i++}`);
-          params.push(b.effort ? parseInt(b.effort, 10) : null);
+          params.push(b.effort != null ? parseInt(b.effort, 10) : null);
+        } else if (NUMERIC_FIELDS.has(key)) {
+          fields.push(`${key} = $${i++}`);
+          params.push(b[key] != null && b[key] !== '' ? Number(b[key]) : null);
         } else {
           fields.push(`${key} = $${i++}`);
           params.push(b[key]);
@@ -393,7 +411,8 @@ const updateWorkoutHandler = async (req, res) => {
       }
     }
 
-    // Auto-populate numeric columns from text fields
+    // Auto-populate numeric columns from text fields. Skipped when the
+    // numeric column is already in the body (covered by the first loop).
     const numericMap = {
       time_duration: ['duration_minutes', v => parseDurationMin(v)],
       distance: ['distance_value', v => parseNumFrom(v)],
@@ -407,13 +426,6 @@ const updateWorkoutHandler = async (req, res) => {
       if (b[textKey] !== undefined && b[numCol] === undefined) {
         fields.push(`${numCol} = $${i++}`);
         params.push(parseFn(b[textKey]));
-      }
-    }
-    // Allow direct numeric field updates
-    for (const numCol of ['duration_minutes','distance_value','elevation_gain_ft','hr_avg','hr_max','cadence','cal_active','cal_total']) {
-      if (b[numCol] !== undefined) {
-        fields.push(`${numCol} = $${i++}`);
-        params.push(b[numCol] != null ? Number(b[numCol]) : null);
       }
     }
 

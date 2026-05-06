@@ -16,10 +16,13 @@ const {
 const router = express.Router();
 
 // ─── helpers ──────────────────────────────────────────────────────
-// Sort: surface at_risk first, then behind, then pending (needs data),
-// then on_track / ahead. Paused / complete / failed at the bottom.
+// v1.11.8 Fix 5: Coach's preferred sort order — actionability priority.
+// at_risk (immediate concern) → behind (catching up) → on_track (steady) →
+// pending (needs first data point) → ahead (light push) → paused / complete /
+// failed at bottom. Was: pending floated above on_track which buried
+// in-progress goals.
 const STATUS_URGENCY = {
-  at_risk: 0, behind: 1, pending: 2, on_track: 3, ahead: 4, paused: 5, complete: 6, failed: 7,
+  at_risk: 0, behind: 1, on_track: 2, pending: 3, ahead: 4, paused: 5, complete: 6, failed: 7,
 };
 
 function dateOnly(d) {
@@ -65,9 +68,16 @@ router.get('/', async (req, res) => {
 });
 
 // ─── GET /api/goals/dashboard ─────────────────────────────────────
-// One-shot composite for the home view + Coach. Returns:
-//   { active_phase, goals_active[], goals_complete[],
-//     focus_summary: "Phase X: ... Active focus: ... Maintenance: ..." }
+// One-shot composite for the home view + Coach. v1.11.8 additions:
+//   - last_attempt per goal: latest workout matching linked_exercise_names
+//     (even when its data didn't advance current_value, e.g. sub-anchor
+//     re-entry sessions). Lets the UI surface "last attempt: 60lb / 20m"
+//     under the trio.
+//   - is_at_baseline: true when current_value == anchor_value (day-zero).
+//     UI uses this to render a "Baseline set" marker instead of empty
+//     progress bar.
+//   - next_phase_label: when active_phase is null (between phases), the
+//     human-readable label for the next phase that will start.
 router.get('/dashboard', async (req, res) => {
   try {
     const today = dateOnly(new Date());
@@ -78,6 +88,12 @@ router.get('/dashboard', async (req, res) => {
 
     const activePhase = activePhaseForDate(phasesR.rows, today);
     const phaseTag = activePhase ? `phase_${activePhase.phase_number}` : null;
+
+    // Find the NEXT phase that hasn't started yet — used in the header
+    // when active_phase is null (between phases).
+    const nextPhase = !activePhase
+      ? phasesR.rows.find(p => dateOnly(p.start_date) > today) || null
+      : null;
 
     // Status urgency desc, then deadline asc within same status. Spec section 6.
     const sortGoals = (goals) => goals.sort((a, b) => {
@@ -91,7 +107,10 @@ router.get('/dashboard', async (req, res) => {
     const goalsComplete = goalsR.rows.filter(g => g.status === 'complete')
       .sort((a, b) => new Date(b.current_value_date || 0).getTime() - new Date(a.current_value_date || 0).getTime());
 
-    // Per-goal computed surface for the UI (anchor/current/target + days_left + last_update_label)
+    // Per-goal computed surface for the UI. v1.11.8: client-side timezone
+    // rendering for last_update_label (date strings are sent raw; client
+    // computes "today / yesterday / N days ago" in user's local TZ).
+    // is_at_baseline: true when current_value == anchor_value.
     const decorate = (g) => {
       const days_left = daysBetween(today, g.target_date);
       const expected = (() => {
@@ -103,27 +122,127 @@ router.get('/dashboard', async (req, res) => {
       })();
       const isPrimary = phaseTag && Array.isArray(g.phase_primary) && g.phase_primary.includes(phaseTag);
       const isMaintenance = phaseTag && Array.isArray(g.phase_maintenance) && g.phase_maintenance.includes(phaseTag);
+      const isAtBaseline = g.current_value != null
+        && Number(g.current_value) === Number(g.anchor_value);
       return {
         ...g,
         days_left,
         expected_today: expected != null ? Math.round(expected * 100) / 100 : null,
+        // Send raw date string; client renders relative label in local TZ.
+        // last_update_label kept for backwards compat but client should
+        // prefer current_value_date_iso going forward.
         last_update_label: lastUpdateLabel(g),
+        current_value_date_iso: g.current_value_date ? dateOnly(g.current_value_date) : null,
+        is_at_baseline: isAtBaseline,
         active_phase_role: isPrimary ? 'primary' : (isMaintenance ? 'maintenance' : 'inactive'),
       };
     };
 
-    const decoratedActive = goalsActive.map(decorate);
+    // v1.11.8 Fix 4: last_attempt per goal — latest workout matching
+    // linked_exercise_names OR linked_workout_types since anchor_date,
+    // even if it didn't advance current_value. Surfaces sub-anchor
+    // re-entry sessions Coach deliberately doesn't patch.
+    async function lastAttemptFor(g) {
+      try {
+        const names = (g.linked_exercise_names || []).map(n => String(n).toLowerCase());
+        const types = (g.linked_workout_types || []).map(t => String(t).toLowerCase());
+        if (!names.length && !types.length) return null;
+
+        // Match either by workout_type OR by any exercise name in the
+        // exercises JSONB array (case-insensitive).
+        const r = await query(
+          `SELECT id, title, workout_date, workout_type, effort,
+                  duration_minutes, distance_value, exercises
+             FROM workouts
+            WHERE deleted_at IS NULL
+              AND workout_date >= $1
+              AND (
+                LOWER(workout_type) = ANY($2)
+                OR EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(
+                    CASE WHEN jsonb_typeof(exercises) = 'array' THEN exercises ELSE '[]'::jsonb END
+                  ) ex
+                  WHERE LOWER(ex->>'name') = ANY($3)
+                )
+              )
+            ORDER BY workout_date DESC, started_at DESC NULLS LAST, created_at DESC
+            LIMIT 1`,
+          [g.anchor_date, types, names]
+        );
+        if (!r.rows.length) return null;
+        const w = r.rows[0];
+        // Pull a key metric depending on the goal type for display
+        let metric_label = null;
+        if (g.metric === 'reps' || g.metric === 'weight_lb') {
+          // strength — pluck top set from matching exercise
+          try {
+            const ex = typeof w.exercises === 'string' ? JSON.parse(w.exercises) : (w.exercises || []);
+            const matching = ex.find(e => names.includes(String(e.name || '').toLowerCase()));
+            if (matching && Array.isArray(matching.sets) && matching.sets.length) {
+              const topSet = matching.sets.reduce((best, s) => {
+                const w_ = Number(s.weight_lbs ?? s.weight_lb ?? s.weight) || 0;
+                const r_ = Number(s.reps) || 0;
+                const score = (w_ * r_) || r_;
+                return score > (best._score || 0) ? { ...s, _score: score } : best;
+              }, {});
+              if (topSet.weight_lbs || topSet.weight_lb || topSet.weight) {
+                metric_label = `${topSet.weight_lbs ?? topSet.weight_lb ?? topSet.weight}lb × ${topSet.reps || '?'}`;
+              } else if (topSet.reps) {
+                metric_label = `${topSet.reps} reps`;
+              }
+            }
+          } catch (_) { /* fall through with null metric_label */ }
+        } else if (g.metric === 'duration_min') {
+          metric_label = w.duration_minutes ? `${w.duration_minutes}m` : null;
+        } else if (g.metric === 'pace_min_per_mi') {
+          if (w.duration_minutes && w.distance_value) {
+            const pace = Number(w.duration_minutes) / Number(w.distance_value);
+            metric_label = `${(Math.round(pace * 100) / 100)}/mi @ ${w.distance_value}mi`;
+          }
+        }
+        return {
+          workout_id: w.id,
+          title: w.title,
+          date: dateOnly(w.workout_date),
+          metric_label,
+          // is_sub_anchor: true if the value didn't advance current_value
+          is_sub_anchor: g.current_value_date && dateOnly(w.workout_date) > dateOnly(g.current_value_date)
+            ? false  // newer than current_value_date — wait, we'd expect it to advance then
+            : true,  // older or no current_value yet — likely a sub-anchor session
+        };
+      } catch (err) {
+        console.error('[lastAttemptFor]', err.message);
+        return null;
+      }
+    }
+
+    // Decorate + attach last_attempt in parallel
+    const decoratedActive = await Promise.all(goalsActive.map(async g => {
+      const decorated = decorate(g);
+      decorated.last_attempt = await lastAttemptFor(g);
+      return decorated;
+    }));
     const primaryTitles = decoratedActive.filter(g => g.active_phase_role === 'primary').map(g => g.title);
     const maintenanceTitles = decoratedActive.filter(g => g.active_phase_role === 'maintenance').map(g => g.title);
-    const focusSummary = activePhase
-      ? `Phase ${activePhase.phase_number}: ${activePhase.phase_name}. ` +
-        `Primary: ${primaryTitles.join(', ') || '—'}. Maintenance: ${maintenanceTitles.join(', ') || '—'}.`
-      : 'No active phase.';
+
+    // v1.11.8 Fix 6: better between-phases header. When active_phase is
+    // null and a next_phase exists, surface the lead-in countdown.
+    let focusSummary;
+    if (activePhase) {
+      focusSummary = `Phase ${activePhase.phase_number}: ${activePhase.phase_name}. ` +
+        `Primary: ${primaryTitles.join(', ') || '—'}. Maintenance: ${maintenanceTitles.join(', ') || '—'}.`;
+    } else if (nextPhase) {
+      const daysToNext = daysBetween(today, nextPhase.start_date);
+      focusSummary = `Between phases. Phase ${nextPhase.phase_number} (${nextPhase.phase_name}) starts in ${daysToNext} day${daysToNext === 1 ? '' : 's'} on ${dateOnly(nextPhase.start_date)}.`;
+    } else {
+      focusSummary = 'No active or upcoming phase scheduled.';
+    }
 
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
       active_phase: activePhase,
+      next_phase: nextPhase,  // v1.11.8: surface for UI between-phases header
       goals_active: decoratedActive,
       goals_complete: goalsComplete.map(decorate),
       focus_summary: focusSummary,
