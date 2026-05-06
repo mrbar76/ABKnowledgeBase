@@ -4,6 +4,111 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.0] — 2026-05-06
+
+### Goals Tracking System (Phases A + B + C in one commit)
+
+Spec: knowledge entry `1f247878`. Three-phase build delivered together so
+seed → CRUD → auto-compute → UI is one coherent shipment.
+
+**Phase A — schema, CRUD, dashboard, seed**
+
+Three new tables:
+- `goals` — title, category, metric, anchor/target/current/status,
+  linked_exercise_names[], linked_workout_types[], compute_method,
+  phase_primary[], phase_maintenance[], evidence_label
+- `goal_phases` — periodization windows tied to races
+- `goal_history` — trajectory data points (FK to goals, ON DELETE CASCADE)
+
+Endpoints (`/api/goals/*`):
+- CRUD: `GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`
+- Composite: `GET /dashboard` (active + complete sections, sorted by status
+  urgency then deadline; per-goal `expected_today`, `days_left`,
+  `last_update_label`, `active_phase_role`)
+- Status: `GET /:id/status` (recompute now, return updated goal)
+- Trajectory: `GET /:id/trajectory` (history + projection)
+- Recompute trigger: `POST /recompute-all`
+- Phases: `GET /phases`, `GET /phases/current`, `POST /phases`
+
+Seed data inserted on first deploy: 5 locked goals (pull-ups,
+deadlift, farmer's walk, stair climber, 5mi pace) + 6 phases
+(Riverdale prep → Killington taper). Idempotent — `WHERE NOT EXISTS`
+guards prevent re-seeding.
+
+**Phase B — auto-compute on workout insert + Hevy sync**
+
+`lib/goal-compute.js` — pure-function module:
+- 5 compute drivers: `max_weight` (with rep floor parsed from title like
+  "225×5"), `max_reps_single_set` (skips warmup sets), `latest_pace`
+  (with distance floor from "5mi" in title), `max_duration`,
+  `total_volume` (last 7d)
+- `computeStatus(goal)` — direction-aware (pace metrics flip), ±10% on_track
+  band, 25% threshold for at_risk, complete on target reach
+- `projectCompletion(history, target, anchor_date, metric)` — least-squares
+  slope on last 4 history points, projects target ISO date
+
+Hooks:
+- `routes/workouts.js` POST → `recomputeForWorkout(workout)` — only goals
+  whose linked exercises or workout_type match this workout get recomputed
+- `routes/hevy.js` /sync → `recomputeAllGoals()` after batch lands
+- Both fire-and-forget; recompute failure never poisons the parent request
+
+**Phase C — UI on home view**
+
+`public/app.js` (8K-line file edited surgically):
+- `loadGoalsCard()` fetches `/api/goals/dashboard` and renders in
+  `#goals-section` (between today-actions and gamification)
+- Per-goal row: progress bar (anchor → current → target with marker at
+  expected-today position), status pill color-coded
+  (at_risk red / behind yellow / on_track green / ahead blue / paused gray /
+  complete green), days-remaining, last-update label, primary/maintenance chip
+- Active goals listed, completed in collapsible details block below
+- Tap any goal → modal with Chart.js trajectory chart (Actual line vs
+  Target trajectory line, projection on tooltip), history table, manual-update
+  / recompute / pause-resume buttons
+- Phase timeline modal (tap section header) — all phases with active marker
+
+Auto-advance:
+- `checkPhaseAdvance()` runs at server boot + every 12h via `setInterval`
+- When today is the start_date of any phase, writes a single `phase_advance`
+  entry to `activity_log` (idempotent — checks for same-day entry first).
+  Surfaces in the existing Activity Stream UI.
+
+### Tests
+
+`tests/goals.test.js` — 21 regression tests:
+- Pure compute logic (status thresholds for ahead/on_track/behind/at_risk/complete,
+  pace-metric direction handling, projection slope math, rep/distance floor
+  parsing, exercise name matching)
+- Compute drivers (max_weight respects rep floor, max_reps skips warmups,
+  latest_pace honors distance floor + most-recent)
+- Route registration + every endpoint declared
+- Mounting in server.js
+- Hooks present in workouts.js + hevy.js
+- Seed data present in db.js (all 5 goals + all 6 phases by name)
+- Phase auto-advance idempotency check
+- UI smoke (Chart.js datasets, sort contract, function names)
+
+131/131 tests pass (including all prior phases).
+
+### Coach's role (unchanged from spec section 7)
+
+Goals 3 (Farmer's walk) and 4 (Stair climber Z3) are `compute_method='manual'`
+because Hevy farmer's walk doesn't always carry duration cleanly and
+stair-climber Z3 needs HR sample analysis. Coach pulls dashboard at every
+session, manually updates these via `PUT /api/goals/:id` after long sessions,
+and recalibrates anchors when context warrants (PR outside the system,
+detraining checkpoint, post-phase recalibration).
+
+### Out of scope
+
+- True push notifications on phase advance (existing VAPID push subscription
+  could be wired; for v1.11.0, activity log entry is the user-visible signal)
+- Hard-delete UI controls (DELETE endpoint supports `?hard=true` for CLI use)
+- Multi-user support (single-user system per spec section 11)
+
+---
+
 ## [1.10.4] — 2026-05-05
 
 ### Coach-flagged fixes — three composite endpoint gaps + perf

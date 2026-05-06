@@ -239,6 +239,16 @@ router.post('/', async (req, res) => {
 
     await logActivity('create', 'workout', result.rows[0].id, b.ai_source || b.source || 'manual', `Workout: ${title}`);
     await autoLinkWorkout(result.rows[0]);
+    // v1.11.0: trigger goal recompute for any goals whose linked exercises
+    // or workout_type match this workout. Fire-and-forget — never let a
+    // recompute failure 500 the workout creation itself.
+    try {
+      const { recomputeForWorkout } = require('./goals');
+      if (typeof recomputeForWorkout === 'function') {
+        recomputeForWorkout(result.rows[0]).catch(err =>
+          console.error('[goals recompute on workout create]', err.message));
+      }
+    } catch (_) { /* goals route not loaded yet (e.g., startup race) */ }
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

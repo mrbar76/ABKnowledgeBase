@@ -1177,6 +1177,15 @@ router.post('/sync', async (req, res) => {
   if (!requireKey(res)) return;
   try {
     const result = await syncHevyWorkouts(req.query.since);
+    // v1.11.0: trigger goal recompute after the sync batch lands. Fire-and-
+    // forget so a recompute failure never poisons the sync response.
+    try {
+      const goals = require('./goals');
+      if (typeof goals.recomputeAllGoals === 'function') {
+        goals.recomputeAllGoals().catch(err =>
+          console.error('[goals recompute after hevy sync]', err.message));
+      }
+    } catch (_) { /* goals not loaded — fine */ }
     res.json(result);
   } catch (err) {
     console.error(`[hevy/sync] ${err.stack}`);

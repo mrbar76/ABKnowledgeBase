@@ -224,6 +224,7 @@ async function loadDashboard() {
     <div class="dash-greeting animate-in">${greeting}.</div>
     <div class="dash-date animate-in stagger-1">${dateStr}</div>
     <div id="today-actions" class="animate-in stagger-2"></div>
+    <div id="goals-section" class="animate-in stagger-3"></div>
     <div id="gamification-section"></div>
     <div class="stats-toggle-row animate-in stagger-4" id="dash-stats-toggle" onclick="toggleDashStats()">
       ${icon('bar-chart-2', 14)}
@@ -267,6 +268,303 @@ async function loadDashboard() {
 
   loadDashboardStats();
   loadGamification();
+  loadGoalsCard();
+}
+
+// ─── Goals tracking (v1.11.0 Phase C) ─────────────────────────────
+// Home-view card + tap-to-expand detail modal with trajectory chart.
+// Backend: /api/goals/dashboard, /api/goals/:id/trajectory.
+const GOAL_STATUS_COLOR = {
+  on_track: 'var(--green)',
+  ahead:    '#3b82f6',
+  behind:   '#facc15',
+  at_risk:  '#ef4444',
+  paused:   '#9ca3af',
+  complete: '#10b981',
+  failed:   '#6b7280',
+};
+const GOAL_STATUS_LABEL = {
+  on_track: 'On track',
+  ahead:    'Ahead',
+  behind:   'Behind',
+  at_risk:  'At risk',
+  paused:   'Paused',
+  complete: 'Complete',
+  failed:   'Failed',
+};
+
+async function loadGoalsCard() {
+  const slot = document.getElementById('goals-section');
+  if (!slot) return;
+  try {
+    const data = await api('/api/goals/dashboard');
+    slot.innerHTML = renderGoalsCard(data);
+    renderIcons();
+  } catch (err) {
+    slot.innerHTML = `<div class="dash-section"><div class="muted" style="padding:12px">Goals dashboard unavailable: ${esc(err.message || String(err))}</div></div>`;
+  }
+}
+
+function renderGoalsCard(data) {
+  const phase = data.active_phase;
+  const active = Array.isArray(data.goals_active) ? data.goals_active : [];
+  const complete = Array.isArray(data.goals_complete) ? data.goals_complete : [];
+  if (!active.length && !complete.length) {
+    return `<div class="dash-section"><div class="muted" style="padding:12px">No goals yet. POST /api/goals to create one.</div></div>`;
+  }
+  return `
+    <div class="dash-section">
+      <div class="dash-section-header" onclick="showPhaseTimeline()" style="cursor:pointer">
+        <div class="dash-section-pill" style="background:color-mix(in srgb, #8b5cf6 10%, transparent);color:#8b5cf6">
+          ${icon('target', 12)} Goals
+        </div>
+        <div class="muted" style="font-size:12px;margin-left:8px">
+          ${phase ? `Phase ${phase.phase_number}: ${esc(phase.phase_name)}` : 'No active phase'}
+        </div>
+      </div>
+      ${data.focus_summary ? `<div class="muted" style="font-size:12px;padding:0 12px 8px">${esc(data.focus_summary)}</div>` : ''}
+      <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
+        ${active.map(renderGoalRow).join('')}
+      </div>
+      ${complete.length ? `
+        <details style="margin:12px 12px 0">
+          <summary class="muted" style="cursor:pointer;font-size:12px">${complete.length} completed</summary>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;opacity:0.6">
+            ${complete.map(renderGoalRow).join('')}
+          </div>
+        </details>` : ''}
+    </div>
+  `;
+}
+
+function renderGoalRow(g) {
+  const color = GOAL_STATUS_COLOR[g.status] || '#9ca3af';
+  const label = GOAL_STATUS_LABEL[g.status] || g.status;
+  const anchor = Number(g.anchor_value);
+  const target = Number(g.target_value);
+  const current = g.current_value != null ? Number(g.current_value) : anchor;
+  const expected = g.expected_today != null ? Number(g.expected_today) : null;
+  // Direction-aware progress: pace metrics (lower=better) flip
+  const isPace = g.metric === 'pace_min_per_mi';
+  const range = Math.abs(target - anchor);
+  const fracOf = (v) => {
+    if (range === 0) return 1;
+    const pct = isPace
+      ? (anchor - v) / (anchor - target)
+      : (v - anchor) / (target - anchor);
+    return Math.max(0, Math.min(1, pct));
+  };
+  const currentPct = Math.round(fracOf(current) * 100);
+  const expectedPct = expected != null ? Math.round(fracOf(expected) * 100) : null;
+  const phaseChip = g.active_phase_role === 'primary'
+    ? `<span style="background:#8b5cf6;color:white;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px">PRIMARY</span>`
+    : g.active_phase_role === 'maintenance'
+      ? `<span style="background:color-mix(in srgb, #8b5cf6 15%, transparent);color:#8b5cf6;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px">maint</span>`
+      : '';
+  return `
+    <div onclick="showGoalDetail('${g.id}')" style="cursor:pointer;padding:10px;background:var(--surface-subtle, rgba(255,255,255,0.02));border-radius:8px;border:1px solid var(--border, rgba(255,255,255,0.05))">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-weight:500;flex:1">${esc(g.title)}${phaseChip}</div>
+        <div style="background:${color};color:white;font-size:10px;padding:2px 8px;border-radius:8px;white-space:nowrap">${label}</div>
+      </div>
+      <div style="position:relative;height:10px;background:rgba(255,255,255,0.06);border-radius:5px;margin:8px 0 4px;overflow:hidden">
+        <div style="position:absolute;inset:0;width:${currentPct}%;background:${color};border-radius:5px"></div>
+        ${expectedPct != null ? `<div title="expected today" style="position:absolute;top:-2px;left:${expectedPct}%;width:2px;height:14px;background:rgba(255,255,255,0.6)"></div>` : ''}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px" class="muted">
+        <span>${anchor}${unitFor(g.metric)} → <strong style="color:var(--text)">${current}${unitFor(g.metric)}</strong> / ${target}${unitFor(g.metric)}</span>
+        <span>${g.days_left != null ? `${g.days_left}d left` : ''} · ${esc(g.last_update_label || '')}</span>
+      </div>
+    </div>
+  `;
+}
+
+function unitFor(metric) {
+  switch (metric) {
+    case 'weight_lb': return 'lb';
+    case 'reps': return '';
+    case 'duration_sec': return 's';
+    case 'duration_min': return 'min';
+    case 'distance_mi': return 'mi';
+    case 'pace_min_per_mi': return '/mi';
+    case 'hr_avg': return 'bpm';
+    case 'bf_pct': return '%';
+    default: return '';
+  }
+}
+
+async function showGoalDetail(goalId) {
+  try {
+    const traj = await api(`/api/goals/${goalId}/trajectory`);
+    const g = traj.goal;
+    const projectionLabel = traj.projection && traj.projection.projected_target_date
+      ? `Projected: ${traj.projection.projected_target_date}`
+      : 'Projection: insufficient data';
+    openModal(g.title, `
+      <div class="muted" style="font-size:13px;margin-bottom:12px">
+        ${anchor_label(g)} · target ${g.target_value}${unitFor(g.metric)} by ${g.target_date}
+      </div>
+      <div style="background:rgba(139,92,246,0.1);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:12px">
+        ${projectionLabel}
+      </div>
+      <canvas id="goal-traj-chart" height="220" style="margin-bottom:16px"></canvas>
+      <h4 style="margin-bottom:8px">History (${(traj.history || []).length})</h4>
+      <div style="max-height:220px;overflow-y:auto">
+        ${(traj.history || []).slice().reverse().map(h => `
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span>${h.value}${unitFor(g.metric)}</span>
+            <span class="muted" style="font-size:11px">${(h.recorded_at || '').slice(0, 10)} · ${esc(h.source_note || '')}</span>
+          </div>
+        `).join('') || '<div class="muted">No history yet.</div>'}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+        <button onclick="goalManualUpdate('${g.id}', '${g.metric}')" class="btn-primary">Manual update</button>
+        <button onclick="goalRecompute('${g.id}')" class="btn-secondary">Recompute</button>
+        ${g.status !== 'paused' ? `<button onclick="goalPauseToggle('${g.id}', 'paused')" class="btn-secondary">Pause</button>` : `<button onclick="goalPauseToggle('${g.id}', 'on_track')" class="btn-secondary">Resume</button>`}
+      </div>
+    `);
+    setTimeout(() => drawGoalTrajectoryChart('goal-traj-chart', traj), 60);
+  } catch (err) {
+    showToast(`Goal detail failed: ${err.message || err}`, 'error');
+  }
+}
+
+function anchor_label(g) {
+  return `Anchor ${g.anchor_value}${unitFor(g.metric)} (${g.anchor_date})`;
+}
+
+function drawGoalTrajectoryChart(canvasId, traj) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  const g = traj.goal;
+  const history = (traj.history || []).map(h => ({
+    x: new Date(h.recorded_at),
+    y: Number(h.value),
+  }));
+  const targetLine = [
+    { x: new Date(g.anchor_date), y: Number(g.anchor_value) },
+    { x: new Date(g.target_date),  y: Number(g.target_value) },
+  ];
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Actual',
+          data: history,
+          borderColor: GOAL_STATUS_COLOR[g.status] || '#8b5cf6',
+          backgroundColor: 'rgba(139,92,246,0.1)',
+          tension: 0.2,
+          pointRadius: 4,
+        },
+        {
+          label: 'Target trajectory',
+          data: targetLine,
+          borderColor: 'rgba(255,255,255,0.4)',
+          borderDash: [6, 4],
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'week' }, ticks: { color: '#9ca3af' } },
+        y: { ticks: { color: '#9ca3af' }, title: { display: true, text: g.metric + unitFor(g.metric), color: '#9ca3af' } },
+      },
+      plugins: {
+        legend: { labels: { color: '#9ca3af' } },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              if (!items.length || !traj.projection?.projected_target_date) return '';
+              return `Projected target: ${traj.projection.projected_target_date}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+async function goalManualUpdate(goalId, metric) {
+  const v = prompt(`New current value (${unitFor(metric) || metric}):`);
+  if (!v) return;
+  const num = Number(v);
+  if (isNaN(num)) { showToast('Must be a number', 'error'); return; }
+  const note = prompt('Source note (optional):') || 'manual update via UI';
+  try {
+    await api(`/api/goals/${goalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        current_value: num,
+        current_value_date: new Date().toISOString().slice(0, 10),
+        source_note: note,
+      }),
+    });
+    showToast('Goal updated', 'success');
+    closeModal();
+    loadGoalsCard();
+  } catch (err) {
+    showToast(`Update failed: ${err.message}`, 'error');
+  }
+}
+
+async function goalRecompute(goalId) {
+  try {
+    await api(`/api/goals/${goalId}/status`);
+    showToast('Recomputed', 'success');
+    closeModal();
+    loadGoalsCard();
+  } catch (err) {
+    showToast(`Recompute failed: ${err.message}`, 'error');
+  }
+}
+
+async function goalPauseToggle(goalId, newStatus) {
+  try {
+    await api(`/api/goals/${goalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: newStatus }),
+    });
+    showToast(newStatus === 'paused' ? 'Paused' : 'Resumed', 'success');
+    closeModal();
+    loadGoalsCard();
+  } catch (err) {
+    showToast(`Status change failed: ${err.message}`, 'error');
+  }
+}
+
+async function showPhaseTimeline() {
+  try {
+    const r = await api('/api/goals/phases');
+    const today = new Date().toISOString().slice(0, 10);
+    openModal('Phase Timeline', `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(r.phases || []).map(p => {
+          const start = (p.start_date || '').slice(0,10);
+          const end = (p.end_date || '').slice(0,10);
+          const isActive = start <= today && today <= end;
+          const isPast = end < today;
+          const color = isActive ? '#8b5cf6' : isPast ? '#6b7280' : 'var(--text)';
+          const bg = isActive ? 'color-mix(in srgb, #8b5cf6 10%, transparent)' : 'transparent';
+          return `
+            <div style="padding:12px;background:${bg};border-radius:8px;border:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <strong style="color:${color}">Phase ${p.phase_number}: ${esc(p.phase_name)}</strong>
+                ${isActive ? '<span style="background:#8b5cf6;color:white;font-size:10px;padding:2px 8px;border-radius:8px">ACTIVE</span>' : ''}
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:4px">${start} → ${end}</div>
+              ${p.description ? `<div style="font-size:13px;margin-top:6px">${esc(p.description)}</div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `);
+  } catch (err) {
+    showToast(`Phase timeline failed: ${err.message}`, 'error');
+  }
 }
 
 let _activityOpen = false;

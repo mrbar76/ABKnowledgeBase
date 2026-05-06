@@ -1872,6 +1872,134 @@ async function initDB() {
   await safeQuery('daily_activity deprecation comment', `
     COMMENT ON TABLE daily_activity IS 'DEPRECATED — HAE retired May 2026. Drop after Aug 5, 2026 once daily_vitals_cache has 90d baseline.'`);
 
+  // ─── v1.11.0 Goals tracking system ─────────────────────────────
+  // Three tables: goals (canonical), goal_phases (periodization windows tied
+  // to races), goal_history (trajectory data points). Computed dashboard
+  // surfaces status per goal; auto-compute hooks into POST /workouts and
+  // /api/hevy/sync. Coach is the data-keeper layer for `manual` compute_method
+  // goals. Spec: knowledge entry 1f247878.
+
+  await safeQuery('goals table', `
+    CREATE TABLE IF NOT EXISTS goals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN
+        ('strength','aerobic','run','carry','vertical','body_comp','mobility','custom')),
+      metric TEXT NOT NULL CHECK(metric IN
+        ('weight_lb','reps','duration_sec','duration_min','distance_mi',
+         'pace_min_per_mi','hr_avg','bf_pct','count')),
+      anchor_value NUMERIC NOT NULL,
+      anchor_date DATE NOT NULL,
+      anchor_source TEXT,
+      target_value NUMERIC NOT NULL,
+      target_date DATE NOT NULL,
+      current_value NUMERIC,
+      current_value_date DATE,
+      current_value_source_id UUID,
+      linked_exercise_names TEXT[] DEFAULT '{}',
+      linked_workout_types TEXT[] DEFAULT '{}',
+      compute_method TEXT NOT NULL CHECK(compute_method IN
+        ('max_weight','max_reps_single_set','max_duration','latest_pace',
+         'total_volume','manual')),
+      phase_primary TEXT[] DEFAULT '{}',
+      phase_maintenance TEXT[] DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'on_track' CHECK(status IN
+        ('on_track','ahead','behind','at_risk','paused','complete','failed')),
+      evidence_label TEXT CHECK(evidence_label IN
+        ('strong','heuristic','pattern_reasoning','speculation')),
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('goals idx status', `CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status, target_date)`);
+  await safeQuery('goals idx target_date', `CREATE INDEX IF NOT EXISTS idx_goals_target_date ON goals(target_date)`);
+
+  await safeQuery('goal_phases table', `
+    CREATE TABLE IF NOT EXISTS goal_phases (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      phase_number INTEGER NOT NULL,
+      phase_name TEXT NOT NULL,
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      description TEXT,
+      linked_race_id UUID REFERENCES races(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await safeQuery('goal_phases idx dates', `CREATE INDEX IF NOT EXISTS idx_goal_phases_dates ON goal_phases(start_date, end_date)`);
+  await safeQuery('goal_phases unique number', `CREATE UNIQUE INDEX IF NOT EXISTS idx_goal_phases_number ON goal_phases(phase_number)`);
+
+  await safeQuery('goal_history table', `
+    CREATE TABLE IF NOT EXISTS goal_history (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      goal_id UUID NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+      value NUMERIC NOT NULL,
+      recorded_at TIMESTAMPTZ DEFAULT NOW(),
+      source_workout_id UUID,
+      source_note TEXT
+    )`);
+  await safeQuery('goal_history idx goal_time', `CREATE INDEX IF NOT EXISTS idx_goal_history_goal_time ON goal_history(goal_id, recorded_at DESC)`);
+
+  // Seed: 5 locked goals + 6 phases. Insert ONLY if respective table is empty
+  // (first deploy). Idempotent — re-runs are no-ops once seeded.
+  await safeQuery('seed goal_phases', `
+    INSERT INTO goal_phases (phase_number, phase_name, start_date, end_date, description)
+    SELECT * FROM (VALUES
+      (1, 'Riverdale prep',          DATE '2026-05-11', DATE '2026-05-17', 'Lead-in to Riverdale 5K'),
+      (2, 'Palmerton build',         DATE '2026-05-18', DATE '2026-06-27', 'Build phase for Palmerton Super'),
+      (3, 'Palmerton taper+race',    DATE '2026-06-28', DATE '2026-07-11', 'Taper into Palmerton Super'),
+      (4, 'Killington strength',     DATE '2026-07-14', DATE '2026-08-15', 'Strength block for Killington Beast'),
+      (5, 'Killington aerobic peak', DATE '2026-08-16', DATE '2026-09-05', 'Aerobic peak before Killington taper'),
+      (6, 'Killington taper+race',   DATE '2026-09-06', DATE '2026-09-19', 'Taper + Killington Beast race week')
+    ) AS v(phase_number, phase_name, start_date, end_date, description)
+    WHERE NOT EXISTS (SELECT 1 FROM goal_phases)`);
+
+  await safeQuery('seed goals', `
+    INSERT INTO goals (
+      title, category, metric, anchor_value, anchor_date, anchor_source,
+      target_value, target_date, linked_exercise_names, linked_workout_types,
+      compute_method, phase_primary, phase_maintenance, evidence_label, notes
+    )
+    SELECT * FROM (VALUES
+      ('Pull-ups: 8 strict by Sept 12',         'strength',   'reps',
+        4::numeric,    DATE '2025-03-02', 'Fitbod 2025-03-02 4x3 strict pull-ups',
+        8::numeric,    DATE '2026-09-12',
+        ARRAY['Pull Up','Strict Pull Up']::text[], ARRAY[]::text[],
+        'max_reps_single_set',
+        ARRAY['phase_4','phase_5']::text[], ARRAY['phase_2']::text[],
+        'strong', 'Killington Beast prep'),
+      ('Deadlift: 225×5 by Aug 15',             'strength',   'weight_lb',
+        200::numeric,  DATE '2024-12-05', 'Last logged Fitbod heavy pull',
+        225::numeric,  DATE '2026-08-15',
+        ARRAY['Deadlift','Barbell Deadlift']::text[], ARRAY[]::text[],
+        'max_weight',
+        ARRAY['phase_4']::text[], ARRAY['phase_2']::text[],
+        'heuristic', 'Strength foundation for carry events'),
+      ('Farmer''s walk: 75lb 60s by Aug 1',     'carry',      'weight_lb',
+        65::numeric,   DATE '2026-03-16', 'Spartan-prep grip session',
+        75::numeric,   DATE '2026-08-01',
+        ARRAY['Farmer''s Walk','Farmer Walk']::text[], ARRAY[]::text[],
+        'manual',
+        ARRAY['phase_2','phase_4']::text[], ARRAY[]::text[],
+        'heuristic', 'Coach updates manually after Hevy farmer walk sessions'),
+      ('Stair climber: 90min Z3 by Aug 30',     'vertical',   'duration_min',
+        30::numeric,   DATE '2026-05-05', 'Current best sustained Z3 block',
+        90::numeric,   DATE '2026-08-30',
+        ARRAY[]::text[], ARRAY['hill']::text[],
+        'manual',
+        ARRAY['phase_5']::text[], ARRAY['phase_2']::text[],
+        'heuristic', 'Coach updates from HR sample analysis after each long session'),
+      ('Run 5mi @ 9:30/mi by Aug 1',            'run',        'pace_min_per_mi',
+        9.0::numeric,  DATE '2026-04-26', 'Vernon NJ Sprint pace at 1mi',
+        9.5::numeric,  DATE '2026-08-01',
+        ARRAY[]::text[], ARRAY['run']::text[],
+        'latest_pace',
+        ARRAY['phase_1','phase_2','phase_5']::text[], ARRAY[]::text[],
+        'strong', 'Pace target backwards: lower pace_min_per_mi = faster')
+    ) AS v(title, category, metric, anchor_value, anchor_date, anchor_source,
+           target_value, target_date, linked_exercise_names, linked_workout_types,
+           compute_method, phase_primary, phase_maintenance, evidence_label, notes)
+    WHERE NOT EXISTS (SELECT 1 FROM goals)`);
+
   // daily_context: alcohol + supplement change note (Coach's recommended fold-in
   // instead of separate tables for these low-volume signals).
   await safeQuery('dc +alcohol_units', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS alcohol_units NUMERIC(4,1)`);

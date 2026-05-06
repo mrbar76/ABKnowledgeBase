@@ -38,6 +38,7 @@ const hevyRoutes = require('./routes/hevy');
 const v2VitalsRoutes = require('./routes/v2-vitals');
 const coachRoutes = require('./routes/coach');
 const peopleRoutes = require('./routes/people');
+const goalsRoutes = require('./routes/goals');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -271,6 +272,7 @@ app.use('/api/hevy', hevyRoutes);
 app.use('/api/v2', v2VitalsRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/people', peopleRoutes);
+app.use('/api/goals', goalsRoutes);
 
 // Sync status
 app.get('/api/sync-status', (req, res) => res.json(syncStatus.getStatus()));
@@ -305,6 +307,23 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AB Brain (PostgreSQL backend) running on port ${PORT}`);
   });
+
+  // v1.11.0 Phase auto-advance: check at boot + once per day. Idempotent
+  // (skips if today's phase_advance entry already logged).
+  try {
+    const goals = require('./routes/goals');
+    if (typeof goals.checkPhaseAdvance === 'function') {
+      goals.checkPhaseAdvance().then(r => {
+        if (r.advanced) console.log(`[goals] phase advance: ${r.advanced} phase(s) starting today`);
+      }).catch(err => console.error('[goals phase-advance boot]', err.message));
+      // Also schedule a daily check at noon to catch the date rollover for
+      // long-running deployments.
+      setInterval(() => {
+        goals.checkPhaseAdvance().catch(err =>
+          console.error('[goals phase-advance daily]', err.message));
+      }, 12 * 60 * 60 * 1000);
+    }
+  } catch (_) { /* goals route not present */ }
 
   // ─── VAPID key generation (one-time) ──────────────────────────
   try {
