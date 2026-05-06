@@ -9954,6 +9954,126 @@ async function showNutritionDetail() {
   }
 }
 
+// ─── Universal Search sheet (v2 Foundation Phase 7) ───────────
+let _searchDebounce = null;
+let _searchActiveFilter = 'all';
+
+function showSearchSheet() {
+  openModal('Search', renderSearchShell(), { variant: 'sheet' });
+  setTimeout(() => {
+    const inp = document.getElementById('ab-search-input');
+    if (inp) inp.focus();
+  }, 80);
+}
+
+function renderSearchShell() {
+  const filters = [
+    { key: 'all',         label: 'All' },
+    { key: 'tasks',       label: 'Tasks' },
+    { key: 'knowledge',   label: 'Knowledge' },
+    { key: 'transcripts', label: 'Transcripts' },
+    { key: 'people',      label: 'People' }
+  ];
+  return '<div style="padding:0">' +
+    '<div style="padding:8px 16px 12px">' +
+      '<input id="ab-search-input" type="search" placeholder="Search everything…" autocomplete="off" ' +
+      'style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ab-border);background:var(--ab-card);color:var(--ab-ink);font-family:var(--ab-font-ui);font-size:15px;outline:none" ' +
+      'oninput="onSearchInput(this.value)" onkeydown="if(event.key===\'Escape\')closeModal()">' +
+    '</div>' +
+    '<div class="ab-subtabs" style="border-bottom:0">' +
+      filters.map(f => `<button class="ab-subtab${_searchActiveFilter === f.key ? ' active' : ''}" onclick="_searchActiveFilter='${f.key}';onSearchInput(document.getElementById(\'ab-search-input\').value)">${f.label}</button>`).join('') +
+    '</div>' +
+    '<div id="ab-search-results" style="padding:0 0 24px">' +
+      '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Type to search across tasks, knowledge, transcripts, and people.</div></div></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function onSearchInput(q) {
+  if (_searchDebounce) clearTimeout(_searchDebounce);
+  const query = (q || '').trim().toLowerCase();
+  if (!query) {
+    const out = document.getElementById('ab-search-results');
+    if (out) out.innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Type to search.</div></div></div>';
+    return;
+  }
+  _searchDebounce = setTimeout(() => runSearch(query), 200);
+}
+
+async function runSearch(query) {
+  const out = document.getElementById('ab-search-results');
+  if (!out) return;
+  out.innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Searching…</div></div></div>';
+
+  const wantTasks       = _searchActiveFilter === 'all' || _searchActiveFilter === 'tasks';
+  const wantKnowledge   = _searchActiveFilter === 'all' || _searchActiveFilter === 'knowledge';
+  const wantTranscripts = _searchActiveFilter === 'all' || _searchActiveFilter === 'transcripts';
+  const wantPeople      = _searchActiveFilter === 'all' || _searchActiveFilter === 'people';
+
+  const [tasks, knowledge, transcripts, people] = await Promise.all([
+    wantTasks       ? api('/tasks?limit=200').catch(() => []) : Promise.resolve([]),
+    wantKnowledge   ? api('/knowledge?limit=200').catch(() => []) : Promise.resolve([]),
+    wantTranscripts ? api('/transcripts?limit=100').catch(() => []) : Promise.resolve([]),
+    wantPeople      ? api('/contacts/search?q=' + encodeURIComponent(query)).catch(() => []) : Promise.resolve([])
+  ]);
+
+  const matchTitle = (t, item) => {
+    const hay = ((item.title || '') + ' ' + (item.description || '') + ' ' + (item.notes || '') + ' ' + (item.name || '') + ' ' + (item.summary || '')).toLowerCase();
+    return hay.includes(t);
+  };
+  const tasksMatched       = (Array.isArray(tasks) ? tasks : (tasks?.rows || [])).filter(i => matchTitle(query, i)).slice(0, 10);
+  const knowledgeMatched   = (Array.isArray(knowledge) ? knowledge : (knowledge?.rows || [])).filter(i => matchTitle(query, i)).slice(0, 10);
+  const transcriptsMatched = (Array.isArray(transcripts) ? transcripts : (transcripts?.rows || [])).filter(i => matchTitle(query, i)).slice(0, 10);
+  const peopleMatched      = (Array.isArray(people) ? people : (people?.rows || people?.contacts || [])).slice(0, 10);
+
+  const total = tasksMatched.length + knowledgeMatched.length + transcriptsMatched.length + peopleMatched.length;
+  if (total === 0) {
+    out.innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No matches.</div><div class="ab-list-row-meta">Try a shorter or different term.</div></div></div>';
+    return;
+  }
+
+  let html = '';
+  if (tasksMatched.length) {
+    html += '<div class="ab-section-label">Tasks</div>';
+    for (const t of tasksMatched) {
+      const pillar = pillarFromContext(t.context);
+      const pillarClass = pillar ? ` ab-pillar-${pillar}` : '';
+      html += `<div class="ab-list-row" onclick="closeModal();showTaskDetail(${t.id})">` +
+        `<div class="ab-list-row-dot${pillarClass}"></div>` +
+        `<div class="ab-list-row-body"><div class="ab-list-row-title">${esc(cleanTaskTitle(t.title) || 'Untitled')}</div>` +
+        `<div class="ab-list-row-meta">${esc(t.status || '')}${t.due_date ? ' · due ' + esc(formatDateShort(t.due_date)) : ''}</div></div></div>`;
+    }
+  }
+  if (knowledgeMatched.length) {
+    html += '<div class="ab-section-label">Knowledge</div>';
+    for (const k of knowledgeMatched) {
+      html += `<div class="ab-list-row" style="cursor:default">` +
+        `<div class="ab-list-row-dot ab-pillar-work"></div>` +
+        `<div class="ab-list-row-body"><div class="ab-list-row-title">${esc(k.title || 'Untitled')}</div>` +
+        `<div class="ab-list-row-meta">${esc(truncate(k.content || k.summary || '', 80))}</div></div></div>`;
+    }
+  }
+  if (transcriptsMatched.length) {
+    html += '<div class="ab-section-label">Transcripts</div>';
+    for (const t of transcriptsMatched) {
+      html += `<div class="ab-list-row" style="cursor:default">` +
+        `<div class="ab-list-row-dot"></div>` +
+        `<div class="ab-list-row-body"><div class="ab-list-row-title">${esc(t.title || t.summary || 'Transcript')}</div>` +
+        `<div class="ab-list-row-meta">${esc(t.created_at || t.recorded_at || '')}</div></div></div>`;
+    }
+  }
+  if (peopleMatched.length) {
+    html += '<div class="ab-section-label">People</div>';
+    for (const p of peopleMatched) {
+      html += `<div class="ab-list-row" style="cursor:default">` +
+        `<div class="ab-list-row-dot ab-pillar-personal"></div>` +
+        `<div class="ab-list-row-body"><div class="ab-list-row-title">${esc(p.name || p.display_name || 'Contact')}</div>` +
+        `<div class="ab-list-row-meta">${esc(p.email || p.context || '')}</div></div></div>`;
+    }
+  }
+  out.innerHTML = html;
+}
+
 function renderMacroRow(label, value, target, unit) {
   const pct = target ? Math.min(100, Math.round((value / target) * 100)) : 0;
   return `<div class="ab-goal-row" style="cursor:default">` +
