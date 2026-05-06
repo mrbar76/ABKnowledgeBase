@@ -552,6 +552,99 @@ async function checkPhaseAdvance() {
   }
 }
 
+// ─── POST /api/goals/seed-defaults ────────────────────────────────
+// One-shot reseed for the 5 locked goals + 6 phases. Idempotent — uses
+// WHERE NOT EXISTS so it won't duplicate if seeds already ran. Use when
+// the boot-time seed silently failed (rare) or after a manual purge of
+// the goals tables.
+router.post('/seed-defaults', async (req, res) => {
+  try {
+    const phaseSeed = await query(`
+      INSERT INTO goal_phases (phase_number, phase_name, start_date, end_date, description)
+      SELECT * FROM (VALUES
+        (1, 'Riverdale prep',          DATE '2026-05-11', DATE '2026-05-17', 'Lead-in to Riverdale 5K'),
+        (2, 'Palmerton build',         DATE '2026-05-18', DATE '2026-06-27', 'Build phase for Palmerton Super'),
+        (3, 'Palmerton taper+race',    DATE '2026-06-28', DATE '2026-07-11', 'Taper into Palmerton Super'),
+        (4, 'Killington strength',     DATE '2026-07-14', DATE '2026-08-15', 'Strength block for Killington Beast'),
+        (5, 'Killington aerobic peak', DATE '2026-08-16', DATE '2026-09-05', 'Aerobic peak before Killington taper'),
+        (6, 'Killington taper+race',   DATE '2026-09-06', DATE '2026-09-19', 'Taper + Killington Beast race week')
+      ) AS v(phase_number, phase_name, start_date, end_date, description)
+      WHERE NOT EXISTS (SELECT 1 FROM goal_phases)
+      RETURNING id`);
+
+    const goalSeed = await query(`
+      INSERT INTO goals (
+        title, category, metric, anchor_value, anchor_date, anchor_source,
+        target_value, target_date, linked_exercise_names, linked_workout_types,
+        compute_method, phase_primary, phase_maintenance, evidence_label, notes
+      )
+      SELECT * FROM (VALUES
+        ('Pull-ups: 8 strict by Sept 12',         'strength',   'reps',
+          4::numeric,    DATE '2025-03-02', 'Fitbod 2025-03-02 4x3 strict pull-ups',
+          8::numeric,    DATE '2026-09-12',
+          ARRAY['Pull Up','Strict Pull Up']::text[], ARRAY[]::text[],
+          'max_reps_single_set',
+          ARRAY['phase_4','phase_5']::text[], ARRAY['phase_2']::text[],
+          'strong', 'Killington Beast prep'),
+        ('Deadlift: 225x5 by Aug 15',             'strength',   'weight_lb',
+          200::numeric,  DATE '2024-12-05', 'Last logged Fitbod heavy pull',
+          225::numeric,  DATE '2026-08-15',
+          ARRAY['Deadlift','Barbell Deadlift']::text[], ARRAY[]::text[],
+          'max_weight',
+          ARRAY['phase_4']::text[], ARRAY['phase_2']::text[],
+          'heuristic', 'Strength foundation for carry events'),
+        ('Farmer''s walk: 75lb 60s by Aug 1',     'carry',      'weight_lb',
+          65::numeric,   DATE '2026-03-16', 'Spartan-prep grip session',
+          75::numeric,   DATE '2026-08-01',
+          ARRAY['Farmer''s Walk','Farmer Walk']::text[], ARRAY[]::text[],
+          'manual',
+          ARRAY['phase_2','phase_4']::text[], ARRAY[]::text[],
+          'heuristic', 'Coach updates manually after Hevy farmer walk sessions'),
+        ('Stair climber: 90min Z3 by Aug 30',     'vertical',   'duration_min',
+          30::numeric,   DATE '2026-05-05', 'Current best sustained Z3 block',
+          90::numeric,   DATE '2026-08-30',
+          ARRAY[]::text[], ARRAY['hill']::text[],
+          'manual',
+          ARRAY['phase_5']::text[], ARRAY['phase_2']::text[],
+          'heuristic', 'Coach updates from HR sample analysis after each long session'),
+        ('Run 5mi @ 9:30/mi by Aug 1',            'run',        'pace_min_per_mi',
+          9.0::numeric,  DATE '2026-04-26', 'Vernon NJ Sprint pace at 1mi',
+          9.5::numeric,  DATE '2026-08-01',
+          ARRAY[]::text[], ARRAY['run']::text[],
+          'latest_pace',
+          ARRAY['phase_1','phase_2','phase_5']::text[], ARRAY[]::text[],
+          'strong', 'Pace target backwards: lower pace_min_per_mi = faster')
+      ) AS v(title, category, metric, anchor_value, anchor_date, anchor_source,
+             target_value, target_date, linked_exercise_names, linked_workout_types,
+             compute_method, phase_primary, phase_maintenance, evidence_label, notes)
+      WHERE NOT EXISTS (SELECT 1 FROM goals)
+      RETURNING id, title`);
+
+    // Seed history for any newly-inserted goals so trajectory has a baseline
+    if (goalSeed.rows.length) {
+      await query(`
+        INSERT INTO goal_history (goal_id, value, recorded_at, source_note)
+        SELECT id, anchor_value, anchor_date, 'anchor'
+        FROM goals
+        WHERE id = ANY($1)`,
+        [goalSeed.rows.map(r => r.id)]);
+    }
+
+    res.json({
+      ok: true,
+      phases_inserted: phaseSeed.rows.length,
+      goals_inserted: goalSeed.rows.length,
+      goals: goalSeed.rows,
+      note: phaseSeed.rows.length === 0 && goalSeed.rows.length === 0
+        ? 'No-op — goals/phases already seeded. To force reseed, manually DELETE rows first.'
+        : 'Seeded successfully. Refresh dashboard to see goals.',
+    });
+  } catch (err) {
+    console.error('[POST /goals/seed-defaults]', err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.recomputeForWorkout = recomputeForWorkout;
 module.exports.recomputeAllGoals = recomputeAllGoals;

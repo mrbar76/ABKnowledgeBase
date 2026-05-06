@@ -4,6 +4,34 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.4] — 2026-05-06
+
+### Hotfix — `POST /api/goals/seed-defaults` for empty-table recovery
+
+User reported v1.11.3 cache fix worked (Goals card now renders) but the
+backend had no goals — the `goals_active` array was empty, triggering the
+"No goals yet" fallback message. Boot-time seed (db.js) silently failed
+to insert the 5 locked goals + 6 phases on this Postgres instance. Likely
+race during early deploys; safeQuery swallows whatever error occurred.
+
+Added `POST /api/goals/seed-defaults` — idempotent one-shot endpoint that
+inserts the same canonical seed data using `WHERE NOT EXISTS` guards.
+Safe to hit multiple times. Use:
+
+```
+curl -X POST -H "x-api-key: $KEY" https://ab-brain.up.railway.app/api/goals/seed-defaults
+```
+
+Response includes `phases_inserted`, `goals_inserted` counts. After hit,
+refresh the dashboard — goals appear.
+
+Also seeds anchor history rows (`goal_history`) so trajectory charts
+have a starting point.
+
+133/133 tests pass.
+
+---
+
 ## [1.11.3] — 2026-05-06
 
 ### Hotfix — service worker cache invalidation
