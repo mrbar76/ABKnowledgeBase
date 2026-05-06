@@ -201,7 +201,7 @@ function switchTab(tab) {
   if      (tab === 'today')        loadDashboard();
   else if (tab === 'productivity') loadTasks();
   else if (tab === 'training')     loadFitness();
-  else if (tab === 'personal')     loadPersonalStub();
+  else if (tab === 'personal')     loadPersonal();
   // Brain/Badges removed from nav. Load functions still callable from
   // in-content links (search results, dashboard cards) until cutover PR.
   else if (tab === 'brain')        loadBrain();
@@ -231,16 +231,111 @@ function greetingForHour(h) {
   return 'Good evening';
 }
 
-function loadPersonalStub() {
+// v2 Foundation Phase 4: Personal tab (replaces loadPersonalStub).
+// BigPicture (next family event) + Shabbat card + Today's personal
+// items + Family section (Lilach / Yoni / Ariel / Noam, hardcoded).
+const PERSONAL_FAMILY = ['Lilach', 'Yoni', 'Ariel', 'Noam'];
+
+async function loadPersonal() {
   const main = document.getElementById('main-content');
   if (!main) return;
-  main.innerHTML =
-    '<div class="ab-section-label">Personal</div>' +
-    '<div class="ab-list-row" style="cursor:default">' +
+
+  main.innerHTML = '<div class="ab-big-picture"><div class="ab-big-picture-eyebrow">Personal</div><div class="ab-big-picture-title">Loading…</div></div>';
+
+  let tasks = [];
+  try {
+    const resp = await api('/tasks?context=personal').catch(() => null);
+    tasks = Array.isArray(resp) ? resp : (resp?.rows || resp?.tasks || []);
+  } catch { tasks = []; }
+
+  const today = localDateStr();
+  const upcoming = tasks
+    .filter(t => t.due_date && String(t.due_date).slice(0,10) >= today && t.status !== 'done')
+    .sort((a, b) => String(a.due_date).slice(0,10).localeCompare(String(b.due_date).slice(0,10)));
+  const todayItems = tasks.filter(t => t.due_date && String(t.due_date).slice(0,10) === today && t.status !== 'done');
+
+  let html = '';
+
+  // BigPicture: next family/personal event
+  const next = upcoming[0];
+  if (next) {
+    const days = Math.max(0, Math.round((new Date(String(next.due_date).slice(0,10) + 'T12:00:00') - new Date(today + 'T00:00:00')) / 86400000));
+    html += '<div class="ab-big-picture ab-pillar-personal">' +
+      '<div class="ab-big-picture-eyebrow">Coming up</div>' +
+      `<div class="ab-big-picture-title">${esc(cleanTaskTitle(next.title) || 'Personal event')}</div>` +
+      `<div class="ab-big-picture-meta">${esc(formatDateShort(next.due_date))}${next.notes ? ' · ' + esc(truncate(next.notes, 40)) : ''}</div>` +
+      `<span class="ab-big-picture-countdown">${days === 0 ? 'today' : days + 'd'}</span>` +
+      '</div>';
+  } else {
+    html += '<div class="ab-big-picture ab-pillar-personal">' +
+      '<div class="ab-big-picture-eyebrow">Personal</div>' +
+      '<div class="ab-big-picture-title">Quiet day.</div>' +
+      '<div class="ab-big-picture-meta">Anything brewing on the family side?</div>' +
+      '</div>';
+  }
+
+  // Shabbat card — always shows this week's Shabbat window
+  html += renderPersonalShabbatCard(new Date());
+
+  // Today section
+  html += '<div class="ab-section-label">Today, in order</div>';
+  if (todayItems.length === 0) {
+    html += '<div class="ab-list-row" style="cursor:default">' +
+      '<div class="ab-list-row-dot"></div>' +
+      '<div class="ab-list-row-body">' +
+        '<div class="ab-list-row-title">Nothing personal today.</div>' +
+      '</div></div>';
+  } else {
+    todayItems.slice(0, 3).forEach((t, i) => {
+      if (i === 0) {
+        html += '<div class="ab-hero-card ab-pillar-personal" onclick="showTaskDetail(' + t.id + ')">' +
+          '<div class="ab-hero-card-eyebrow">Personal</div>' +
+          `<div class="ab-hero-card-title">${esc(cleanTaskTitle(t.title) || 'Untitled')}</div>` +
+          (t.notes ? `<div class="ab-hero-card-meta">${esc(truncate(t.notes, 80))}</div>` : '') +
+          '</div>';
+      } else {
+        html += '<div class="ab-list-row" onclick="showTaskDetail(' + t.id + ')">' +
+          '<div class="ab-list-row-dot ab-pillar-personal"></div>' +
+          '<div class="ab-list-row-body">' +
+            `<div class="ab-list-row-title">${esc(cleanTaskTitle(t.title) || 'Untitled')}</div>` +
+            (t.due_date ? `<div class="ab-list-row-meta">${esc(formatDateShort(t.due_date))}</div>` : '') +
+          '</div></div>';
+      }
+    });
+  }
+
+  // Family section
+  html += '<div class="ab-section-label">Family</div>';
+  for (const name of PERSONAL_FAMILY) {
+    html += '<div class="ab-list-row" onclick="abToast(\'Person page ships in v2.5.\')">' +
+      `<div style="width:32px;height:32px;border-radius:999px;background:var(--ab-personal-tint);color:var(--ab-personal-label);display:flex;align-items:center;justify-content:center;font-weight:600;flex:0 0 auto">${name.charAt(0)}</div>` +
+      '<div class="ab-list-row-body">' +
+        `<div class="ab-list-row-title">${name}</div>` +
+        '<div class="ab-list-row-meta">Tap → person page (coming soon)</div>' +
+      '</div></div>';
+  }
+
+  main.innerHTML = html;
+  renderIcons();
+}
+
+function renderPersonalShabbatCard(now) {
+  // Find this week's upcoming Shabbat window (next Friday 18:00 -> Saturday 18:00 local)
+  const day = now.getDay();
+  const friday = new Date(now);
+  const offset = day <= 5 ? (5 - day) : (7 - day + 5);
+  friday.setDate(friday.getDate() + offset);
+  friday.setHours(18, 0, 0, 0);
+  const saturday = new Date(friday);
+  saturday.setDate(saturday.getDate() + 1);
+  const fmt = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' 6:00 pm';
+  const inShabbat = isShabbat(now);
+  return '<div class="ab-section-label">Shabbat</div>' +
+    `<div class="ab-list-row" style="cursor:default">` +
       '<div class="ab-list-row-dot ab-pillar-personal"></div>' +
       '<div class="ab-list-row-body">' +
-        '<div class="ab-list-row-title">Personal tab arrives in Phase 4.</div>' +
-        '<div class="ab-list-row-meta">Shabbat times, family, and personal commitments still live in their existing places for now.</div>' +
+        `<div class="ab-list-row-title">${inShabbat ? 'In Shabbat now.' : esc(fmt(friday)) + ' → ' + esc(fmt(saturday))}</div>` +
+        '<div class="ab-list-row-meta">App goes quiet Friday eve through Saturday eve. No training nags, no work alerts.</div>' +
       '</div>' +
     '</div>';
 }
