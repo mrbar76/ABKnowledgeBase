@@ -286,60 +286,159 @@ let _activeFilter = null; // null = 'all', or 'train'|'fuel'|'recover'
 
 async function loadDashboard() {
   const main = document.getElementById('main-content');
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  if (!main) return;
 
-  main.innerHTML = `
-    <div id="xp-bar-container"></div>
-    <div class="dash-greeting animate-in">${greeting}.</div>
-    <div class="dash-date animate-in stagger-1">${dateStr}</div>
-    <div id="today-actions" class="animate-in stagger-2"></div>
-    <div id="goals-section" class="animate-in stagger-3"></div>
-    <div id="gamification-section"></div>
-    <div class="stats-toggle-row animate-in stagger-4" id="dash-stats-toggle" onclick="toggleDashStats()">
-      ${icon('bar-chart-2', 14)}
-      <span>Stats Overview</span>
-      <span class="stats-toggle-chevron" id="stats-chevron" style="transform:rotate(180deg)">${icon('chevron-down', 14)}</span>
-    </div>
-    <div id="dash-content" class="dash-content-collapsible">
-      <div class="dash-section">
-        <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-tactical) 10%, transparent);color:var(--color-tactical)">
-            ${icon('check-square', 12)} Tasks
-          </div>
-        </div>
-        <div class="stats-grid">${skeletonStats(6)}</div>
-      </div>
-      <div class="dash-section">
-        <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-mental) 10%, transparent);color:var(--color-mental)">
-            ${icon('brain', 12)} Knowledge Base
-          </div>
-        </div>
-        <div class="stats-grid">${skeletonStats(4)}</div>
-      </div>
-      <div class="dash-section">
-        <div class="dash-section-header">
-          <div class="dash-section-pill" style="background:color-mix(in srgb, var(--color-physical) 10%, transparent);color:var(--color-physical)">
-            ${icon('dumbbell', 12)} Fitness
-          </div>
-        </div>
-        <div class="stats-grid">${skeletonStats(6)}</div>
-      </div>
-    </div>
-    <div class="stats-toggle-row animate-in stagger-5" id="activity-stream-toggle" onclick="toggleActivityStream()">
-      ${icon('activity', 14)}
-      <span>System Activity</span>
-      <span class="stats-toggle-chevron" id="activity-chevron">${icon('chevron-down', 14)}</span>
-    </div>
-    <div id="activity-stream" style="display:none"></div>
-  `;
+  if (isShabbat(new Date())) {
+    main.innerHTML = renderShabbatCard();
+    return;
+  }
+
+  main.innerHTML = renderTodaySkeleton();
+
+  let briefing = null, recovery = null, races = [];
+  try {
+    [briefing, recovery, races] = await Promise.all([
+      api('/briefing?format=json').catch(() => null),
+      api('/recovery/score?date=' + localDateStr()).catch(() => null),
+      api('/races/upcoming').catch(() => [])
+    ]);
+  } catch (e) {
+    main.innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Today.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    return;
+  }
+
+  main.innerHTML = renderToday({ briefing, recovery, races });
   renderIcons();
+}
 
-  loadDashboardStats();
-  loadGamification();
-  loadGoalsCard();
+// ─── Today helpers (v2 Foundation Phase 1) ────────────────────
+
+// Hardcoded Friday 18:00 -> Saturday 18:00 local. Real sunset
+// integration deferred; this matches the user's stated default.
+function isShabbat(d) {
+  const day = d.getDay();    // 0=Sun, 5=Fri, 6=Sat
+  const hour = d.getHours();
+  if (day === 5 && hour >= 18) return true;
+  if (day === 6 && hour < 18)  return true;
+  return false;
+}
+
+function pillarFromContext(context) {
+  if (context === 'personal') return 'personal';
+  if (context === 'work')     return 'work';
+  if (context === 'training' || context === 'fitness') return 'training';
+  return null;
+}
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+function renderShabbatCard() {
+  return '<div class="ab-hero-card ab-pillar-personal" style="cursor:default;margin-top:24px">' +
+    '<div class="ab-hero-card-eyebrow">Shabbat</div>' +
+    '<div class="ab-hero-card-title">The system is resting too.</div>' +
+    '<div class="ab-hero-card-meta">See you Saturday night.</div>' +
+    '</div>';
+}
+
+function renderTodaySkeleton() {
+  return '<div class="ab-glance-row">' +
+    '<div class="ab-glance-card"><div class="ab-glance-card-label">Recovery</div><div class="ab-glance-card-value">—</div><div class="ab-glance-card-sub">loading</div></div>' +
+    '<div class="ab-glance-card"><div class="ab-glance-card-label">Race</div><div class="ab-glance-card-value">—</div><div class="ab-glance-card-sub">loading</div></div>' +
+    '<div class="ab-glance-card"><div class="ab-glance-card-label">Overdue</div><div class="ab-glance-card-value">—</div><div class="ab-glance-card-sub">loading</div></div>' +
+    '</div>';
+}
+
+function renderGlanceBar({ briefing, recovery, races }) {
+  const recScore = recovery?.score != null ? recovery.score : '—';
+  const recLabel = recovery?.label || (recovery?.score != null ? '' : 'No data yet');
+
+  let raceVal = '—', raceSub = 'No race set';
+  if (Array.isArray(races) && races.length > 0) {
+    const next = races[0];
+    if (next?.race_date) {
+      const today = new Date();
+      const raceDate = new Date(String(next.race_date).slice(0, 10) + 'T12:00:00');
+      const days = Math.max(0, Math.round((raceDate - today) / (1000 * 60 * 60 * 24)));
+      raceVal = days + 'd';
+      raceSub = truncate(next.race_name || next.title || 'Upcoming race', 24);
+    }
+  }
+
+  const overdueCount = briefing?.overdue?.count ?? '—';
+  const firstOverdue = briefing?.overdue?.tasks?.[0]?.title || (overdueCount === 0 ? 'Nothing overdue' : 'No data');
+
+  return '<div class="ab-glance-row">' +
+    `<div class="ab-glance-card"><div class="ab-glance-card-label">Recovery</div><div class="ab-glance-card-value">${esc(String(recScore))}</div><div class="ab-glance-card-sub">${esc(recLabel)}</div></div>` +
+    `<div class="ab-glance-card"><div class="ab-glance-card-label">Race</div><div class="ab-glance-card-value">${esc(raceVal)}</div><div class="ab-glance-card-sub">${esc(raceSub)}</div></div>` +
+    `<div class="ab-glance-card" onclick="switchTab('productivity')" style="cursor:pointer"><div class="ab-glance-card-label">Overdue</div><div class="ab-glance-card-value">${esc(String(overdueCount))}</div><div class="ab-glance-card-sub">${esc(truncate(firstOverdue, 26))}</div></div>` +
+    '</div>';
+}
+
+function renderHeroFocus(item) {
+  const pillar = pillarFromContext(item.context) || 'work';
+  const pillarLabel = pillar.charAt(0).toUpperCase() + pillar.slice(1);
+  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  const eyebrow = pillarLabel + (item.due_date ? ' · ' + esc(formatDateShort(item.due_date)) : '');
+  const hotPill = isHot ? '<span class="ab-pill ab-pill-hot">Hot</span>' : '';
+  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail(${item.id})">` +
+    `<div class="ab-hero-card-eyebrow">${esc(eyebrow)}</div>` +
+    `<div class="ab-hero-card-title">${esc(item.title || 'Untitled')}</div>` +
+    `<div class="ab-hero-card-meta">${esc(item.reason || '')}${hotPill ? ' ' + hotPill : ''}</div>` +
+    '</div>';
+}
+
+function renderListFocus(item) {
+  const pillar = pillarFromContext(item.context);
+  const pillarClass = pillar ? ` ab-pillar-${pillar}` : '';
+  const pillarLabel = pillar ? (pillar.charAt(0).toUpperCase() + pillar.slice(1) + ' · ') : '';
+  return `<div class="ab-list-row" onclick="showTaskDetail(${item.id})">` +
+    `<div class="ab-list-row-dot${pillarClass}"></div>` +
+    '<div class="ab-list-row-body">' +
+      `<div class="ab-list-row-title">${esc(item.title || 'Untitled')}</div>` +
+      `<div class="ab-list-row-meta">${esc(pillarLabel + (item.reason || ''))}</div>` +
+    '</div></div>';
+}
+
+function renderEmptyTopFocus() {
+  return '<div class="ab-list-row" style="cursor:default">' +
+    '<div class="ab-list-row-dot"></div>' +
+    '<div class="ab-list-row-body">' +
+      '<div class="ab-list-row-title">Nothing pinned for today.</div>' +
+      '<div class="ab-list-row-meta">Capture something with +.</div>' +
+    '</div></div>';
+}
+
+function formatDateShort(d) {
+  if (!d) return '';
+  const dt = new Date(String(d).slice(0, 10) + 'T12:00:00');
+  return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function renderToday(data) {
+  const top = data.briefing?.top_focus || [];
+  const coachRead = data.briefing?.coach_read || '';
+
+  let html = renderGlanceBar(data);
+
+  if (coachRead) {
+    html += `<p class="ab-coach-read">${esc(coachRead)}</p>`;
+  }
+
+  html += '<div class="ab-section-label">Today, in order</div>';
+
+  if (top.length === 0) {
+    html += renderEmptyTopFocus();
+  } else {
+    html += renderHeroFocus(top[0]);
+    for (let i = 1; i < Math.min(3, top.length); i++) {
+      html += renderListFocus(top[i]);
+    }
+  }
+
+  return html;
 }
 
 // ─── Goals tracking (v1.11.0 Phase C) ─────────────────────────────
