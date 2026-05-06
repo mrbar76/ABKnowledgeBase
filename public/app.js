@@ -5,7 +5,7 @@ const API = '/api';
 // every app boot. On mismatch, the user sees a banner "New version available"
 // with a one-tap reload that bypasses cache. Prevents the PWA from quietly
 // running stale code after a deploy (which has bitten us multiple times).
-const APP_VERSION = '1.11.6';
+const APP_VERSION = '1.11.7';
 let currentTab = 'home';
 
 // Local-timezone date string (YYYY-MM-DD) — avoids UTC offset bugs
@@ -311,7 +311,7 @@ async function loadGoalsCard() {
   const slot = document.getElementById('goals-section');
   if (!slot) return;
   try {
-    const data = await api('/api/goals/dashboard');
+    const data = await api('/goals/dashboard');
     slot.innerHTML = renderGoalsCard(data);
     renderIcons();
   } catch (err) {
@@ -409,7 +409,7 @@ function unitFor(metric) {
 
 async function showGoalDetail(goalId) {
   try {
-    const traj = await api(`/api/goals/${goalId}/trajectory`);
+    const traj = await api(`/goals/${goalId}/trajectory`);
     const g = traj.goal;
     const projectionLabel = traj.projection && traj.projection.projected_target_date
       ? `Projected: ${traj.projection.projected_target_date}`
@@ -509,7 +509,7 @@ async function goalManualUpdate(goalId, metric) {
   if (isNaN(num)) { showToast('Must be a number', 'error'); return; }
   const note = prompt('Source note (optional):') || 'manual update via UI';
   try {
-    await api(`/api/goals/${goalId}`, {
+    await api(`/goals/${goalId}`, {
       method: 'PUT',
       body: JSON.stringify({
         current_value: num,
@@ -527,7 +527,7 @@ async function goalManualUpdate(goalId, metric) {
 
 async function goalRecompute(goalId) {
   try {
-    await api(`/api/goals/${goalId}/status`);
+    await api(`/goals/${goalId}/status`);
     showToast('Recomputed', 'success');
     closeModal();
     loadGoalsCard();
@@ -538,7 +538,7 @@ async function goalRecompute(goalId) {
 
 async function goalPauseToggle(goalId, newStatus) {
   try {
-    await api(`/api/goals/${goalId}`, {
+    await api(`/goals/${goalId}`, {
       method: 'PUT',
       body: JSON.stringify({ status: newStatus }),
     });
@@ -552,7 +552,7 @@ async function goalPauseToggle(goalId, newStatus) {
 
 async function showPhaseTimeline() {
   try {
-    const r = await api('/api/goals/phases');
+    const r = await api('/goals/phases');
     const today = new Date().toISOString().slice(0, 10);
     openModal('Phase Timeline', `
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -5972,7 +5972,7 @@ async function loadFitnessGoals() {
     <div id="fitness-goals-section">Loading...</div>
   `;
   try {
-    const data = await api('/api/goals/dashboard');
+    const data = await api('/goals/dashboard');
     document.getElementById('fitness-goals-section').innerHTML = renderGoalsCard(data);
     renderIcons();
   } catch (err) {

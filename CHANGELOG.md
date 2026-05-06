@@ -4,6 +4,46 @@ All notable changes to the AB Brain platform are documented here.
 
 ---
 
+## [1.11.7] — 2026-05-06
+
+### Real fix — duplicate /api/ prefix in Goals UI fetch paths
+
+The actual reason Goals never appeared in the UI: every `api()` call in
+the v1.11.0 Goals UI was written as `api('/api/goals/...')`. The `api()`
+helper prepends `API = '/api'` automatically. Result: requests went to
+`/api/api/goals/dashboard` (and 6 sibling paths). That URL doesn't match
+any route, so Express's SPA fallback served `index.html` (HTML, status
+200). The `api()` helper's `await res.json().catch(() => ({}))` swallowed
+the JSON parse error on HTML, returned `{}`. The UI parsed `{}` as
+"no goals found" and rendered the empty placeholder.
+
+Cache/SW/HTTP-cache theories in v1.11.1–6 were chasing the wrong cause.
+The bug was a 7-character typo (`/api/` extra prefix) repeated across
+7 lines that I wrote and shipped on day one.
+
+Fixed paths:
+- `api('/api/goals/dashboard')` → `api('/goals/dashboard')` (2 sites:
+  loadGoalsCard + loadFitnessGoals)
+- `api('/api/goals/${id}/trajectory')` → `api('/goals/${id}/trajectory')`
+- `api('/api/goals/${id}')` PUT → `api('/goals/${id}')` (2 sites)
+- `api('/api/goals/${id}/status')` → `api('/goals/${id}/status')`
+- `api('/api/goals/phases')` → `api('/goals/phases')`
+
+Single sed-style replace; verified zero `api('/api/goals` patterns
+remain.
+
+133/133 tests pass.
+
+### Apology
+
+This should have been a 5-minute fix on the first "I can't see goals"
+report. I went down a cache/SW/HTTP-cache rabbit hole through 5 deploys
+(v1.11.1 → v1.11.6) without checking the simplest thing: what URL is
+the fetch actually hitting. The version-drift banner shipped in v1.11.6
+is still useful long-term but was orthogonal to this specific bug.
+
+---
+
 ## [1.11.6] — 2026-05-06
 
 ### Permanent fix — version drift detection on app boot
