@@ -308,13 +308,13 @@ async function loadPersonal() {
   } else {
     todayItems.slice(0, 3).forEach((t, i) => {
       if (i === 0) {
-        html += '<div class="ab-hero-card ab-pillar-personal" onclick="showTaskDetail(' + t.id + ')">' +
+        html += '<div class="ab-hero-card ab-pillar-personal" onclick="showTaskDetail(\'' + t.id + '\')">' +
           '<div class="ab-hero-card-eyebrow">Personal</div>' +
           `<div class="ab-hero-card-title">${esc(cleanTaskTitle(t.title) || 'Untitled')}</div>` +
           (t.notes ? `<div class="ab-hero-card-meta">${esc(truncate(t.notes, 80))}</div>` : '') +
           '</div>';
       } else {
-        html += '<div class="ab-list-row" onclick="showTaskDetail(' + t.id + ')">' +
+        html += '<div class="ab-list-row" onclick="showTaskDetail(\'' + t.id + '\')">' +
           '<div class="ab-list-row-dot ab-pillar-personal"></div>' +
           '<div class="ab-list-row-body">' +
             `<div class="ab-list-row-title">${esc(cleanTaskTitle(t.title) || 'Untitled')}</div>` +
@@ -524,7 +524,7 @@ function renderHeroFocus(item) {
     ? `<span class="ab-badge ab-badge-hot" style="margin-left:auto">Hot</span>`
     : `<span class="ab-status-badge" data-state="${esc(status)}" style="margin-left:auto">${esc(status)}</span>`;
 
-  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail(${item.id})">` +
+  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail('${item.id}')">` +
     `<div class="ab-hero-card-head">` +
       `<span class="ab-pillar-label ab-pillar-label-${pillar}">${esc(pillarLabel)}</span>` +
       (kicker ? `<span class="ab-hero-card-kicker">${kicker}</span>` : '') +
@@ -532,7 +532,6 @@ function renderHeroFocus(item) {
     `</div>` +
     `<div class="ab-hero-card-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
     (item.reason ? `<div class="ab-hero-card-body">${esc(item.reason)}</div>` : '') +
-    `<div class="ab-hero-card-footer"><span>Open task</span>${icon('chevron-right', 14)}</div>` +
     '</div>';
 }
 
@@ -549,7 +548,7 @@ function renderListFocus(item, rank) {
     isHot ? `<span class="ab-badge ab-badge-hot">Hot</span>` : ''
   ].filter(Boolean).join('');
 
-  return `<div class="ab-list-row" onclick="showTaskDetail(${item.id})">` +
+  return `<div class="ab-list-row" onclick="showTaskDetail('${item.id}')">` +
     `<div class="ab-list-row-marker">` +
       `<span class="ab-list-row-rank">${rank}</span>` +
       `<div class="ab-list-row-icon ab-list-row-icon-${pillar}">${icon(iconName, 12)}</div>` +
@@ -6535,7 +6534,7 @@ function renderTrainingBigPicture(goals) {
     const meta = phase.end_date ? `Through ${esc(formatDateShort(phase.end_date))}` : '';
     const days = daysBetween(new Date(), phase.end_date);
     const countdown = days != null ? `<span class="ab-big-picture-countdown">${days}d remaining</span>` : '';
-    const onclick = phase.linked_race_id ? ` onclick="showRaceDetail(${phase.linked_race_id})" style="cursor:pointer"` : '';
+    const onclick = phase.linked_race_id ? ` onclick="showRaceDetail('${phase.linked_race_id}')" style="cursor:pointer"` : '';
     return `<div class="ab-big-picture ab-pillar-training"${onclick}>` +
       `<div class="ab-big-picture-eyebrow">${eyebrow}</div>` +
       `<div class="ab-big-picture-title">${esc(phase.description || phase.phase_name || 'Active phase')}</div>` +
@@ -6576,13 +6575,19 @@ function renderTrainingWeekStrip(plans, today) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const dStr = localDateStr(d);
+    const dayNum = d.getDate();
     const plan = Array.isArray(plans) ? plans.find(p => p.plan_date && String(p.plan_date).slice(0, 10) === dStr) : null;
     const status = plan?.status || (dStr < today ? 'missed' : 'planned');
     const isToday = dStr === today;
     const stateClass = ['completed','partial','missed','planned'].includes(status) ? `ab-state-${status}` : '';
-    html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}">` +
+    // Tap → daily plan detail if a plan exists, else a quick toast.
+    const onclick = plan?.id
+      ? ` onclick="showDailyPlanDetail('${plan.id}')"`
+      : ` onclick="abToast('No session planned for ' + ${JSON.stringify(formatDateShort(dStr))})"`;
+    html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}" style="cursor:pointer"${onclick}>` +
       `<div class="ab-week-day-label">${labels[i]}</div>` +
       `<div class="ab-week-day-mark"></div>` +
+      `<div style="font-family:var(--ab-font-data);font-size:10px;color:inherit;font-variant-numeric:tabular-nums">${dayNum}</div>` +
       `</div>`;
   }
   html += '</div>';
@@ -6609,7 +6614,7 @@ function renderTrainingTodaySession(dayData) {
   if (plan.target_duration_min) metaParts.push(plan.target_duration_min + ' min');
   if (plan.target_effort) metaParts.push('effort ' + plan.target_effort + '/10');
   const meta = metaParts.join(' · ');
-  const onclick = plan.id ? ` onclick="showDailyPlanDetail(${plan.id})" style="cursor:pointer"` : '';
+  const onclick = plan.id ? ` onclick="showDailyPlanDetail('${plan.id}')" style="cursor:pointer"` : '';
   return '<div class="ab-section-label">Today</div>' +
     `<div class="ab-hero-card ab-pillar-training"${onclick}>` +
       `<div class="ab-hero-card-eyebrow">Training · <span class="ab-status-badge" data-state="${esc(status)}">${esc(status)}</span></div>` +
@@ -6632,7 +6637,7 @@ function renderTrainingGoalsSection(goals) {
     const hasData = g.current_value != null;
     const progress = hasData && g.target_value ? Math.min(100, Math.round((Number(g.current_value) / Number(g.target_value)) * 100)) : 0;
     const status = g.status || (g.is_at_baseline ? 'pending' : 'on_track');
-    html += `<div class="ab-goal-row" onclick="showGoalDetail(${g.id})">` +
+    html += `<div class="ab-goal-row" onclick="showGoalDetail('${g.id}')">` +
       `<div class="ab-goal-row-head">` +
         `<div class="ab-goal-row-title">${esc(g.title || 'Goal')}</div>` +
         `<span class="ab-status-badge" data-state="${esc(status)}">${esc(String(status).replace('_',' '))}</span>` +
@@ -6662,10 +6667,12 @@ function renderTrainingRecoverySection(recovery) {
         `<div class="ab-list-row-meta">${esc(recovery.recommendation || '')}</div>` +
       '</div>' +
     '</div>' +
+    // Each sub-stat tile drills into the full recovery breakdown so the
+    // user can see what SLEEP / LOAD / MUSCLE actually mean.
     '<div class="ab-glance-row">' +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Sleep</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(sleep, 16))}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Load</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(tload, 16))}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(muscle, 16))}</div></div>` +
+      `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Sleep</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(sleep, 16))}</div></div>` +
+      `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Load</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(tload, 16))}</div></div>` +
+      `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(muscle, 16))}</div></div>` +
     '</div>';
 }
 
@@ -6692,31 +6699,36 @@ function renderTrainingBodySection(body) {
   const latest = rows[0];
   if (!latest) {
     return '<div class="ab-section-label">Body</div>' +
-      '<div class="ab-list-row" onclick="showBodyMetricForm()"><div class="ab-list-row-dot ab-pillar-training"></div>' +
+      '<div class="ab-list-row" onclick="showBodyTrendsDetail()"><div class="ab-list-row-dot ab-pillar-training"></div>' +
       '<div class="ab-list-row-body"><div class="ab-list-row-title">No weigh-in logged.</div>' +
       '<div class="ab-list-row-meta">Tap to log →</div></div></div>';
   }
   const w = latest.weight_lb || latest.weight_kg ? Number(latest.weight_lb || latest.weight_kg).toFixed(1) : '—';
   const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
-  const bf = latest.body_fat_pct != null ? `${Number(latest.body_fat_pct).toFixed(1)}%` : '—';
-  const sm = latest.skeletal_muscle_lb || latest.skeletal_muscle_kg ? Number(latest.skeletal_muscle_lb || latest.skeletal_muscle_kg).toFixed(1) : '—';
-  const bmr = latest.bmr || '—';
+  const bf = latest.body_fat_pct != null ? `${Number(latest.body_fat_pct).toFixed(1)}%` : null;
+  const sm = (latest.skeletal_muscle_lb || latest.skeletal_muscle_kg) ? Number(latest.skeletal_muscle_lb || latest.skeletal_muscle_kg).toFixed(1) : null;
+  const bmr = latest.bmr ? String(latest.bmr) : null;
   const dateStr = latest.measurement_date ? formatDateShort(latest.measurement_date) : '';
   const today = localDateStr();
   const stale = latest.measurement_date && String(latest.measurement_date).slice(0,10) !== today;
+  // Hide the 3-up sub-stats entirely if all three are null — avoids a
+  // row of three "—"s next to a real weight number.
+  const stats3up = (bf || sm || bmr)
+    ? '<div class="ab-glance-row">' +
+        (bf  ? `<div class="ab-glance-card"><div class="ab-glance-card-label">BF%</div><div class="ab-glance-card-value">${esc(bf)}</div></div>` : '') +
+        (sm  ? `<div class="ab-glance-card"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value">${esc(sm)}</div></div>` : '') +
+        (bmr ? `<div class="ab-glance-card"><div class="ab-glance-card-label">BMR</div><div class="ab-glance-card-value">${esc(bmr)}</div></div>` : '') +
+      '</div>'
+    : '';
   return '<div class="ab-section-label">Body</div>' +
-    `<div class="ab-list-row" onclick="showBodyMetricForm()">` +
+    `<div class="ab-list-row" onclick="showBodyTrendsDetail()">` +
       '<div class="ab-list-row-dot ab-pillar-training"></div>' +
       '<div class="ab-list-row-body">' +
         `<div class="ab-list-row-title">${esc(w)} ${esc(unit)}${stale ? ' <span style="color:var(--ab-muted);font-weight:400;font-size:12px">(' + esc(dateStr) + ')</span>' : ''}</div>` +
-        `<div class="ab-list-row-meta">${stale ? 'Latest weigh-in. Tap to log a fresh one.' : 'Logged today.'}</div>` +
+        `<div class="ab-list-row-meta">${stale ? 'Latest weigh-in. Tap for trends.' : 'Logged today. Tap for trends.'}</div>` +
       '</div>' +
     '</div>' +
-    '<div class="ab-glance-row">' +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">BF%</div><div class="ab-glance-card-value">${esc(bf)}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value">${esc(sm)}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">BMR</div><div class="ab-glance-card-value">${esc(bmr)}</div></div>` +
-    '</div>';
+    stats3up;
 }
 
 // ─── Fitness > Goals sub-tab (v1.11.1) ────────────────────────────
@@ -9941,6 +9953,58 @@ function closeModal() {
 
 // ─── Detail surfaces (v2 Foundation Phase 5) ──────────────────
 
+async function showBodyTrendsDetail() {
+  openModal('Body trends', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
+  try {
+    const data = await api('/body-metrics?limit=20').catch(() => null);
+    const rows = data?.body_metrics || (Array.isArray(data) ? data : []);
+    if (rows.length === 0) {
+      document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No weigh-ins yet.</div><div class="ab-list-row-meta">Tap "Log new" to capture your first.</div></div></div>' +
+        '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
+      return;
+    }
+    const latest = rows[0];
+    const earliest = rows[rows.length - 1];
+    const latestW = Number(latest.weight_lb || latest.weight_kg || 0);
+    const earliestW = Number(earliest.weight_lb || earliest.weight_kg || 0);
+    const delta = (latestW - earliestW).toFixed(1);
+    const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
+    const trendStr = rows.length > 1
+      ? (delta > 0 ? `+${delta} ${unit}` : `${delta} ${unit}`) + ` over ${rows.length} weigh-ins`
+      : 'first weigh-in';
+
+    let body = `<div class="ab-hero-card ab-pillar-training" style="cursor:default;margin:0 0 12px">` +
+      `<div class="ab-hero-card-eyebrow">Latest</div>` +
+      `<div class="ab-hero-card-title">${latestW.toFixed(1)} ${esc(unit)}</div>` +
+      `<div class="ab-hero-card-meta">${esc(formatDateShort(latest.measurement_date))} · ${esc(trendStr)}</div>` +
+      '</div>';
+
+    body += '<div class="ab-section-label">Recent weigh-ins</div>';
+    body += '<div class="ab-list-card">';
+    for (const r of rows.slice(0, 10)) {
+      const w = (r.weight_lb || r.weight_kg) ? Number(r.weight_lb || r.weight_kg).toFixed(1) : '—';
+      const ru = r.weight_lb ? 'lb' : (r.weight_kg ? 'kg' : '');
+      const bf = r.body_fat_pct != null ? `BF ${Number(r.body_fat_pct).toFixed(1)}%` : '';
+      const muscle = (r.skeletal_muscle_lb || r.skeletal_muscle_kg)
+        ? `Muscle ${Number(r.skeletal_muscle_lb || r.skeletal_muscle_kg).toFixed(1)}`
+        : (r.skeletal_muscle_pct != null ? `Muscle ${Number(r.skeletal_muscle_pct).toFixed(1)}%` : '');
+      const meta = [bf, muscle].filter(Boolean).join(' · ');
+      body += `<div class="ab-list-row" style="cursor:default">` +
+        `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+        `<div class="ab-list-row-body">` +
+          `<div class="ab-list-row-title">${esc(w)} ${esc(ru)}</div>` +
+          `<div class="ab-list-row-meta">${esc(formatDateShort(r.measurement_date))}${meta ? ' · ' + esc(meta) : ''}</div>` +
+        `</div></div>`;
+    }
+    body += '</div>';
+
+    body += '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
+    document.getElementById('modal-body').innerHTML = body;
+  } catch (e) {
+    document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load body trends.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+  }
+}
+
 async function showRaceDetail(id) {
   if (!id) return abToast('No race linked.');
   openModal('Race', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
@@ -10215,28 +10279,33 @@ async function runSearch(query) {
 }
 
 function renderMacroRow(label, value, target, unit) {
-  // No target → just show the value, no bar.
+  // No target → show the value, no bar at all.
   if (!target) {
     return `<div class="ab-goal-row" style="cursor:default">` +
       `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
       `<div class="ab-goal-row-meta"><span>${value}${esc(unit)}</span></div></div>` +
       `</div>`;
   }
-  const ratio = value / target;
-  const isOver = ratio > 1;
-  // Bar fills proportionally up to 100% in Pine. When over target, the
-  // entire bar shifts to amber and an explicit "+N over" appears in the
-  // meta. Color carries meaning — at-or-under is calm Pine, over is
-  // amber attention. Per the v2 design rule, color isn't decorative.
-  const fillPct = isOver ? 100 : Math.round(ratio * 100);
-  const fillColor = isOver ? 'var(--ab-amber)' : 'var(--ab-training-edge)';
+  const isOver = value > target;
+  // Visualization rule: bar must NOT look full when overshot. We give
+  // the over-target case a 10% headroom on the right of the bar so the
+  // total fill stays under 100% width. Pine = in-target portion;
+  // amber = the overshoot portion. Empty space on the right = "you're
+  // past the target" signal even at a glance.
+  // Under target: just Pine fill at value/target proportion.
+  const scaleMax = isOver ? value * 1.1 : target;
+  const pinePct = Math.round((Math.min(value, target) / scaleMax) * 100);
+  const amberPct = isOver ? Math.round(((value - target) / scaleMax) * 100) : 0;
   const overage = isOver
     ? ` <span style="color:var(--ab-amber-label);font-weight:600">+${Math.round(value - target)}${esc(unit)} over</span>`
     : '';
   return `<div class="ab-goal-row" style="cursor:default">` +
     `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
     `<div class="ab-goal-row-meta"><span>${value}${esc(unit)} / ${target}${esc(unit)}${overage}</span></div></div>` +
-    `<div class="ab-progress-bar"><div class="ab-progress-bar-fill" style="width:${fillPct}%;background:${fillColor}"></div></div>` +
+    `<div class="ab-progress-bar" style="display:flex;overflow:hidden">` +
+      (pinePct > 0  ? `<div style="width:${pinePct}%;background:var(--ab-training-edge);height:100%"></div>` : '') +
+      (amberPct > 0 ? `<div style="width:${amberPct}%;background:var(--ab-amber);height:100%"></div>` : '') +
+    `</div>` +
     `</div>`;
 }
 

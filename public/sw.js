@@ -2,7 +2,7 @@
 // serving stale app.js across v1.11.0/1/2 (Goals UI shipped but never
 // reached installed PWAs because cache name didn't change). Bump CACHE_NAME
 // on every release that touches public/* — old caches prune on activate.
-const CACHE_NAME = 'abkb-v1.14.1-polish';
+const CACHE_NAME = 'abkb-v1.14.2-clickfix';
 const SHELL_FILES = [
   '/',
   '/styles.css',
