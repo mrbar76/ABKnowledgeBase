@@ -166,13 +166,14 @@ body {
   color: var(--text);
   min-height: 100vh;
   min-height: 100dvh;
-  padding-top: env(safe-area-inset-top, 0);
+  /* padding-top intentionally NOT set on body — the .ab-topbar handles
+     safe-area-inset-top inside its own padding. Setting it here too
+     was double-counting and pushed the topbar down by 60-80px. */
   padding-bottom: 70px;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
-  background-image: radial-gradient(ellipse at 50% -20%, rgba(99,102,241,0.06) 0%, transparent 50%);
-  background-attachment: fixed;
+  /* Old AB Brain purple radial accent removed — bg is now flat for v2. */
 }
 
 /* --- Header --- */
