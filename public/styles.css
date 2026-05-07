@@ -4243,6 +4243,39 @@ body { font-family: var(--ab-font-ui); }
 
 /* End v2 Foundation */
 
+/* ───────────────────────────────────────────────────────────── */
+/* v2 Foundation — Legacy overrides                              */
+/* These selectors override v1 styles globally to bring legacy   */
+/* surfaces (forms, modals) in line with the new system.         */
+/* ───────────────────────────────────────────────────────────── */
+
+/* Kill the purple-indigo gradient on every submit button.
+   Solid ink primary, matches the rest of v2. No decorative gradients. */
+.btn-submit {
+  background: var(--ab-ink) !important;
+  color: var(--ab-bg) !important;
+  border-radius: 12px !important;
+  font-family: var(--ab-font-ui) !important;
+  font-weight: 600 !important;
+}
+.btn-submit:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important; }
+:root[data-theme="dark"] .btn-submit { color: var(--ab-bg) !important; }
+
+/* Defensive modal/form overflow guards.
+   Body Metric form (and any other legacy form using .form-scroll) was
+   rendering with labels cropped on the left edge — caused by horizontal
+   overflow inside .modal-body that some browsers scroll past zero. The
+   guards below clip any horizontal overflow at the modal boundary and
+   let labels wrap rather than escape. */
+.modal-body { box-sizing: border-box; overflow-x: hidden; }
+.modal-body * { max-width: 100%; }
+.form-scroll { overflow-x: hidden; }
+.form-group label { word-break: break-word; min-width: 0; }
+.flex-row-wrap > .form-group { min-width: 0; }
+
+/* Net effect: no v1 form ever crops content again, and every Save /
+   Submit button drops the gradient in favor of the new design system. */
+
 /* ═══ Responsive ═══ */
 @media (min-width: 768px) {
   .rings-container { width: 200px; height: 200px; }

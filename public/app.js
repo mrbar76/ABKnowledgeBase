@@ -10034,15 +10034,18 @@ async function showNutritionDetail() {
     const carbs   = Math.round(Number(summary.total_carbs_g || 0));
     const fat     = Math.round(Number(summary.total_fat_g || 0));
     const targets = summary.plan_targets || {};
-    const calTarget = targets.calories || null;
-    const proTarget = targets.protein_g || null;
-    const carbTarget = targets.carbs_g || null;
-    const fatTarget = targets.fat_g || null;
+    const calTarget  = targets.calories  || null;
+    const proTarget  = targets.protein_g || null;
+    const carbTarget = targets.carbs_g   || null;
+    const fatTarget  = targets.fat_g     || null;
 
+    // 3-up glance (replaces "Meals X logged" with on-pace ratio).
+    const onPace = calTarget ? Math.round((cal / calTarget) * 100) : null;
+    const onPaceLabel = onPace == null ? 'no target' : (onPace > 100 ? 'over' : 'on pace');
     let body = '<div class="ab-glance-row" style="padding:0 0 12px">' +
       `<div class="ab-glance-card"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${calTarget ? '/ ' + Math.round(calTarget) : 'today'}</div></div>` +
       `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${proTarget ? '/ ' + Math.round(proTarget) + 'g' : 'today'}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Meals</div><div class="ab-glance-card-value">${summary.total_meals || 0}</div><div class="ab-glance-card-sub">logged</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">${onPace == null ? 'Total' : (onPace > 100 ? 'Over' : 'On pace')}</div><div class="ab-glance-card-value">${onPace == null ? cal : onPace + '%'}</div><div class="ab-glance-card-sub">${esc(onPaceLabel)}</div></div>` +
       '</div>';
 
     body += '<div class="ab-section-label">Macros</div>';
@@ -10058,12 +10061,10 @@ async function showNutritionDetail() {
         const mp  = Math.round(Number(m.protein_g || 0));
         const mca = Math.round(Number(m.carbs_g || 0));
         const mf  = Math.round(Number(m.fat_g || 0));
-        const time = m.eaten_at || m.meal_time || '';
-        const timeStr = time ? new Date(time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : (m.meal_type || '');
         body += `<div class="ab-list-row" onclick="closeModal();showMealDetail('${esc(String(m.id))}')">` +
           `<div class="ab-list-row-dot ab-pillar-training"></div>` +
           `<div class="ab-list-row-body">` +
-            `<div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')} <span style="color:var(--ab-muted);font-weight:400;font-size:12px">${esc(timeStr)}</span></div>` +
+            `<div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')}${formatMealTimeChip(m)}</div>` +
             `<div class="ab-list-row-meta" style="font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${mc} cal · ${mp}p · ${mca}c · ${mf}f</div>` +
           `</div></div>`;
       }
@@ -10071,11 +10072,26 @@ async function showNutritionDetail() {
       body += '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-meta">No meals logged today.</div></div></div>';
     }
 
-    body += '<div style="padding:16px"><button class="ab-icon-btn" style="width:auto;padding:8px 16px;border:1px solid var(--ab-border);font-weight:500" onclick="closeModal();showMealForm()">Log meal</button></div>';
+    body += '<div style="padding:16px"><button onclick="closeModal();showMealForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log meal</button></div>';
     document.getElementById('modal-body').innerHTML = body;
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load nutrition.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
   }
+}
+
+// Defensive: only render a time chip if we can actually parse the date.
+// Avoids "Invalid Date" leaking into the UI for meals whose meal_time
+// is a label like "post-workout" rather than an ISO timestamp.
+function formatMealTimeChip(m) {
+  const candidate = m.eaten_at || m.meal_time;
+  if (candidate) {
+    const d = new Date(candidate);
+    if (!isNaN(d.getTime())) {
+      const formatted = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      return ` <span style="color:var(--ab-muted);font-weight:400;font-size:12px">${esc(formatted)}</span>`;
+    }
+  }
+  return '';
 }
 
 // ─── Universal Search sheet (v2 Foundation Phase 7) ───────────
@@ -10199,11 +10215,28 @@ async function runSearch(query) {
 }
 
 function renderMacroRow(label, value, target, unit) {
-  const pct = target ? Math.min(100, Math.round((value / target) * 100)) : 0;
+  // No target → just show the value, no bar.
+  if (!target) {
+    return `<div class="ab-goal-row" style="cursor:default">` +
+      `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
+      `<div class="ab-goal-row-meta"><span>${value}${esc(unit)}</span></div></div>` +
+      `</div>`;
+  }
+  const ratio = value / target;
+  const isOver = ratio > 1;
+  // Bar fills proportionally up to 100% in Pine. When over target, the
+  // entire bar shifts to amber and an explicit "+N over" appears in the
+  // meta. Color carries meaning — at-or-under is calm Pine, over is
+  // amber attention. Per the v2 design rule, color isn't decorative.
+  const fillPct = isOver ? 100 : Math.round(ratio * 100);
+  const fillColor = isOver ? 'var(--ab-amber)' : 'var(--ab-training-edge)';
+  const overage = isOver
+    ? ` <span style="color:var(--ab-amber-label);font-weight:600">+${Math.round(value - target)}${esc(unit)} over</span>`
+    : '';
   return `<div class="ab-goal-row" style="cursor:default">` +
     `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
-    `<div class="ab-goal-row-meta"><span>${value}${esc(unit)}${target ? ' / ' + target + esc(unit) : ''}</span></div></div>` +
-    (target ? `<div class="ab-progress-bar ab-pillar-training"><div class="ab-progress-bar-fill" style="width:${pct}%"></div></div>` : '') +
+    `<div class="ab-goal-row-meta"><span>${value}${esc(unit)} / ${target}${esc(unit)}${overage}</span></div></div>` +
+    `<div class="ab-progress-bar"><div class="ab-progress-bar-fill" style="width:${fillPct}%;background:${fillColor}"></div></div>` +
     `</div>`;
 }
 
