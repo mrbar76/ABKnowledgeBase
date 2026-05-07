@@ -10614,35 +10614,87 @@ function closeModal() {
 
 // ─── Detail surfaces (v2 Foundation Phase 5) ──────────────────
 
-// Inline SVG sparkline. Returns empty string if fewer than 2 valid points.
-function abSparkline(values, opts = {}) {
-  const numeric = (values || []).map(v => Number(v)).filter(v => !isNaN(v) && v !== 0);
-  if (numeric.length < 2) return '';
-  const width = opts.width  || 220;
-  const height = opts.height || 44;
-  const stroke = opts.stroke || 'var(--ab-training-edge)';
-  const fill   = opts.fill   || 'rgba(69, 104, 89, 0.10)';
-  const min = Math.min(...numeric);
-  const max = Math.max(...numeric);
-  const range = max - min || 1;
-  const step = numeric.length > 1 ? width / (numeric.length - 1) : 0;
-  const points = numeric.map((v, i) => {
-    const x = i * step;
-    const y = height - ((v - min) / range) * (height - 4) - 2;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  const polyline = points.join(' ');
-  const area = `0,${height} ${polyline} ${width},${height}`;
-  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;overflow:visible">` +
-    `<polygon points="${area}" fill="${fill}" stroke="none"/>` +
-    `<polyline points="${polyline}" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `</svg>`;
+// Track Chart.js instances so we can destroy them on modal close /
+// re-render without leaking GPU memory or duplicate event handlers.
+const _abActiveCharts = [];
+function _abClearCharts() {
+  while (_abActiveCharts.length) {
+    try { _abActiveCharts.pop().destroy(); } catch { /* already gone */ }
+  }
 }
 
-// One dashboard tile: label + current value + delta chip + sparkline.
-function abMetricTile({ label, current, unit, series, decimals = 1 }) {
-  const cur  = current != null ? Number(current).toFixed(decimals) : '—';
+// Render a Chart.js line chart into the canvas with the given id.
+// values = newest-first, dates = matching newest-first ISO strings.
+function abLineChart(canvasId, values, dates, opts = {}) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  // Reverse to chronological order (oldest -> newest) for the chart.
+  const chronoValues = values.slice().reverse();
+  const chronoDates  = dates.slice().reverse();
+  const stroke = opts.stroke || 'var(--ab-training-edge)';
+  const fill   = opts.fill   || 'rgba(69, 104, 89, 0.10)';
+  const unit   = opts.unit   || '';
+  const dec    = opts.decimals != null ? opts.decimals : 1;
+  // Resolve CSS vars to actual hex so Chart.js can use them.
+  const stroketColor = getComputedStyle(document.documentElement).getPropertyValue('--ab-training-edge').trim() || '#456859';
+  const ch = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: chronoDates.map(d => {
+        try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+        catch { return d; }
+      }),
+      datasets: [{
+        data: chronoValues,
+        borderColor: stroketColor,
+        backgroundColor: fill,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: stroketColor,
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2,
+        tension: 0.25,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: true,
+          mode: 'nearest',
+          intersect: false,
+          backgroundColor: 'rgba(24, 24, 26, 0.96)',
+          titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
+          bodyFont:  { family: "'DM Mono'", size: 13 },
+          padding: 8,
+          displayColors: false,
+          callbacks: {
+            label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
+          },
+        },
+      },
+      scales: {
+        x: { display: false },
+        y: { display: false, beginAtZero: false },
+      },
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    },
+  });
+  _abActiveCharts.push(ch);
+}
+
+// One dashboard tile: label + current value + delta chip + interactive
+// Chart.js line chart. Caller is responsible for invoking abLineChart
+// after the HTML is in the DOM (use setTimeout 30 + the canvasId).
+function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
   const numeric = (series || []).map(v => Number(v)).filter(v => !isNaN(v) && v !== 0);
+  if (numeric.length === 0) return '';
+  const cur  = current != null ? Number(current).toFixed(decimals) : '—';
   let deltaChip = '';
   if (numeric.length >= 2) {
     const delta = numeric[0] - numeric[numeric.length - 1];
@@ -10650,6 +10702,7 @@ function abMetricTile({ label, current, unit, series, decimals = 1 }) {
     const color = delta > 0 ? 'var(--ab-urgency-label)' : (delta < 0 ? 'var(--ab-training-label)' : 'var(--ab-muted)');
     deltaChip = `<span style="font-family:var(--ab-font-data);font-size:11px;font-weight:600;color:${color};margin-left:8px">${sign}${delta.toFixed(decimals)}${unit ? ' ' + unit : ''}</span>`;
   }
+  const chartId = 'ab-chart-' + id;
   return '<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;padding:14px;margin:0 16px 12px">' +
     `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">` +
       `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ab-muted)">${esc(label)}</span>` +
@@ -10659,14 +10712,36 @@ function abMetricTile({ label, current, unit, series, decimals = 1 }) {
       `<span style="font-family:var(--ab-font-data);font-size:24px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
       (unit ? `<span style="font-size:11px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
     `</div>` +
-    abSparkline(numeric) +
+    `<div style="height:80px;position:relative"><canvas id="${chartId}"></canvas></div>` +
     '</div>';
 }
 
+// Smaller summary card for metrics with light or no series — current
+// + delta only, no chart. Used for the long-tail body composition
+// metrics (BMI, fat-free mass, visceral fat, body water, protein, etc).
+function abMetricSummary({ label, current, unit, decimals = 1, delta }) {
+  const cur = current != null ? Number(current).toFixed(decimals) : '—';
+  let deltaStr = '';
+  if (delta != null && !isNaN(delta) && delta !== 0) {
+    const sign = delta > 0 ? '+' : '';
+    const color = delta > 0 ? 'var(--ab-urgency-label)' : 'var(--ab-training-label)';
+    deltaStr = `<span style="font-family:var(--ab-font-data);font-size:11px;font-weight:600;color:${color}">${sign}${Number(delta).toFixed(decimals)}</span>`;
+  }
+  return `<div class="ab-glance-card" style="padding:12px">` +
+    `<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ab-muted);margin-bottom:6px">${esc(label)}</div>` +
+    `<div style="display:flex;align-items:baseline;gap:4px">` +
+      `<span style="font-family:var(--ab-font-data);font-size:18px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
+      (unit ? `<span style="font-size:10px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
+    `</div>` +
+    (deltaStr ? `<div style="margin-top:4px">${deltaStr}</div>` : '') +
+  `</div>`;
+}
+
 async function showBodyTrendsDetail() {
+  _abClearCharts();
   openModal('Body trends', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
-    const data = await api('/body-metrics?limit=30').catch(() => null);
+    const data = await api('/body-metrics?limit=60').catch(() => null);
     const rows = data?.body_metrics || (Array.isArray(data) ? data : []);
     if (rows.length === 0) {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No weigh-ins yet.</div><div class="ab-list-row-meta">Tap "Log new" to capture your first.</div></div></div>' +
@@ -10676,23 +10751,54 @@ async function showBodyTrendsDetail() {
 
     const latest = rows[0];
     const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
+    const dates = rows.map(r => r.measurement_date);
 
-    // Build series for each metric. rows are sorted DESC by date — keep
-    // that order so series[0] = newest, series[last] = oldest. Delta
-    // chip math uses that ordering.
-    const weightSeries = rows.map(r => Number(r.weight_lb || r.weight_kg || 0));
-    const bfSeries     = rows.map(r => Number(r.body_fat_pct || 0));
-    const muscleSeries = rows.map(r => Number(r.skeletal_muscle_lb || r.skeletal_muscle_kg || r.skeletal_muscle_pct || 0));
-    const bmrSeries    = rows.map(r => Number(r.bmr || 0));
+    // Build series — rows are newest-first.
+    const weightSeries  = rows.map(r => Number(r.weight_lb || r.weight_kg || 0));
+    const bmiSeries     = rows.map(r => Number(r.bmi || 0));
+    const bfSeries      = rows.map(r => Number(r.body_fat_pct || 0));
+    const smPctSeries   = rows.map(r => Number(r.skeletal_muscle_pct || 0));
+    const smAbsSeries   = rows.map(r => Number(r.skeletal_muscle_lb || r.skeletal_muscle_kg || 0));
+    const ffmSeries     = rows.map(r => Number(r.fat_free_mass_lb || 0));
+    const subqSeries    = rows.map(r => Number(r.subcutaneous_fat_pct || 0));
+    const visceralSeries= rows.map(r => Number(r.visceral_fat || 0));
+    const waterSeries   = rows.map(r => Number(r.body_water_pct || 0));
+    const muscleAbsSeries=rows.map(r => Number(r.muscle_mass_lb || 0));
+    const boneSeries    = rows.map(r => Number(r.bone_mass_lb || 0));
+    const proteinSeries = rows.map(r => Number(r.protein_pct || 0));
+    const bmrSeries     = rows.map(r => Number(r.bmr_kcal || r.bmr || 0));
+    const metAgeSeries  = rows.map(r => Number(r.metabolic_age || 0));
 
-    let body = '<div class="ab-section-label">Dashboard</div>';
-    body += abMetricTile({ label: 'Weight',        current: weightSeries[0], unit,            series: weightSeries });
-    body += abMetricTile({ label: 'Body fat',      current: bfSeries[0],     unit: '%',       series: bfSeries });
-    body += abMetricTile({ label: 'Muscle',        current: muscleSeries[0], unit: muscleSeries[0] > 30 ? unit : '%', series: muscleSeries });
-    if (bmrSeries.some(v => v > 0)) {
-      body += abMetricTile({ label: 'BMR',         current: bmrSeries[0],    unit: 'kcal',    series: bmrSeries, decimals: 0 });
+    const hasData = (s) => s.some(v => v > 0);
+    const delta = (s) => s.length >= 2 ? (s[0] - s[s.length - 1]) : null;
+
+    // ── Top: 4 big interactive metric tiles for the headline numbers ──
+    let body = '<div class="ab-section-label">Trends</div>';
+    body += abMetricTile({ id: 'weight',  label: 'Weight',     current: weightSeries[0], unit,             series: weightSeries });
+    if (hasData(bfSeries))     body += abMetricTile({ id: 'bf',      label: 'Body fat %', current: bfSeries[0],     unit: '%',        series: bfSeries });
+    if (hasData(smPctSeries))  body += abMetricTile({ id: 'sm',      label: 'Skeletal muscle %', current: smPctSeries[0], unit: '%',  series: smPctSeries });
+    if (hasData(waterSeries))  body += abMetricTile({ id: 'water',   label: 'Body water %', current: waterSeries[0], unit: '%',     series: waterSeries });
+    if (hasData(bmrSeries))    body += abMetricTile({ id: 'bmr',     label: 'BMR',        current: bmrSeries[0],    unit: 'kcal',    series: bmrSeries, decimals: 0 });
+
+    // ── Mid: 2-col grid of summary cards for the rest of the composition metrics ──
+    const summaryCards = [];
+    if (hasData(bmiSeries))     summaryCards.push(abMetricSummary({ label: 'BMI',          current: bmiSeries[0],     unit: '',   delta: delta(bmiSeries),     decimals: 1 }));
+    if (hasData(ffmSeries))     summaryCards.push(abMetricSummary({ label: 'Fat-free mass',current: ffmSeries[0],     unit,       delta: delta(ffmSeries),     decimals: 1 }));
+    if (hasData(smAbsSeries))   summaryCards.push(abMetricSummary({ label: 'Muscle (abs)', current: smAbsSeries[0],   unit,       delta: delta(smAbsSeries),   decimals: 1 }));
+    if (hasData(muscleAbsSeries)) summaryCards.push(abMetricSummary({ label: 'Muscle mass',current: muscleAbsSeries[0], unit,     delta: delta(muscleAbsSeries), decimals: 1 }));
+    if (hasData(subqSeries))    summaryCards.push(abMetricSummary({ label: 'Subcutaneous fat', current: subqSeries[0], unit: '%', delta: delta(subqSeries),    decimals: 1 }));
+    if (hasData(visceralSeries)) summaryCards.push(abMetricSummary({ label: 'Visceral fat',current: visceralSeries[0],unit: '',   delta: delta(visceralSeries), decimals: 0 }));
+    if (hasData(boneSeries))    summaryCards.push(abMetricSummary({ label: 'Bone mass',    current: boneSeries[0],    unit,       delta: delta(boneSeries),    decimals: 2 }));
+    if (hasData(proteinSeries)) summaryCards.push(abMetricSummary({ label: 'Protein %',    current: proteinSeries[0], unit: '%',  delta: delta(proteinSeries), decimals: 1 }));
+    if (hasData(metAgeSeries))  summaryCards.push(abMetricSummary({ label: 'Metabolic age',current: metAgeSeries[0],  unit: '',   delta: delta(metAgeSeries),  decimals: 0 }));
+
+    if (summaryCards.length > 0) {
+      body += '<div class="ab-section-label">Composition</div>';
+      // Use a 2-column glance row for these — auto-wraps if many.
+      body += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:0 16px 12px">${summaryCards.join('')}</div>`;
     }
 
+    // ── Bottom: recent weigh-ins list ──
     body += '<div class="ab-section-label">Recent weigh-ins</div>';
     body += '<div class="ab-list-card">';
     for (const r of rows.slice(0, 10)) {
@@ -10714,6 +10820,15 @@ async function showBodyTrendsDetail() {
 
     body += '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
     document.getElementById('modal-body').innerHTML = body;
+
+    // Now instantiate the Chart.js line charts (DOM is in place).
+    setTimeout(() => {
+      abLineChart('ab-chart-weight', weightSeries, dates, { unit, decimals: 1 });
+      if (hasData(bfSeries))    abLineChart('ab-chart-bf',    bfSeries,    dates, { unit: '%',    decimals: 1 });
+      if (hasData(smPctSeries)) abLineChart('ab-chart-sm',    smPctSeries, dates, { unit: '%',    decimals: 1 });
+      if (hasData(waterSeries)) abLineChart('ab-chart-water', waterSeries, dates, { unit: '%',    decimals: 1 });
+      if (hasData(bmrSeries))   abLineChart('ab-chart-bmr',   bmrSeries,   dates, { unit: 'kcal', decimals: 0 });
+    }, 30);
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load body trends.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
   }
@@ -12781,7 +12896,19 @@ function formatPlanNarrative(text) {
 
 function showDailyPlanDetail(id) {
   openModal('Daily Plan', `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>`, { variant: 'sheet' });
-  api(`/daily-plans/${id}`).then(plan => {
+  api(`/daily-plans/${id}`).then(async plan => {
+    // Also pull workouts logged on this plan's date so we can show
+    // "actual" alongside "planned" — gives the modal a real "how it
+    // went" section instead of just metadata.
+    let workouts = [];
+    if (plan.plan_date) {
+      try {
+        const dayData = await api('/training/day/' + String(plan.plan_date).slice(0, 10));
+        workouts = dayData?.workouts || [];
+      } catch { /* missing endpoint or no data — render plan-only */ }
+    }
+    return { plan, workouts };
+  }).then(({ plan, workouts }) => {
     const status = plan.status || 'planned';
     // Defensive date — no more "Invalid Date" leaking into the title.
     let dateLabel = 'Daily plan';
@@ -12837,9 +12964,44 @@ function showDailyPlanDetail(id) {
       html += '</div>';
     }
 
+    // Actual workouts logged on this date — concrete "how it went"
+    // data alongside the plan. Tap a row to drill into the workout.
+    if (workouts.length > 0) {
+      html += '<div class="ab-section-label">Actual workouts logged</div>';
+      html += '<div class="ab-list-card">';
+      for (const w of workouts) {
+        const wTitle = w.title || w.workout_type || 'Workout';
+        const metaParts = [];
+        if (w.duration_minutes) metaParts.push(w.duration_minutes + ' min');
+        if (w.effort) metaParts.push('effort ' + w.effort + '/10');
+        if (w.calories || w.active_calories) metaParts.push((w.calories || w.active_calories) + ' cal');
+        if (w.avg_hr) metaParts.push('HR ' + w.avg_hr);
+        if (w.distance_mi) metaParts.push(w.distance_mi + ' mi');
+        const wMeta = metaParts.join(' · ');
+        const sourceChip = w.source ? `<span style="font-size:10px;color:var(--ab-muted);margin-left:6px">${esc(w.source)}</span>` : '';
+        html += `<div class="ab-list-row" onclick="closeModal();showWorkoutDetail('${w.id}')">` +
+          `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+          `<div class="ab-list-row-body">` +
+            `<div class="ab-list-row-title">${esc(wTitle)}${sourceChip}</div>` +
+            (wMeta ? `<div class="ab-list-row-meta" style="font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${esc(wMeta)}</div>` : '') +
+          `</div></div>`;
+      }
+      html += '</div>';
+    } else if (plan.status === 'completed' || plan.status === 'partial') {
+      // Plan marked done but no workout records — surface it so the
+      // user notices the data gap rather than silently showing nothing.
+      html += '<div class="ab-section-label">Actual workouts logged</div>';
+      html += '<div class="ab-list-row" style="cursor:default;margin:0 16px 12px;border:1px solid var(--ab-border);border-radius:16px">' +
+        '<div class="ab-list-row-dot"></div>' +
+        '<div class="ab-list-row-body">' +
+          '<div class="ab-list-row-title">No workouts logged for this date.</div>' +
+          '<div class="ab-list-row-meta">Plan was marked ' + esc(plan.status) + ' but no workout record exists.</div>' +
+        '</div></div>';
+    }
+
     // Workout narrative — parsed into sections
     if (plan.workout_notes) {
-      html += '<div class="ab-section-label">Workout</div>';
+      html += '<div class="ab-section-label">Planned workout</div>';
       html += `<div style="margin:0 16px 12px;padding:14px;background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px">${formatPlanNarrative(plan.workout_notes)}</div>`;
     }
 
