@@ -507,6 +507,23 @@ async function initDB() {
   await safeQuery('tasks +checklist', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('tasks +waiting_on', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_on TEXT`);
   await safeQuery('tasks idx_waiting_on', `CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on ON tasks(waiting_on)`);
+
+  // v2 Foundation B2: backfill waiting_on from "[WAITING ON: Name]" title
+  // prefixes and strip the prefix from titles. Idempotent (WHERE filter
+  // means already-cleaned rows are skipped on subsequent boots).
+  await safeQuery('tasks backfill waiting_on from title prefix', `
+    UPDATE tasks
+    SET waiting_on = COALESCE(NULLIF(waiting_on, ''), regexp_replace(title, '^\\[WAITING ON: ([^\\]]+)\\].*', '\\1')),
+        title = trim(regexp_replace(title, '^\\[WAITING ON: [^\\]]+\\]\\s*', ''))
+    WHERE title LIKE '[WAITING ON:%'
+  `);
+
+  // v2 Foundation B3: strip "PROMPT AVI:" prefix from titles. Idempotent.
+  await safeQuery('tasks strip PROMPT AVI prefix', `
+    UPDATE tasks
+    SET title = trim(regexp_replace(title, '^PROMPT AVI:\\s*', ''))
+    WHERE title LIKE 'PROMPT AVI:%'
+  `);
   // -- recurring tasks migrations --
   await safeQuery('tasks +recurrence_rule', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_rule JSONB`);
   await safeQuery('tasks +recurring_parent_id', `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_parent_id UUID REFERENCES tasks(id) ON DELETE SET NULL`);

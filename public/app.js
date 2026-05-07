@@ -470,25 +470,32 @@ function renderGlanceBar({ briefing, recovery, races }) {
   const recScore = recovery?.score != null ? recovery.score : '—';
   const recLabel = recovery?.label || (recovery?.score != null ? '' : 'No data yet');
 
+  // /races/upcoming returns { count, races: [...] } not a flat array.
+  const racesList = Array.isArray(races) ? races : (races?.races || []);
   let raceVal = '—', raceSub = 'No race set';
-  if (Array.isArray(races) && races.length > 0) {
-    const next = races[0];
-    if (next?.race_date) {
-      const today = new Date();
-      const raceDate = new Date(String(next.race_date).slice(0, 10) + 'T12:00:00');
-      const days = Math.max(0, Math.round((raceDate - today) / (1000 * 60 * 60 * 24)));
+  if (racesList.length > 0) {
+    const next = racesList[0];
+    const dateField = next?.race_date || next?.date;
+    const days = daysBetween(new Date(), dateField);
+    if (days != null && days >= 0) {
       raceVal = days + 'd';
-      raceSub = truncate(next.race_name || next.title || 'Upcoming race', 24);
+      raceSub = truncate(next.race_name || next.name || next.title || 'Upcoming race', 24);
     }
   }
 
-  const overdueCount = briefing?.overdue?.count ?? '—';
-  const firstOverdue = briefing?.overdue?.tasks?.[0]?.title || (overdueCount === 0 ? 'Nothing overdue' : 'No data');
+  // Overdue: count + "X hot" / "all medium-low" / "all clear" subtitle.
+  const overdueCount = briefing?.overdue?.count ?? 0;
+  const overdueTasks = briefing?.overdue?.tasks || [];
+  const hotCount = overdueTasks.filter(t => t.priority === 'urgent').length;
+  const overdueSub = overdueCount === 0
+    ? 'all clear'
+    : (hotCount > 0 ? hotCount + ' hot' : 'all medium-low');
+  const overdueSubClass = hotCount > 0 ? 'ab-glance-card-sub ab-alarm' : 'ab-glance-card-sub';
 
   return '<div class="ab-glance-row">' +
-    `<div class="ab-glance-card"><div class="ab-glance-card-label">Recovery</div><div class="ab-glance-card-value">${esc(String(recScore))}</div><div class="ab-glance-card-sub">${esc(recLabel)}</div></div>` +
+    `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Recovery</div><div class="ab-glance-card-value">${esc(String(recScore))}</div><div class="ab-glance-card-sub">${esc(recLabel)}</div></div>` +
     `<div class="ab-glance-card"><div class="ab-glance-card-label">Race</div><div class="ab-glance-card-value">${esc(raceVal)}</div><div class="ab-glance-card-sub">${esc(raceSub)}</div></div>` +
-    `<div class="ab-glance-card" onclick="switchTab('productivity')" style="cursor:pointer"><div class="ab-glance-card-label">Overdue</div><div class="ab-glance-card-value">${esc(String(overdueCount))}</div><div class="ab-glance-card-sub">${esc(truncate(firstOverdue, 26))}</div></div>` +
+    `<div class="ab-glance-card" onclick="switchTab('productivity')" style="cursor:pointer"><div class="ab-glance-card-label">Overdue</div><div class="ab-glance-card-value">${esc(String(overdueCount))}</div><div class="${overdueSubClass}">${esc(overdueSub)}</div></div>` +
     '</div>';
 }
 
@@ -497,11 +504,16 @@ function renderHeroFocus(item) {
   const pillarLabel = pillar.charAt(0).toUpperCase() + pillar.slice(1);
   const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
   const eyebrow = pillarLabel + (item.due_date ? ' · ' + esc(formatDateShort(item.due_date)) : '');
-  const hotPill = isHot ? '<span class="ab-pill ab-pill-hot">Hot</span>' : '';
+  const hotBadge = isHot ? '<span class="ab-badge ab-badge-hot">Hot</span>' : '';
+  const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
+  const waitingPerson = item.waiting_on_person || item.waiting_on;
+  const waitingBadge = waitingPerson
+    ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
+    : '';
   return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail(${item.id})">` +
     `<div class="ab-hero-card-eyebrow">${esc(eyebrow)}</div>` +
-    `<div class="ab-hero-card-title">${esc(item.title || 'Untitled')}</div>` +
-    `<div class="ab-hero-card-meta">${esc(item.reason || '')}${hotPill ? ' ' + hotPill : ''}</div>` +
+    `<div class="ab-hero-card-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
+    `<div class="ab-hero-card-meta">${esc(item.reason || '')}${hotBadge ? ' ' + hotBadge : ''}</div>` +
     '</div>';
 }
 
@@ -509,10 +521,15 @@ function renderListFocus(item) {
   const pillar = pillarFromContext(item.context);
   const pillarClass = pillar ? ` ab-pillar-${pillar}` : '';
   const pillarLabel = pillar ? (pillar.charAt(0).toUpperCase() + pillar.slice(1) + ' · ') : '';
+  const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
+  const waitingPerson = item.waiting_on_person || item.waiting_on;
+  const waitingBadge = waitingPerson
+    ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
+    : '';
   return `<div class="ab-list-row" onclick="showTaskDetail(${item.id})">` +
     `<div class="ab-list-row-dot${pillarClass}"></div>` +
     '<div class="ab-list-row-body">' +
-      `<div class="ab-list-row-title">${esc(item.title || 'Untitled')}</div>` +
+      `<div class="ab-list-row-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
       `<div class="ab-list-row-meta">${esc(pillarLabel + (item.reason || ''))}</div>` +
     '</div></div>';
 }
@@ -6538,9 +6555,14 @@ function renderTrainingTodaySession(dayData) {
         '</div>' +
       '</div>';
   }
-  const title = plan.title || plan.workout_focus || plan.workout_type || 'Today\'s session';
+  // Use clean title; never fall back to workout_focus (raw slug like rdl_pull_grip).
+  const title = plan.title || plan.workout_type || 'Today\'s session';
   const status = plan.status || 'planned';
-  const meta = [plan.workout_type, plan.workout_focus].filter(Boolean).join(' · ');
+  const metaParts = [];
+  if (plan.workout_type) metaParts.push(plan.workout_type);
+  if (plan.target_duration_min) metaParts.push(plan.target_duration_min + ' min');
+  if (plan.target_effort) metaParts.push('effort ' + plan.target_effort + '/10');
+  const meta = metaParts.join(' · ');
   const onclick = plan.id ? ` onclick="showDailyPlanDetail(${plan.id})" style="cursor:pointer"` : '';
   return '<div class="ab-section-label">Today</div>' +
     `<div class="ab-hero-card ab-pillar-training"${onclick}>` +

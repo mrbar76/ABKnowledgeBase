@@ -3886,7 +3886,8 @@ body { font-family: var(--ab-font-ui); }
 /* ── Topbar ── */
 .ab-topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px 12px; gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px;
+  gap: 12px;
   background: var(--ab-bg); color: var(--ab-ink);
   border-bottom: 1px solid var(--ab-border-soft);
   position: sticky; top: 0; z-index: 50;
@@ -4082,6 +4083,23 @@ body { font-family: var(--ab-font-ui); }
   line-height: 1.45;
   color: var(--ab-body);
 }
+
+/* ── Inline badges (Waiting · Name, Hot, etc.) ── */
+.ab-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 6px;
+  vertical-align: 1px;
+}
+.ab-badge-waiting { background: var(--ab-amber-tint); color: var(--ab-amber-label); }
+.ab-badge-hot {
+  background: var(--ab-urgency-tint); color: var(--ab-urgency-label);
+  font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 1px 6px;
+}
+
+/* Glance card alarm tint (overdue with hot tasks) */
+.ab-glance-card-sub.ab-alarm { color: var(--ab-urgency-label); font-weight: 600; }
 
 /* ── Sub-tabs (Productivity, etc.) ── */
 .ab-subtabs {
