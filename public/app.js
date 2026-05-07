@@ -895,7 +895,7 @@ async function showGoalDetail(goalId) {
           : `<button onclick="goalRecompute('${g.id}')" class="btn-secondary">Recompute</button>`}
         ${g.status !== 'paused' ? `<button onclick="goalPauseToggle('${g.id}', 'paused')" class="btn-secondary">Pause</button>` : `<button onclick="goalPauseToggle('${g.id}', 'on_track')" class="btn-secondary">Resume</button>`}
       </div>
-    `);
+    `, { variant: 'sheet' });
     // Use the structured trajectory data from detail block (no separate fetch needed)
     setTimeout(() => drawGoalTrajectoryChartFromDetail('goal-traj-chart', g, detail.trajectory), 60);
   } catch (err) {
@@ -5447,7 +5447,7 @@ async function showTaskDetail(id) {
       <div style="margin-top:16px;display:flex;gap:8px">
         <button class="btn-action btn-action-danger" onclick="deleteTask('${id}')" style="flex:1">Delete</button>
       </div>
-    `);
+    `, { variant: 'sheet' });
   } catch (e) { openModal('Error', esc(e.message)); }
 }
 
@@ -9049,7 +9049,7 @@ async function showWorkoutDetail(id) {
       </div>
     `;
 
-    openModal(w.title, html);
+    openModal(w.title, html, { variant: 'sheet' });
   } catch (e) {
     openModal('Error', `<div class="empty-state">${esc(e.message)}</div>`);
   }

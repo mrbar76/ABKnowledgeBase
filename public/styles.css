@@ -4335,6 +4335,67 @@ body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 /* Net effect: no v1 form ever crops content again, and every Save /
    Submit button drops the gradient in favor of the new design system. */
 
+/* Neutralize the rest of the legacy button family so they match the
+   new system inside Task / Goal / Workout / Meal detail modals.
+   These all overrode existing v1 declarations that used purple
+   gradients, indigo accents, or red filled boxes. */
+.btn-action {
+  background: var(--ab-ink) !important;
+  color: var(--ab-bg) !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  font-family: var(--ab-font-ui) !important;
+  font-weight: 600 !important;
+  padding: 10px 14px !important;
+  font-size: 13px !important;
+}
+.btn-action:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important; transform: none !important; }
+.btn-action-secondary {
+  background: transparent !important;
+  color: var(--ab-body) !important;
+  border: 1px solid var(--ab-border) !important;
+}
+.btn-action-secondary:hover { border-color: var(--ab-ink) !important; color: var(--ab-ink) !important; }
+.btn-action-danger {
+  background: transparent !important;
+  color: var(--ab-urgency-label) !important;
+  border: 1px solid var(--ab-urgency-tint) !important;
+}
+.btn-action-danger:hover { background: var(--ab-urgency-tint) !important; }
+
+.btn-primary, .btn-secondary {
+  border-radius: 10px !important;
+  font-family: var(--ab-font-ui) !important;
+  font-weight: 600 !important;
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  cursor: pointer !important;
+}
+.btn-primary {
+  background: var(--ab-ink) !important;
+  color: var(--ab-bg) !important;
+  border: 0 !important;
+}
+.btn-secondary {
+  background: transparent !important;
+  color: var(--ab-body) !important;
+  border: 1px solid var(--ab-border) !important;
+}
+.btn-secondary:hover { border-color: var(--ab-ink) !important; color: var(--ab-ink) !important; }
+
+.btn-reschedule {
+  background: transparent !important;
+  color: var(--ab-body) !important;
+  border: 1px solid var(--ab-border) !important;
+  border-radius: 999px !important;
+  padding: 4px 10px !important;
+  font-family: var(--ab-font-ui) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+}
+.btn-reschedule:hover { background: var(--ab-border-soft) !important; color: var(--ab-ink) !important; border-color: var(--ab-ink) !important; }
+
 /* ═══ Responsive ═══ */
 @media (min-width: 768px) {
   .rings-container { width: 200px; height: 200px; }
