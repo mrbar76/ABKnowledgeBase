@@ -10600,31 +10600,84 @@ function closeModal() {
 
 // ─── Detail surfaces (v2 Foundation Phase 5) ──────────────────
 
+// Inline SVG sparkline. Returns empty string if fewer than 2 valid points.
+function abSparkline(values, opts = {}) {
+  const numeric = (values || []).map(v => Number(v)).filter(v => !isNaN(v) && v !== 0);
+  if (numeric.length < 2) return '';
+  const width = opts.width  || 220;
+  const height = opts.height || 44;
+  const stroke = opts.stroke || 'var(--ab-training-edge)';
+  const fill   = opts.fill   || 'rgba(69, 104, 89, 0.10)';
+  const min = Math.min(...numeric);
+  const max = Math.max(...numeric);
+  const range = max - min || 1;
+  const step = numeric.length > 1 ? width / (numeric.length - 1) : 0;
+  const points = numeric.map((v, i) => {
+    const x = i * step;
+    const y = height - ((v - min) / range) * (height - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const polyline = points.join(' ');
+  const area = `0,${height} ${polyline} ${width},${height}`;
+  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;overflow:visible">` +
+    `<polygon points="${area}" fill="${fill}" stroke="none"/>` +
+    `<polyline points="${polyline}" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `</svg>`;
+}
+
+// One dashboard tile: label + current value + delta chip + sparkline.
+function abMetricTile({ label, current, unit, series, decimals = 1 }) {
+  const cur  = current != null ? Number(current).toFixed(decimals) : '—';
+  const numeric = (series || []).map(v => Number(v)).filter(v => !isNaN(v) && v !== 0);
+  let deltaChip = '';
+  if (numeric.length >= 2) {
+    const delta = numeric[0] - numeric[numeric.length - 1];
+    const sign = delta > 0 ? '+' : (delta < 0 ? '' : '±');
+    const color = delta > 0 ? 'var(--ab-urgency-label)' : (delta < 0 ? 'var(--ab-training-label)' : 'var(--ab-muted)');
+    deltaChip = `<span style="font-family:var(--ab-font-data);font-size:11px;font-weight:600;color:${color};margin-left:8px">${sign}${delta.toFixed(decimals)}${unit ? ' ' + unit : ''}</span>`;
+  }
+  return '<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;padding:14px;margin:0 16px 12px">' +
+    `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">` +
+      `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ab-muted)">${esc(label)}</span>` +
+      deltaChip +
+    `</div>` +
+    `<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">` +
+      `<span style="font-family:var(--ab-font-data);font-size:24px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
+      (unit ? `<span style="font-size:11px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
+    `</div>` +
+    abSparkline(numeric) +
+    '</div>';
+}
+
 async function showBodyTrendsDetail() {
   openModal('Body trends', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
-    const data = await api('/body-metrics?limit=20').catch(() => null);
+    const data = await api('/body-metrics?limit=30').catch(() => null);
     const rows = data?.body_metrics || (Array.isArray(data) ? data : []);
     if (rows.length === 0) {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No weigh-ins yet.</div><div class="ab-list-row-meta">Tap "Log new" to capture your first.</div></div></div>' +
         '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
       return;
     }
-    const latest = rows[0];
-    const earliest = rows[rows.length - 1];
-    const latestW = Number(latest.weight_lb || latest.weight_kg || 0);
-    const earliestW = Number(earliest.weight_lb || earliest.weight_kg || 0);
-    const delta = (latestW - earliestW).toFixed(1);
-    const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
-    const trendStr = rows.length > 1
-      ? (delta > 0 ? `+${delta} ${unit}` : `${delta} ${unit}`) + ` over ${rows.length} weigh-ins`
-      : 'first weigh-in';
 
-    let body = `<div class="ab-hero-card ab-pillar-training" style="cursor:default;margin:0 0 12px">` +
-      `<div class="ab-hero-card-eyebrow">Latest</div>` +
-      `<div class="ab-hero-card-title">${latestW.toFixed(1)} ${esc(unit)}</div>` +
-      `<div class="ab-hero-card-meta">${esc(formatDateShort(latest.measurement_date))} · ${esc(trendStr)}</div>` +
-      '</div>';
+    const latest = rows[0];
+    const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
+
+    // Build series for each metric. rows are sorted DESC by date — keep
+    // that order so series[0] = newest, series[last] = oldest. Delta
+    // chip math uses that ordering.
+    const weightSeries = rows.map(r => Number(r.weight_lb || r.weight_kg || 0));
+    const bfSeries     = rows.map(r => Number(r.body_fat_pct || 0));
+    const muscleSeries = rows.map(r => Number(r.skeletal_muscle_lb || r.skeletal_muscle_kg || r.skeletal_muscle_pct || 0));
+    const bmrSeries    = rows.map(r => Number(r.bmr || 0));
+
+    let body = '<div class="ab-section-label">Dashboard</div>';
+    body += abMetricTile({ label: 'Weight',        current: weightSeries[0], unit,            series: weightSeries });
+    body += abMetricTile({ label: 'Body fat',      current: bfSeries[0],     unit: '%',       series: bfSeries });
+    body += abMetricTile({ label: 'Muscle',        current: muscleSeries[0], unit: muscleSeries[0] > 30 ? unit : '%', series: muscleSeries });
+    if (bmrSeries.some(v => v > 0)) {
+      body += abMetricTile({ label: 'BMR',         current: bmrSeries[0],    unit: 'kcal',    series: bmrSeries, decimals: 0 });
+    }
 
     body += '<div class="ab-section-label">Recent weigh-ins</div>';
     body += '<div class="ab-list-card">';
@@ -10934,24 +10987,22 @@ function renderMacroRow(label, value, target, unit) {
       `</div>`;
   }
   const isOver = value > target;
-  // Visualization rule: bar must NOT look full when overshot. We give
-  // the over-target case a 10% headroom on the right of the bar so the
-  // total fill stays under 100% width. Pine = in-target portion;
-  // amber = the overshoot portion. Empty space on the right = "you're
-  // past the target" signal even at a glance.
-  // Under target: just Pine fill at value/target proportion.
+  // Visualization rule: bar must NOT look full when overshot. 10% headroom
+  // on the right so the total fill stays under 100% width. Pine = in-target
+  // portion; red (urgency) = overshoot — distinct from Pine even at a
+  // glance, no longer the brown-amber that was reading as same-tone.
   const scaleMax = isOver ? value * 1.1 : target;
   const pinePct = Math.round((Math.min(value, target) / scaleMax) * 100);
-  const amberPct = isOver ? Math.round(((value - target) / scaleMax) * 100) : 0;
+  const overPct = isOver ? Math.round(((value - target) / scaleMax) * 100) : 0;
   const overage = isOver
-    ? ` <span style="color:var(--ab-amber-label);font-weight:600">+${Math.round(value - target)}${esc(unit)} over</span>`
+    ? ` <span style="color:var(--ab-urgency);font-weight:700">+${Math.round(value - target)}${esc(unit)} over</span>`
     : '';
   return `<div class="ab-goal-row" style="cursor:default">` +
     `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
     `<div class="ab-goal-row-meta"><span>${value}${esc(unit)} / ${target}${esc(unit)}${overage}</span></div></div>` +
     `<div class="ab-progress-bar" style="display:flex;overflow:hidden">` +
-      (pinePct > 0  ? `<div style="width:${pinePct}%;background:var(--ab-training-edge);height:100%"></div>` : '') +
-      (amberPct > 0 ? `<div style="width:${amberPct}%;background:var(--ab-amber);height:100%"></div>` : '') +
+      (pinePct > 0 ? `<div style="width:${pinePct}%;background:var(--ab-training-edge);height:100%"></div>` : '') +
+      (overPct > 0 ? `<div style="width:${overPct}%;background:var(--ab-urgency);height:100%"></div>` : '') +
     `</div>` +
     `</div>`;
 }
@@ -12677,67 +12728,110 @@ function shiftDate(dateStr, days) {
 }
 
 // ── Daily Plan Manager ──
+// Parse a workout-notes narrative into structured sections.
+// Recognized section headers: WARMUP, MAIN BLOCK A/B/C, PT BLOCK,
+// COOLDOWN, FUEL, ABORT, WHY THIS, NOTES. Each gets its own block.
+// Anything before the first marker becomes the lead paragraph.
+function formatPlanNarrative(text) {
+  if (!text) return '';
+  const SECTION_RE = /\b(WARMUP|MAIN BLOCK [A-Z]|PT BLOCK|COOLDOWN|FUEL|ABORT|WHY THIS|NOTES)\b\s*[—\-:]?\s*/g;
+  const parts = String(text).split(SECTION_RE);
+  let html = '';
+  if (parts[0] && parts[0].trim()) {
+    html += `<p style="font-size:13px;line-height:1.55;color:var(--ab-body);margin:0 0 12px">${esc(parts[0].trim())}</p>`;
+  }
+  for (let j = 1; j < parts.length; j += 2) {
+    const marker = parts[j];
+    const body = (parts[j + 1] || '').trim();
+    if (!marker) continue;
+    html += `<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--ab-ink);margin-bottom:4px">${esc(marker)}</div>` +
+      `<div style="font-size:13px;line-height:1.55;color:var(--ab-body);white-space:pre-wrap">${esc(body)}</div></div>`;
+  }
+  return html;
+}
+
 function showDailyPlanDetail(id) {
-  openModal('Daily Plan', `<div class="loading">Loading...</div>`);
+  openModal('Daily Plan', `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>`, { variant: 'sheet' });
   api(`/daily-plans/${id}`).then(plan => {
-    const sc = { planned: '#3b82f6', completed: '#22c55e', partial: '#f59e0b', missed: '#ef4444', rest: '#6366f1', amended: '#8b5cf6' };
-    const color = sc[plan.status] || '#6366f1';
-    const dateLabel = new Date(plan.plan_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-
-    let html = `<div style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <h3 style="margin:0;color:var(--accent)">${dateLabel}</h3>
-        <span style="font-size:0.7rem;background:${color}22;color:${color};padding:2px 10px;border-radius:12px;font-weight:600">${plan.status}</span>
-      </div>
-    </div>`;
-
-    if (plan.status === 'rest') {
-      html += '<div style="font-size:1rem;font-weight:700;color:#6366f1;margin-bottom:12px">Rest Day</div>';
-    } else {
-      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
-        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Workout</div>
-        <div style="font-weight:700">${plan.workout_type || '—'}${plan.workout_focus ? ' — ' + esc(plan.workout_focus) : ''}</div>
-        ${plan.target_effort ? `<div style="color:#10b981;font-size:0.85rem">Target Effort: ${plan.target_effort}/10</div>` : ''}
-        ${plan.target_duration_min ? `<div style="color:var(--text-dim);font-size:0.8rem">Duration: ${plan.target_duration_min} min</div>` : ''}
-        ${plan.workout_notes ? `<div style="color:var(--text-dim);font-size:0.8rem;margin-top:4px">${esc(plan.workout_notes)}</div>` : ''}
-      </div>`;
+    const status = plan.status || 'planned';
+    // Defensive date — no more "Invalid Date" leaking into the title.
+    let dateLabel = 'Daily plan';
+    if (plan.plan_date) {
+      const d = new Date(String(plan.plan_date).slice(0, 10) + 'T12:00:00');
+      if (!isNaN(d.getTime())) {
+        dateLabel = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      }
     }
 
-    if (plan.target_calories || plan.target_protein_g || plan.target_hydration_liters) {
-      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
-        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Nutrition Targets</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:0.85rem">
-          ${plan.target_calories ? `<span><strong>Calories:</strong> ${plan.target_calories}</span>` : ''}
-          ${plan.target_protein_g ? `<span><strong>Protein:</strong> ${plan.target_protein_g}g</span>` : ''}
-          ${plan.target_carbs_g ? `<span><strong>Carbs:</strong> ${plan.target_carbs_g}g</span>` : ''}
-          ${plan.target_fat_g ? `<span><strong>Fat:</strong> ${plan.target_fat_g}g</span>` : ''}
-          ${plan.target_hydration_liters ? `<span><strong>Water:</strong> ${plan.target_hydration_liters}L</span>` : ''}
-        </div>
-      </div>`;
+    const cleanTitle = plan.title || plan.workout_type || 'Session';
+    let html = `<div class="ab-hero-card ab-pillar-training" style="cursor:default;margin:0 0 12px">` +
+      `<div class="ab-hero-card-head">` +
+        `<span class="ab-pillar-label ab-pillar-label-training">${esc(dateLabel)}</span>` +
+        `<span class="ab-status-badge" data-state="${esc(status)}" style="margin-left:auto">${esc(status)}</span>` +
+      `</div>` +
+      `<div class="ab-hero-card-title">${esc(cleanTitle)}</div>` +
+      (plan.goal ? `<div class="ab-hero-card-body">${esc(plan.goal)}</div>` : '') +
+      `</div>`;
+
+    // Quick facts strip — workout type, duration, target effort, sleep target
+    const factParts = [];
+    if (plan.workout_type) factParts.push({ label: 'Type', value: plan.workout_type });
+    if (plan.target_duration_min) factParts.push({ label: 'Duration', value: plan.target_duration_min + ' min' });
+    if (plan.target_effort) factParts.push({ label: 'Effort', value: plan.target_effort + '/10' });
+    if (factParts.length > 0) {
+      html += '<div class="ab-glance-row" style="padding:0 0 12px">';
+      for (const f of factParts) {
+        html += `<div class="ab-glance-card"><div class="ab-glance-card-label">${esc(f.label)}</div><div class="ab-glance-card-value" style="font-size:16px">${esc(String(f.value))}</div></div>`;
+      }
+      html += '</div>';
     }
 
-    if (plan.target_sleep_hours) {
-      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
-        <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Recovery Target</div>
-        <div style="font-size:0.85rem"><strong>Sleep:</strong> ${plan.target_sleep_hours}h</div>
-      </div>`;
+    // Nutrition + recovery targets — table-like rows
+    const targetRows = [];
+    if (plan.target_calories)         targetRows.push(['Calories',  plan.target_calories + ' kcal']);
+    if (plan.target_protein_g)        targetRows.push(['Protein',   plan.target_protein_g + ' g']);
+    if (plan.target_carbs_g)          targetRows.push(['Carbs',     plan.target_carbs_g + ' g']);
+    if (plan.target_fat_g)            targetRows.push(['Fat',       plan.target_fat_g + ' g']);
+    if (plan.target_hydration_liters) targetRows.push(['Hydration', plan.target_hydration_liters + ' L']);
+    if (plan.target_sleep_hours)      targetRows.push(['Sleep',     plan.target_sleep_hours + ' h']);
+    if (targetRows.length > 0) {
+      html += '<div class="ab-section-label">Targets</div>';
+      html += '<div class="ab-list-card">';
+      for (const [label, value] of targetRows) {
+        html += `<div class="ab-list-row" style="cursor:default">` +
+          `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+          `<div class="ab-list-row-body" style="display:flex;justify-content:space-between;align-items:baseline">` +
+            `<div class="ab-list-row-title">${esc(label)}</div>` +
+            `<div class="ab-list-row-meta" style="font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${esc(value)}</div>` +
+          `</div></div>`;
+      }
+      html += '</div>';
     }
 
-    if (plan.coaching_notes || plan.rationale) {
-      html += `<div class="card" style="padding:10px 14px;margin-bottom:12px">
-        ${plan.rationale ? `<div style="font-size:0.85rem;margin-bottom:4px"><strong>Rationale:</strong> ${esc(plan.rationale)}</div>` : ''}
-        ${plan.coaching_notes ? `<div style="font-size:0.85rem;color:var(--text-dim);font-style:italic">${esc(plan.coaching_notes)}</div>` : ''}
-      </div>`;
+    // Workout narrative — parsed into sections
+    if (plan.workout_notes) {
+      html += '<div class="ab-section-label">Workout</div>';
+      html += `<div style="margin:0 16px 12px;padding:14px;background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px">${formatPlanNarrative(plan.workout_notes)}</div>`;
     }
 
-    html += `<div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn-action" style="flex:1" onclick="editDailyPlan('${plan.id}')">Edit Plan</button>
-      <button class="btn-action" style="flex:1;background:var(--red);color:white" onclick="if(confirm('Delete this plan?'))deleteDailyPlan('${plan.id}')">Delete</button>
-    </div>`;
+    // Rationale + coaching notes
+    if (plan.rationale || plan.coaching_notes) {
+      html += '<div class="ab-section-label">Rationale</div>';
+      html += `<div style="margin:0 16px 12px;padding:14px;background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px">`;
+      if (plan.rationale)      html += `<p style="font-size:13px;line-height:1.55;color:var(--ab-body);margin:0 0 8px">${esc(plan.rationale)}</p>`;
+      if (plan.coaching_notes) html += `<p style="font-size:13px;line-height:1.55;color:var(--ab-muted);font-style:italic;margin:0">${esc(plan.coaching_notes)}</p>`;
+      html += `</div>`;
+    }
+
+    // Action buttons — primary edit (ink), subtle delete (text-only red)
+    html += '<div style="padding:16px;display:flex;gap:8px">' +
+      `<button onclick="closeModal();editDailyPlan('${plan.id}')" style="flex:1;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Edit plan</button>` +
+      `<button onclick="if(confirm('Delete this plan?')){closeModal();deleteDailyPlan('${plan.id}')}" style="padding:12px 16px;background:transparent;color:var(--ab-urgency-label);border:1px solid var(--ab-urgency-tint);border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Delete</button>` +
+    '</div>';
 
     document.getElementById('modal-body').innerHTML = html;
   }).catch(e => {
-    document.getElementById('modal-body').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`;
+    document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
   });
 }
 
