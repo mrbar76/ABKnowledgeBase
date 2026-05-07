@@ -11084,7 +11084,13 @@ async function showNutritionDetail() {
   openModal('Nutrition', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
     const today = localDateStr();
-    const summary = await api('/nutrition/daily-summary?date=' + today).catch(() => null);
+    // Fetch today's summary AND recent meals in parallel — recent
+    // meals act as a fallback list when today is empty so the modal
+    // never reads as totally blank.
+    const [summary, recentMealsResp] = await Promise.all([
+      api('/nutrition/daily-summary?date=' + today).catch(() => null),
+      api('/meals?limit=15').catch(() => null),
+    ]);
     if (!summary) {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No nutrition logged today.</div><div class="ab-list-row-meta">Tap + to capture a meal.</div></div></div>';
       return;
@@ -11129,7 +11135,27 @@ async function showNutritionDetail() {
           `</div></div>`;
       }
     } else {
-      body += '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-meta">No meals logged today.</div></div></div>';
+      // Today is empty — fall back to recent meals so the modal isn't
+      // a blank "0/0/0" report. Surface the most recent dates so the
+      // user can verify meal-logging is working and tap into history.
+      const recentList = recentMealsResp?.meals || (Array.isArray(recentMealsResp) ? recentMealsResp : []);
+      body += '<div class="ab-list-row" style="cursor:default;margin:0 0 12px;border:1px solid var(--ab-border);border-radius:16px;padding:12px 16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">No meals logged today.</div><div class="ab-list-row-meta">Tap "Log meal" below to capture today\'s first.</div></div></div>';
+      if (recentList.length > 0) {
+        body += '<div class="ab-section-label">Recent meals</div>';
+        for (const m of recentList.slice(0, 10)) {
+          const mc  = Math.round(Number(m.calories || 0));
+          const mp  = Math.round(Number(m.protein_g || 0));
+          const mca = Math.round(Number(m.carbs_g || 0));
+          const mf  = Math.round(Number(m.fat_g || 0));
+          const dateLabel = m.meal_date ? formatDateShort(m.meal_date) : '';
+          body += `<div class="ab-list-row" onclick="closeModal();showMealDetail('${esc(String(m.id))}')">` +
+            `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+            `<div class="ab-list-row-body">` +
+              `<div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')} <span style="color:var(--ab-muted);font-weight:400;font-size:12px">${esc(dateLabel)}</span></div>` +
+              `<div class="ab-list-row-meta" style="font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${mc} cal · ${mp}p · ${mca}c · ${mf}f</div>` +
+            `</div></div>`;
+        }
+      }
     }
 
     body += '<div style="padding:16px"><button onclick="closeModal();showMealForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log meal</button></div>';
