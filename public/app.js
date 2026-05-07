@@ -10657,22 +10657,27 @@ function setBodyRange(days) {
   showBodyTrendsDetail();
 }
 
-// Upgrade a tile's static SVG sparkline to an interactive Chart.js
-// line chart with hover tooltips + x-axis dates. Tile already shows
-// the SVG by default; if Chart.js succeeds the canvas overlays it
-// (canvas is always present in the markup at z=1). If Chart.js
-// fails or measures zero, the SVG underneath stays visible.
+// Render a Chart.js line chart into the wrapper's canvas. Falls back
+// to an inline SVG sparkline if Chart.js isn't loaded or construction
+// fails — replaces the canvas with the SVG so something always shows.
 function abLineChart(wrapId, values, dates, opts = {}) {
-  if (typeof Chart === 'undefined') {
-    console.info('[Forge] Chart.js not loaded; SVG sparkline stays for', wrapId);
-    return;
-  }
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
-  const canvas = wrap.querySelector('canvas');
-  if (!canvas) return;
   const numeric = (values || []).map(v => Number(v)).filter(v => !isNaN(v));
-  if (numeric.length < 2) return;
+  if (numeric.length < 2) {
+    wrap.innerHTML = '<div style="font-size:11px;color:var(--ab-muted);text-align:center;padding:50px 0">Not enough history yet.</div>';
+    return;
+  }
+  if (typeof Chart === 'undefined') {
+    console.warn('[Forge] Chart.js not loaded; using SVG fallback for', wrapId);
+    wrap.innerHTML = abInlineSparkline(numeric, opts);
+    return;
+  }
+  const canvas = wrap.querySelector('canvas');
+  if (!canvas) {
+    wrap.innerHTML = abInlineSparkline(numeric, opts);
+    return;
+  }
 
   const chronoValues = values.slice().reverse();
   const chronoDates  = (dates || []).slice().reverse();
@@ -10683,98 +10688,87 @@ function abLineChart(wrapId, values, dates, opts = {}) {
   const unit   = opts.unit   || '';
   const dec    = opts.decimals != null ? opts.decimals : 1;
 
-  const doChart = () => {
-    try {
-      const ch = new Chart(canvas, {
-        type: 'line',
-        data: {
-          labels: chronoDates.map(d => {
-            try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-            catch { return d; }
-          }),
-          datasets: [{
-            data: chronoValues,
-            borderColor: stroke,
-            backgroundColor: fill,
-            fill: true,
-            pointRadius: 0,
-            pointHoverRadius: 5,
-            pointHoverBackgroundColor: stroke,
-            pointHoverBorderColor: '#fff',
-            pointHoverBorderWidth: 2,
-            tension: 0.25,
-            borderWidth: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 200 },
-          layout: { padding: { left: 4, right: 4, top: 4, bottom: 0 } },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              enabled: true,
-              mode: 'nearest',
-              intersect: false,
-              backgroundColor: 'rgba(24, 24, 26, 0.96)',
-              titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
-              bodyFont:  { family: "'DM Mono'", size: 13 },
-              padding: 8,
-              displayColors: false,
-              callbacks: {
-                label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
-              },
+  try {
+    const ch = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: chronoDates.map(d => {
+          try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+          catch { return d; }
+        }),
+        datasets: [{
+          data: chronoValues,
+          borderColor: stroke,
+          backgroundColor: fill,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: stroke,
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+          tension: 0.25,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 200 },
+        layout: { padding: { left: 2, right: 2, top: 6, bottom: 0 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            mode: 'nearest',
+            intersect: false,
+            backgroundColor: 'rgba(24, 24, 26, 0.96)',
+            titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
+            bodyFont:  { family: "'DM Mono'", size: 13 },
+            padding: 8,
+            displayColors: false,
+            callbacks: {
+              label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
             },
           },
-          scales: {
-            x: {
-              display: true,
-              grid: { display: false, drawBorder: false },
-              ticks: {
-                color: tickColor,
-                font: { family: "'DM Sans'", size: 9, weight: '500' },
-                maxTicksLimit: 4,
-                maxRotation: 0,
-                autoSkip: true,
-                padding: 2,
-              },
-              border: { display: false },
-            },
-            y: {
-              display: true,
-              position: 'right',
-              beginAtZero: false,
-              grid: { color: 'rgba(127,127,127,0.10)', drawBorder: false, lineWidth: 1 },
-              ticks: {
-                color: tickColor,
-                font: { family: "'DM Mono'", size: 9, weight: '500' },
-                maxTicksLimit: 3,
-                padding: 4,
-                callback: (val) => `${Number(val).toFixed(dec)}${unit ? unit : ''}`,
-              },
-              border: { display: false },
-            },
-          },
-          interaction: { mode: 'nearest', axis: 'x', intersect: false },
         },
-      });
-      _abActiveCharts.push(ch);
-      // On success, hide the SVG layer so we don't see the static
-      // sparkline behind the live Chart.js render.
-      const svgLayer = wrap.querySelector('.ab-chart-svg-layer');
-      if (svgLayer) svgLayer.style.display = 'none';
-    } catch (err) {
-      console.warn('[Forge] Chart.js upgrade failed for', wrapId, err);
-      // SVG layer is still visible underneath — user sees the trend.
-    }
-  };
-
-  // Chart.js responsive mode handles 0→real-size transitions itself,
-  // so we don't need to wait for dims. Just instantiate immediately
-  // — the chart will re-render once the canvas has real dimensions
-  // post-animation.
-  doChart();
+        scales: {
+          x: {
+            display: true,
+            grid: { display: false },
+            ticks: {
+              color: tickColor,
+              font: { family: "'DM Sans'", size: 9, weight: '500' },
+              maxTicksLimit: 4,
+              maxRotation: 0,
+              autoSkip: true,
+              padding: 4,
+            },
+            border: { display: false },
+          },
+          y: {
+            display: true,
+            position: 'right',
+            beginAtZero: false,
+            grid: { color: 'rgba(127,127,127,0.12)', lineWidth: 1, drawTicks: false },
+            ticks: {
+              color: tickColor,
+              font: { family: "'DM Mono'", size: 9, weight: '500' },
+              maxTicksLimit: 3,
+              padding: 6,
+              callback: (val) => `${Number(val).toFixed(dec)}${unit ? unit : ''}`,
+            },
+            border: { display: false },
+          },
+        },
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      },
+    });
+    _abActiveCharts.push(ch);
+    console.info('[Forge] Chart rendered for', wrapId);
+  } catch (err) {
+    console.warn('[Forge] Chart.js construction failed for', wrapId, err);
+    wrap.innerHTML = abInlineSparkline(numeric, opts);
+  }
 }
 
 // Inline SVG sparkline — always rendered in the tile so the user
@@ -10821,11 +10815,10 @@ function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
     deltaChip = `<span style="font-family:var(--ab-font-data);font-size:11px;font-weight:600;color:${color};margin-left:8px">${sign}${delta.toFixed(decimals)}${unit ? ' ' + unit : ''}</span>`;
   }
   const wrapId = 'ab-chartwrap-' + id;
-  const canvasId = 'ab-canvas-' + id;
-  // SVG sparkline + Chart.js canvas are layered. SVG sits at z=0 as
-  // the always-visible base. Chart.js mounts into the canvas at z=1
-  // — when it renders successfully it covers the SVG. If it fails or
-  // the canvas measures 0, the SVG underneath is still visible.
+  // Single canvas — Chart.js renders into it. If Chart.js isn't loaded
+  // or construction fails, abLineChart() falls back by replacing the
+  // wrapper with an inline SVG sparkline. Simpler markup = fewer
+  // ways for Safari/Chart.js to misbehave.
   return '<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;padding:14px;margin:0 16px 12px">' +
     `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">` +
       `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ab-muted)">${esc(label)}</span>` +
@@ -10835,9 +10828,8 @@ function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
       `<span style="font-family:var(--ab-font-data);font-size:24px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
       (unit ? `<span style="font-size:11px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
     `</div>` +
-    `<div id="${wrapId}" class="ab-chartwrap" style="height:120px;width:100%;position:relative;background:var(--ab-border-soft);border-radius:8px">` +
-      `<div class="ab-chart-svg-layer" style="position:absolute;inset:0;width:100%;height:100%">${abInlineSparkline(numeric)}</div>` +
-      `<canvas id="${canvasId}" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>` +
+    `<div id="${wrapId}" class="ab-chartwrap" style="height:140px;width:100%;position:relative">` +
+      `<canvas style="display:block;width:100%;height:100%"></canvas>` +
     `</div>` +
     '</div>';
 }
