@@ -10625,67 +10625,109 @@ function _abClearCharts() {
 
 // Render a Chart.js line chart into the canvas with the given id.
 // values = newest-first, dates = matching newest-first ISO strings.
+// Falls back to an inline SVG sparkline if Chart.js failed to load
+// or its construction throws — never leaves an empty box.
 function abLineChart(canvasId, values, dates, opts = {}) {
   const canvas = document.getElementById(canvasId);
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (!canvas) return;
+  const numeric = (values || []).map(v => Number(v)).filter(v => !isNaN(v));
+  if (numeric.length < 2) return;
   // Reverse to chronological order (oldest -> newest) for the chart.
   const chronoValues = values.slice().reverse();
-  const chronoDates  = dates.slice().reverse();
-  const stroke = opts.stroke || 'var(--ab-training-edge)';
+  const chronoDates  = (dates || []).slice().reverse();
   const fill   = opts.fill   || 'rgba(69, 104, 89, 0.10)';
   const unit   = opts.unit   || '';
   const dec    = opts.decimals != null ? opts.decimals : 1;
-  // Resolve CSS vars to actual hex so Chart.js can use them.
-  const stroketColor = getComputedStyle(document.documentElement).getPropertyValue('--ab-training-edge').trim() || '#456859';
-  const ch = new Chart(canvas, {
-    type: 'line',
-    data: {
-      labels: chronoDates.map(d => {
-        try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-        catch { return d; }
-      }),
-      datasets: [{
-        data: chronoValues,
-        borderColor: stroketColor,
-        backgroundColor: fill,
-        fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 5,
-        pointHoverBackgroundColor: stroketColor,
-        pointHoverBorderColor: '#fff',
-        pointHoverBorderWidth: 2,
-        tension: 0.25,
-        borderWidth: 2,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 250 },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          enabled: true,
-          mode: 'nearest',
-          intersect: false,
-          backgroundColor: 'rgba(24, 24, 26, 0.96)',
-          titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
-          bodyFont:  { family: "'DM Mono'", size: 13 },
-          padding: 8,
-          displayColors: false,
-          callbacks: {
-            label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
-          },
+  // Resolve CSS var to actual hex so Chart.js can use it.
+  const stroke = (getComputedStyle(document.documentElement).getPropertyValue('--ab-training-edge') || '').trim() || '#456859';
+
+  // Make sure the canvas has explicit dimensions before Chart.js
+  // measures it — without this, mid-animation samples can give zero.
+  canvas.style.display = 'block';
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+
+  if (typeof Chart !== 'undefined') {
+    try {
+      const ch = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: chronoDates.map(d => {
+            try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+            catch { return d; }
+          }),
+          datasets: [{
+            data: chronoValues,
+            borderColor: stroke,
+            backgroundColor: fill,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: stroke,
+            pointHoverBorderColor: '#fff',
+            pointHoverBorderWidth: 2,
+            tension: 0.25,
+            borderWidth: 2,
+          }],
         },
-      },
-      scales: {
-        x: { display: false },
-        y: { display: false, beginAtZero: false },
-      },
-      interaction: { mode: 'nearest', axis: 'x', intersect: false },
-    },
-  });
-  _abActiveCharts.push(ch);
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 250 },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: true,
+              mode: 'nearest',
+              intersect: false,
+              backgroundColor: 'rgba(24, 24, 26, 0.96)',
+              titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
+              bodyFont:  { family: "'DM Mono'", size: 13 },
+              padding: 8,
+              displayColors: false,
+              callbacks: {
+                label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
+              },
+            },
+          },
+          scales: {
+            x: { display: false },
+            y: { display: false, beginAtZero: false },
+          },
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        },
+      });
+      _abActiveCharts.push(ch);
+      return;
+    } catch (err) {
+      console.warn('[Forge] Chart.js render failed for', canvasId, err);
+      // Fall through to SVG sparkline below.
+    }
+  }
+
+  // Fallback path — Chart.js missing or threw. Render a static SVG
+  // sparkline into the canvas's container so the user sees something
+  // rather than an empty 80px gap.
+  const parent = canvas.parentElement;
+  if (parent) {
+    const min = Math.min(...numeric);
+    const max = Math.max(...numeric);
+    const range = max - min || 1;
+    const w = 240, h = 80;
+    const step = w / Math.max(1, numeric.length - 1);
+    // Reverse so the polyline reads left-to-right (oldest → newest).
+    const chrono = numeric.slice().reverse();
+    const points = chrono.map((v, i) => {
+      const x = (i * step).toFixed(1);
+      const y = (h - ((v - min) / range) * (h - 6) - 3).toFixed(1);
+      return `${x},${y}`;
+    }).join(' ');
+    const area = `0,${h} ${points} ${w},${h}`;
+    parent.innerHTML = `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block">` +
+      `<polygon points="${area}" fill="${fill}" stroke="none"/>` +
+      `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
+      `</svg>`;
+  }
 }
 
 // One dashboard tile: label + current value + delta chip + interactive
@@ -10821,14 +10863,18 @@ async function showBodyTrendsDetail() {
     body += '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
     document.getElementById('modal-body').innerHTML = body;
 
-    // Now instantiate the Chart.js line charts (DOM is in place).
+    // Now instantiate the Chart.js line charts. Wait 280ms — the
+    // ab-modal-sheet slide-up animation is 220ms, so by then the
+    // canvas containers have their final dimensions and Chart.js can
+    // sample them correctly. (At 30ms we were sampling mid-slide
+    // and getting zero-height charts, hence the blank space.)
     setTimeout(() => {
       abLineChart('ab-chart-weight', weightSeries, dates, { unit, decimals: 1 });
       if (hasData(bfSeries))    abLineChart('ab-chart-bf',    bfSeries,    dates, { unit: '%',    decimals: 1 });
       if (hasData(smPctSeries)) abLineChart('ab-chart-sm',    smPctSeries, dates, { unit: '%',    decimals: 1 });
       if (hasData(waterSeries)) abLineChart('ab-chart-water', waterSeries, dates, { unit: '%',    decimals: 1 });
       if (hasData(bmrSeries))   abLineChart('ab-chart-bmr',   bmrSeries,   dates, { unit: 'kcal', decimals: 0 });
-    }, 30);
+    }, 280);
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load body trends.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
   }
