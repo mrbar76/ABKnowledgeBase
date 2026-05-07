@@ -499,39 +499,70 @@ function renderGlanceBar({ briefing, recovery, races }) {
     '</div>';
 }
 
+// Pillar → uppercase label (TRAINING / WORK / PERSONAL).
+function pillarLabelText(pillar) {
+  return ({ training: 'TRAINING', work: 'WORK', personal: 'PERSONAL' })[pillar] || '';
+}
+
+// Pillar → Lucide icon name for the list-row icon tile.
+function iconForPillar(pillar) {
+  return ({ training: 'mountain', work: 'briefcase', personal: 'heart' })[pillar] || 'circle';
+}
+
 function renderHeroFocus(item) {
   const pillar = pillarFromContext(item.context) || 'work';
-  const pillarLabel = pillar.charAt(0).toUpperCase() + pillar.slice(1);
-  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
-  const eyebrow = pillarLabel + (item.due_date ? ' · ' + esc(formatDateShort(item.due_date)) : '');
-  const hotBadge = isHot ? '<span class="ab-badge ab-badge-hot">Hot</span>' : '';
+  const pillarLabel = pillarLabelText(pillar);
   const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
   const waitingPerson = item.waiting_on_person || item.waiting_on;
   const waitingBadge = waitingPerson
     ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
     : '';
+  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  const status = item.status || 'planned';
+  const kicker = item.due_date ? `· ${esc(formatDateShort(item.due_date))}` : '';
+  const headRight = isHot
+    ? `<span class="ab-badge ab-badge-hot" style="margin-left:auto">Hot</span>`
+    : `<span class="ab-status-badge" data-state="${esc(status)}" style="margin-left:auto">${esc(status)}</span>`;
+
   return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail(${item.id})">` +
-    `<div class="ab-hero-card-eyebrow">${esc(eyebrow)}</div>` +
+    `<div class="ab-hero-card-head">` +
+      `<span class="ab-pillar-label ab-pillar-label-${pillar}">${esc(pillarLabel)}</span>` +
+      (kicker ? `<span class="ab-hero-card-kicker">${kicker}</span>` : '') +
+      headRight +
+    `</div>` +
     `<div class="ab-hero-card-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
-    `<div class="ab-hero-card-meta">${esc(item.reason || '')}${hotBadge ? ' ' + hotBadge : ''}</div>` +
+    (item.reason ? `<div class="ab-hero-card-body">${esc(item.reason)}</div>` : '') +
+    `<div class="ab-hero-card-footer"><span>Open task</span>${icon('chevron-right', 14)}</div>` +
     '</div>';
 }
 
-function renderListFocus(item) {
-  const pillar = pillarFromContext(item.context);
-  const pillarClass = pillar ? ` ab-pillar-${pillar}` : '';
-  const pillarLabel = pillar ? (pillar.charAt(0).toUpperCase() + pillar.slice(1) + ' · ') : '';
+function renderListFocus(item, rank) {
+  const pillar = pillarFromContext(item.context) || 'work';
+  const pillarLabel = pillarLabelText(pillar);
   const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
   const waitingPerson = item.waiting_on_person || item.waiting_on;
-  const waitingBadge = waitingPerson
-    ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
-    : '';
+  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  const iconName = iconForPillar(pillar);
+
+  const headBadges = [
+    waitingPerson ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span>` : '',
+    isHot ? `<span class="ab-badge ab-badge-hot">Hot</span>` : ''
+  ].filter(Boolean).join('');
+
   return `<div class="ab-list-row" onclick="showTaskDetail(${item.id})">` +
-    `<div class="ab-list-row-dot${pillarClass}"></div>` +
-    '<div class="ab-list-row-body">' +
-      `<div class="ab-list-row-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
-      `<div class="ab-list-row-meta">${esc(pillarLabel + (item.reason || ''))}</div>` +
-    '</div></div>';
+    `<div class="ab-list-row-marker">` +
+      `<span class="ab-list-row-rank">${rank}</span>` +
+      `<div class="ab-list-row-icon ab-list-row-icon-${pillar}">${icon(iconName, 12)}</div>` +
+    `</div>` +
+    `<div class="ab-list-row-body">` +
+      `<div class="ab-list-row-head">` +
+        `<span class="ab-pillar-label ab-pillar-label-${pillar}">${esc(pillarLabel)}</span>` +
+        headBadges +
+      `</div>` +
+      `<div class="ab-list-row-title">${esc(cleanedTitle)}</div>` +
+      `<div class="ab-list-row-meta${isHot ? ' ab-list-row-meta-alarm' : ''}">${esc(item.reason || '')}</div>` +
+    `</div>` +
+  `</div>`;
 }
 
 function renderEmptyTopFocus() {
@@ -550,13 +581,22 @@ function formatDateShort(d) {
 }
 
 function renderToday(data) {
-  const top = data.briefing?.top_focus || [];
-  const coachRead = data.briefing?.coach_read || '';
+  // Cap focus at 3 total: 1 hero + 2 list rows.
+  const top = (data.briefing?.top_focus || []).slice(0, 3);
+  const lead = data.briefing?.yesterday_summary || '';
+  const body = data.briefing?.today_focus_lead || '';
+  const mute = data.briefing?.today_focus_secondary || '';
 
   let html = renderGlanceBar(data);
 
-  if (coachRead) {
-    html += `<p class="ab-coach-read">${esc(coachRead)}</p>`;
+  // Three styled sentence segments. Empty spans are dropped entirely
+  // so a missing yesterday summary doesn't leave a hole.
+  if (lead || body || mute) {
+    const parts = [];
+    if (lead) parts.push(`<span class="ab-coach-read-lead">${esc(lead)}</span>`);
+    if (body) parts.push(`<span class="ab-coach-read-body">${esc(body)}</span>`);
+    if (mute) parts.push(`<span class="ab-coach-read-mute">${esc(mute)}</span>`);
+    html += `<p class="ab-coach-read">${parts.join(' ')}</p>`;
   }
 
   html += '<div class="ab-section-label">Today, in order</div>';
@@ -564,9 +604,15 @@ function renderToday(data) {
   if (top.length === 0) {
     html += renderEmptyTopFocus();
   } else {
+    // Hero (top_focus[0]) — no rank prefix.
     html += renderHeroFocus(top[0]);
-    for (let i = 1; i < Math.min(3, top.length); i++) {
-      html += renderListFocus(top[i]);
+    // Supporting list — wraps remaining items in a single rounded card.
+    if (top.length > 1) {
+      html += '<div class="ab-list-card">';
+      for (let i = 1; i < top.length; i++) {
+        html += renderListFocus(top[i], i + 1); // rank starts at 2
+      }
+      html += '</div>';
     }
   }
 

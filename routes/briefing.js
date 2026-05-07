@@ -97,15 +97,62 @@ function reasonFor(t, today) {
   return `${t.priority || 'medium'} priority`;
 }
 
+// Defensive title cleaner (mirrors client cleanTaskTitle). Strips
+// "[WAITING ON: Name]" and "PROMPT AVI:" prefixes from titles in case
+// the migration hasn't run on a particular row.
+function cleanNarrativeTitle(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/^\s*PROMPT\s+AVI[:\s]+/i, '')
+    .replace(/\s*\[WAITING ON:\s*[^\]]+\]\s*/gi, '')
+    .trim();
+}
+
 // One-line coach read, composed deterministically from structured data.
+// Kept as a single string for back-compat; new clients prefer the three
+// segmented fields (yesterday_summary, today_focus_lead, today_focus_secondary).
 function buildCoachRead(payload) {
   const focus = payload.top_focus.length;
   const over = payload.overdue.count;
   const label = payload.recovery.label;
   const labelClean = label === 'Insufficient data' ? 'unknown' : label.toLowerCase();
-  const top = payload.top_focus[0]?.title || 'nothing pinned';
+  const top = cleanNarrativeTitle(payload.top_focus[0]?.title) || 'nothing pinned';
   const overPart = over > 0 ? ` ${over} overdue.` : '';
   return `${focus} focus item${focus === 1 ? '' : 's'} pinned. Recovery ${labelClean}.${overPart} Top: ${top}.`;
+}
+
+// Three-segment narrative for the Today screen coach paragraph.
+// Each may be empty; the client hides empty segments cleanly.
+
+function buildYesterdaySummary(yesterdayWorkout, completedYesterday) {
+  if (yesterdayWorkout) {
+    const t = (yesterdayWorkout.title || yesterdayWorkout.workout_type || 'workout');
+    const lower = String(t).toLowerCase();
+    const effort = yesterdayWorkout.effort ? ` (effort ${yesterdayWorkout.effort}/10)` : '';
+    return `Yesterday's ${lower}${effort} landed.`;
+  }
+  if (completedYesterday && completedYesterday.length > 0) {
+    const c = completedYesterday.length;
+    return `${c} task${c === 1 ? '' : 's'} done yesterday.`;
+  }
+  return '';
+}
+
+function buildTodayFocusLead(topFocus) {
+  if (!topFocus.length) return '';
+  const title = cleanNarrativeTitle(topFocus[0].title);
+  return title ? `Today: ${title}.` : '';
+}
+
+function buildTodayFocusSecondary(topFocus, overdueCount) {
+  if (topFocus.length > 1) {
+    const title = cleanNarrativeTitle(topFocus[1].title);
+    if (title) return `Then ${title}.`;
+  }
+  if (overdueCount > 0) {
+    return `${overdueCount} overdue waiting.`;
+  }
+  return '';
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -306,6 +353,9 @@ async function generateBriefing(today) {
     } : null
   };
   payload.coach_read = buildCoachRead(payload);
+  payload.yesterday_summary    = buildYesterdaySummary(yesterdayWorkout, completedYesterday);
+  payload.today_focus_lead     = buildTodayFocusLead(topFocus);
+  payload.today_focus_secondary = buildTodayFocusSecondary(topFocus, overdue.length);
 
   // ── Format date header ──
   const headerDate = new Date(today + 'T12:00:00');

@@ -3856,9 +3856,9 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   --ab-subtle: #A1A1AA;
 
   /* Pillars */
-  --ab-personal-tint: #F4E9EC; --ab-personal-edge: #8C5560; --ab-personal-label: #6B3D45;
-  --ab-training-tint: #E8EFEB; --ab-training-edge: #456859; --ab-training-label: #2E4A3E;
-  --ab-work-tint:     #EAEEF6; --ab-work-edge:     #4D6890; --ab-work-label:     #33486D;
+  --ab-personal-tint: #F0DCE3; --ab-personal-edge: #8C5560; --ab-personal-label: #6B3D45;
+  --ab-training-tint: #DCE8DF; --ab-training-edge: #456859; --ab-training-label: #2E4A3E;
+  --ab-work-tint:     #DCE5F0; --ab-work-edge:     #4D6890; --ab-work-label:     #33486D;
 
   /* Semantic */
   --ab-urgency: #B83C2C; --ab-urgency-tint: #FBEEEC; --ab-urgency-label: #8E2C20;
@@ -3893,18 +3893,18 @@ body { font-family: var(--ab-font-ui); }
   position: sticky; top: 0; z-index: 50;
 }
 .ab-topbar-text { display: flex; flex-direction: column; min-width: 0; }
-.ab-topbar-title  { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: var(--ab-ink); margin: 0; line-height: 1.2; }
-.ab-topbar-kicker { font-size: 13px; font-weight: 500; color: var(--ab-muted); margin-top: 2px; }
+.ab-topbar-title  { font-size: 26px; font-weight: 600; letter-spacing: -0.025em; color: var(--ab-ink); margin: 0; line-height: 1; }
+.ab-topbar-kicker { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ab-subtle); margin-top: 6px; }
 .ab-topbar-actions { display: flex; align-items: center; gap: 6px; }
 .ab-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 999px; cursor: pointer;
-  background: transparent; color: var(--ab-body); border: 1px solid transparent;
+  width: 32px; height: 32px; border-radius: 999px; cursor: pointer;
+  background: var(--ab-card); color: var(--ab-body); border: 1px solid var(--ab-border);
   transition: background 120ms ease, color 120ms ease;
 }
 .ab-icon-btn:hover { background: var(--ab-border-soft); color: var(--ab-ink); }
-.ab-profile-chip { background: var(--ab-personal-tint); color: var(--ab-personal-label); font-weight: 600; font-size: 14px; }
-.ab-profile-chip:hover { background: var(--ab-personal-tint); }
+.ab-profile-chip { background: var(--ab-ink); color: var(--ab-bg); border-color: var(--ab-ink); font-weight: 600; font-size: 11px; }
+.ab-profile-chip:hover { background: var(--ab-ink); color: var(--ab-bg); }
 .ab-profile-initial { line-height: 1; }
 
 /* ── Tabbar ── */
@@ -4079,10 +4079,124 @@ body { font-family: var(--ab-font-ui); }
 /* ── Coach read paragraph (Today screen) ── */
 .ab-coach-read {
   padding: 4px 16px 8px;
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  line-height: 1.4;
+  margin: 0 0 12px 0;
+}
+.ab-coach-read-lead { color: var(--ab-ink); }
+.ab-coach-read-body { color: var(--ab-body); }
+.ab-coach-read-mute { color: var(--ab-muted); font-weight: 400; }
+
+/* Glance card unit (small inline suffix to value) */
+.ab-glance-card-unit {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ab-muted);
+  letter-spacing: 0.04em;
+  margin-left: 2px;
+}
+
+/* ── Pillar label (uppercase tag above titles) ── */
+.ab-pillar-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.ab-pillar-label-training { color: var(--ab-training-label); }
+.ab-pillar-label-work     { color: var(--ab-work-label); }
+.ab-pillar-label-personal { color: var(--ab-personal-label); }
+
+/* ── List card (rounded container around list rows) ── */
+.ab-list-card {
+  background: var(--ab-card);
+  border: 1px solid var(--ab-border);
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 0 16px 12px;
+}
+.ab-list-card .ab-list-row { border-bottom: 1px solid var(--ab-border-soft); }
+.ab-list-card .ab-list-row:last-child { border-bottom: 0; }
+
+/* ── List row marker (rank stacked over pillar icon tile) ── */
+.ab-list-row-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.ab-list-row-rank {
+  font-family: var(--ab-font-data);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ab-subtle);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ab-list-row-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ab-list-row-icon-training { background: var(--ab-training-tint); color: var(--ab-training-label); }
+.ab-list-row-icon-work     { background: var(--ab-work-tint);     color: var(--ab-work-label); }
+.ab-list-row-icon-personal { background: var(--ab-personal-tint); color: var(--ab-personal-label); }
+.ab-list-row-icon svg, .ab-list-row-icon i { width: 12px; height: 12px; stroke-width: 2.2; }
+
+/* ── List row head (pillar label + badges row above title) ── */
+.ab-list-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+/* ── List row meta alarm (urgency tint) ── */
+.ab-list-row-meta-alarm {
+  color: var(--ab-urgency-label);
+  font-weight: 600;
+}
+
+/* ── Hero card head/body/footer (richer structure for Today rebuild) ── */
+.ab-hero-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ab-hero-card-kicker {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.85;
+  color: inherit;
+}
+.ab-hero-card-body {
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1.45;
   color: var(--ab-body);
+  margin: 8px 0 0 0;
 }
+.ab-hero-card-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 12px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: inherit;
+}
+.ab-hero-card-footer svg, .ab-hero-card-footer i { width: 14px; height: 14px; }
 
 /* ── Inline badges (Waiting · Name, Hot, etc.) ── */
 .ab-badge {
