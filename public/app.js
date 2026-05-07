@@ -10650,100 +10650,129 @@ function _abClearCharts() {
 }
 
 // Upgrade a tile's static SVG sparkline to an interactive Chart.js
-// line chart with hover tooltips. Tile already shows the SVG by
-// default — if Chart.js is unavailable or this throws, the SVG just
-// stays. wrapId is the metric tile's chart wrapper div id.
+// line chart with hover tooltips + x-axis dates. Tile already shows
+// the SVG by default; if Chart.js succeeds the canvas overlays it
+// (canvas is always present in the markup at z=1). If Chart.js
+// fails or measures zero, the SVG underneath stays visible.
 function abLineChart(wrapId, values, dates, opts = {}) {
   if (typeof Chart === 'undefined') {
     console.info('[Forge] Chart.js not loaded; SVG sparkline stays for', wrapId);
     return;
   }
   const wrap = document.getElementById(wrapId);
-  if (!wrap) {
-    console.info('[Forge] chart wrap missing for', wrapId);
-    return;
-  }
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  if (!canvas) return;
   const numeric = (values || []).map(v => Number(v)).filter(v => !isNaN(v));
   if (numeric.length < 2) return;
-  // Don't upgrade if the wrapper has zero dimensions yet — Chart.js
-  // needs real width to render. The caller schedules us after the
-  // modal settles, so this should only short-circuit on edge cases.
-  const rect = wrap.getBoundingClientRect();
-  if (rect.width < 20 || rect.height < 20) {
-    console.info('[Forge] chart wrap', wrapId, 'has 0 dims, keeping SVG. rect:', rect);
-    return;
-  }
 
   const chronoValues = values.slice().reverse();
   const chronoDates  = (dates || []).slice().reverse();
-  const fill   = opts.fill || 'rgba(69, 104, 89, 0.10)';
-  const unit   = opts.unit || '';
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const stroke = opts.stroke || (isDark ? '#6B8C7E' : '#456859');
+  const fill   = opts.fill   || (isDark ? 'rgba(107, 140, 126, 0.20)' : 'rgba(69, 104, 89, 0.12)');
+  const tickColor = isDark ? '#A1A1AA' : '#71717A';
+  const unit   = opts.unit   || '';
   const dec    = opts.decimals != null ? opts.decimals : 1;
-  const stroke = (getComputedStyle(document.documentElement).getPropertyValue('--ab-training-edge') || '').trim() || '#456859';
 
-  // Replace the inline SVG with a fresh canvas of explicit dimensions.
-  const canvas = document.createElement('canvas');
-  canvas.style.display = 'block';
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
-  wrap.innerHTML = '';
-  wrap.appendChild(canvas);
-
-  try {
-    const ch = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: chronoDates.map(d => {
-          try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-          catch { return d; }
-        }),
-        datasets: [{
-          data: chronoValues,
-          borderColor: stroke,
-          backgroundColor: fill,
-          fill: true,
-          pointRadius: 0,
-          pointHoverRadius: 5,
-          pointHoverBackgroundColor: stroke,
-          pointHoverBorderColor: '#fff',
-          pointHoverBorderWidth: 2,
-          tension: 0.25,
-          borderWidth: 2,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 200 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            enabled: true,
-            mode: 'nearest',
-            intersect: false,
-            backgroundColor: 'rgba(24, 24, 26, 0.96)',
-            titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
-            bodyFont:  { family: "'DM Mono'", size: 13 },
-            padding: 8,
-            displayColors: false,
-            callbacks: {
-              label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
+  const doChart = () => {
+    try {
+      const ch = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: chronoDates.map(d => {
+            try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+            catch { return d; }
+          }),
+          datasets: [{
+            data: chronoValues,
+            borderColor: stroke,
+            backgroundColor: fill,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: stroke,
+            pointHoverBorderColor: '#fff',
+            pointHoverBorderWidth: 2,
+            tension: 0.25,
+            borderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 200 },
+          layout: { padding: { left: 4, right: 4, top: 4, bottom: 0 } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: true,
+              mode: 'nearest',
+              intersect: false,
+              backgroundColor: 'rgba(24, 24, 26, 0.96)',
+              titleFont: { family: "'DM Sans'", size: 12, weight: '600' },
+              bodyFont:  { family: "'DM Mono'", size: 13 },
+              padding: 8,
+              displayColors: false,
+              callbacks: {
+                label: (ctx) => `${Number(ctx.parsed.y).toFixed(dec)}${unit ? ' ' + unit : ''}`,
+              },
             },
           },
+          scales: {
+            x: {
+              display: true,
+              grid: { display: false, drawBorder: false },
+              ticks: {
+                color: tickColor,
+                font: { family: "'DM Sans'", size: 9, weight: '500' },
+                maxTicksLimit: 4,
+                maxRotation: 0,
+                autoSkip: true,
+                padding: 2,
+              },
+              border: { display: false },
+            },
+            y: { display: false, beginAtZero: false },
+          },
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
         },
-        scales: {
-          x: { display: false },
-          y: { display: false, beginAtZero: false },
-        },
-        interaction: { mode: 'nearest', axis: 'x', intersect: false },
-      },
-    });
-    _abActiveCharts.push(ch);
-  } catch (err) {
-    console.warn('[Forge] Chart.js upgrade failed for', wrapId, err);
-    // Restore the inline SVG so the user still sees the trend line.
-    wrap.innerHTML = abInlineSparkline(numeric, opts);
+      });
+      _abActiveCharts.push(ch);
+      // On success, hide the SVG layer so we don't see the static
+      // sparkline behind the live Chart.js render.
+      const svgLayer = wrap.querySelector('.ab-chart-svg-layer');
+      if (svgLayer) svgLayer.style.display = 'none';
+    } catch (err) {
+      console.warn('[Forge] Chart.js upgrade failed for', wrapId, err);
+      // SVG layer is still visible underneath — user sees the trend.
+    }
+  };
+
+  // If the wrapper has no dims yet (animation still mid-flight), wait
+  // for it via ResizeObserver instead of guessing a timeout.
+  const rect = wrap.getBoundingClientRect();
+  if (rect.width >= 20 && rect.height >= 20) {
+    doChart();
+    return;
   }
+  if (typeof ResizeObserver === 'undefined') {
+    console.info('[Forge] no ResizeObserver; falling back to 500ms retry for', wrapId);
+    setTimeout(doChart, 500);
+    return;
+  }
+  const ro = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.contentRect.width >= 20 && entry.contentRect.height >= 20) {
+        ro.disconnect();
+        doChart();
+        return;
+      }
+    }
+  });
+  ro.observe(wrap);
+  // Safety: stop observing after 2s no matter what.
+  setTimeout(() => ro.disconnect(), 2000);
 }
 
 // Inline SVG sparkline — always rendered in the tile so the user
@@ -10790,6 +10819,11 @@ function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
     deltaChip = `<span style="font-family:var(--ab-font-data);font-size:11px;font-weight:600;color:${color};margin-left:8px">${sign}${delta.toFixed(decimals)}${unit ? ' ' + unit : ''}</span>`;
   }
   const wrapId = 'ab-chartwrap-' + id;
+  const canvasId = 'ab-canvas-' + id;
+  // SVG sparkline + Chart.js canvas are layered. SVG sits at z=0 as
+  // the always-visible base. Chart.js mounts into the canvas at z=1
+  // — when it renders successfully it covers the SVG. If it fails or
+  // the canvas measures 0, the SVG underneath is still visible.
   return '<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;padding:14px;margin:0 16px 12px">' +
     `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">` +
       `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ab-muted)">${esc(label)}</span>` +
@@ -10799,7 +10833,10 @@ function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
       `<span style="font-family:var(--ab-font-data);font-size:24px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
       (unit ? `<span style="font-size:11px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
     `</div>` +
-    `<div id="${wrapId}" class="ab-chartwrap" style="height:80px;width:100%;position:relative;overflow:hidden;background:var(--ab-border-soft);border-radius:8px">${abInlineSparkline(numeric)}</div>` +
+    `<div id="${wrapId}" class="ab-chartwrap" style="height:96px;width:100%;position:relative;background:var(--ab-border-soft);border-radius:8px">` +
+      `<div class="ab-chart-svg-layer" style="position:absolute;inset:0;width:100%;height:100%">${abInlineSparkline(numeric)}</div>` +
+      `<canvas id="${canvasId}" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>` +
+    `</div>` +
     '</div>';
 }
 
