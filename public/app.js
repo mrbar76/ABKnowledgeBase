@@ -327,11 +327,11 @@ async function loadPersonal() {
   // Family section
   html += '<div class="ab-section-label">Family</div>';
   for (const name of PERSONAL_FAMILY) {
-    html += '<div class="ab-list-row" onclick="abToast(\'Person page ships in v2.5.\')">' +
+    html += `<div class="ab-list-row" onclick="showPersonDetail('${esc(name)}')">` +
       `<div style="width:32px;height:32px;border-radius:999px;background:var(--ab-personal-tint);color:var(--ab-personal-label);display:flex;align-items:center;justify-content:center;font-weight:600;flex:0 0 auto">${name.charAt(0)}</div>` +
       '<div class="ab-list-row-body">' +
         `<div class="ab-list-row-title">${name}</div>` +
-        '<div class="ab-list-row-meta">Tap → person page (coming soon)</div>' +
+        '<div class="ab-list-row-meta">Interactions, open items</div>' +
       '</div></div>';
   }
 
@@ -361,6 +361,67 @@ function renderPersonalShabbatCard(now) {
 }
 
 function showCaptureStub() { abToast('Capture sheet ships in Phase 6.'); }
+
+async function showPersonDetail(name) {
+  openModal(name, '<div style="text-align:center;padding:32px 0;color:var(--ab-muted)">Loading…</div>', { variant: 'sheet' });
+  const initial = name.charAt(0).toUpperCase();
+
+  const [interactionsResp, tasksResp] = await Promise.all([
+    api('/people/' + encodeURIComponent(name) + '/interactions?limit=15').catch(() => null),
+    api('/tasks?waiting_on=' + encodeURIComponent(name) + '&limit=20').catch(() => null),
+  ]);
+
+  const interactions = interactionsResp?.interactions || [];
+  const rawTasks = tasksResp?.tasks || (Array.isArray(tasksResp) ? tasksResp : []);
+  const openTasks = rawTasks.filter(t => t.status !== 'done');
+
+  const sourceIcon = s => s === 'bee' ? '🎙' : s === 'email' ? '✉' : '📅';
+
+  let body = `
+    <div style="display:flex;align-items:center;gap:12px;padding:4px 0 20px">
+      <div style="width:48px;height:48px;border-radius:999px;background:var(--ab-personal-tint);color:var(--ab-personal-label);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex:0 0 auto">${initial}</div>
+      <div>
+        <div style="font-size:18px;font-weight:600;color:var(--ab-ink)">${esc(name)}</div>
+        <div style="font-size:13px;color:var(--ab-muted)">${interactions.length} recent interactions · ${openTasks.length} open items</div>
+      </div>
+    </div>`;
+
+  if (openTasks.length) {
+    body += `<div class="ab-section-label" style="padding:0 0 8px">Open items</div>`;
+    body += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">';
+    for (const t of openTasks.slice(0, 5)) {
+      body += `<div class="ab-list-row" style="border-radius:var(--ab-radius);border:1px solid var(--ab-border-soft)" onclick="closeModal();setTimeout(()=>showTaskDetail('${esc(t.id)}'),80)">
+        <div class="ab-list-row-dot ab-pillar-personal"></div>
+        <div class="ab-list-row-body">
+          <div class="ab-list-row-title">${esc(cleanTaskTitle(t.title))}</div>
+          ${t.due_date ? `<div class="ab-list-row-meta">${esc(formatDateShort(t.due_date))}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    body += '</div>';
+  }
+
+  if (interactions.length) {
+    body += `<div class="ab-section-label" style="padding:0 0 8px">Recent interactions</div>`;
+    body += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for (const ix of interactions) {
+      body += `<div style="padding:10px 12px;background:var(--ab-card);border:1px solid var(--ab-border-soft);border-radius:var(--ab-radius)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="font-size:13px">${sourceIcon(ix.source)}</span>
+          <span style="font-size:12px;font-weight:600;color:var(--ab-muted);text-transform:uppercase;letter-spacing:0.06em">${esc(ix.source)}</span>
+          <span style="font-size:12px;color:var(--ab-subtle);margin-left:auto">${ix.date ? esc(formatDateShort(ix.date)) : ''}</span>
+        </div>
+        <div style="font-size:13px;color:var(--ab-body);line-height:1.4">${esc(truncate(ix.summary_excerpt || '', 120))}</div>
+      </div>`;
+    }
+    body += '</div>';
+  } else {
+    body += `<div style="padding:24px 0;text-align:center;color:var(--ab-muted);font-size:14px">No recent interactions found.</div>`;
+  }
+
+  const modalBody = document.getElementById('modal-body');
+  if (modalBody) modalBody.innerHTML = body;
+}
 
 function abToast(msg) {
   const host = document.getElementById('ab-toast-host');
