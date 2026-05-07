@@ -4031,7 +4031,10 @@ body { font-family: var(--ab-font-ui); }
 .ab-week-day.ab-today { outline: 2px solid var(--ab-ink); outline-offset: -2px; }
 
 /* ── Progress bar ── */
-.ab-progress-bar      { height: 4px; border-radius: 999px; background: var(--ab-border-soft); overflow: hidden; }
+/* 6px tall is the v2 default (was 4px — read as a hairline against the
+   card background on real iPhone displays). Track is var(--ab-border-soft)
+   so it's visible distinct from the fill. */
+.ab-progress-bar      { height: 6px; border-radius: 999px; background: var(--ab-border-soft); overflow: hidden; }
 .ab-progress-bar-fill { height: 100%; border-radius: 999px; background: var(--ab-training-edge); transition: width 240ms ease; }
 .ab-progress-bar.ab-pillar-personal .ab-progress-bar-fill { background: var(--ab-personal-edge); }
 .ab-progress-bar.ab-pillar-work     .ab-progress-bar-fill { background: var(--ab-work-edge); }

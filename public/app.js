@@ -7026,31 +7026,41 @@ let fitnessSubTab = 'today';
 
 // v2 Foundation Phase 2: unified Training surface. Replaces the old
 // 8-sub-tab fitness UI. Tap-throughs into existing detail screens.
+// Day under view in the Training tab. null = today (live).
+let trainingDate = null;
+
 async function loadFitness() {
   const main = document.getElementById('main-content');
   if (!main) return;
 
   main.innerHTML = renderTrainingSkeleton();
-  const today = localDateStr();
-  const weekStart = mondayOfWeek(new Date());
+  const realToday = localDateStr();
+  const viewDate = trainingDate || realToday;
+  const weekStart = mondayOfWeek(new Date(viewDate + 'T12:00:00'));
 
-  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [];
+  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [], races = null;
   try {
-    [dayData, goals, recovery, fuel, body, weekPlans] = await Promise.all([
-      api('/training/day/' + today).catch(() => null),
+    [dayData, goals, recovery, fuel, body, weekPlans, races] = await Promise.all([
+      api('/training/day/' + viewDate).catch(() => null),
       api('/goals/dashboard').catch(() => null),
-      api('/recovery/score?date=' + today).catch(() => null),
-      api('/nutrition/daily-summary?date=' + today).catch(() => null),
+      api('/recovery/score?date=' + viewDate).catch(() => null),
+      api('/nutrition/daily-summary?date=' + viewDate).catch(() => null),
       api('/body-metrics?limit=1').catch(() => null),
-      api('/daily-plans?week_start=' + weekStart).catch(() => [])
+      api('/daily-plans?week_start=' + weekStart).catch(() => []),
+      api('/races/upcoming').catch(() => null)
     ]);
   } catch (e) {
-    main.innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Training.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    main.innerHTML = `<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Training.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
     return;
   }
 
-  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, today });
+  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, races, viewDate, realToday });
   renderIcons();
+}
+
+function setTrainingDate(d) {
+  trainingDate = (d === null || d === undefined) ? null : d;
+  loadFitness();
 }
 
 // ─── Training helpers (Phase 2) ───────────────────────────────
@@ -7069,9 +7079,10 @@ function renderTrainingSkeleton() {
 
 function renderTraining(data) {
   return [
-    renderTrainingBigPicture(data.goals),
-    renderTrainingWeekStrip(data.weekPlans, data.today),
-    renderTrainingTodaySession(data.dayData),
+    renderTrainingBigPicture(data.goals, data.races),
+    renderTrainingDateNav(data.viewDate, data.realToday),
+    renderTrainingWeekStrip(data.weekPlans, data.viewDate, data.realToday),
+    renderTrainingTodaySession(data.dayData, data.viewDate, data.realToday),
     renderTrainingGoalsSection(data.goals),
     renderTrainingRecoverySection(data.recovery),
     renderTrainingFuelSection(data.fuel),
@@ -7079,15 +7090,62 @@ function renderTraining(data) {
   ].join('');
 }
 
-function renderTrainingBigPicture(goals) {
+function renderTrainingDateNav(viewDate, realToday) {
+  const isToday = viewDate === realToday;
+  const view = new Date(viewDate + 'T12:00:00');
+  const prev = new Date(view); prev.setDate(prev.getDate() - 1);
+  const next = new Date(view); next.setDate(next.getDate() + 1);
+  const prevStr = localDateStr(prev);
+  const nextStr = localDateStr(next);
+  const label = isToday
+    ? 'Today'
+    : view.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+
+  return '<div style="padding:0 16px 8px;display:flex;align-items:center;gap:8px">' +
+    `<button onclick="setTrainingDate('${prevStr}')" style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:999px;width:32px;height:32px;cursor:pointer;color:var(--ab-body);font-size:16px;display:inline-flex;align-items:center;justify-content:center">‹</button>` +
+    `<div style="flex:1;text-align:center"><div style="font-size:15px;font-weight:600;color:var(--ab-ink)">${esc(label)}</div>${!isToday ? `<button onclick="setTrainingDate(null)" style="background:transparent;border:0;color:var(--ab-muted);font-family:var(--ab-font-ui);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;margin-top:2px">← back to today</button>` : ''}</div>` +
+    `<button onclick="setTrainingDate('${nextStr}')" style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:999px;width:32px;height:32px;cursor:pointer;color:var(--ab-body);font-size:16px;display:inline-flex;align-items:center;justify-content:center">›</button>` +
+  '</div>';
+}
+
+function renderTrainingBigPicture(goals, racesPayload) {
   if (!goals) return '';
   const phase = goals.active_phase;
   const next = goals.next_phase;
-  if (!phase && !next) {
+  // Surface the next race if one is scheduled — phase context goes in the
+  // eyebrow, race name + date + countdown becomes the visible identity.
+  const racesList = Array.isArray(racesPayload) ? racesPayload : (racesPayload?.races || []);
+  const nextRace = racesList[0];
+
+  if (!phase && !next && !nextRace) {
     return '<div class="ab-big-picture ab-pillar-training">' +
       '<div class="ab-big-picture-eyebrow">Training</div>' +
       '<div class="ab-big-picture-title">No active phase.</div>' +
       '<div class="ab-big-picture-meta">Plan a race in Settings → Races to start a block.</div>' +
+      '</div>';
+  }
+
+  if (nextRace) {
+    const eyebrow = phase
+      ? `Phase ${phase.phase_number || ''} · ${(phase.phase_name || 'Active').toUpperCase()}`
+      : 'Up next';
+    const dateField = nextRace.race_date || nextRace.date;
+    const days = daysBetween(new Date(), dateField);
+    const countdown = days != null && days >= 0
+      ? `<span class="ab-big-picture-countdown">${days === 0 ? 'race day' : days + 'd'}</span>`
+      : '';
+    const metaParts = [];
+    if (dateField) metaParts.push(formatDateShort(dateField));
+    if (nextRace.distance) metaParts.push(nextRace.distance);
+    if (nextRace.terrain)  metaParts.push(nextRace.terrain);
+    if (nextRace.priority) metaParts.push(`${String(nextRace.priority).toUpperCase()} race`);
+    const meta = metaParts.join(' · ');
+    const onclick = nextRace.id ? ` onclick="showRaceDetail('${nextRace.id}')" style="cursor:pointer"` : '';
+    return `<div class="ab-big-picture ab-pillar-training"${onclick}>` +
+      `<div class="ab-big-picture-eyebrow">${esc(eyebrow)}</div>` +
+      `<div class="ab-big-picture-title">${esc(nextRace.race_name || nextRace.name || nextRace.title || 'Upcoming race')}</div>` +
+      (meta ? `<div class="ab-big-picture-meta">${esc(meta)}</div>` : '') +
+      countdown +
       '</div>';
   }
   if (phase) {
@@ -7128,9 +7186,11 @@ function daysBetween(from, toDateStr) {
   return Math.round((target - ref) / 86400000);
 }
 
-function renderTrainingWeekStrip(plans, today) {
+function renderTrainingWeekStrip(plans, viewDate, realToday) {
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const monday = new Date(mondayOfWeek(new Date()) + 'T12:00:00');
+  // Anchor the week to the viewDate so prev/next-week navigation works
+  // implicitly: if viewDate is May 14, the strip shows that week.
+  const monday = new Date(mondayOfWeek(new Date(viewDate + 'T12:00:00')) + 'T12:00:00');
   let html = '<div class="ab-week-strip">';
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
@@ -7138,14 +7198,16 @@ function renderTrainingWeekStrip(plans, today) {
     const dStr = localDateStr(d);
     const dayNum = d.getDate();
     const plan = Array.isArray(plans) ? plans.find(p => p.plan_date && String(p.plan_date).slice(0, 10) === dStr) : null;
-    const status = plan?.status || (dStr < today ? 'missed' : 'planned');
-    const isToday = dStr === today;
+    const status = plan?.status || (dStr < realToday ? 'missed' : 'planned');
+    const isToday = dStr === realToday;
+    const isViewing = dStr === viewDate;
     const stateClass = ['completed','partial','missed','planned'].includes(status) ? `ab-state-${status}` : '';
-    // Tap → daily plan detail if a plan exists, else a quick toast.
-    const onclick = plan?.id
-      ? ` onclick="showDailyPlanDetail('${plan.id}')"`
-      : ` onclick="abToast('No session planned for ' + ${JSON.stringify(formatDateShort(dStr))})"`;
-    html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}" style="cursor:pointer"${onclick}>` +
+    // Tap → set the viewed day. Long-press behavior for opening the
+    // detail modal is no longer wired; the day's session card below
+    // is now the drill-in target for the currently-viewed day.
+    const onclick = ` onclick="setTrainingDate('${dStr}')"`;
+    const viewingStyle = isViewing && !isToday ? ' style="cursor:pointer;outline:2px solid var(--ab-ink);outline-offset:-2px;border-radius:8px"' : ' style="cursor:pointer"';
+    html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}"${viewingStyle}${onclick}>` +
       `<div class="ab-week-day-label">${labels[i]}</div>` +
       `<div class="ab-week-day-mark"></div>` +
       `<div style="font-family:var(--ab-font-data);font-size:10px;color:inherit;font-variant-numeric:tabular-nums">${dayNum}</div>` +
@@ -7155,32 +7217,56 @@ function renderTrainingWeekStrip(plans, today) {
   return html;
 }
 
-function renderTrainingTodaySession(dayData) {
+function renderTrainingTodaySession(dayData, viewDate, realToday) {
   const plan = dayData?.daily_plan;
+  const isToday = viewDate === realToday;
+  const sectionLabel = isToday ? 'Today' : 'Session';
   if (!plan) {
-    return '<div class="ab-section-label">Today</div>' +
-      '<div class="ab-list-row" style="cursor:default">' +
+    return `<div class="ab-section-label">${sectionLabel}</div>` +
+      '<div class="ab-list-row" style="cursor:default;margin:0 16px 12px;border:1px solid var(--ab-border);border-radius:16px">' +
         '<div class="ab-list-row-dot"></div>' +
         '<div class="ab-list-row-body">' +
-          '<div class="ab-list-row-title">Rest day.</div>' +
+          `<div class="ab-list-row-title">${isToday ? 'Rest day.' : 'No session.'}</div>` +
           '<div class="ab-list-row-meta">No session planned.</div>' +
         '</div>' +
       '</div>';
   }
   // Use clean title; never fall back to workout_focus (raw slug like rdl_pull_grip).
-  const title = plan.title || plan.workout_type || 'Today\'s session';
+  const title = plan.title || plan.workout_type || 'Session';
   const status = plan.status || 'planned';
   const metaParts = [];
   if (plan.workout_type) metaParts.push(plan.workout_type);
-  if (plan.target_duration_min) metaParts.push(plan.target_duration_min + ' min');
+  if (plan.target_duration_min) metaParts.push(plan.target_duration_min + ' min planned');
   if (plan.target_effort) metaParts.push('effort ' + plan.target_effort + '/10');
   const meta = metaParts.join(' · ');
+
+  // "How it went" — actual workout results when status is completed/partial.
+  const workouts = Array.isArray(dayData?.workouts) ? dayData.workouts : [];
+  const isCompletedish = status === 'completed' || status === 'partial';
+  const debriefLines = [];
+  if (isCompletedish && workouts.length > 0) {
+    const totalActual = workouts.reduce((s, w) => s + Number(w.duration_minutes || 0), 0);
+    const efforts = workouts.map(w => Number(w.effort)).filter(e => e > 0);
+    const avgEffort = efforts.length ? (efforts.reduce((s, e) => s + e, 0) / efforts.length).toFixed(1) : null;
+    if (totalActual > 0) {
+      const planned = plan.target_duration_min ? `${totalActual} min actual / ${plan.target_duration_min} min planned` : `${totalActual} min actual`;
+      debriefLines.push(planned);
+    }
+    if (avgEffort) debriefLines.push(`avg effort ${avgEffort}/10`);
+    if (workouts.length > 1) debriefLines.push(`${workouts.length} sessions logged`);
+  }
+  if (plan.coaching_notes) debriefLines.push(plan.coaching_notes);
+
   const onclick = plan.id ? ` onclick="showDailyPlanDetail('${plan.id}')" style="cursor:pointer"` : '';
-  return '<div class="ab-section-label">Today</div>' +
+  return `<div class="ab-section-label">${sectionLabel}</div>` +
     `<div class="ab-hero-card ab-pillar-training"${onclick}>` +
-      `<div class="ab-hero-card-eyebrow">Training · <span class="ab-status-badge" data-state="${esc(status)}">${esc(status)}</span></div>` +
+      `<div class="ab-hero-card-head">` +
+        `<span class="ab-pillar-label ab-pillar-label-training">TRAINING</span>` +
+        (meta ? `<span class="ab-hero-card-kicker">· ${esc(meta)}</span>` : '') +
+        `<span class="ab-status-badge" data-state="${esc(status)}" style="margin-left:auto">${esc(status)}</span>` +
+      `</div>` +
       `<div class="ab-hero-card-title">${esc(title)}</div>` +
-      (meta ? `<div class="ab-hero-card-meta">${esc(meta)}</div>` : '') +
+      (debriefLines.length ? `<div class="ab-hero-card-body">${esc(debriefLines.join(' · '))}</div>` : '') +
     '</div>';
 }
 
