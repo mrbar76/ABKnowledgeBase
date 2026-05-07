@@ -841,8 +841,10 @@ async function showGoalDetail(goalId) {
         ${lockChip}
       </div>
 
-      <!-- Section 2: trajectory chart -->
-      <canvas id="goal-traj-chart" height="200" style="margin-bottom:20px"></canvas>
+      <!-- Section 2: trajectory chart (hidden when there's no actual data yet) -->
+      ${(detail.trajectory?.actual_points || []).length > 0
+        ? '<canvas id="goal-traj-chart" height="200" style="margin-bottom:20px"></canvas>'
+        : '<div style="margin:8px 0 16px;padding:12px 14px;background:var(--ab-card,#fff);border:1px dashed var(--ab-border-soft,#eee);border-radius:12px;font-size:12px;color:var(--ab-muted,#888)">No history yet — chart will populate as you log progress.</div>'}
 
       <!-- Section 3: where you are -->
       <div style="margin-bottom:16px">
@@ -7079,7 +7081,7 @@ function renderTrainingSkeleton() {
 
 function renderTraining(data) {
   return [
-    renderTrainingBigPicture(data.goals, data.races),
+    renderTrainingBigPicture(data.goals, data.races, data.viewDate),
     renderTrainingDateNav(data.viewDate, data.realToday),
     renderTrainingWeekStrip(data.weekPlans, data.viewDate, data.realToday),
     renderTrainingTodaySession(data.dayData, data.viewDate, data.realToday),
@@ -7108,14 +7110,22 @@ function renderTrainingDateNav(viewDate, realToday) {
   '</div>';
 }
 
-function renderTrainingBigPicture(goals, racesPayload) {
+function renderTrainingBigPicture(goals, racesPayload, viewDate) {
   if (!goals) return '';
   const phase = goals.active_phase;
   const next = goals.next_phase;
   // Surface the next race if one is scheduled — phase context goes in the
   // eyebrow, race name + date + countdown becomes the visible identity.
+  // Filter to races at or after the currently-viewed day so navigating
+  // past Riverdale (May 17) surfaces Palmerton / Killington / etc.
   const racesList = Array.isArray(racesPayload) ? racesPayload : (racesPayload?.races || []);
-  const nextRace = racesList[0];
+  const refDate = viewDate || localDateStr();
+  const futureRaces = racesList.filter(r => {
+    const dStr = String(r.race_date || r.date || '').slice(0, 10);
+    if (!dStr) return false;
+    return dStr >= refDate;
+  });
+  const nextRace = futureRaces[0];
 
   if (!phase && !next && !nextRace) {
     return '<div class="ab-big-picture ab-pillar-training">' +
@@ -7198,13 +7208,15 @@ function renderTrainingWeekStrip(plans, viewDate, realToday) {
     const dStr = localDateStr(d);
     const dayNum = d.getDate();
     const plan = Array.isArray(plans) ? plans.find(p => p.plan_date && String(p.plan_date).slice(0, 10) === dStr) : null;
-    const status = plan?.status || (dStr < realToday ? 'missed' : 'planned');
+    // Only color the day when an explicit status is set on the plan.
+    // Past days without an explicit "missed" status stay neutral —
+    // we shouldn't paint every past day red just because the date
+    // passed (a plan might have been done but never status-tagged,
+    // or the day might have been a planned rest day).
+    const status = plan?.status;
     const isToday = dStr === realToday;
     const isViewing = dStr === viewDate;
-    const stateClass = ['completed','partial','missed','planned'].includes(status) ? `ab-state-${status}` : '';
-    // Tap → set the viewed day. Long-press behavior for opening the
-    // detail modal is no longer wired; the day's session card below
-    // is now the drill-in target for the currently-viewed day.
+    const stateClass = ['completed','partial','missed','rest'].includes(status) ? `ab-state-${status}` : '';
     const onclick = ` onclick="setTrainingDate('${dStr}')"`;
     const viewingStyle = isViewing && !isToday ? ' style="cursor:pointer;outline:2px solid var(--ab-ink);outline-offset:-2px;border-radius:8px"' : ' style="cursor:pointer"';
     html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}"${viewingStyle}${onclick}>` +
@@ -7352,21 +7364,23 @@ function renderTrainingBodySection(body) {
   }
   const w = latest.weight_lb || latest.weight_kg ? Number(latest.weight_lb || latest.weight_kg).toFixed(1) : '—';
   const unit = latest.weight_lb ? 'lb' : (latest.weight_kg ? 'kg' : '');
-  const bf = latest.body_fat_pct != null ? `${Number(latest.body_fat_pct).toFixed(1)}%` : null;
-  const sm = (latest.skeletal_muscle_lb || latest.skeletal_muscle_kg) ? Number(latest.skeletal_muscle_lb || latest.skeletal_muscle_kg).toFixed(1) : null;
-  const bmr = latest.bmr ? String(latest.bmr) : null;
+  const bf = latest.body_fat_pct != null ? `${Number(latest.body_fat_pct).toFixed(1)}%` : '—';
+  const smRaw = latest.skeletal_muscle_lb || latest.skeletal_muscle_kg;
+  const sm = smRaw
+    ? Number(smRaw).toFixed(1) + (latest.weight_lb ? ' lb' : ' kg')
+    : (latest.skeletal_muscle_pct != null ? Number(latest.skeletal_muscle_pct).toFixed(1) + '%' : '—');
+  const bmr = latest.bmr ? String(latest.bmr) : '—';
   const dateStr = latest.measurement_date ? formatDateShort(latest.measurement_date) : '';
   const today = localDateStr();
   const stale = latest.measurement_date && String(latest.measurement_date).slice(0,10) !== today;
-  // Hide the 3-up sub-stats entirely if all three are null — avoids a
-  // row of three "—"s next to a real weight number.
-  const stats3up = (bf || sm || bmr)
-    ? '<div class="ab-glance-row">' +
-        (bf  ? `<div class="ab-glance-card"><div class="ab-glance-card-label">BF%</div><div class="ab-glance-card-value">${esc(bf)}</div></div>` : '') +
-        (sm  ? `<div class="ab-glance-card"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value">${esc(sm)}</div></div>` : '') +
-        (bmr ? `<div class="ab-glance-card"><div class="ab-glance-card-label">BMR</div><div class="ab-glance-card-value">${esc(bmr)}</div></div>` : '') +
-      '</div>'
-    : '';
+  // Always render all three sub-stats so the Body section reads as a
+  // proper dashboard. Missing values show as "—" rather than collapsing
+  // the row to a single card.
+  const stats3up = '<div class="ab-glance-row">' +
+    `<div class="ab-glance-card" onclick="showBodyTrendsDetail()" style="cursor:pointer"><div class="ab-glance-card-label">BF%</div><div class="ab-glance-card-value">${esc(bf)}</div></div>` +
+    `<div class="ab-glance-card" onclick="showBodyTrendsDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value" style="font-size:${sm.length > 6 ? '14' : '22'}px">${esc(sm)}</div></div>` +
+    `<div class="ab-glance-card" onclick="showBodyTrendsDetail()" style="cursor:pointer"><div class="ab-glance-card-label">BMR</div><div class="ab-glance-card-value">${esc(bmr)}</div></div>` +
+  '</div>';
   return '<div class="ab-section-label">Body</div>' +
     `<div class="ab-list-row" onclick="showBodyTrendsDetail()">` +
       '<div class="ab-list-row-dot ab-pillar-training"></div>' +
@@ -10767,17 +10781,32 @@ async function showRecoveryDetail() {
     body += '<div class="ab-section-label">Components</div>';
     const comps = r.components || {};
     const order = ['sleep','training_load','muscle_freshness','injury','nutrition','subjective'];
+    body += '<div class="ab-list-card">';
     for (const key of order) {
       const c = comps[key];
       if (!c) continue;
-      const pct = c.weight ? Math.round((c.score / c.weight) * 100) : c.score;
-      body += `<div class="ab-goal-row" style="cursor:default">` +
-        `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(key.replace('_',' '))}</div>` +
-        `<div class="ab-goal-row-meta"><span>${esc(String(c.score))} / ${esc(String(c.weight || 100))}</span></div></div>` +
-        `<div class="ab-progress-bar ab-pillar-training"><div class="ab-progress-bar-fill" style="width:${Math.min(100, pct)}%"></div></div>` +
-        (c.detail ? `<div class="ab-goal-row-meta" style="margin-top:2px"><span>${esc(c.detail)}</span></div>` : '') +
+      const compScore = Number(c.score);
+      const weight = Number(c.weight) || 0;
+      // Bar reads the component's raw score on a 0-100 scale (apples-to-
+      // apples across components). Weight goes in the meta as a "× N%"
+      // weighting factor so it's clear what each component contributes
+      // to the overall recovery score.
+      const pct = Math.max(0, Math.min(100, compScore));
+      // Color shifts by score — Pine when good (>=70), amber mid, red low.
+      const fillColor = pct >= 70 ? 'var(--ab-training-edge)'
+                      : pct >= 40 ? 'var(--ab-amber)'
+                      : 'var(--ab-urgency)';
+      const niceLabel = key.replace(/_/g, ' ');
+      body += `<div style="padding:12px 16px;border-bottom:1px solid var(--ab-border-soft)">` +
+        `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">` +
+          `<span style="font-size:13px;font-weight:600;color:var(--ab-ink);text-transform:capitalize">${esc(niceLabel)}</span>` +
+          `<span style="font-family:var(--ab-font-data);font-size:12px;color:var(--ab-muted);font-variant-numeric:tabular-nums">${compScore}/100${weight ? ' · ×' + weight + '%' : ''}</span>` +
+        `</div>` +
+        `<div class="ab-progress-bar" style="margin:6px 0"><div class="ab-progress-bar-fill" style="width:${pct}%;background:${fillColor}"></div></div>` +
+        (c.detail ? `<div style="font-size:11px;color:var(--ab-muted);margin-top:2px">${esc(c.detail)}</div>` : '') +
         `</div>`;
     }
+    body += '</div>';
     document.getElementById('modal-body').innerHTML = body;
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load recovery.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
@@ -10995,7 +11024,7 @@ function renderMacroRow(label, value, target, unit) {
   const pinePct = Math.round((Math.min(value, target) / scaleMax) * 100);
   const overPct = isOver ? Math.round(((value - target) / scaleMax) * 100) : 0;
   const overage = isOver
-    ? ` <span style="color:var(--ab-urgency);font-weight:700">+${Math.round(value - target)}${esc(unit)} over</span>`
+    ? ` <span style="color:var(--ab-urgency);font-weight:700">+${Math.round(value - target)}${esc(unit)} (+${Math.round((value / target - 1) * 100)}%)</span>`
     : '';
   return `<div class="ab-goal-row" style="cursor:default">` +
     `<div class="ab-goal-row-head"><div class="ab-goal-row-title">${esc(label)}</div>` +
