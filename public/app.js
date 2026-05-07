@@ -10654,16 +10654,25 @@ function _abClearCharts() {
 // default — if Chart.js is unavailable or this throws, the SVG just
 // stays. wrapId is the metric tile's chart wrapper div id.
 function abLineChart(wrapId, values, dates, opts = {}) {
-  if (typeof Chart === 'undefined') return;
+  if (typeof Chart === 'undefined') {
+    console.info('[Forge] Chart.js not loaded; SVG sparkline stays for', wrapId);
+    return;
+  }
   const wrap = document.getElementById(wrapId);
-  if (!wrap) return;
+  if (!wrap) {
+    console.info('[Forge] chart wrap missing for', wrapId);
+    return;
+  }
   const numeric = (values || []).map(v => Number(v)).filter(v => !isNaN(v));
   if (numeric.length < 2) return;
   // Don't upgrade if the wrapper has zero dimensions yet — Chart.js
   // needs real width to render. The caller schedules us after the
   // modal settles, so this should only short-circuit on edge cases.
   const rect = wrap.getBoundingClientRect();
-  if (rect.width < 20 || rect.height < 20) return;
+  if (rect.width < 20 || rect.height < 20) {
+    console.info('[Forge] chart wrap', wrapId, 'has 0 dims, keeping SVG. rect:', rect);
+    return;
+  }
 
   const chronoValues = values.slice().reverse();
   const chronoDates  = (dates || []).slice().reverse();
@@ -10740,11 +10749,13 @@ function abLineChart(wrapId, values, dates, opts = {}) {
 // Inline SVG sparkline — always rendered in the tile so the user
 // never sees an empty box. Chart.js upgrades it after the modal
 // settles (interactive hover tooltips), but if Chart.js times out
-// or fails, the SVG stays as the visible chart.
+// or fails, the SVG stays as the visible chart. Hardcoded hex
+// colors so we don't depend on CSS-var resolution timing.
 function abInlineSparkline(numeric, opts = {}) {
-  if (!numeric || numeric.length < 2) return '';
-  const stroke = (getComputedStyle(document.documentElement).getPropertyValue('--ab-training-edge') || '').trim() || '#456859';
-  const fill   = opts.fill || 'rgba(69, 104, 89, 0.10)';
+  if (!numeric || numeric.length < 2) return '<div style="font-size:11px;color:var(--ab-muted);text-align:center;padding-top:30px">Not enough history yet.</div>';
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const stroke = opts.stroke || (isDark ? '#6B8C7E' : '#456859');
+  const fill   = opts.fill   || (isDark ? 'rgba(107, 140, 126, 0.18)' : 'rgba(69, 104, 89, 0.10)');
   const w = 240, h = 80;
   const min = Math.min(...numeric);
   const max = Math.max(...numeric);
@@ -10758,7 +10769,7 @@ function abInlineSparkline(numeric, opts = {}) {
     return `${x},${y}`;
   }).join(' ');
   const area = `0,${h} ${points} ${w},${h}`;
-  return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block">` +
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;width:100%;height:100%">` +
     `<polygon points="${area}" fill="${fill}" stroke="none"/>` +
     `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
     `</svg>`;
@@ -10788,7 +10799,7 @@ function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
       `<span style="font-family:var(--ab-font-data);font-size:24px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
       (unit ? `<span style="font-size:11px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
     `</div>` +
-    `<div id="${wrapId}" style="height:80px;position:relative;overflow:hidden">${abInlineSparkline(numeric)}</div>` +
+    `<div id="${wrapId}" class="ab-chartwrap" style="height:80px;width:100%;position:relative;overflow:hidden;background:var(--ab-border-soft);border-radius:8px">${abInlineSparkline(numeric)}</div>` +
     '</div>';
 }
 
