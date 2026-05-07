@@ -10770,30 +10770,11 @@ function abLineChart(wrapId, values, dates, opts = {}) {
     }
   };
 
-  // If the wrapper has no dims yet (animation still mid-flight), wait
-  // for it via ResizeObserver instead of guessing a timeout.
-  const rect = wrap.getBoundingClientRect();
-  if (rect.width >= 20 && rect.height >= 20) {
-    doChart();
-    return;
-  }
-  if (typeof ResizeObserver === 'undefined') {
-    console.info('[Forge] no ResizeObserver; falling back to 500ms retry for', wrapId);
-    setTimeout(doChart, 500);
-    return;
-  }
-  const ro = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.contentRect.width >= 20 && entry.contentRect.height >= 20) {
-        ro.disconnect();
-        doChart();
-        return;
-      }
-    }
-  });
-  ro.observe(wrap);
-  // Safety: stop observing after 2s no matter what.
-  setTimeout(() => ro.disconnect(), 2000);
+  // Chart.js responsive mode handles 0→real-size transitions itself,
+  // so we don't need to wait for dims. Just instantiate immediately
+  // — the chart will re-render once the canvas has real dimensions
+  // post-animation.
+  doChart();
 }
 
 // Inline SVG sparkline — always rendered in the tile so the user
@@ -10997,17 +10978,17 @@ async function showBodyTrendsDetail() {
     body += '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
     document.getElementById('modal-body').innerHTML = body;
 
-    // Inline SVG sparklines render immediately as part of the tile
-    // HTML (always visible). Now upgrade each one to an interactive
-    // Chart.js after the modal slide-up completes — wait 320ms to
-    // be safely past the 220ms sheet animation.
-    setTimeout(() => {
+    // Upgrade each tile's SVG to a Chart.js canvas. requestAnimationFrame
+    // gives the DOM one paint cycle to settle before Chart.js measures.
+    // Chart.js's responsive mode handles further resize as the modal
+    // animates in.
+    requestAnimationFrame(() => {
       abLineChart('ab-chartwrap-weight', weightSeries, dates, { unit, decimals: 1 });
       if (hasData(bfSeries))    abLineChart('ab-chartwrap-bf',    bfSeries,    dates, { unit: '%',    decimals: 1 });
       if (hasData(smPctSeries)) abLineChart('ab-chartwrap-sm',    smPctSeries, dates, { unit: '%',    decimals: 1 });
       if (hasData(waterSeries)) abLineChart('ab-chartwrap-water', waterSeries, dates, { unit: '%',    decimals: 1 });
       if (hasData(bmrSeries))   abLineChart('ab-chartwrap-bmr',   bmrSeries,   dates, { unit: 'kcal', decimals: 0 });
-    }, 320);
+    });
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load body trends.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
   }
