@@ -10741,7 +10741,20 @@ function abLineChart(wrapId, values, dates, opts = {}) {
               },
               border: { display: false },
             },
-            y: { display: false, beginAtZero: false },
+            y: {
+              display: true,
+              position: 'right',
+              beginAtZero: false,
+              grid: { color: 'rgba(127,127,127,0.10)', drawBorder: false, lineWidth: 1 },
+              ticks: {
+                color: tickColor,
+                font: { family: "'DM Mono'", size: 9, weight: '500' },
+                maxTicksLimit: 3,
+                padding: 4,
+                callback: (val) => `${Number(val).toFixed(dec)}${unit ? unit : ''}`,
+              },
+              border: { display: false },
+            },
           },
           interaction: { mode: 'nearest', axis: 'x', intersect: false },
         },
@@ -10841,7 +10854,7 @@ function abMetricTile({ id, label, current, unit, series, decimals = 1 }) {
       `<span style="font-family:var(--ab-font-data);font-size:24px;font-weight:600;color:var(--ab-ink);font-variant-numeric:tabular-nums">${esc(cur)}</span>` +
       (unit ? `<span style="font-size:11px;color:var(--ab-muted)">${esc(unit)}</span>` : '') +
     `</div>` +
-    `<div id="${wrapId}" class="ab-chartwrap" style="height:96px;width:100%;position:relative;background:var(--ab-border-soft);border-radius:8px">` +
+    `<div id="${wrapId}" class="ab-chartwrap" style="height:120px;width:100%;position:relative;background:var(--ab-border-soft);border-radius:8px">` +
       `<div class="ab-chart-svg-layer" style="position:absolute;inset:0;width:100%;height:100%">${abInlineSparkline(numeric)}</div>` +
       `<canvas id="${canvasId}" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>` +
     `</div>` +
