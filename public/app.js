@@ -3785,8 +3785,213 @@ function cleanTaskTitle(title) {
   return t;
 }
 
-// ── Today Focus View ──
+// ── Today Focus View (v2 rebuild) ──
+// New surface: BigPicture banner (Marine), top focus (hero + ranked list rows),
+// due-today / in-progress sections, waiting-on link strip, completed-today
+// (collapsed). No numbered circles, no Done/Start buttons on rows, no "score"
+// leakage, no quick-add input, no "+ Full" gradient button. Tap row → detail.
 async function loadTasksToday() {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+
+  let kanban;
+  try {
+    kanban = await api('/tasks/kanban');
+  } catch (e) {
+    main.innerHTML = tasksTabsHtml() + `<div class="ab-list-row" style="cursor:default;margin:24px 16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load tasks.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    return;
+  }
+
+  const todoTasks       = kanban.todo        || [];
+  const inProgressTasks = kanban.in_progress || [];
+  const waitingTasks    = kanban.waiting_on  || [];
+  const reviewTasks     = kanban.review      || [];
+  const doneTasks       = kanban.done        || [];
+
+  const today = localDateStr();
+  const todayDate = new Date(today + 'T00:00:00');
+  const allOpen = [...todoTasks, ...inProgressTasks, ...reviewTasks];
+  const allOpenIncludingWaiting = [...allOpen, ...waitingTasks];
+
+  const isOverdue        = (t) => t.due_date && String(t.due_date).slice(0,10) < today;
+  const isDueToday       = (t) => t.due_date && String(t.due_date).slice(0,10) === today;
+  const isCompletedToday = (t) => t.completed_at && String(t.completed_at).slice(0,10) === today;
+
+  const overdue        = allOpen.filter(isOverdue);
+  const dueToday       = allOpen.filter(isDueToday);
+  const completedToday = doneTasks.filter(isCompletedToday);
+
+  // Hot = urgent priority OR overdue.
+  const hotIds = new Set();
+  for (const t of allOpenIncludingWaiting) {
+    if (t.priority === 'urgent' || isOverdue(t)) hotIds.add(t.id);
+  }
+
+  // Oldest overdue (for the BigPicture countdown chip).
+  let oldestOverdueDays = 0;
+  for (const t of overdue) {
+    const d = String(t.due_date).slice(0, 10);
+    const days = Math.round((todayDate - new Date(d + 'T00:00:00')) / 86400000);
+    if (days > oldestOverdueDays) oldestOverdueDays = days;
+  }
+
+  // Score & rank top focus across all open + waiting.
+  function scoreFocus(t) {
+    let s = ({ urgent: 40, high: 30, medium: 20, low: 10 })[t.priority] || 10;
+    if (t.due_date) {
+      const dStr = String(t.due_date).slice(0, 10);
+      const days = Math.round((todayDate - new Date(dStr + 'T00:00:00')) / 86400000);
+      if (days > 0)         s += 50; // overdue
+      else if (days === 0)  s += 30; // due today
+      else if (days >= -7)  s += 15; // this week
+      else                  s += 5;
+    } else {
+      s += 5;
+    }
+    if (t.updated_at) {
+      const sDays = Math.round((todayDate - new Date(t.updated_at)) / 86400000);
+      if      (sDays > 14) s += 15;
+      else if (sDays > 7)  s += 10;
+    }
+    return s;
+  }
+  const topFocus = allOpenIncludingWaiting
+    .map(t => ({ ...t, _score: scoreFocus(t) }))
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 4); // hero + 3 list
+
+  const topFocusIds = new Set(topFocus.map(t => t.id));
+
+  // Section data — exclude items already in Top Focus to avoid duplicates.
+  const dueTodayRest    = dueToday.filter(t => !topFocusIds.has(t.id));
+  const inProgressRest  = inProgressTasks.filter(t => !topFocusIds.has(t.id));
+
+  // Waiting-on people count for the link strip.
+  const waitingPeople = new Set();
+  for (const t of waitingTasks) {
+    const persons = (t.waiting_on_person || t.waiting_on || '').split(',').map(s => s.trim()).filter(Boolean);
+    for (const p of persons) waitingPeople.add(p);
+  }
+
+  // ── Render ──
+  let html = tasksTabsHtml();
+
+  // BigPicture banner (Marine pillar). Tap → detail of oldest overdue, or no-op.
+  html += '<div class="ab-big-picture ab-pillar-work" style="margin:0 16px 12px">' +
+    `<div class="ab-big-picture-eyebrow">Open commitments</div>` +
+    `<div class="ab-big-picture-title">${allOpenIncludingWaiting.length} open · ${hotIds.size} hot</div>` +
+    `<div class="ab-big-picture-meta">${overdue.length} overdue · ${waitingTasks.length} waiting · ${completedToday.length} done today</div>` +
+    (oldestOverdueDays > 0 ? `<span class="ab-big-picture-countdown">${oldestOverdueDays}d oldest</span>` : '') +
+    '</div>';
+
+  // Today, in order
+  html += '<div class="ab-section-label">Today, in order</div>';
+  if (topFocus.length === 0) {
+    html += '<div class="ab-list-row" style="cursor:default;margin:0 16px 12px;border:1px solid var(--ab-border);border-radius:16px">' +
+      '<div class="ab-list-row-dot"></div>' +
+      '<div class="ab-list-row-body"><div class="ab-list-row-title">Nothing pinned.</div>' +
+      '<div class="ab-list-row-meta">Capture something with +.</div></div></div>';
+  } else {
+    const top0 = { ...topFocus[0], reason: reasonForTask(topFocus[0], today), waiting_on_person: topFocus[0].waiting_on_person || topFocus[0].waiting_on };
+    html += renderHeroFocus(top0);
+    if (topFocus.length > 1) {
+      html += '<div class="ab-list-card">';
+      for (let i = 1; i < topFocus.length; i++) {
+        const t = { ...topFocus[i], reason: reasonForTask(topFocus[i], today), waiting_on_person: topFocus[i].waiting_on_person || topFocus[i].waiting_on };
+        html += renderListFocus(t, i + 1);
+      }
+      html += '</div>';
+    }
+  }
+
+  // Due today
+  if (dueTodayRest.length > 0) {
+    html += `<div class="ab-section-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>Due today</span><span style="font-size:12px;font-weight:500;color:var(--ab-muted);text-transform:none;letter-spacing:0">${dueTodayRest.length}</span></div>`;
+    html += '<div class="ab-list-card">';
+    for (const t of dueTodayRest) html += renderProductivityRow(t, today);
+    html += '</div>';
+  }
+
+  // In progress
+  if (inProgressRest.length > 0) {
+    html += `<div class="ab-section-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>In progress</span><span style="font-size:12px;font-weight:500;color:var(--ab-muted);text-transform:none;letter-spacing:0">${inProgressRest.length}</span></div>`;
+    html += '<div class="ab-list-card">';
+    for (const t of inProgressRest) html += renderProductivityRow(t, today);
+    html += '</div>';
+  }
+
+  // Waiting on others link
+  if (waitingTasks.length > 0) {
+    html += '<div class="ab-list-row" onclick="tasksSubTab=\'waiting\';loadTasks()" style="margin:0 16px 12px;border:1px solid var(--ab-border);border-radius:16px;align-items:center">' +
+      '<div class="ab-list-row-dot ab-pillar-work"></div>' +
+      '<div class="ab-list-row-body">' +
+        '<div class="ab-list-row-title">Waiting on others</div>' +
+        `<div class="ab-list-row-meta">${waitingTasks.length} task${waitingTasks.length === 1 ? '' : 's'} across ${waitingPeople.size} ${waitingPeople.size === 1 ? 'person' : 'people'}</div>` +
+      '</div>' +
+      '<div style="color:var(--ab-muted);padding-right:8px;font-size:18px">›</div>' +
+    '</div>';
+  }
+
+  // Completed today (collapsed by default)
+  if (completedToday.length > 0) {
+    html += '<details style="margin:0 16px 12px"><summary style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--ab-muted);cursor:pointer;padding:10px 4px;list-style:none;display:flex;justify-content:space-between;align-items:baseline">' +
+      `<span>Completed today</span><span style="text-transform:none;letter-spacing:0;font-weight:500">${completedToday.length} ▾</span>` +
+      '</summary>' +
+      '<div class="ab-list-card">';
+    for (const t of completedToday) html += renderProductivityRow(t, today, { completed: true });
+    html += '</div></details>';
+  }
+
+  if (allOpenIncludingWaiting.length === 0 && completedToday.length === 0) {
+    html += '<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">All clear.</div><div class="ab-list-row-meta">No tasks need attention today.</div></div></div>';
+  }
+
+  main.innerHTML = html;
+  renderIcons();
+}
+
+// Human-readable "why this is on the list" string for a task row.
+function reasonForTask(t, today) {
+  if (t.due_date) {
+    const dStr = String(t.due_date).slice(0, 10);
+    const ref = new Date(today + 'T00:00:00');
+    const target = new Date(dStr + 'T00:00:00');
+    const days = Math.round((ref - target) / 86400000);
+    if (days > 0)        return `${days} day${days === 1 ? '' : 's'} overdue`;
+    if (days === 0)      return 'due today';
+    const ahead = -days;
+    return `due in ${ahead} day${ahead === 1 ? '' : 's'}`;
+  }
+  if (t.status === 'in_progress') return 'in progress';
+  if (t.status === 'waiting_on') {
+    const w = t.updated_at ? Math.round((Date.now() - new Date(t.updated_at)) / 86400000) : 0;
+    const person = t.waiting_on_person || t.waiting_on || 'someone';
+    return `waiting on ${person} for ${w}d`;
+  }
+  return `${t.priority || 'medium'} priority`;
+}
+
+// Plain Productivity row (no rank — used for Due today / In progress /
+// Completed today sections, where ranks would just be noise).
+function renderProductivityRow(t, today, opts = {}) {
+  const pillar = pillarFromContext(t.context) || 'work';
+  const cleanedTitle = cleanTaskTitle(t.title) || 'Untitled';
+  const waitingPerson = t.waiting_on_person || t.waiting_on;
+  const waitingBadge = waitingPerson
+    ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
+    : '';
+  const reason = reasonForTask(t, today);
+  const titleStyle = opts.completed ? 'text-decoration:line-through;color:var(--ab-muted)' : '';
+  return `<div class="ab-list-row" onclick="showTaskDetail('${t.id}')">` +
+    `<div class="ab-list-row-dot ab-pillar-${pillar}"></div>` +
+    `<div class="ab-list-row-body">` +
+      `<div class="ab-list-row-title" style="${titleStyle}">${waitingBadge}${esc(cleanedTitle)}</div>` +
+      `<div class="ab-list-row-meta">${esc(reason)}</div>` +
+    `</div></div>`;
+}
+
+// LEGACY — unreachable from the new nav. Deleted at cutover PR.
+async function _legacyLoadTasksToday() {
   const main = document.getElementById('main-content');
   try {
     const data = await api('/tasks?limit=200');
