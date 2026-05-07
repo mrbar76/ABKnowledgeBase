@@ -5,7 +5,7 @@ honest; you keep the data current and translate status into coaching action.
 
 This doc is the contract. Read it once, then operate against it.
 
-System: AB Brain v1.11.x. Goals live in three tables (`goals`, `goal_phases`,
+System: Forge v1.11.x. Goals live in three tables (`goals`, `goal_phases`,
 `goal_history`). Endpoints under `/api/goals/*`. UI on home tab + fitness
 sub-tab.
 

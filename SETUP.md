@@ -1,13 +1,13 @@
-# AB Brain — Notion Setup Guide
+# Forge — Notion Setup Guide
 
 ## Overview
 
-AB Brain is an AI-to-Notion gateway. Your AIs (Claude, ChatGPT, Gemini, Bee) call the REST API, and the app files everything into your Notion workspace — automatically organized with AI-powered classification.
+Forge is an AI-to-Notion gateway. Your AIs (Claude, ChatGPT, Gemini, Bee) call the REST API, and the app files everything into your Notion workspace — automatically organized with AI-powered classification.
 
 ```
 Claude / ChatGPT / Gemini / Bee
         ↓
-   AB Brain API  ←→  Claude Haiku (classification)
+   Forge API  ←→  Claude Haiku (classification)
         ↓
    Notion Workspace
    ├── Knowledge (facts, research, notes)
@@ -23,7 +23,7 @@ Claude / ChatGPT / Gemini / Bee
 
 1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
 2. Click **"+ New integration"**
-3. Name it `AB Brain`
+3. Name it `Forge`
 4. Select your workspace
 5. Under **Capabilities**, enable:
    - Read content
@@ -35,11 +35,11 @@ Claude / ChatGPT / Gemini / Bee
 ## Step 2: Create a Parent Page in Notion
 
 1. Open Notion
-2. Create a new page called **"AB Brain"** (or whatever you want)
+2. Create a new page called **"Forge"** (or whatever you want)
 3. This page will contain all 7 databases
 4. **Share it with your integration:**
    - Click the `...` menu on the page
-   - Click **"Connections"** → **"Connect to"** → find **"AB Brain"**
+   - Click **"Connections"** → **"Connect to"** → find **"Forge"**
    - Click **"Confirm"**
 5. Copy the **page ID** from the URL:
    - URL looks like: `https://notion.so/AB-Brain-abc123def456...`
@@ -76,7 +76,7 @@ npm run dev
 
 You should see:
 ```
-AB Brain (Notion backend) running on port 3000
+Forge (Notion backend) running on port 3000
 Notion client initialized
 ```
 

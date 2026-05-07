@@ -4,17 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
-  <title>AB Brain</title>
+  <title>Forge</title>
 
   <!-- PWA -->
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#6366f1">
+  <link rel="manifest" href="/manifest.json?v=forge-1">
+  <meta name="theme-color" content="#F5EFE3">
 
   <!-- iOS PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="AB Brain">
-  <link rel="apple-touch-icon" sizes="180x180" href="/icons/brand/icon-app-180.png">
+  <meta name="apple-mobile-web-app-title" content="Forge">
+  <link rel="apple-touch-icon" href="/icons/forge/apple-touch-icon.png">
 
   <meta name="format-detection" content="telephone=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,16 +23,14 @@
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="/styles.css">
-  <link rel="icon" href="/icons/brand/icon-app.svg" type="image/svg+xml">
-  <link rel="icon" href="/icons/brand/favicon-32.png" sizes="32x32" type="image/png">
-  <link rel="icon" href="/icons/brand/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/forge/favicon-32.png">
 </head>
 <body>
   <!-- Login Screen -->
   <div id="login-screen" class="login-screen" style="display:none">
     <div class="login-card">
-      <img src="/icons/brand/logo-primary.svg" alt="AB Brain" class="login-logo">
-      <h1 class="login-title">AB Brain</h1>
+      <img src="/icons/forge/forge-icon-512.png" alt="Forge" class="login-logo">
+      <h1 class="login-title">Forge</h1>
       <p class="login-subtitle">Welcome back</p>
       <form onsubmit="doLogin(event)" autocomplete="on">
         <div class="form-group">
@@ -196,7 +194,7 @@
             </div>
             <div class="sm-card">
               <div class="sm-card-label">Hevy Sync</div>
-              <div class="sm-card-desc">Strength workouts from Hevy. Health-check the API key, sync workouts (uses durable cursor), refresh the local exercise template cache, auto-map AB Brain exercise names to Hevy templates, and push body metrics to Hevy's body_measurements API. Coach pushes daily plans as routines via the morning-check-in skill.</div>
+              <div class="sm-card-desc">Strength workouts from Hevy. Health-check the API key, sync workouts (uses durable cursor), refresh the local exercise template cache, auto-map Forge exercise names to Hevy templates, and push body metrics to Hevy's body_measurements API. Coach pushes daily plans as routines via the morning-check-in skill.</div>
               <div class="sm-btn-row">
                 <button class="btn-action btn-action-secondary" onclick="checkHevyHealth()" id="btn-hevy-health">Health Check</button>
                 <button class="btn-action btn-action-secondary" onclick="testHevyConnection()" id="btn-hevy-test">Sample Catalog</button>
@@ -367,11 +365,11 @@
             <!-- How It Works -->
             <div class="sm-card">
               <div class="sm-card-label" onclick="this.parentElement.classList.toggle('expanded')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-                How AB Brain Works <span class="sm-chevron">&#9654;</span>
+                How Forge Works <span class="sm-chevron">&#9654;</span>
               </div>
               <div class="sm-collapse">
                 <div class="sm-doc-text">
-                  <p><strong>AB Brain</strong> is your personal AI-powered knowledge base and fitness platform. It stores everything — workouts, meals, body metrics, conversations, knowledge, tasks — in a single PostgreSQL database with full-text search.</p>
+                  <p><strong>Forge</strong> is your personal AI-powered knowledge base and fitness platform. It stores everything — workouts, meals, body metrics, conversations, knowledge, tasks — in a single PostgreSQL database with full-text search.</p>
                   <p><strong>Architecture:</strong> Node.js + Express backend, vanilla JS frontend (PWA), PostgreSQL 16 with 14+ tables, deployed on Railway.</p>
                   <p><strong>AI Integration:</strong> ChatGPT and Claude connect via OpenAPI schemas (Actions/Projects). The coach reads your data, plans workouts, logs meals, and tracks recovery — all through the API.</p>
                   <p><strong>Data Flow:</strong> Bee wearable auto-syncs conversations. Fitbod CSVs import exercises. Coach logs workouts/meals/plans via API. Everything is searchable.</p>
@@ -905,7 +903,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          AB Brain <span id="sm-version">v1.8.23</span>
+          Forge <span id="sm-version">v1.8.23</span>
         </div>
 
       </div>

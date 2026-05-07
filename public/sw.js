@@ -2,7 +2,7 @@
 // serving stale app.js across v1.11.0/1/2 (Goals UI shipped but never
 // reached installed PWAs because cache name didn't change). Bump CACHE_NAME
 // on every release that touches public/* — old caches prune on activate.
-const CACHE_NAME = 'abkb-v1.16.3-charts-actuals';
+const CACHE_NAME = 'forge-v1.0.0';
 const SHELL_FILES = [
   '/',
   '/styles.css',
@@ -34,21 +34,21 @@ self.addEventListener('push', e => {
   try {
     const data = e.data.json();
     e.waitUntil(
-      self.registration.showNotification(data.title || 'AB Brain', {
+      self.registration.showNotification(data.title || 'Forge', {
         body: data.body || '',
-        icon: data.icon || '/icons/brand/icon-app-180.png',
-        badge: data.badge || '/icons/brand/icon-app-64.png',
+        icon: data.icon || '/icons/forge/forge-icon-192.png',
+        badge: data.badge || '/icons/forge/forge-icon-192.png',
         data: { url: data.url || '/' },
         vibrate: [100, 50, 100],
-        tag: data.tag || 'ab-brain-notification',
+        tag: data.tag || 'forge-notification',
         renotify: true,
       })
     );
   } catch {
     e.waitUntil(
-      self.registration.showNotification('AB Brain', {
+      self.registration.showNotification('Forge', {
         body: e.data.text(),
-        icon: '/icons/brand/icon-app-180.png',
+        icon: '/icons/forge/forge-icon-192.png',
       })
     );
   }

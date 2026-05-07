@@ -1,4 +1,4 @@
-# AB Brain — Knowledge File for Claude Projects
+# Forge — Knowledge File for Claude Projects
 
 > **Version:** 1.6.0 | **Last Updated:** 2026-04-01
 > **Base URL:** `https://ab-brain.up.railway.app`

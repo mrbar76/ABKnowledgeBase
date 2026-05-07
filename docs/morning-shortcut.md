@@ -1,6 +1,6 @@
 # Morning Vitals Shortcut
 
-**Purpose:** each morning, pull six fields from Apple HealthKit and POST them to AB Brain's `daily_vitals_cache`. Coach reads from this cache when off-device.
+**Purpose:** each morning, pull six fields from Apple HealthKit and POST them to Forge's `daily_vitals_cache`. Coach reads from this cache when off-device.
 
 **Replaces:** all the old HAE / LODE / HealthDataExport / HealthExportKit auto-export to Dropbox automations. Direct 6-field POST instead of file generation + Dropbox round-trip.
 
@@ -50,7 +50,7 @@ The shortcut is small (~12 actions on Series 3). The fragile part is sleep stage
 ### Step 1 — create the Shortcut
 
 1. Shortcuts app → Library → `+` to create new
-2. Name: **Morning Vitals → AB Brain**
+2. Name: **Morning Vitals → Forge**
 
 ### Step 2 — get the date (one action)
 
@@ -156,7 +156,7 @@ For each value cell: tap the cell, pick the magic variable from Step 3, then set
 
 The endpoint validator only requires `date` plus at least one numeric field. Empty/blank values are treated as null. Any key the endpoint doesn't know about gets silently dropped.
 
-### Step 6 — POST to AB Brain (one action)
+### Step 6 — POST to Forge (one action)
 
 Action: **Get Contents of URL** (Apple confirms POST request body supports JSON):
 - **URL:** `{API_BASE}/api/v2/daily-vitals` (your Railway URL, e.g. `https://abrain-production.up.railway.app/api/v2/daily-vitals`)
@@ -186,7 +186,7 @@ Shortcuts → Automation tab → `+` → Create Personal Automation → **Sleep*
 - **Run Immediately** (no confirmation prompt)
 - **Notify When Run**: optional
 
-Pick **Run Shortcut** → select `Morning Vitals → AB Brain`.
+Pick **Run Shortcut** → select `Morning Vitals → Forge`.
 
 > Per Apple's [event triggers documentation](https://support.apple.com/guide/shortcuts/event-triggers-apd932ff833f/ios), the Sleep "Waking Up" trigger fires when your Wake Up alarm sounds (or, with no alarm, per your Sleep Schedule). Requires a Sleep Schedule set in the Health app (Health → Sleep → Your Schedule). This is more robust than a fixed time because by the time it fires, Apple Watch has closed the night's sleep session and HRV / RHR / sleep stages are populated.
 >
@@ -200,7 +200,7 @@ Same Automation flow:
 - **Run Immediately**
 - **Run when device is locked**: enabled
 
-Pick **Run Shortcut** → select `Morning Vitals → AB Brain`.
+Pick **Run Shortcut** → select `Morning Vitals → Forge`.
 
 > If you woke up before 10, the Wake Up trigger already filled the row and this 10am run is a harmless no-op (idempotent UPSERT). If you slept past 10 (or didn't have a Sleep Schedule), this run catches whatever's available.
 
@@ -223,7 +223,7 @@ Worst case: you sleep all day and never wake up. Then only the 10am partial row 
 
 Run it manually first (tap the Shortcut tile). Expected:
 - Notification: `{"ok": true, "row": {...}}`
-- AB Brain: `GET /api/v2/daily-vitals?date=2026-05-05` returns the row
+- Forge: `GET /api/v2/daily-vitals?date=2026-05-05` returns the row
 
 If 400: validator error, check the body shape.
 If 401/403: API key missing or wrong.
@@ -253,7 +253,7 @@ Why these specific fields and not, say, daily steps or workouts? **Different dis
 |---|---|
 | HAE app → Dropbox auto-export | This Shortcut |
 | LODE / HealthDataExport / HealthExportKit | This Shortcut |
-| AB Brain Dropbox poller (`/api/health/dropbox-sync`) | Direct POST to `/api/v2/daily-vitals` |
+| Forge Dropbox poller (`/api/health/dropbox-sync`) | Direct POST to `/api/v2/daily-vitals` |
 | Format A/B/C/D parser dispatch | None — Shortcut sends typed JSON |
 | Mojibake repair, HR object-shape unwrap, stale-rescue | None — Apple HealthKit returns clean values via Shortcut |
 

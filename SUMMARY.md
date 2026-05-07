@@ -1,6 +1,6 @@
-# AB Brain — What It Is (The Quick Version)
+# Forge — What It Is (The Quick Version)
 
-**AB Brain** is a personal app I built that gives all my AI assistants a shared memory.
+**Forge** is a personal app I built that gives all my AI assistants a shared memory.
 
 ## The Problem
 
@@ -8,12 +8,12 @@ I use multiple AIs every day — Claude, ChatGPT, Gemini — plus a wearable dev
 
 ## The Solution
 
-AB Brain is a central hub that all my AIs read from and write to. It's a REST API backed by PostgreSQL, running on Railway (cloud hosting). Think of it as a shared brain for all my AIs.
+Forge is a central hub that all my AIs read from and write to. It's a REST API backed by PostgreSQL, running on Railway (cloud hosting). Think of it as a shared brain for all my AIs.
 
 ```
 Me (phone) ──→ Mobile Dashboard (PWA)
                     │
-Claude ─────────→  AB Brain API  ←──── Bee Wearable
+Claude ─────────→  Forge API  ←──── Bee Wearable
 ChatGPT ────────→  (Railway)     ←──── Apple Health
 Gemini ─────────→       │
                    PostgreSQL (primary)
@@ -27,7 +27,7 @@ Gemini ─────────→       │
 
 - **Task Management** — Kanban board (To Do / In Progress / Review / Done). My AIs can create and update tasks. I see everything on my phone.
 
-- **Bee Transcript Storage** — My Bee wearable records real-world conversations. AB Brain syncs them automatically every 30 minutes, stores the full transcripts with speaker-by-speaker detail, and makes them searchable.
+- **Bee Transcript Storage** — My Bee wearable records real-world conversations. Forge syncs them automatically every 30 minutes, stores the full transcripts with speaker-by-speaker detail, and makes them searchable.
 
 - **Smart Intake** — I can throw any raw text at it and GPT-4o-mini auto-classifies it (is this a task? a note? a transcript?) and files it into the right place with tags and categories.
 

@@ -1,19 +1,15 @@
 {
-  "name": "AB Knowledge Base",
-  "short_name": "AB Brain",
-  "description": "Unified AI Brain — Claude, Gemini, ChatGPT, Bee",
+  "name": "Forge",
+  "short_name": "Forge",
+  "description": "Personal operating system — tasks, training, daily planning, health.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f1117",
-  "theme_color": "#6366f1",
+  "background_color": "#F5EFE3",
+  "theme_color": "#F5EFE3",
   "orientation": "portrait",
   "icons": [
-    { "src": "/icons/brand/icon-app.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icons/brand/icon-app-1024.png", "sizes": "1024x1024", "type": "image/png" },
-    { "src": "/icons/brand/icon-app-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/brand/icon-app-256.png", "sizes": "256x256", "type": "image/png" },
-    { "src": "/icons/brand/icon-app-180.png", "sizes": "180x180", "type": "image/png" },
-    { "src": "/icons/brand/icon-app-120.png", "sizes": "120x120", "type": "image/png" },
-    { "src": "/icons/brand/icon-app-64.png", "sizes": "64x64", "type": "image/png" }
+    { "src": "/icons/forge/forge-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/forge/forge-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/forge/forge-icon-1024.png", "sizes": "1024x1024", "type": "image/png" }
   ]
 }

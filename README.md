@@ -1,4 +1,4 @@
-# AB Brain — Unified AI Knowledge Base
+# Forge — Unified AI Knowledge Base
 
 A personal knowledge management platform that gives all your AI assistants (Claude, ChatGPT, Gemini) and your Bee wearable a shared memory. Your AIs read and write to a central PostgreSQL database via REST API, with an optional one-way mirror to Notion for browsing. You manage everything from a mobile-friendly PWA dashboard.
 
@@ -48,7 +48,7 @@ A personal knowledge management platform that gives all your AI assistants (Clau
 
 ### Your AIs Connect via REST API
 
-Each AI calls the AB Brain API with your API key.
+Each AI calls the Forge API with your API key.
 
 **Load context at the start of a conversation:**
 ```
@@ -97,7 +97,7 @@ POST /api/intake/distill
 
 ### Bee Wearable Auto-Sync
 
-The Bee (by Amazon) records real-world conversations. AB Brain syncs automatically:
+The Bee (by Amazon) records real-world conversations. Forge syncs automatically:
 - Facts the Bee learns about you
 - Todos extracted from conversations
 - Full conversation transcripts with speaker-by-speaker utterances
@@ -290,7 +290,7 @@ Tables are created automatically on first startup.
 
 ## What's a PWA?
 
-AB Brain is a **Progressive Web App**. Open the URL in your phone's browser and tap "Add to Home Screen." It installs like a native app — launches full-screen, has its own icon, works offline for cached pages, and auto-refreshes when you switch back to it. No app store needed.
+Forge is a **Progressive Web App**. Open the URL in your phone's browser and tap "Add to Home Screen." It installs like a native app — launches full-screen, has its own icon, works offline for cached pages, and auto-refreshes when you switch back to it. No app store needed.
 
 ## Future Roadmap
 

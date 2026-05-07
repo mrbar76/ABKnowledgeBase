@@ -1,4 +1,4 @@
-# AB Brain — Full Audit
+# Forge — Full Audit
 
 **Repo:** `mrbar76/abknowledgebase` (v1.7.2) · **Branch:** `claude/generate-audit-report-18gBF` · **Date:** 2026-04-25
 
@@ -6,7 +6,7 @@
 
 ## 1. Executive Summary
 
-AB Brain is a single-user personal knowledge base: Express + PostgreSQL backend, vanilla-JS PWA frontend, Bee wearable polling, OpenAI smart intake, optional Notion mirror. The schema is mature and search-rich (16 tables, full-text + trigram indexes, idempotent migrations), and the deployment story (Railway + Docker + healthcheck) is clean. The biggest weaknesses are concentrated in **security posture**, **multi-statement atomicity**, and **frontend maintainability** of an 8.3 KLOC monolithic `app.js`.
+Forge is a single-user personal knowledge base: Express + PostgreSQL backend, vanilla-JS PWA frontend, Bee wearable polling, OpenAI smart intake, optional Notion mirror. The schema is mature and search-rich (16 tables, full-text + trigram indexes, idempotent migrations), and the deployment story (Railway + Docker + healthcheck) is clean. The biggest weaknesses are concentrated in **security posture**, **multi-statement atomicity**, and **frontend maintainability** of an 8.3 KLOC monolithic `app.js`.
 
 **Top 5 risks**
 1. SQL string interpolation in the purge endpoint (`server.js:122`) — protected only by an in-memory whitelist.

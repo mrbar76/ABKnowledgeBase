@@ -135,9 +135,9 @@ app.get('/claude-schema.yaml', (req, res) => {
 
 // Privacy policy
 app.get('/privacy', (req, res) => {
-  res.type('text/html').send(`<!DOCTYPE html><html><head><title>AB Brain - Privacy</title></head><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px">
-    <h1>AB Brain - Privacy Policy</h1>
-    <p>AB Brain is a personal knowledge base backed by PostgreSQL. All data is stored in your own database and only accessible via authenticated API calls. No data is shared with third parties.</p>
+  res.type('text/html').send(`<!DOCTYPE html><html><head><title>Forge - Privacy</title></head><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px">
+    <h1>Forge - Privacy Policy</h1>
+    <p>Forge is a personal knowledge base backed by PostgreSQL. All data is stored in your own database and only accessible via authenticated API calls. No data is shared with third parties.</p>
     <p>Last updated: 2026</p></body></html>`);
 });
 
@@ -308,7 +308,7 @@ async function start() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`AB Brain (PostgreSQL backend) running on port ${PORT}`);
+    console.log(`Forge (PostgreSQL backend) running on port ${PORT}`);
   });
 
   // v1.11.0 Phase auto-advance: check at boot + once per day. Idempotent
@@ -368,7 +368,7 @@ async function start() {
         if (nowMins - slotMins > 2) continue;
 
         // Build contextual message
-        let title = 'AB Brain';
+        let title = 'Forge';
         let body = '';
         try {
           const [trainR, execR, mealsR, ctxR, tasksR] = await Promise.all([
@@ -424,7 +424,7 @@ async function start() {
             default:
               body = slot.label || 'Check your progress';
           }
-        } catch { body = slot.label || 'Check AB Brain'; }
+        } catch { body = slot.label || 'Check Forge'; }
 
         webpush.setVapidDetails('mailto:avi@abbrain.app', settings.vapid_public_key, settings.vapid_private_key);
         try {

@@ -1,18 +1,18 @@
-# AB Brain — Functional Specification
+# Forge — Functional Specification
 
 **Version:** 2.0
 **Date:** 2026-03-11
-**Purpose:** Complete specification for AB Brain — a unified personal AI knowledge base and task management system.
+**Purpose:** Complete specification for Forge — a unified personal AI knowledge base and task management system.
 
 ---
 
 ## 1. SYSTEM OVERVIEW
 
-AB Brain is a **single-user personal knowledge management system** that serves as a shared memory layer across multiple AI assistants (Claude, ChatGPT, Gemini) and the Bee wearable device. It is a Node.js/Express backend with PostgreSQL as the primary data store, an optional one-way mirror to Notion, and a vanilla JavaScript single-page application (SPA) frontend designed as a mobile-first Progressive Web App (PWA).
+Forge is a **single-user personal knowledge management system** that serves as a shared memory layer across multiple AI assistants (Claude, ChatGPT, Gemini) and the Bee wearable device. It is a Node.js/Express backend with PostgreSQL as the primary data store, an optional one-way mirror to Notion, and a vanilla JavaScript single-page application (SPA) frontend designed as a mobile-first Progressive Web App (PWA).
 
 ### Core Value Proposition
 
-A single person uses multiple AI assistants daily. Each AI has no memory of what the others said. AB Brain solves this by giving every AI read/write access to a shared PostgreSQL database via REST API. The user also gets a phone-friendly dashboard to browse, search, and manage everything.
+A single person uses multiple AI assistants daily. Each AI has no memory of what the others said. Forge solves this by giving every AI read/write access to a shared PostgreSQL database via REST API. The user also gets a phone-friendly dashboard to browse, search, and manage everything.
 
 ### Architecture Summary
 
@@ -472,7 +472,7 @@ When `NOTION_TOKEN` and `NOTION_DB_*` environment variables are configured, a ba
 
 A **Progressive Web App** means the website can be installed on a phone's home screen:
 - Opens full-screen (no browser chrome)
-- Has its own app icon (AB Brain logo)
+- Has its own app icon (Forge logo)
 - Works offline for cached content (app shell)
 - Auto-refreshes data when resumed from background
 - No app store required — "Add to Home Screen" from browser
@@ -480,7 +480,7 @@ A **Progressive Web App** means the website can be installed on a phone's home s
 ### 5.3 Authentication Flow
 
 1. Check `sessionStorage` then `localStorage` for `ab_api_key`
-2. If missing, show login overlay with AB Brain logo
+2. If missing, show login overlay with Forge logo
 3. Test key against `GET /api/dashboard` — 401 = invalid, success = store and proceed
 4. "Remember me" -> `localStorage` (persistent) vs. `sessionStorage` (tab only)
 5. All API calls include `X-Api-Key` header via `api()` helper
@@ -488,7 +488,7 @@ A **Progressive Web App** means the website can be installed on a phone's home s
 
 ### 5.4 Header & Branding
 
-- Header shows AB Brain logo (SVG), title with gradient text (indigo to purple), and subtitle
+- Header shows Forge logo (SVG), title with gradient text (indigo to purple), and subtitle
 - Logo is a stylized brain with "AB" initials, using the app's color palette
 - Same logo used in: login screen, header, favicon, PWA icon
 

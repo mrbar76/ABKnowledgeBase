@@ -55,7 +55,7 @@ drop into nothing):
 - **Method:** `POST`
 - **Headers:**
   - `Content-Type` → `application/json`
-  - `x-api-key` → your AB Brain API key
+  - `x-api-key` → your Forge API key
 - **Request Body:** JSON → reference the Dictionary
 
 ### Step 5 — Confirm (optional)

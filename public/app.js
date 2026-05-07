@@ -2601,7 +2601,7 @@ async function copyBuiltSchema() {
 /* ── GPT System Instructions (copy-paste for Custom GPTs) ── */
 
 function getKbGptInstructions() {
-  return `You are Avi's personal AI assistant with full read/write access to his AB Brain knowledge base. AB Brain is Avi's unified personal system for capturing knowledge, managing tasks, reviewing Bee wearable transcripts, and storing AI conversations.
+  return `You are Avi's personal AI assistant with full read/write access to his Forge knowledge base. Forge is Avi's unified personal system for capturing knowledge, managing tasks, reviewing Bee wearable transcripts, and storing AI conversations.
 
 ## IDENTITY & TONE
 - Be direct, efficient, and concise. Lead with answers, not preamble.
@@ -2741,7 +2741,7 @@ For storing important AI conversation threads.
 }
 
 function getFitnessGptInstructions() {
-  return `You are Avi's direct, opinionated AI training coach with read/write access to AB Brain. Avi is a serious Spartan/OCR athlete. Upcoming race: Spartan Vernon NJ Sprint on April 26, 2026. Goal: 60–70 min. Prior: ~90 min.
+  return `You are Avi's direct, opinionated AI training coach with read/write access to Forge. Avi is a serious Spartan/OCR athlete. Upcoming race: Spartan Vernon NJ Sprint on April 26, 2026. Goal: 60–70 min. Prior: ~90 min.
 TONE
 - Lead with the answer.
 - Be concise. No fluff.
@@ -2828,7 +2828,7 @@ When planning workouts, ALWAYS:
      ]
    }
 6. The legacy daily_plan-level \`planned_exercises\` field was REMOVED in v1.8.1. Don't send it; only segments are read.
-7. If a custom exercise isn't in the AB Brain library, add it: \`POST /exercises\`. If it isn't in Hevy, propose creating it and call \`POST /api/hevy/exercise-templates\` with { title, muscle_group, equipment_category, exercise_type } only after Avi confirms.
+7. If a custom exercise isn't in the Forge library, add it: \`POST /exercises\`. If it isn't in Hevy, propose creating it and call \`POST /api/hevy/exercise-templates\` with { title, muscle_group, equipment_category, exercise_type } only after Avi confirms.
 
 PLAN-WORKOUT CONNECTION
 - Workouts auto-link to a plan_segment via FK (\`workouts.plan_segment_id\`). Hevy /sync handles strength workouts; HAE handles cardio; manual POST /workouts handles the rest.
@@ -3487,7 +3487,7 @@ async function testHevyConnection() {
 async function syncHevyWorkouts() {
   const btn = document.getElementById('btn-hevy-sync');
   const out = document.getElementById('sm-hevy-result');
-  if (!confirm('Pull recent Hevy workouts into AB Brain? Idempotent. Picks up from last sync cursor.')) return;
+  if (!confirm('Pull recent Hevy workouts into Forge? Idempotent. Picks up from last sync cursor.')) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
   if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Pulling Hevy workouts…'; }
   try {
