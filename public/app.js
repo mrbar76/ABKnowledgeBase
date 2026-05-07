@@ -4266,6 +4266,79 @@ async function _legacyLoadTasksToday() {
 let waitingFilterPerson = '';
 async function loadTasksWaiting() {
   const main = document.getElementById('main-content');
+  if (!main) return;
+
+  let data;
+  try {
+    data = await api('/tasks?status=waiting_on&limit=200');
+  } catch (e) {
+    main.innerHTML = tasksTabsHtml() + `<div class="ab-list-row" style="cursor:default;margin:24px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    return;
+  }
+
+  const tasks = data.tasks || [];
+  const today = localDateStr();
+
+  // Collect unique people across all tasks (defensive: read both fields).
+  const personsOf = (t) => (t.waiting_on_person || t.waiting_on || '').split(',').map(s => s.trim()).filter(Boolean);
+  const allPeople = new Set();
+  for (const t of tasks) personsOf(t).forEach(n => allPeople.add(n));
+  const people = [...allPeople].sort();
+
+  const filtered = waitingFilterPerson
+    ? tasks.filter(t => personsOf(t).includes(waitingFilterPerson))
+    : tasks;
+
+  let html = tasksTabsHtml();
+
+  // BigPicture banner
+  html += '<div class="ab-big-picture ab-pillar-work" style="margin:0 16px 12px">' +
+    '<div class="ab-big-picture-eyebrow">Waiting on others</div>' +
+    `<div class="ab-big-picture-title">${tasks.length} task${tasks.length === 1 ? '' : 's'} pending</div>` +
+    `<div class="ab-big-picture-meta">${people.length} ${people.length === 1 ? 'person' : 'people'}</div>` +
+    '</div>';
+
+  // Filter chips (one chip per person, plus "All")
+  if (people.length > 1) {
+    html += '<div class="ab-subtabs">' +
+      `<button class="ab-subtab${!waitingFilterPerson ? ' active' : ''}" onclick="waitingFilterPerson='';loadTasksWaiting()">All (${tasks.length})</button>` +
+      people.map(p => {
+        const count = tasks.filter(t => personsOf(t).includes(p)).length;
+        return `<button class="ab-subtab${waitingFilterPerson === p ? ' active' : ''}" onclick="waitingFilterPerson='${esc(p)}';loadTasksWaiting()">${esc(p)} (${count})</button>`;
+      }).join('') +
+    '</div>';
+  }
+
+  // List
+  if (filtered.length === 0) {
+    html += '<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">All clear.</div><div class="ab-list-row-meta">No tasks waiting on others.</div></div></div>';
+  } else {
+    html += '<div class="ab-list-card">';
+    for (const t of filtered) {
+      const persons = personsOf(t);
+      const personText = persons.join(', ') || 'someone';
+      const waitDays = t.updated_at ? Math.round((Date.now() - new Date(t.updated_at).getTime()) / 86400000) : 0;
+      const cleanedTitle = cleanTaskTitle(t.title) || 'Untitled';
+      const pillar = pillarFromContext(t.context) || 'work';
+      const isStale = waitDays > 7;
+      const dueChip = t.due_date ? ' · due ' + formatDateShort(t.due_date) : '';
+      html += `<div class="ab-list-row" onclick="showTaskDetail('${t.id}')">` +
+        `<div class="ab-list-row-dot ab-pillar-${pillar}"></div>` +
+        `<div class="ab-list-row-body">` +
+          `<div class="ab-list-row-title"><span class="ab-badge ab-badge-waiting">Waiting · ${esc(personText)}</span> ${esc(cleanedTitle)}</div>` +
+          `<div class="ab-list-row-meta${isStale ? ' ab-list-row-meta-alarm' : ''}">${waitDays > 0 ? waitDays + 'd waiting' : 'today'}${esc(dueChip)}</div>` +
+        `</div></div>`;
+    }
+    html += '</div>';
+  }
+
+  main.innerHTML = html;
+  renderIcons();
+}
+
+// LEGACY (unreachable from new nav, deleted at cutover).
+async function _legacyLoadTasksWaiting() {
+  const main = document.getElementById('main-content');
   try {
     const data = await api('/tasks?status=waiting_on&limit=200');
     const tasks = data.tasks || [];
@@ -4416,6 +4489,113 @@ async function executeBulkAction(action, value) {
 }
 
 async function loadTasksList() {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+
+  const params = new URLSearchParams({ limit: '200' });
+  if (taskListFilter) params.set('status', taskListFilter);
+  if (taskPriorityFilter) params.set('priority', taskPriorityFilter);
+  if (taskContextFilter) params.set('context', taskContextFilter);
+
+  let data;
+  try {
+    data = await api('/tasks?' + params.toString());
+  } catch (e) {
+    main.innerHTML = tasksTabsHtml() + `<div class="ab-list-row" style="cursor:default;margin:24px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    return;
+  }
+
+  const tasks = data.tasks || [];
+  const today = localDateStr();
+
+  // Sort
+  const pRank = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const sRank = { in_progress: 0, todo: 1, review: 2, waiting_on: 3, done: 4 };
+  if (taskSortBy === 'due_date') tasks.sort((a, b) => {
+    const ad = a.due_date ? new Date(a.due_date) : new Date('9999-12-31');
+    const bd = b.due_date ? new Date(b.due_date) : new Date('9999-12-31');
+    return ad - bd || (pRank[a.priority] ?? 4) - (pRank[b.priority] ?? 4);
+  });
+  else if (taskSortBy === 'created_at') tasks.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  else if (taskSortBy === 'updated_at') tasks.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+  else if (taskSortBy === 'status') tasks.sort((a, b) => (sRank[a.status] ?? 5) - (sRank[b.status] ?? 5) || (pRank[a.priority] ?? 4) - (pRank[b.priority] ?? 4));
+
+  const statusLabels = { todo: 'To Do', in_progress: 'In Progress', waiting_on: 'Waiting On', review: 'Review', done: 'Done' };
+
+  let html = tasksTabsHtml();
+
+  // Status filter chips
+  html += '<div class="ab-subtabs">' +
+    `<button class="ab-subtab${!taskListFilter ? ' active' : ''}" onclick="taskListFilter='';loadTasksList()">All</button>` +
+    Object.entries(statusLabels).map(([k, v]) =>
+      `<button class="ab-subtab${taskListFilter === k ? ' active' : ''}" onclick="taskListFilter='${k}';loadTasksList()">${v}</button>`
+    ).join('') +
+  '</div>';
+
+  // Priority filter chips
+  html += '<div class="ab-subtabs" style="border-bottom:0;padding-bottom:6px">' +
+    `<button class="ab-subtab${!taskPriorityFilter ? ' active' : ''}" onclick="taskPriorityFilter='';loadTasksList()">Any priority</button>` +
+    ['urgent', 'high', 'medium', 'low'].map(k =>
+      `<button class="ab-subtab${taskPriorityFilter === k ? ' active' : ''}" onclick="taskPriorityFilter=taskPriorityFilter==='${k}'?'':'${k}';loadTasksList()">${k.charAt(0).toUpperCase() + k.slice(1)}</button>`
+    ).join('') +
+  '</div>';
+
+  // Context filter chips
+  html += '<div class="ab-subtabs" style="border-bottom:0;padding-top:0;padding-bottom:6px">' +
+    `<button class="ab-subtab${taskContextFilter === '' ? ' active' : ''}" onclick="taskContextFilter='';loadTasksList()">Any context</button>` +
+    `<button class="ab-subtab${taskContextFilter === 'work' ? ' active' : ''}" onclick="taskContextFilter=taskContextFilter==='work'?'':'work';loadTasksList()">Work</button>` +
+    `<button class="ab-subtab${taskContextFilter === 'personal' ? ' active' : ''}" onclick="taskContextFilter=taskContextFilter==='personal'?'':'personal';loadTasksList()">Personal</button>` +
+  '</div>';
+
+  // Sort + count row
+  html += `<div style="padding:8px 16px 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ab-muted)">` +
+    `<span style="text-transform:uppercase;letter-spacing:0.08em;font-weight:600">Sort</span>` +
+    `<select onchange="taskSortBy=this.value;loadTasksList()" style="background:var(--ab-card);color:var(--ab-ink);border:1px solid var(--ab-border);border-radius:8px;padding:4px 8px;font-family:var(--ab-font-ui);font-size:12px">` +
+      `<option value="priority"${taskSortBy === 'priority' ? ' selected' : ''}>Priority</option>` +
+      `<option value="due_date"${taskSortBy === 'due_date' ? ' selected' : ''}>Due date</option>` +
+      `<option value="created_at"${taskSortBy === 'created_at' ? ' selected' : ''}>Created</option>` +
+      `<option value="updated_at"${taskSortBy === 'updated_at' ? ' selected' : ''}>Updated</option>` +
+      `<option value="status"${taskSortBy === 'status' ? ' selected' : ''}>Status</option>` +
+    `</select>` +
+    `<span style="margin-left:auto">${tasks.length} task${tasks.length === 1 ? '' : 's'}</span>` +
+  `</div>`;
+
+  // Task list
+  if (tasks.length === 0) {
+    html += '<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">No tasks match.</div><div class="ab-list-row-meta">Try clearing a filter.</div></div></div>';
+  } else {
+    html += '<div class="ab-list-card">';
+    for (const t of tasks) {
+      const pillar = pillarFromContext(t.context) || 'work';
+      const cleanedTitle = cleanTaskTitle(t.title) || 'Untitled';
+      const waitingPerson = t.waiting_on_person || t.waiting_on;
+      const waitingBadge = waitingPerson
+        ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
+        : '';
+      const titleStyle = t.status === 'done' ? 'text-decoration:line-through;color:var(--ab-muted)' : '';
+      const isOver = t.due_date && String(t.due_date).slice(0, 10) < today && t.status !== 'done';
+      const dueChip = t.due_date ? formatDateShort(t.due_date) : '';
+      const meta = [
+        statusLabels[t.status] || t.status,
+        t.priority || '',
+        dueChip ? (isOver ? `<span style="color:var(--ab-urgency-label);font-weight:600">${esc(dueChip)}</span>` : esc(dueChip)) : ''
+      ].filter(Boolean).join(' · ');
+      html += `<div class="ab-list-row" onclick="showTaskDetail('${t.id}')">` +
+        `<div class="ab-list-row-dot ab-pillar-${pillar}"></div>` +
+        `<div class="ab-list-row-body">` +
+          `<div class="ab-list-row-title" style="${titleStyle}">${waitingBadge}${esc(cleanedTitle)}</div>` +
+          `<div class="ab-list-row-meta">${meta}</div>` +
+        `</div></div>`;
+    }
+    html += '</div>';
+  }
+
+  main.innerHTML = html;
+  renderIcons();
+}
+
+// LEGACY (unreachable from new nav, deleted at cutover).
+async function _legacyLoadTasksList() {
   const main = document.getElementById('main-content');
   try {
     const params = new URLSearchParams({ limit: '200' });
@@ -4772,6 +4952,182 @@ function setTaskDueByCalendar(dateStr) {
 // ── Weekly Review ──
 let reviewWeeksAgo = 0;
 async function loadTasksWeeklyReview() {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+
+  let data;
+  try {
+    data = await api(`/tasks/weekly-review?weeks_ago=${reviewWeeksAgo}`);
+  } catch (e) {
+    main.innerHTML = tasksTabsHtml() + `<div class="ab-list-row" style="cursor:default;margin:24px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load review.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
+    return;
+  }
+
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const today = localDateStr();
+
+  // Velocity indicator
+  const velSign = data.velocity_change > 0 ? '+' : '';
+  const velLabel = data.velocity_change === 0 ? 'same as last week' : `${velSign}${data.velocity_change} vs last week`;
+
+  // Build daily bar chart in v2 colors (Pine for completed, Marine for created).
+  const maxDaily = Math.max(...data.by_day.map(d => Math.max(d.completed, d.created)), 1);
+  const dailyBars = data.by_day.map(d => {
+    const dayLabel = dayNames[new Date(d.date).getDay()];
+    const completedPct = (d.completed / maxDaily) * 100;
+    const createdPct = (d.created / maxDaily) * 100;
+    return `
+      <div class="review-day">
+        <div class="review-day-bars">
+          <div class="review-bar" style="height:${completedPct}%;background:var(--ab-training-edge);color:var(--ab-bg)">${d.completed || ''}</div>
+          <div class="review-bar" style="height:${createdPct}%;background:var(--ab-work-edge);opacity:0.75;color:var(--ab-bg)">${d.created || ''}</div>
+        </div>
+        <div class="review-day-label">${dayLabel}</div>
+      </div>`;
+  }).join('');
+
+  // Render the rest below using v2 components, then return early to bypass the legacy block.
+  const weekLabel = reviewWeeksAgo === 0 ? 'This week' : reviewWeeksAgo === 1 ? 'Last week' : `${reviewWeeksAgo} weeks ago`;
+  const dateRange = `${new Date(data.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(data.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+  // Priority breakdown — pillar-tinted bars.
+  const prioColorMap = {
+    urgent: 'var(--ab-urgency)',
+    high:   'var(--ab-amber)',
+    medium: 'var(--ab-training-edge)',
+    low:    'var(--ab-muted)'
+  };
+  const prioTotal = data.by_priority.reduce((s, p) => s + p.count, 0) || 1;
+  const prioBars = data.by_priority.map(p => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:11px;font-weight:500;width:60px;text-transform:capitalize;color:var(--ab-body)">${p.priority}</span>
+      <div class="ab-progress-bar" style="flex:1">
+        <div class="ab-progress-bar-fill" style="width:${(p.count / prioTotal) * 100}%;background:${prioColorMap[p.priority] || 'var(--ab-muted)'}"></div>
+      </div>
+      <span style="font-family:var(--ab-font-data);font-size:11px;color:var(--ab-muted);width:24px;text-align:right;font-variant-numeric:tabular-nums">${p.count}</span>
+    </div>
+  `).join('');
+
+  // Context badges.
+  const ctxColorMap = {
+    work:     { bg: 'var(--ab-work-tint)',     fg: 'var(--ab-work-label)' },
+    personal: { bg: 'var(--ab-personal-tint)', fg: 'var(--ab-personal-label)' },
+    unset:    { bg: 'var(--ab-border-soft)',   fg: 'var(--ab-muted)' }
+  };
+  const ctxBadges = data.by_context.map(c => {
+    const cm = ctxColorMap[c.context] || ctxColorMap.unset;
+    return `<span class="ab-badge" style="background:${cm.bg};color:${cm.fg};text-transform:capitalize">${esc(c.context)}: ${c.count}</span>`;
+  }).join(' ');
+
+  // Completed list — v2 ab-list-row.
+  const renderCompletedRow = (t) => {
+    const pillar = pillarFromContext(t.context) || 'work';
+    const cleanedTitle = cleanTaskTitle(t.title) || 'Untitled';
+    const dateChip = t.completed_at ? new Date(t.completed_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    return `<div class="ab-list-row" onclick="showTaskDetail('${t.id}')">` +
+      `<div class="ab-list-row-dot ab-pillar-${pillar}"></div>` +
+      `<div class="ab-list-row-body">` +
+        `<div class="ab-list-row-title" style="text-decoration:line-through;color:var(--ab-muted)">${esc(cleanedTitle)}</div>` +
+        `<div class="ab-list-row-meta">${esc(t.priority || '')}${dateChip ? ' · ' + esc(dateChip) : ''}</div>` +
+      `</div></div>`;
+  };
+
+  // Created list.
+  const renderCreatedRow = (t) => {
+    const pillar = pillarFromContext(t.context) || 'work';
+    const cleanedTitle = cleanTaskTitle(t.title) || 'Untitled';
+    return `<div class="ab-list-row" onclick="showTaskDetail('${t.id}')">` +
+      `<div class="ab-list-row-dot ab-pillar-${pillar}"></div>` +
+      `<div class="ab-list-row-body">` +
+        `<div class="ab-list-row-title">${esc(cleanedTitle)}</div>` +
+        `<div class="ab-list-row-meta">${esc(t.priority || '')} · ${esc(t.status || '')}</div>` +
+      `</div></div>`;
+  };
+
+  const completedTop20 = (data.completed.tasks || []).slice(0, 20).map(renderCompletedRow).join('');
+  const createdTop10 = (data.created.tasks || []).slice(0, 10).map(renderCreatedRow).join('');
+
+  let html = tasksTabsHtml();
+
+  // Header with prev/next nav
+  html += '<div style="padding:0 16px 12px;display:flex;align-items:center;gap:12px">' +
+    `<button onclick="reviewWeeksAgo++;loadTasks()" style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:999px;padding:5px 12px;font-family:var(--ab-font-ui);font-size:12px;font-weight:500;cursor:pointer;color:var(--ab-body)">← Prev</button>` +
+    `<div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--ab-ink);line-height:1.1">${esc(weekLabel)}</div>` +
+    `<div style="font-size:11px;color:var(--ab-muted);margin-top:2px">${esc(dateRange)}</div></div>` +
+    (reviewWeeksAgo > 0
+      ? `<button onclick="reviewWeeksAgo--;loadTasks()" style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:999px;padding:5px 12px;font-family:var(--ab-font-ui);font-size:12px;font-weight:500;cursor:pointer;color:var(--ab-body)">Next →</button>`
+      : '<div style="width:60px"></div>') +
+  '</div>';
+
+  // Stats glance
+  html += '<div class="ab-glance-row">' +
+    `<div class="ab-glance-card"><div class="ab-glance-card-label">Done</div><div class="ab-glance-card-value">${data.completed.count}</div><div class="ab-glance-card-sub">${esc(velLabel)}</div></div>` +
+    `<div class="ab-glance-card"><div class="ab-glance-card-label">Created</div><div class="ab-glance-card-value">${data.created.count}</div><div class="ab-glance-card-sub">this week</div></div>` +
+    `<div class="ab-glance-card"><div class="ab-glance-card-label">Streak</div><div class="ab-glance-card-value">${data.completion_streak}</div><div class="ab-glance-card-sub">days</div></div>` +
+  '</div>';
+
+  if (data.carry_over_count > 0) {
+    html += `<div style="padding:0 16px 8px;font-size:12px;color:${data.carry_over_count > 5 ? 'var(--ab-urgency-label)' : 'var(--ab-muted)'};font-weight:500">${data.carry_over_count} carry-over from earlier weeks</div>`;
+  }
+
+  // Daily activity chart in a v2 card
+  html += '<div class="ab-section-label">Daily activity</div>';
+  html += '<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;margin:0 16px 12px;padding:14px">' +
+    `<div class="review-chart">${dailyBars}</div>` +
+    `<div style="display:flex;gap:14px;justify-content:center;margin-top:8px;font-size:10px;color:var(--ab-muted);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">` +
+      `<span><span style="display:inline-block;width:8px;height:8px;background:var(--ab-training-edge);margin-right:4px;border-radius:2px"></span>Completed</span>` +
+      `<span><span style="display:inline-block;width:8px;height:8px;background:var(--ab-work-edge);opacity:0.75;margin-right:4px;border-radius:2px"></span>Created</span>` +
+    '</div>' +
+  '</div>';
+
+  // Priority breakdown
+  if (data.by_priority.length) {
+    html += '<div class="ab-section-label">Completed by priority</div>';
+    html += `<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;margin:0 16px 12px;padding:14px">${prioBars}</div>`;
+  }
+
+  // Context breakdown
+  if (data.by_context.length) {
+    html += '<div class="ab-section-label">Completed by context</div>';
+    html += `<div style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:16px;margin:0 16px 12px;padding:14px;display:flex;gap:6px;flex-wrap:wrap">${ctxBadges}</div>`;
+  }
+
+  // Completed tasks
+  if (data.completed.count) {
+    html += `<div class="ab-section-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>Completed tasks</span><span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--ab-muted)">${data.completed.count}</span></div>`;
+    html += `<div class="ab-list-card">${completedTop20}</div>`;
+    if (data.completed.count > 20) {
+      html += `<div style="font-size:11px;color:var(--ab-muted);text-align:center;padding:4px 0 12px">+${data.completed.count - 20} more</div>`;
+    }
+  } else {
+    html += '<div class="ab-list-row" style="cursor:default;margin:0 16px 12px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">No tasks completed this week.</div></div></div>';
+  }
+
+  // Created tasks (collapsed)
+  if (data.created.count) {
+    html += `<details style="margin:0 16px 12px"><summary style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--ab-muted);cursor:pointer;padding:10px 4px;list-style:none;display:flex;justify-content:space-between;align-items:baseline"><span>Created tasks</span><span style="text-transform:none;letter-spacing:0;font-weight:500">${data.created.count} ▾</span></summary>` +
+      `<div class="ab-list-card">${createdTop10}</div>`;
+    if (data.created.count > 10) {
+      html += `<div style="font-size:11px;color:var(--ab-muted);text-align:center;padding:4px 0">+${data.created.count - 10} more</div>`;
+    }
+    html += '</details>';
+  }
+
+  // Overdue alert (only on current week)
+  if (data.overdue_count && reviewWeeksAgo === 0) {
+    html += '<div style="margin:0 16px 12px;padding:14px;border-radius:16px;border:1px solid var(--ab-urgency-tint);background:var(--ab-urgency-tint)">' +
+      `<div style="font-size:13px;font-weight:600;color:var(--ab-urgency-label)">${data.overdue_count} overdue task${data.overdue_count !== 1 ? 's' : ''} need attention</div>` +
+      `<button onclick="tasksSubTab='today';loadTasks()" style="margin-top:8px;background:var(--ab-urgency);color:var(--ab-bg);border:0;border-radius:8px;padding:6px 14px;font-family:var(--ab-font-ui);font-weight:600;font-size:12px;cursor:pointer">Go to Today →</button>` +
+    '</div>';
+  }
+
+  main.innerHTML = html;
+  renderIcons();
+  return;
+}
+
+// LEGACY (unreachable from new nav, deleted at cutover).
+async function _legacyLoadTasksWeeklyReview() {
   const main = document.getElementById('main-content');
   try {
     const data = await api(`/tasks/weekly-review?weeks_ago=${reviewWeeksAgo}`);
