@@ -10649,6 +10649,14 @@ function _abClearCharts() {
   }
 }
 
+// Selected time range for body trends. Sticky across modal opens so
+// the user's last choice is preserved.
+let _abBodyRange = '90'; // days; '0' means ALL
+function setBodyRange(days) {
+  _abBodyRange = String(days);
+  showBodyTrendsDetail();
+}
+
 // Upgrade a tile's static SVG sparkline to an interactive Chart.js
 // line chart with hover tooltips + x-axis dates. Tile already shows
 // the SVG by default; if Chart.js succeeds the canvas overlays it
@@ -10865,8 +10873,22 @@ async function showBodyTrendsDetail() {
   _abClearCharts();
   openModal('Body trends', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
-    const data = await api('/body-metrics?limit=60').catch(() => null);
-    const rows = data?.body_metrics || (Array.isArray(data) ? data : []);
+    // Pull the full available dataset (cap at 1000 to be safe), then
+    // filter to the user's selected time range client-side. This way
+    // the range toggle doesn't need a refetch — instant switching.
+    const data = await api('/body-metrics?limit=1000').catch(() => null);
+    const allRows = data?.body_metrics || (Array.isArray(data) ? data : []);
+    const days = parseInt(_abBodyRange, 10) || 0;
+    const rows = days === 0
+      ? allRows
+      : (() => {
+          const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+          const cutoffStr = localDateStr(cutoff);
+          return allRows.filter(r => {
+            const d = String(r.measurement_date || '').slice(0, 10);
+            return d >= cutoffStr;
+          });
+        })();
     if (rows.length === 0) {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No weigh-ins yet.</div><div class="ab-list-row-meta">Tap "Log new" to capture your first.</div></div></div>' +
         '<div style="padding:16px"><button onclick="closeModal();showBodyMetricForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log new weigh-in</button></div>';
@@ -10896,8 +10918,25 @@ async function showBodyTrendsDetail() {
     const hasData = (s) => s.some(v => v > 0);
     const delta = (s) => s.length >= 2 ? (s[0] - s[s.length - 1]) : null;
 
+    // ── Time range toggle ──
+    const ranges = [
+      { key: '30',  label: '1M' },
+      { key: '90',  label: '3M' },
+      { key: '180', label: '6M' },
+      { key: '365', label: '1Y' },
+      { key: '0',   label: 'All' },
+    ];
+    let body = '<div class="ab-section-label" style="display:flex;justify-content:space-between;align-items:baseline">' +
+      `<span>Trends</span>` +
+      `<span style="font-size:11px;font-weight:500;color:var(--ab-muted);text-transform:none;letter-spacing:0">${rows.length} of ${allRows.length} weigh-ins</span>` +
+    '</div>';
+    body += '<div class="ab-subtabs" style="border-bottom:0;padding-bottom:12px;padding-top:0">' +
+      ranges.map(r =>
+        `<button class="ab-subtab${_abBodyRange === r.key ? ' active' : ''}" onclick="setBodyRange('${r.key}')">${r.label}</button>`
+      ).join('') +
+    '</div>';
+
     // ── Top: 4 big interactive metric tiles for the headline numbers ──
-    let body = '<div class="ab-section-label">Trends</div>';
     body += abMetricTile({ id: 'weight',  label: 'Weight',     current: weightSeries[0], unit,             series: weightSeries });
     if (hasData(bfSeries))     body += abMetricTile({ id: 'bf',      label: 'Body fat %', current: bfSeries[0],     unit: '%',        series: bfSeries });
     if (hasData(smPctSeries))  body += abMetricTile({ id: 'sm',      label: 'Skeletal muscle %', current: smPctSeries[0], unit: '%',  series: smPctSeries });
