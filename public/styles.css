@@ -3886,7 +3886,7 @@ body { font-family: var(--ab-font-ui); }
 /* ── Topbar ── */
 .ab-topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px 8px;
   gap: 12px;
   background: var(--ab-bg); color: var(--ab-ink);
   border-bottom: 1px solid var(--ab-border-soft);
@@ -4250,6 +4250,44 @@ body { font-family: var(--ab-font-ui); }
 .ab-subtab:hover { color: var(--ab-ink); }
 .ab-subtab.active {
   background: var(--ab-ink); color: var(--ab-bg); border-color: var(--ab-ink);
+}
+
+/* ── Body padding so #bottom-nav doesn't cover content ────────── */
+body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+
+/* ── Desktop responsive caps ──────────────────────────────────── */
+/* On wide viewports, contain the app to a phone-shaped column so
+   layouts read correctly (rather than sprawling 5+ columns wide).
+   Topbar, content, tabbar all share a 720px max-width centered.   */
+@media (min-width: 768px) {
+  #ab-topbar.ab-topbar,
+  #main-content,
+  #bottom-nav.ab-tabbar {
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* Sticky topbar still needs left/right anchoring at the inner edges
+     so it floats above content correctly. The auto-margins center it. */
+  #ab-topbar.ab-topbar {
+    left: 0;
+    right: 0;
+  }
+  /* Bottom-nav: fixed to viewport bottom but width-capped, centered. */
+  #bottom-nav.ab-tabbar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  /* Page background gets a subtle separation so the centered column
+     reads as a "device frame" rather than an awkward narrow strip. */
+  body {
+    background: var(--ab-border-soft);
+  }
+  #main-content,
+  #ab-topbar.ab-topbar {
+    background: var(--ab-bg);
+  }
 }
 
 /* End v2 Foundation */
