@@ -11080,19 +11080,22 @@ async function showRecoveryDetail() {
   }
 }
 
+// Day under view in the Nutrition modal. null = today (live).
+// Sticky across modal opens so back/forward navigation persists.
+let _abNutritionDate = null;
+function setNutritionDate(d) {
+  _abNutritionDate = (d === null || d === undefined) ? null : d;
+  showNutritionDetail();
+}
+
 async function showNutritionDetail() {
   openModal('Nutrition', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
-    const today = localDateStr();
-    // Fetch today's summary AND recent meals in parallel — recent
-    // meals act as a fallback list when today is empty so the modal
-    // never reads as totally blank.
-    const [summary, recentMealsResp] = await Promise.all([
-      api('/nutrition/daily-summary?date=' + today).catch(() => null),
-      api('/meals?limit=15').catch(() => null),
-    ]);
+    const realToday = localDateStr();
+    const viewDate = _abNutritionDate || realToday;
+    const summary = await api('/nutrition/daily-summary?date=' + viewDate).catch(() => null);
     if (!summary) {
-      document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No nutrition logged today.</div><div class="ab-list-row-meta">Tap + to capture a meal.</div></div></div>';
+      document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn\'t load nutrition.</div></div></div>';
       return;
     }
     const cal     = Math.round(Number(summary.total_calories || 0));
@@ -11105,12 +11108,29 @@ async function showNutritionDetail() {
     const carbTarget = targets.carbs_g   || null;
     const fatTarget  = targets.fat_g     || null;
 
+    // ── Date nav header ──
+    const view = new Date(viewDate + 'T12:00:00');
+    const prev = new Date(view); prev.setDate(prev.getDate() - 1);
+    const next = new Date(view); next.setDate(next.getDate() + 1);
+    const isToday = viewDate === realToday;
+    const dateLabel = isToday
+      ? 'Today'
+      : view.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    const allowNext = viewDate < realToday;
+    let body = '<div style="padding:0 16px 12px;display:flex;align-items:center;gap:8px">' +
+      `<button onclick="setNutritionDate('${localDateStr(prev)}')" style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:999px;width:32px;height:32px;cursor:pointer;color:var(--ab-body);font-size:16px;display:inline-flex;align-items:center;justify-content:center">‹</button>` +
+      `<div style="flex:1;text-align:center"><div style="font-size:15px;font-weight:600;color:var(--ab-ink)">${esc(dateLabel)}</div>` +
+      (!isToday ? `<button onclick="setNutritionDate(null)" style="background:transparent;border:0;color:var(--ab-muted);font-family:var(--ab-font-ui);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;margin-top:2px">← back to today</button>` : '') +
+      '</div>' +
+      (allowNext ? `<button onclick="setNutritionDate('${localDateStr(next)}')" style="background:var(--ab-card);border:1px solid var(--ab-border);border-radius:999px;width:32px;height:32px;cursor:pointer;color:var(--ab-body);font-size:16px;display:inline-flex;align-items:center;justify-content:center">›</button>` : '<div style="width:32px"></div>') +
+    '</div>';
+
     // 3-up glance (replaces "Meals X logged" with on-pace ratio).
     const onPace = calTarget ? Math.round((cal / calTarget) * 100) : null;
     const onPaceLabel = onPace == null ? 'no target' : (onPace > 100 ? 'over' : 'on pace');
-    let body = '<div class="ab-glance-row" style="padding:0 0 12px">' +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${calTarget ? '/ ' + Math.round(calTarget) : 'today'}</div></div>` +
-      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${proTarget ? '/ ' + Math.round(proTarget) + 'g' : 'today'}</div></div>` +
+    body += '<div class="ab-glance-row" style="padding:0 0 12px">' +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Calories</div><div class="ab-glance-card-value">${cal}</div><div class="ab-glance-card-sub">${calTarget ? '/ ' + Math.round(calTarget) : esc(dateLabel.toLowerCase())}</div></div>` +
+      `<div class="ab-glance-card"><div class="ab-glance-card-label">Protein</div><div class="ab-glance-card-value">${protein}g</div><div class="ab-glance-card-sub">${proTarget ? '/ ' + Math.round(proTarget) + 'g' : esc(dateLabel.toLowerCase())}</div></div>` +
       `<div class="ab-glance-card"><div class="ab-glance-card-label">${onPace == null ? 'Total' : (onPace > 100 ? 'Over' : 'On pace')}</div><div class="ab-glance-card-value">${onPace == null ? cal : onPace + '%'}</div><div class="ab-glance-card-sub">${esc(onPaceLabel)}</div></div>` +
       '</div>';
 
@@ -11121,7 +11141,7 @@ async function showNutritionDetail() {
 
     const meals = Array.isArray(summary.meals) ? summary.meals : [];
     if (meals.length > 0) {
-      body += '<div class="ab-section-label">Today\'s meals</div>';
+      body += `<div class="ab-section-label">${isToday ? 'Today\'s meals' : esc(dateLabel) + '&rsquo;s meals'}</div>`;
       for (const m of meals) {
         const mc  = Math.round(Number(m.calories || 0));
         const mp  = Math.round(Number(m.protein_g || 0));
@@ -11135,27 +11155,7 @@ async function showNutritionDetail() {
           `</div></div>`;
       }
     } else {
-      // Today is empty — fall back to recent meals so the modal isn't
-      // a blank "0/0/0" report. Surface the most recent dates so the
-      // user can verify meal-logging is working and tap into history.
-      const recentList = recentMealsResp?.meals || (Array.isArray(recentMealsResp) ? recentMealsResp : []);
-      body += '<div class="ab-list-row" style="cursor:default;margin:0 0 12px;border:1px solid var(--ab-border);border-radius:16px;padding:12px 16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">No meals logged today.</div><div class="ab-list-row-meta">Tap "Log meal" below to capture today\'s first.</div></div></div>';
-      if (recentList.length > 0) {
-        body += '<div class="ab-section-label">Recent meals</div>';
-        for (const m of recentList.slice(0, 10)) {
-          const mc  = Math.round(Number(m.calories || 0));
-          const mp  = Math.round(Number(m.protein_g || 0));
-          const mca = Math.round(Number(m.carbs_g || 0));
-          const mf  = Math.round(Number(m.fat_g || 0));
-          const dateLabel = m.meal_date ? formatDateShort(m.meal_date) : '';
-          body += `<div class="ab-list-row" onclick="closeModal();showMealDetail('${esc(String(m.id))}')">` +
-            `<div class="ab-list-row-dot ab-pillar-training"></div>` +
-            `<div class="ab-list-row-body">` +
-              `<div class="ab-list-row-title">${esc(m.title || m.meal_type || 'Meal')} <span style="color:var(--ab-muted);font-weight:400;font-size:12px">${esc(dateLabel)}</span></div>` +
-              `<div class="ab-list-row-meta" style="font-family:var(--ab-font-data);font-variant-numeric:tabular-nums">${mc} cal · ${mp}p · ${mca}c · ${mf}f</div>` +
-            `</div></div>`;
-        }
-      }
+      body += `<div class="ab-list-row" style="cursor:default;margin:0 0 12px;border:1px solid var(--ab-border);border-radius:16px;padding:12px 16px"><div class="ab-list-row-dot"></div><div class="ab-list-row-body"><div class="ab-list-row-title">No meals logged on ${esc(dateLabel.toLowerCase())}.</div><div class="ab-list-row-meta">${isToday ? 'Tap "Log meal" below to capture today\'s first.' : 'Use the arrows above to navigate to a different day.'}</div></div></div>`;
     }
 
     body += '<div style="padding:16px"><button onclick="closeModal();showMealForm()" style="width:100%;padding:12px;background:var(--ab-ink);color:var(--ab-bg);border:0;border-radius:12px;font-family:var(--ab-font-ui);font-weight:600;font-size:14px;cursor:pointer">Log meal</button></div>';
