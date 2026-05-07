@@ -7040,23 +7040,27 @@ async function loadFitness() {
   const viewDate = trainingDate || realToday;
   const weekStart = mondayOfWeek(new Date(viewDate + 'T12:00:00'));
 
-  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [], races = null;
+  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [], races = null, weekWorkouts = null;
   try {
-    [dayData, goals, recovery, fuel, body, weekPlans, races] = await Promise.all([
+    [dayData, goals, recovery, fuel, body, weekPlans, races, weekWorkouts] = await Promise.all([
       api('/training/day/' + viewDate).catch(() => null),
       api('/goals/dashboard').catch(() => null),
       api('/recovery/score?date=' + viewDate).catch(() => null),
       api('/nutrition/daily-summary?date=' + viewDate).catch(() => null),
       api('/body-metrics?limit=1').catch(() => null),
       api('/daily-plans?week_start=' + weekStart).catch(() => []),
-      api('/races/upcoming').catch(() => null)
+      api('/races/upcoming').catch(() => null),
+      // Pull recent workouts so the week strip can mark completed days
+      // based on actual workout records, not just plan.status (which is
+      // often left as 'planned' even after the workout was logged).
+      api('/workouts?limit=30').catch(() => null)
     ]);
   } catch (e) {
     main.innerHTML = `<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Training.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
     return;
   }
 
-  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, races, viewDate, realToday });
+  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, races, weekWorkouts, viewDate, realToday });
   renderIcons();
 }
 
@@ -7083,7 +7087,7 @@ function renderTraining(data) {
   return [
     renderTrainingBigPicture(data.goals, data.races, data.viewDate),
     renderTrainingDateNav(data.viewDate, data.realToday),
-    renderTrainingWeekStrip(data.weekPlans, data.viewDate, data.realToday),
+    renderTrainingWeekStrip(data.weekPlans, data.viewDate, data.realToday, data.weekWorkouts),
     renderTrainingTodaySession(data.dayData, data.viewDate, data.realToday),
     renderTrainingGoalsSection(data.goals),
     renderTrainingRecoverySection(data.recovery),
@@ -7196,11 +7200,22 @@ function daysBetween(from, toDateStr) {
   return Math.round((target - ref) / 86400000);
 }
 
-function renderTrainingWeekStrip(plans, viewDate, realToday) {
+function renderTrainingWeekStrip(plans, viewDate, realToday, weekWorkouts) {
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   // Anchor the week to the viewDate so prev/next-week navigation works
   // implicitly: if viewDate is May 14, the strip shows that week.
   const monday = new Date(mondayOfWeek(new Date(viewDate + 'T12:00:00')) + 'T12:00:00');
+
+  // Build a date → workouts[] index. /api/workouts returns
+  // { workouts: [...] } or a flat array depending on shape — handle both.
+  const workoutList = Array.isArray(weekWorkouts) ? weekWorkouts : (weekWorkouts?.workouts || []);
+  const workoutsByDate = {};
+  for (const w of workoutList) {
+    const d = String(w.workout_date || w.date || '').slice(0, 10);
+    if (!d) continue;
+    (workoutsByDate[d] = workoutsByDate[d] || []).push(w);
+  }
+
   let html = '<div class="ab-week-strip">';
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
@@ -7208,15 +7223,26 @@ function renderTrainingWeekStrip(plans, viewDate, realToday) {
     const dStr = localDateStr(d);
     const dayNum = d.getDate();
     const plan = Array.isArray(plans) ? plans.find(p => p.plan_date && String(p.plan_date).slice(0, 10) === dStr) : null;
-    // Only color the day when an explicit status is set on the plan.
-    // Past days without an explicit "missed" status stay neutral —
-    // we shouldn't paint every past day red just because the date
-    // passed (a plan might have been done but never status-tagged,
-    // or the day might have been a planned rest day).
-    const status = plan?.status;
+    const hasWorkout = (workoutsByDate[dStr] || []).length > 0;
     const isToday = dStr === realToday;
+    const isPast = dStr < realToday;
     const isViewing = dStr === viewDate;
-    const stateClass = ['completed','partial','missed','rest'].includes(status) ? `ab-state-${status}` : '';
+
+    // Status priority:
+    //   1. Workout logged for this date → completed (Pine dot)
+    //   2. Plan explicitly tagged completed/partial/missed/rest → use it
+    //   3. Past date + plan existed but nothing logged → missed (red dot)
+    //   4. Otherwise → planned (empty outlined dot)
+    let status = '';
+    if (hasWorkout) {
+      status = plan?.status === 'partial' ? 'partial' : 'completed';
+    } else if (['completed','partial','missed','rest'].includes(plan?.status)) {
+      status = plan.status;
+    } else if (isPast && plan) {
+      status = 'missed';
+    }
+    const stateClass = status ? `ab-state-${status}` : '';
+
     const onclick = ` onclick="setTrainingDate('${dStr}')"`;
     const viewingStyle = isViewing && !isToday ? ' style="cursor:pointer;outline:2px solid var(--ab-ink);outline-offset:-2px;border-radius:8px"' : ' style="cursor:pointer"';
     html += `<div class="ab-week-day ${stateClass} ${isToday ? 'ab-today' : ''}"${viewingStyle}${onclick}>` +
