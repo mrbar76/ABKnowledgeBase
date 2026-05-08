@@ -544,13 +544,15 @@ function renderGlanceBar({ briefing, recovery, races }) {
     }
   }
 
-  // Overdue: count + "X hot" / "all medium-low" / "all clear" subtitle.
-  const overdueCount = briefing?.overdue?.count ?? 0;
-  const overdueTasks = briefing?.overdue?.tasks || [];
-  const hotCount = overdueTasks.filter(t => t.priority === 'urgent').length;
-  const overdueSub = overdueCount === 0
-    ? 'all clear'
-    : (hotCount > 0 ? hotCount + ' hot' : 'all medium-low');
+  // Overdue: count + trend subtitle. New v3 briefing shape exposes
+  // glance.overdue with pre-computed hot_count + trend label. Falls
+  // back to legacy briefing.overdue shape during deploy transition.
+  const overdueObj = briefing?.glance?.overdue || briefing?.overdue || {};
+  const overdueCount = overdueObj.count ?? 0;
+  const hotCount = overdueObj.hot_count
+    ?? (briefing?.overdue?.tasks || []).filter(t => t.priority === 'urgent').length;
+  const overdueSub = overdueObj.trend
+    || (overdueCount === 0 ? 'all clear' : (hotCount > 0 ? hotCount + ' hot' : 'all medium-low'));
   const overdueSubClass = hotCount > 0 ? 'ab-glance-card-sub ab-alarm' : 'ab-glance-card-sub';
 
   return '<div class="ab-glance-row">' +
@@ -571,37 +573,51 @@ function iconForPillar(pillar) {
 }
 
 function renderHeroFocus(item) {
-  const pillar = pillarFromContext(item.context) || 'work';
+  // New v3 ranker normalizes pillar; legacy shape used context.
+  const pillar = item.pillar || pillarFromContext(item.context) || 'work';
   const pillarLabel = pillarLabelText(pillar);
-  const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
+  const cleanedTitle = cleanForUI(item.title) || 'Untitled';
   const waitingPerson = item.waiting_on_person || item.waiting_on;
   const waitingBadge = waitingPerson
     ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
     : '';
-  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  // v3 ranker exposes is_hot directly. Legacy items fall back to old check.
+  const meta = item.meta || item.reason || '';
+  const isHot = item.is_hot === true
+    || (meta && /overdue/.test(meta))
+    || item.priority === 'urgent';
+  // Workout heroes (anchor-takes-hero) wear a planned badge by default.
   const status = item.status || 'planned';
   const kicker = item.due_date ? `· ${esc(formatDateShort(item.due_date))}` : '';
   const headRight = isHot
     ? `<span class="ab-badge ab-badge-hot" style="margin-left:auto">Hot</span>`
     : `<span class="ab-status-badge" data-state="${esc(status)}" style="margin-left:auto">${esc(status)}</span>`;
 
-  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail('${item.id}')">` +
+  // Workouts open the workout detail; tasks open the task detail.
+  const openCmd = item.kind === 'workout'
+    ? `loadFitness('today')`
+    : `showTaskDetail('${item.id}')`;
+
+  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="${openCmd}">` +
     `<div class="ab-hero-card-head">` +
       `<span class="ab-pillar-label ab-pillar-label-${pillar}">${esc(pillarLabel)}</span>` +
       (kicker ? `<span class="ab-hero-card-kicker">${kicker}</span>` : '') +
       headRight +
     `</div>` +
     `<div class="ab-hero-card-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
-    (item.reason ? `<div class="ab-hero-card-body">${esc(item.reason)}</div>` : '') +
+    (meta ? `<div class="ab-hero-card-body">${esc(meta)}</div>` : '') +
     '</div>';
 }
 
 function renderListFocus(item, rank) {
-  const pillar = pillarFromContext(item.context) || 'work';
+  const pillar = item.pillar || pillarFromContext(item.context) || 'work';
   const pillarLabel = pillarLabelText(pillar);
-  const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
+  const cleanedTitle = cleanForUI(item.title) || 'Untitled';
   const waitingPerson = item.waiting_on_person || item.waiting_on;
-  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  const meta = item.meta || item.reason || '';
+  const isHot = item.is_hot === true
+    || (meta && /overdue/.test(meta))
+    || item.priority === 'urgent';
   const iconName = iconForPillar(pillar);
 
   const headBadges = [
@@ -609,7 +625,11 @@ function renderListFocus(item, rank) {
     isHot ? `<span class="ab-badge ab-badge-hot">Hot</span>` : ''
   ].filter(Boolean).join('');
 
-  return `<div class="ab-list-row" onclick="showTaskDetail('${item.id}')">` +
+  const openCmd = item.kind === 'workout'
+    ? `loadFitness('today')`
+    : `showTaskDetail('${item.id}')`;
+
+  return `<div class="ab-list-row" onclick="${openCmd}">` +
     `<div class="ab-list-row-marker">` +
       `<span class="ab-list-row-rank">${rank}</span>` +
       `<div class="ab-list-row-icon ab-list-row-icon-${pillar}">${icon(iconName, 12)}</div>` +
@@ -620,7 +640,7 @@ function renderListFocus(item, rank) {
         headBadges +
       `</div>` +
       `<div class="ab-list-row-title">${esc(cleanedTitle)}</div>` +
-      `<div class="ab-list-row-meta${isHot ? ' ab-list-row-meta-alarm' : ''}">${esc(item.reason || '')}</div>` +
+      `<div class="ab-list-row-meta${isHot ? ' ab-list-row-meta-alarm' : ''}">${esc(meta)}</div>` +
     `</div>` +
   `</div>`;
 }
@@ -641,11 +661,14 @@ function formatDateShort(d) {
 }
 
 function renderToday(data) {
-  // Cap focus at 3 total: 1 hero + 2 list rows.
-  const top = (data.briefing?.top_focus || []).slice(0, 3);
-  const lead = data.briefing?.yesterday_summary || '';
-  const body = data.briefing?.today_focus_lead || '';
-  const mute = data.briefing?.today_focus_secondary || '';
+  // v3 briefing shape: focus[] + coach_read{lead,body,mute}.
+  // Falls back to legacy field names during deploy transition.
+  const b = data.briefing || {};
+  const top = (b.focus || b.top_focus || []).slice(0, 3);
+  const cr = b.coach_read || {};
+  const lead = cr.lead || b.yesterday_summary || '';
+  const body = cr.body || b.today_focus_lead || '';
+  const mute = cr.mute || b.today_focus_secondary || '';
 
   let html = renderGlanceBar(data);
 

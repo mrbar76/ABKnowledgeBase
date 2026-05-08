@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { cleanForUI, cleanAllForUI, cleanFields, cleanRows, composeCoachRead } = require('../lib/voice');
+const { cleanForUI, cleanAllForUI, cleanFields, cleanRows, composeCoachRead, SLUG_MAP } = require('../lib/voice');
 
 // ─── cleanForUI: spec acceptance cases ───────────────────────────────
 
@@ -277,6 +277,60 @@ test('composeCoachRead: workout-typed top_focus does not trigger waiting mute', 
 });
 
 // ─── Voice rule sanity: leak detector on composed output ─────────────
+
+// ─── SLUG_MAP drift detector ──────────────────────────────────────────
+//
+// Reviewer concern: SLUG_MAP is hand-maintained; new slugs added to the
+// DB will silently fall through to the underscore-stripper. These tests
+// assert the known slug set is present and that the fallback regex
+// catches any slug-shaped string not in the map (so leaks are bounded).
+
+test('SLUG_MAP: known workout/plan slugs are present', () => {
+  // Add to this list whenever a new workout_focus or workout_type slug
+  // appears in production data. Drift = visible leak otherwise.
+  const REQUIRED_SLUGS = [
+    'rdl_pull_grip',
+    'strength_a', 'strength_b', 'strength_c',
+    'hill_intervals', 'hill_repeats',
+    'tempo_run', 'easy_run', 'long_run',
+    'recovery_walk', 'z2_walk', 'z3_walk', 'z2_run', 'z3_run',
+    'farmers_walk', 'stair_climber',
+    'pull_grip', 'squat_press', 'bench_row',
+    'upper_push', 'upper_pull', 'full_body',
+  ];
+  for (const slug of REQUIRED_SLUGS) {
+    assert.ok(SLUG_MAP[slug], `SLUG_MAP missing required slug: ${slug}`);
+  }
+});
+
+test('SLUG_MAP: every entry maps to a non-slug-shaped display string', () => {
+  // Display strings should not themselves look like slugs (would defeat
+  // the purpose). Each value must contain a space OR be capitalized.
+  for (const [slug, display] of Object.entries(SLUG_MAP)) {
+    const looksLikeSlug = /^[a-z][a-z0-9]*(_[a-z0-9]+)+$/.test(display);
+    assert.ok(!looksLikeSlug, `SLUG_MAP[${slug}] display value "${display}" still looks like a slug`);
+  }
+});
+
+test('SLUG_MAP: cleanForUI never returns a string with underscore-joined lowercase tokens', () => {
+  // Defensive check on the SLUG_LIKE fallback. Any slug-shaped input
+  // either maps via SLUG_MAP OR falls through the underscore-stripper —
+  // either way the output should not contain the original slug.
+  const samples = [
+    'rdl_pull_grip',
+    'kettlebell_swing',  // unmapped — fallback path
+    'box_jump_combo',    // unmapped — fallback path
+    'snatch_grip_high_pull', // multi-token unmapped
+    'mixed CONTENT with rdl_pull_grip embedded',
+  ];
+  for (const s of samples) {
+    const cleaned = cleanForUI(s);
+    assert.ok(
+      !/[a-z][a-z0-9]*(_[a-z0-9]+)+/.test(cleaned),
+      `cleanForUI("${s}") leaked a slug: "${cleaned}"`,
+    );
+  }
+});
 
 test('composeCoachRead output contains no leak markers (combined run)', () => {
   const signals = {
