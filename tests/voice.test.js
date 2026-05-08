@@ -244,10 +244,11 @@ test('composeCoachRead: undefined signals does not throw', () => {
   assert.equal(r.lead, '');
 });
 
-test('composeCoachRead: waiting-on follow-up rendered when hot', () => {
+test('composeCoachRead: waiting-on follow-up rendered when hot (task)', () => {
   const r = composeCoachRead({
     today: {
       top_focus: {
+        kind: 'task',
         title: 'AWG expedite delayed orders',
         status: 'waiting_on',
         days_waiting: 11,
@@ -256,6 +257,23 @@ test('composeCoachRead: waiting-on follow-up rendered when hot', () => {
     overdue: { hot_count: 3 },
   });
   assert.equal(r.mute, 'Then awg expedite delayed orders. 11 days sitting.');
+});
+
+test('composeCoachRead: workout-typed top_focus does not trigger waiting mute', () => {
+  // top_focus is a workout (no waiting_on semantics). Even with hot
+  // overdue items, the waiting follow-up branch must not fire.
+  const r = composeCoachRead({
+    today: {
+      top_focus: {
+        kind: 'workout',
+        title: 'Strength A',
+        status: 'planned',
+      },
+    },
+    overdue: { hot_count: 3 },
+  });
+  // Falls through to hot-overdue mute.
+  assert.equal(r.mute, '3 hot items overdue.');
 });
 
 // ─── Voice rule sanity: leak detector on composed output ─────────────
