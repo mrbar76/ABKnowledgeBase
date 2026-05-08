@@ -22,6 +22,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { cleanForUI, composeCoachRead } = require('../lib/voice');
+const { composeCoachReadLLM } = require('../lib/coach-voice');
 const { rankFocus, daysBetween } = require('../lib/focus-ranker');
 const { computeRecoveryScore } = require('../lib/recovery');
 const { shabbatStatus } = require('../lib/shabbat');
@@ -186,7 +187,7 @@ router.get('/', async (req, res) => {
       shabbat_status: sb,
     };
 
-    const coachRead = composeCoachRead(signals);
+    const coachRead = await composeCoachReadLLM(signals);
 
     // ── Delta surfacing: changed_since_yesterday ──
     const recoveryDelta =
