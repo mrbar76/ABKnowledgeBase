@@ -464,17 +464,23 @@ async function loadDashboard() {
   const main = document.getElementById('main-content');
   if (!main) return;
 
-  if (isShabbat(new Date())) {
-    main.innerHTML = renderShabbatCard();
-    return;
-  }
+  // v3 hotfix: don't blank the screen on Shabbat. The server filters
+  // work pillar from focus and adjusts the coach read; personal +
+  // training stay live. The legacy short-circuit to renderShabbatCard
+  // was the wrong behavior and is removed.
 
   main.innerHTML = renderTodaySkeleton();
+
+  // Lazy geolocation: ask once, cache in localStorage, append lat/lon
+  // to /briefing so candle lighting + havdalah times are accurate.
+  const loc = await getCachedLocation();
+  const briefingUrl = '/briefing?format=json'
+    + (loc ? `&lat=${encodeURIComponent(loc.lat)}&lon=${encodeURIComponent(loc.lon)}` : '');
 
   let briefing = null, recovery = null, races = [];
   try {
     [briefing, recovery, races] = await Promise.all([
-      api('/briefing?format=json').catch(() => null),
+      api(briefingUrl).catch(() => null),
       api('/recovery/score?date=' + localDateStr()).catch(() => null),
       api('/races/upcoming').catch(() => [])
     ]);
@@ -489,8 +495,34 @@ async function loadDashboard() {
 
 // ─── Today helpers (v2 Foundation Phase 1) ────────────────────
 
-// Hardcoded Friday 18:00 -> Saturday 18:00 local. Real sunset
-// integration deferred; this matches the user's stated default.
+// Cached geolocation. Asked once; cached in localStorage for 14 days.
+// Used to give /briefing accurate sunset-anchored Shabbat times.
+async function getCachedLocation() {
+  try {
+    const raw = localStorage.getItem('forge.location');
+    if (raw) {
+      const { lat, lon, ts } = JSON.parse(raw);
+      if (ts && Date.now() - ts < 14 * 24 * 60 * 60 * 1000) {
+        return { lat, lon };
+      }
+    }
+  } catch (_) { /* ignore */ }
+  if (!navigator.geolocation) return null;
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude, ts: Date.now() };
+        try { localStorage.setItem('forge.location', JSON.stringify(loc)); } catch (_) {}
+        resolve({ lat: loc.lat, lon: loc.lon });
+      },
+      () => resolve(null),
+      { timeout: 3000, maximumAge: 14 * 24 * 60 * 60 * 1000 },
+    );
+  });
+}
+
+// Legacy client-side check kept for the Personal tab Shabbat banner
+// (different surface — that one's intentional).
 function isShabbat(d) {
   const day = d.getDay();    // 0=Sun, 5=Fri, 6=Sat
   const hour = d.getHours();
@@ -554,11 +586,15 @@ function renderGlanceBar({ briefing, recovery, races }) {
   const overdueSub = overdueObj.trend
     || (overdueCount === 0 ? 'all clear' : (hotCount > 0 ? hotCount + ' hot' : 'all medium-low'));
   const overdueSubClass = hotCount > 0 ? 'ab-glance-card-sub ab-alarm' : 'ab-glance-card-sub';
+  // When hot_count > 0, the card opens a focused sheet listing those
+  // items so they can be triaged in one place. Otherwise it routes to
+  // the Productivity tab.
+  const overdueOnClick = hotCount > 0 ? 'showHotItemsSheet()' : "switchTab('productivity')";
 
   return '<div class="ab-glance-row">' +
     `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Recovery</div><div class="ab-glance-card-value">${esc(String(recScore))}</div><div class="ab-glance-card-sub">${esc(recLabel)}</div></div>` +
     `<div class="ab-glance-card"><div class="ab-glance-card-label">Race</div><div class="ab-glance-card-value">${esc(raceVal)}</div><div class="ab-glance-card-sub">${esc(raceSub)}</div></div>` +
-    `<div class="ab-glance-card" onclick="switchTab('productivity')" style="cursor:pointer"><div class="ab-glance-card-label">Overdue</div><div class="ab-glance-card-value">${esc(String(overdueCount))}</div><div class="${overdueSubClass}">${esc(overdueSub)}</div></div>` +
+    `<div class="ab-glance-card" onclick="${overdueOnClick}" style="cursor:pointer"><div class="ab-glance-card-label">Overdue</div><div class="ab-glance-card-value">${esc(String(overdueCount))}</div><div class="${overdueSubClass}">${esc(overdueSub)}</div></div>` +
     '</div>';
 }
 
@@ -11145,6 +11181,64 @@ function renderRaceField(label, text) {
     `<div class="ab-section-label" style="padding:0 0 4px">${esc(label)}</div>` +
     `<div style="font-size:14px;line-height:1.5;color:var(--ab-body);white-space:pre-wrap">${esc(text)}</div>` +
     `</div>`;
+}
+
+// Shortcut: tapping the GlanceBar overdue card with hot_count > 0 opens
+// this sheet. Hot = urgent priority OR more than 7 days overdue.
+async function showHotItemsSheet() {
+  openModal('Hot items', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
+  try {
+    const r = await api('/tasks?limit=200');
+    const tasks = r.tasks || [];
+    const today = localDateStr();
+    const todayMs = new Date(today + 'T00:00:00').getTime();
+    const hot = tasks.filter((t) => {
+      if (['done', 'archived', 'cancelled'].includes(t.status)) return false;
+      if (t.priority === 'urgent') return true;
+      if (!t.due_date) return false;
+      const dueMs = new Date(String(t.due_date).slice(0, 10) + 'T00:00:00').getTime();
+      const days = Math.round((todayMs - dueMs) / 86400000);
+      return days > 7;
+    });
+    if (hot.length === 0) {
+      openModal('Hot items', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No hot items.</div><div class="ab-list-row-meta">Anything urgent or overdue more than a week shows here.</div></div></div>', { variant: 'sheet' });
+      return;
+    }
+    // Sort: most overdue first, then urgent priority.
+    hot.sort((a, b) => {
+      const ad = a.due_date ? Math.round((todayMs - new Date(String(a.due_date).slice(0,10) + 'T00:00:00').getTime()) / 86400000) : 0;
+      const bd = b.due_date ? Math.round((todayMs - new Date(String(b.due_date).slice(0,10) + 'T00:00:00').getTime()) / 86400000) : 0;
+      if (bd !== ad) return bd - ad;
+      const prioRank = { urgent: 3, high: 2, medium: 1, low: 0 };
+      return (prioRank[b.priority] || 0) - (prioRank[a.priority] || 0);
+    });
+    const rows = hot.map((t) => {
+      const ctx = String(t.context || '').toLowerCase();
+      const pillar = ctx === 'training' || ctx === 'health' ? 'training'
+        : ctx === 'personal' || ctx === 'family' ? 'personal' : 'work';
+      const days = t.due_date
+        ? Math.round((todayMs - new Date(String(t.due_date).slice(0,10) + 'T00:00:00').getTime()) / 86400000)
+        : null;
+      const meta = days != null && days > 0
+        ? `${days} ${days === 1 ? 'day' : 'days'} overdue`
+        : (t.priority === 'urgent' ? 'urgent' : 'high priority');
+      const waiting = t.waiting_on
+        ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(t.waiting_on)}</span>`
+        : '';
+      return `<div class="ab-list-row" onclick="closeModal();showTaskDetail('${t.id}')">
+        <div class="ab-list-row-marker"><div class="ab-list-row-icon ab-list-row-icon-${pillar}">${icon(iconForPillar(pillar), 12)}</div></div>
+        <div class="ab-list-row-body">
+          <div class="ab-list-row-head"><span class="ab-pillar-label ab-pillar-label-${pillar}">${esc(pillarLabelText(pillar))}</span><span class="ab-badge ab-badge-hot">Hot</span>${waiting}</div>
+          <div class="ab-list-row-title">${esc(cleanForUI(t.title) || 'Untitled')}</div>
+          <div class="ab-list-row-meta ab-list-row-meta-alarm">${esc(meta)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    openModal(`Hot items · ${hot.length}`, rows, { variant: 'sheet' });
+    renderIcons();
+  } catch (e) {
+    openModal('Hot items', `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`, { variant: 'sheet' });
+  }
 }
 
 async function showRecoveryDetail() {

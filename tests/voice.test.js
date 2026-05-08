@@ -140,11 +140,34 @@ test('cleanAllForUI cleans an array and drops empties', () => {
 
 // ─── composeCoachRead: spec acceptance cases ─────────────────────────
 
-test('composeCoachRead: shabbat overrides everything', () => {
+test('composeCoachRead: shabbat keeps personal + training live, only pauses work', () => {
+  // v3 hotfix: shabbat used to blank the screen with "The system is
+  // resting too." That was wrong — only work pauses. Personal +
+  // training stay live (filtered upstream in briefing.js).
   const r = composeCoachRead({ shabbat: true });
   assert.equal(r.lead, 'Shabbat.');
-  assert.equal(r.body, 'The system is resting too.');
-  assert.equal(r.mute, 'See you Saturday night.');
+  assert.match(r.body, /work is paused/i);
+  assert.match(r.body, /personal and training stay live/i);
+});
+
+test('composeCoachRead: shabbat shows havdalah time when available', () => {
+  const r = composeCoachRead({
+    shabbat: true,
+    shabbat_status: { havdalah_time_label: '8:24 PM' },
+  });
+  assert.equal(r.mute, 'Havdalah at 8:24 PM.');
+});
+
+test('composeCoachRead: Friday before candle lighting shows the time', () => {
+  const r = composeCoachRead({
+    yesterday: { workouts_completed: 0, tasks_completed: 0 },
+    shabbat: false,
+    shabbat_status: {
+      is_friday: true,
+      candle_lighting_time_label: '7:42 PM',
+    },
+  });
+  assert.equal(r.mute, 'Candle lighting at 7:42 PM.');
 });
 
 test('composeCoachRead: yesterday quiet when no completion', () => {
