@@ -1,8 +1,10 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { cleanFields, cleanRows } = require('../lib/voice');
 const router = express.Router();
 
 const PRIORITY_ORDER = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`;
+const TASK_TEXT_FIELDS = ['title', 'description', 'notes', 'output_log', 'next_steps'];
 
 router.get('/', async (req, res) => {
   try {
@@ -26,7 +28,7 @@ router.get('/', async (req, res) => {
        FROM tasks t
        ${whereClause} ORDER BY ${PRIORITY_ORDER}, created_at ASC LIMIT $${i}`, params
     );
-    res.json({ count: result.rows.length, tasks: result.rows });
+    res.json({ count: result.rows.length, tasks: cleanRows(result.rows, TASK_TEXT_FIELDS) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -49,7 +51,7 @@ router.get('/kanban', async (req, res) => {
 
     const kanban = { todo: [], in_progress: [], waiting_on: [], review: [], done: [] };
     for (const task of result.rows) {
-      (kanban[task.status] || kanban.todo).push(task);
+      (kanban[task.status] || kanban.todo).push(cleanFields(task, TASK_TEXT_FIELDS));
     }
     res.json(kanban);
   } catch (err) {
@@ -204,7 +206,12 @@ router.get('/:id', async (req, res) => {
       ),
     ]);
 
-    res.json({ ...result.rows[0], history: history.rows, comments: comments.rows, children: children.rows });
+    res.json({
+      ...cleanFields(result.rows[0], TASK_TEXT_FIELDS),
+      history: history.rows,
+      comments: comments.rows,
+      children: cleanRows(children.rows, TASK_TEXT_FIELDS),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

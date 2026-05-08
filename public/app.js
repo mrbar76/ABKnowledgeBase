@@ -3840,13 +3840,46 @@ async function loadTasks() {
   else                                return loadTasksList();
 }
 
-function cleanTaskTitle(title) {
-  if (!title) return '';
-  let t = String(title);
-  t = t.replace(/^\s*PROMPT\s+AVI[:\s]+/i, '');
-  t = t.replace(/\s*\[WAITING ON:\s*[^\]]+\]\s*/gi, '').trim();
-  return t;
+// Defensive frontend mirror of lib/voice.js cleanForUI.
+// Backend strips first; this catches any leak that slipped through.
+// Idempotent — safe to call multiple times.
+const VOICE_SLUG_MAP = {
+  rdl_pull_grip: 'Deadlift, pull, grip',
+  strength_a: 'Strength A', strength_b: 'Strength B', strength_c: 'Strength C',
+  hill_intervals: 'Hill intervals', hill_repeats: 'Hill repeats',
+  tempo_run: 'Tempo run', easy_run: 'Easy run', long_run: 'Long run',
+  recovery_walk: 'Recovery walk', z2_walk: 'Z2 walk', z3_walk: 'Z3 walk',
+  z2_run: 'Z2 run', z3_run: 'Z3 run',
+  mobility: 'Mobility', farmers_walk: "Farmer's walk",
+  stair_climber: 'Stair climber', pull_grip: 'Pull and grip',
+  squat_press: 'Squat and press', bench_row: 'Bench and row',
+  upper_push: 'Upper push', upper_pull: 'Upper pull', full_body: 'Full body',
+};
+function cleanForUI(raw) {
+  if (raw == null || raw === '') return '';
+  if (typeof raw !== 'string') return String(raw);
+  let s = raw;
+  s = s.replace(/^\[WAITING ON:[^\]]*\]\s*/i, '');
+  s = s.replace(/^PROMPT AVI[:\s]+/i, '');
+  s = s.replace(/^TODO:\s*/i, '');
+  s = s.replace(/^DEV:\s*/i, '');
+  s = s.replace(/^DRAFT:\s*/i, '');
+  s = s.replace(/^\[INTERNAL\]\s*/i, '');
+  s = s.replace(/[—–]/g, '-');
+  for (const [slug, display] of Object.entries(VOICE_SLUG_MAP)) {
+    s = s.replace(new RegExp(`\\b${slug}\\b`, 'g'), display);
+  }
+  s = s.replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (m) => m.replace(/_/g, ' '));
+  s = s.replace(/REVISED v\d+[^.]*\.?/gi, '');
+  s = s.replace(/\bper spec section[^.]*\.?/gi, '');
+  s = s.replace(/\bworkout [a-f0-9]{8}\b/gi, '');
+  s = s.replace(/\bGoal \d+ (was|is) being\b[^.]*\.?/gi, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  s = s.replace(/^[\[\(]\s*/, '').replace(/\s*[\]\)]$/, '');
+  return s;
 }
+// Backwards-compat alias. Existing call sites use cleanTaskTitle.
+const cleanTaskTitle = cleanForUI;
 
 // ── Today Focus View (v2 rebuild) ──
 // New surface: BigPicture banner (Marine), top focus (hero + ranked list rows),

@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { cleanForUI, cleanAllForUI, composeCoachRead } = require('../lib/voice');
+const { cleanForUI, cleanAllForUI, cleanFields, cleanRows, composeCoachRead } = require('../lib/voice');
 
 // ─── cleanForUI: spec acceptance cases ───────────────────────────────
 
@@ -87,6 +87,44 @@ test('cleanForUI is idempotent', () => {
     const twice = cleanForUI(once);
     assert.equal(once, twice, `not idempotent for: ${input}`);
   }
+});
+
+test('cleanFields cleans named fields, leaves others alone', () => {
+  const row = {
+    id: 'abc',
+    title: 'PROMPT AVI: Pick something',
+    notes: 'Strength A — Heavy',
+    priority: 'high',
+    raw_text: 'leave me alone — em dash stays',
+  };
+  const out = cleanFields(row, ['title', 'notes']);
+  assert.equal(out.title, 'Pick something');
+  assert.equal(out.notes, 'Strength A - Heavy');
+  assert.equal(out.priority, 'high');
+  assert.equal(out.raw_text, 'leave me alone — em dash stays');
+  assert.equal(out.id, 'abc');
+});
+
+test('cleanFields handles null row', () => {
+  assert.equal(cleanFields(null, ['title']), null);
+});
+
+test('cleanFields handles null/undefined fields', () => {
+  const row = { title: null, notes: undefined };
+  const out = cleanFields(row, ['title', 'notes']);
+  assert.equal(out.title, null);
+  assert.equal(out.notes, undefined);
+});
+
+test('cleanRows maps over an array of rows', () => {
+  const rows = [
+    { title: 'PROMPT AVI: One', priority: 'high' },
+    { title: '[WAITING ON: X] Two', priority: 'low' },
+  ];
+  const out = cleanRows(rows, ['title']);
+  assert.equal(out[0].title, 'One');
+  assert.equal(out[1].title, 'Two');
+  assert.equal(out[0].priority, 'high');
 });
 
 test('cleanAllForUI cleans an array and drops empties', () => {
