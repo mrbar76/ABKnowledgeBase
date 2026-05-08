@@ -24,6 +24,7 @@ const { query } = require('../db');
 const { cleanForUI, composeCoachRead } = require('../lib/voice');
 const { rankFocus, daysBetween } = require('../lib/focus-ranker');
 const { computeRecoveryScore } = require('../lib/recovery');
+const { shabbatStatus } = require('../lib/shabbat');
 
 const router = express.Router();
 
@@ -39,22 +40,6 @@ function buildGreeting(now) {
     timeZone: 'America/New_York',
   });
   return { label, kicker };
-}
-
-// Shabbat: Friday 18:00 → Saturday 18:00 America/New_York.
-function isShabbat(now) {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-    hour: '2-digit',
-    hour12: false,
-  });
-  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
-  const day = parts.weekday;
-  const hour = parseInt(parts.hour, 10);
-  if (day === 'Fri' && hour >= 18) return true;
-  if (day === 'Sat' && hour < 18) return true;
-  return false;
 }
 
 async function detectBetweenPhases(today) {
@@ -143,10 +128,25 @@ router.get('/', async (req, res) => {
     }).length;
 
     // ── State flags ──
-    const shabbat = isShabbat(new Date());
+    // Optional lat/lon override from query for accurate Shabbat times.
+    const lat = req.query.lat != null ? Number(req.query.lat) : undefined;
+    const lon = req.query.lon != null ? Number(req.query.lon) : undefined;
+    const sb = shabbatStatus(
+      new Date(),
+      Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : {},
+    );
+    const shabbat = sb.in_shabbat;
 
     // ── Focus ranking (Fix 2) ──
-    const focus = shabbat ? [] : rankFocus(openTasks, today, { todayPlan });
+    // Shabbat behavior: keep personal + training surfaces live, drop work.
+    // The screen does NOT go quiet — only work tasks are filtered out.
+    const tasksForRanking = shabbat
+      ? openTasks.filter((t) => {
+          const ctx = String(t.context || '').toLowerCase();
+          return ctx === 'personal' || ctx === 'family' || ctx === 'training' || ctx === 'health';
+        })
+      : openTasks;
+    const focus = rankFocus(tasksForRanking, today, { todayPlan });
 
     // ── Coach read signals (also exposed in payload) ──
     const signals = {
@@ -183,6 +183,7 @@ router.get('/', async (req, res) => {
         : null,
       between_phases: betweenPhases,
       shabbat,
+      shabbat_status: sb,
     };
 
     const coachRead = composeCoachRead(signals);
@@ -240,6 +241,7 @@ router.get('/', async (req, res) => {
       metadata: {
         total_open_tasks: openTasks.length,
         shabbat_active: shabbat,
+        shabbat_status: sb,
         between_phases: betweenPhases,
         generated_at: new Date().toISOString(),
       },
