@@ -327,11 +327,11 @@ async function loadPersonal() {
   // Family section
   html += '<div class="ab-section-label">Family</div>';
   for (const name of PERSONAL_FAMILY) {
-    html += '<div class="ab-list-row" onclick="abToast(\'Person page ships in v2.5.\')">' +
+    html += `<div class="ab-list-row" onclick="showPersonDetail('${esc(name)}')">` +
       `<div style="width:32px;height:32px;border-radius:999px;background:var(--ab-personal-tint);color:var(--ab-personal-label);display:flex;align-items:center;justify-content:center;font-weight:600;flex:0 0 auto">${name.charAt(0)}</div>` +
       '<div class="ab-list-row-body">' +
         `<div class="ab-list-row-title">${name}</div>` +
-        '<div class="ab-list-row-meta">Tap → person page (coming soon)</div>' +
+        '<div class="ab-list-row-meta">Interactions, open items</div>' +
       '</div></div>';
   }
 
@@ -361,6 +361,67 @@ function renderPersonalShabbatCard(now) {
 }
 
 function showCaptureStub() { abToast('Capture sheet ships in Phase 6.'); }
+
+async function showPersonDetail(name) {
+  openModal(name, '<div style="text-align:center;padding:32px 0;color:var(--ab-muted)">Loading…</div>', { variant: 'sheet' });
+  const initial = name.charAt(0).toUpperCase();
+
+  const [interactionsResp, tasksResp] = await Promise.all([
+    api('/people/' + encodeURIComponent(name) + '/interactions?limit=15').catch(() => null),
+    api('/tasks?waiting_on=' + encodeURIComponent(name) + '&limit=20').catch(() => null),
+  ]);
+
+  const interactions = interactionsResp?.interactions || [];
+  const rawTasks = tasksResp?.tasks || (Array.isArray(tasksResp) ? tasksResp : []);
+  const openTasks = rawTasks.filter(t => t.status !== 'done');
+
+  const sourceIcon = s => s === 'bee' ? '🎙' : s === 'email' ? '✉' : '📅';
+
+  let body = `
+    <div style="display:flex;align-items:center;gap:12px;padding:4px 0 20px">
+      <div style="width:48px;height:48px;border-radius:999px;background:var(--ab-personal-tint);color:var(--ab-personal-label);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex:0 0 auto">${initial}</div>
+      <div>
+        <div style="font-size:18px;font-weight:600;color:var(--ab-ink)">${esc(name)}</div>
+        <div style="font-size:13px;color:var(--ab-muted)">${interactions.length} recent interactions · ${openTasks.length} open items</div>
+      </div>
+    </div>`;
+
+  if (openTasks.length) {
+    body += `<div class="ab-section-label" style="padding:0 0 8px">Open items</div>`;
+    body += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">';
+    for (const t of openTasks.slice(0, 5)) {
+      body += `<div class="ab-list-row" style="border-radius:var(--ab-radius);border:1px solid var(--ab-border-soft)" onclick="closeModal();setTimeout(()=>showTaskDetail('${esc(t.id)}'),80)">
+        <div class="ab-list-row-dot ab-pillar-personal"></div>
+        <div class="ab-list-row-body">
+          <div class="ab-list-row-title">${esc(cleanTaskTitle(t.title))}</div>
+          ${t.due_date ? `<div class="ab-list-row-meta">${esc(formatDateShort(t.due_date))}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    body += '</div>';
+  }
+
+  if (interactions.length) {
+    body += `<div class="ab-section-label" style="padding:0 0 8px">Recent interactions</div>`;
+    body += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for (const ix of interactions) {
+      body += `<div style="padding:10px 12px;background:var(--ab-card);border:1px solid var(--ab-border-soft);border-radius:var(--ab-radius)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="font-size:13px">${sourceIcon(ix.source)}</span>
+          <span style="font-size:12px;font-weight:600;color:var(--ab-muted);text-transform:uppercase;letter-spacing:0.06em">${esc(ix.source)}</span>
+          <span style="font-size:12px;color:var(--ab-subtle);margin-left:auto">${ix.date ? esc(formatDateShort(ix.date)) : ''}</span>
+        </div>
+        <div style="font-size:13px;color:var(--ab-body);line-height:1.4">${esc(truncate(ix.summary_excerpt || '', 120))}</div>
+      </div>`;
+    }
+    body += '</div>';
+  } else {
+    body += `<div style="padding:24px 0;text-align:center;color:var(--ab-muted);font-size:14px">No recent interactions found.</div>`;
+  }
+
+  const modalBody = document.getElementById('modal-body');
+  if (modalBody) modalBody.innerHTML = body;
+}
 
 function abToast(msg) {
   const host = document.getElementById('ab-toast-host');
@@ -483,13 +544,15 @@ function renderGlanceBar({ briefing, recovery, races }) {
     }
   }
 
-  // Overdue: count + "X hot" / "all medium-low" / "all clear" subtitle.
-  const overdueCount = briefing?.overdue?.count ?? 0;
-  const overdueTasks = briefing?.overdue?.tasks || [];
-  const hotCount = overdueTasks.filter(t => t.priority === 'urgent').length;
-  const overdueSub = overdueCount === 0
-    ? 'all clear'
-    : (hotCount > 0 ? hotCount + ' hot' : 'all medium-low');
+  // Overdue: count + trend subtitle. New v3 briefing shape exposes
+  // glance.overdue with pre-computed hot_count + trend label. Falls
+  // back to legacy briefing.overdue shape during deploy transition.
+  const overdueObj = briefing?.glance?.overdue || briefing?.overdue || {};
+  const overdueCount = overdueObj.count ?? 0;
+  const hotCount = overdueObj.hot_count
+    ?? (briefing?.overdue?.tasks || []).filter(t => t.priority === 'urgent').length;
+  const overdueSub = overdueObj.trend
+    || (overdueCount === 0 ? 'all clear' : (hotCount > 0 ? hotCount + ' hot' : 'all medium-low'));
   const overdueSubClass = hotCount > 0 ? 'ab-glance-card-sub ab-alarm' : 'ab-glance-card-sub';
 
   return '<div class="ab-glance-row">' +
@@ -510,37 +573,51 @@ function iconForPillar(pillar) {
 }
 
 function renderHeroFocus(item) {
-  const pillar = pillarFromContext(item.context) || 'work';
+  // New v3 ranker normalizes pillar; legacy shape used context.
+  const pillar = item.pillar || pillarFromContext(item.context) || 'work';
   const pillarLabel = pillarLabelText(pillar);
-  const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
+  const cleanedTitle = cleanForUI(item.title) || 'Untitled';
   const waitingPerson = item.waiting_on_person || item.waiting_on;
   const waitingBadge = waitingPerson
     ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span> `
     : '';
-  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  // v3 ranker exposes is_hot directly. Legacy items fall back to old check.
+  const meta = item.meta || item.reason || '';
+  const isHot = item.is_hot === true
+    || (meta && /overdue/.test(meta))
+    || item.priority === 'urgent';
+  // Workout heroes (anchor-takes-hero) wear a planned badge by default.
   const status = item.status || 'planned';
   const kicker = item.due_date ? `· ${esc(formatDateShort(item.due_date))}` : '';
   const headRight = isHot
     ? `<span class="ab-badge ab-badge-hot" style="margin-left:auto">Hot</span>`
     : `<span class="ab-status-badge" data-state="${esc(status)}" style="margin-left:auto">${esc(status)}</span>`;
 
-  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="showTaskDetail('${item.id}')">` +
+  // Workouts open the workout detail; tasks open the task detail.
+  const openCmd = item.kind === 'workout'
+    ? `loadFitness('today')`
+    : `showTaskDetail('${item.id}')`;
+
+  return `<div class="ab-hero-card ab-pillar-${pillar}" onclick="${openCmd}">` +
     `<div class="ab-hero-card-head">` +
       `<span class="ab-pillar-label ab-pillar-label-${pillar}">${esc(pillarLabel)}</span>` +
       (kicker ? `<span class="ab-hero-card-kicker">${kicker}</span>` : '') +
       headRight +
     `</div>` +
     `<div class="ab-hero-card-title">${waitingBadge}${esc(cleanedTitle)}</div>` +
-    (item.reason ? `<div class="ab-hero-card-body">${esc(item.reason)}</div>` : '') +
+    (meta ? `<div class="ab-hero-card-body">${esc(meta)}</div>` : '') +
     '</div>';
 }
 
 function renderListFocus(item, rank) {
-  const pillar = pillarFromContext(item.context) || 'work';
+  const pillar = item.pillar || pillarFromContext(item.context) || 'work';
   const pillarLabel = pillarLabelText(pillar);
-  const cleanedTitle = cleanTaskTitle(item.title) || 'Untitled';
+  const cleanedTitle = cleanForUI(item.title) || 'Untitled';
   const waitingPerson = item.waiting_on_person || item.waiting_on;
-  const isHot = (item.reason && /overdue/.test(item.reason)) || item.priority === 'urgent';
+  const meta = item.meta || item.reason || '';
+  const isHot = item.is_hot === true
+    || (meta && /overdue/.test(meta))
+    || item.priority === 'urgent';
   const iconName = iconForPillar(pillar);
 
   const headBadges = [
@@ -548,7 +625,11 @@ function renderListFocus(item, rank) {
     isHot ? `<span class="ab-badge ab-badge-hot">Hot</span>` : ''
   ].filter(Boolean).join('');
 
-  return `<div class="ab-list-row" onclick="showTaskDetail('${item.id}')">` +
+  const openCmd = item.kind === 'workout'
+    ? `loadFitness('today')`
+    : `showTaskDetail('${item.id}')`;
+
+  return `<div class="ab-list-row" onclick="${openCmd}">` +
     `<div class="ab-list-row-marker">` +
       `<span class="ab-list-row-rank">${rank}</span>` +
       `<div class="ab-list-row-icon ab-list-row-icon-${pillar}">${icon(iconName, 12)}</div>` +
@@ -559,7 +640,7 @@ function renderListFocus(item, rank) {
         headBadges +
       `</div>` +
       `<div class="ab-list-row-title">${esc(cleanedTitle)}</div>` +
-      `<div class="ab-list-row-meta${isHot ? ' ab-list-row-meta-alarm' : ''}">${esc(item.reason || '')}</div>` +
+      `<div class="ab-list-row-meta${isHot ? ' ab-list-row-meta-alarm' : ''}">${esc(meta)}</div>` +
     `</div>` +
   `</div>`;
 }
@@ -580,11 +661,14 @@ function formatDateShort(d) {
 }
 
 function renderToday(data) {
-  // Cap focus at 3 total: 1 hero + 2 list rows.
-  const top = (data.briefing?.top_focus || []).slice(0, 3);
-  const lead = data.briefing?.yesterday_summary || '';
-  const body = data.briefing?.today_focus_lead || '';
-  const mute = data.briefing?.today_focus_secondary || '';
+  // v3 briefing shape: focus[] + coach_read{lead,body,mute}.
+  // Falls back to legacy field names during deploy transition.
+  const b = data.briefing || {};
+  const top = (b.focus || b.top_focus || []).slice(0, 3);
+  const cr = b.coach_read || {};
+  const lead = cr.lead || b.yesterday_summary || '';
+  const body = cr.body || b.today_focus_lead || '';
+  const mute = cr.mute || b.today_focus_secondary || '';
 
   let html = renderGlanceBar(data);
 
@@ -3779,13 +3863,46 @@ async function loadTasks() {
   else                                return loadTasksList();
 }
 
-function cleanTaskTitle(title) {
-  if (!title) return '';
-  let t = String(title);
-  t = t.replace(/^\s*PROMPT\s+AVI[:\s]+/i, '');
-  t = t.replace(/\s*\[WAITING ON:\s*[^\]]+\]\s*/gi, '').trim();
-  return t;
+// Defensive frontend mirror of lib/voice.js cleanForUI.
+// Backend strips first; this catches any leak that slipped through.
+// Idempotent — safe to call multiple times.
+const VOICE_SLUG_MAP = {
+  rdl_pull_grip: 'Deadlift, pull, grip',
+  strength_a: 'Strength A', strength_b: 'Strength B', strength_c: 'Strength C',
+  hill_intervals: 'Hill intervals', hill_repeats: 'Hill repeats',
+  tempo_run: 'Tempo run', easy_run: 'Easy run', long_run: 'Long run',
+  recovery_walk: 'Recovery walk', z2_walk: 'Z2 walk', z3_walk: 'Z3 walk',
+  z2_run: 'Z2 run', z3_run: 'Z3 run',
+  mobility: 'Mobility', farmers_walk: "Farmer's walk",
+  stair_climber: 'Stair climber', pull_grip: 'Pull and grip',
+  squat_press: 'Squat and press', bench_row: 'Bench and row',
+  upper_push: 'Upper push', upper_pull: 'Upper pull', full_body: 'Full body',
+};
+function cleanForUI(raw) {
+  if (raw == null || raw === '') return '';
+  if (typeof raw !== 'string') return String(raw);
+  let s = raw;
+  s = s.replace(/^\[WAITING ON:[^\]]*\]\s*/i, '');
+  s = s.replace(/^PROMPT AVI[:\s]+/i, '');
+  s = s.replace(/^TODO:\s*/i, '');
+  s = s.replace(/^DEV:\s*/i, '');
+  s = s.replace(/^DRAFT:\s*/i, '');
+  s = s.replace(/^\[INTERNAL\]\s*/i, '');
+  s = s.replace(/[—–]/g, '-');
+  for (const [slug, display] of Object.entries(VOICE_SLUG_MAP)) {
+    s = s.replace(new RegExp(`\\b${slug}\\b`, 'g'), display);
+  }
+  s = s.replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (m) => m.replace(/_/g, ' '));
+  s = s.replace(/REVISED v\d+[^.]*\.?/gi, '');
+  s = s.replace(/\bper spec section[^.]*\.?/gi, '');
+  s = s.replace(/\bworkout [a-f0-9]{8}\b/gi, '');
+  s = s.replace(/\bGoal \d+ (was|is) being\b[^.]*\.?/gi, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  s = s.replace(/^[\[\(]\s*/, '').replace(/\s*[\]\)]$/, '');
+  return s;
 }
+// Backwards-compat alias. Existing call sites use cleanTaskTitle.
+const cleanTaskTitle = cleanForUI;
 
 // ── Today Focus View (v2 rebuild) ──
 // New surface: BigPicture banner (Marine), top focus (hero + ranked list rows),

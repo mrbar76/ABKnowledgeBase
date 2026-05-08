@@ -2,7 +2,14 @@ const express = require('express');
 const { query, logActivity } = require('../db');
 const { pushPlanToHevy, syncHevyWorkouts } = require('./hevy');
 const { inferLoggingTarget } = require('../utils/exerciseTaxonomy');
+const { cleanFields } = require('../lib/voice');
 const router = express.Router();
+
+const PLAN_TEXT_FIELDS = [
+  'title', 'goal', 'workout_focus', 'workout_notes',
+  'recovery_notes', 'coaching_notes', 'rationale',
+  'completion_notes', 'hevy_routine_title',
+];
 
 // Fire-and-forget Hevy push on plan create/update. Never blocks the
 // response. Silently no-ops when HEVY_API_KEY isn't set, when
@@ -168,13 +175,13 @@ function stripDeprecated(plan) {
   for (const f of DEPRECATED_PLAN_FIELDS) {
     if (f in plan) delete plan[f];
   }
-  return plan;
+  // Voice-clean user-facing text fields after deprecation strip.
+  return cleanFields(plan, PLAN_TEXT_FIELDS);
 }
 
 function stripDeprecatedAll(plans) {
   if (!Array.isArray(plans)) return plans;
-  for (const p of plans) stripDeprecated(p);
-  return plans;
+  return plans.map(stripDeprecated);
 }
 
 // As of v1.8.1, planned_exercises and actual_exercises are no longer

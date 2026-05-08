@@ -7,6 +7,11 @@
 
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { cleanFields, cleanRows, cleanForUI } = require('../lib/voice');
+const GOAL_TEXT_FIELDS = [
+  'title', 'description', 'anchor_source', 'coaching_action',
+  'race_relevance', 'evidence_label', 'last_update_label',
+];
 const {
   computeStatus,
   projectCompletion,
@@ -60,7 +65,7 @@ router.get('/', async (req, res) => {
     else if (include === 'active') where = "WHERE status NOT IN ('complete','failed')";
     else if (include === 'complete') where = "WHERE status = 'complete'";
     const r = await query(`SELECT * FROM goals ${where} ORDER BY target_date ASC`);
-    res.json({ count: r.rows.length, goals: r.rows });
+    res.json({ count: r.rows.length, goals: cleanRows(r.rows, GOAL_TEXT_FIELDS) });
   } catch (err) {
     console.error('[GET /goals]', err.stack);
     res.status(500).json({ error: err.message });
@@ -124,7 +129,7 @@ router.get('/dashboard', async (req, res) => {
       const isMaintenance = phaseTag && Array.isArray(g.phase_maintenance) && g.phase_maintenance.includes(phaseTag);
       const isAtBaseline = g.current_value != null
         && Number(g.current_value) === Number(g.anchor_value);
-      return {
+      return cleanFields({
         ...g,
         days_left,
         expected_today: expected != null ? Math.round(expected * 100) / 100 : null,
@@ -135,7 +140,7 @@ router.get('/dashboard', async (req, res) => {
         current_value_date_iso: g.current_value_date ? dateOnly(g.current_value_date) : null,
         is_at_baseline: isAtBaseline,
         active_phase_role: isPrimary ? 'primary' : (isMaintenance ? 'maintenance' : 'inactive'),
-      };
+      }, GOAL_TEXT_FIELDS);
     };
 
     // v1.11.8 Fix 4: last_attempt per goal — latest workout matching
@@ -230,13 +235,14 @@ router.get('/dashboard', async (req, res) => {
     let focusSummary;
     if (activePhase) {
       focusSummary = `Phase ${activePhase.phase_number}: ${activePhase.phase_name}. ` +
-        `Primary: ${primaryTitles.join(', ') || '—'}. Maintenance: ${maintenanceTitles.join(', ') || '—'}.`;
+        `Primary: ${primaryTitles.join(', ') || 'none'}. Maintenance: ${maintenanceTitles.join(', ') || 'none'}.`;
     } else if (nextPhase) {
       const daysToNext = daysBetween(today, nextPhase.start_date);
       focusSummary = `Between phases. Phase ${nextPhase.phase_number} (${nextPhase.phase_name}) starts in ${daysToNext} day${daysToNext === 1 ? '' : 's'} on ${dateOnly(nextPhase.start_date)}.`;
     } else {
       focusSummary = 'No active or upcoming phase scheduled.';
     }
+    focusSummary = cleanForUI(focusSummary);
 
     res.json({
       generated_at: new Date().toISOString(),
@@ -313,7 +319,7 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     );
     const detail = composeGoalDetail(goal.rows[0], history.rows);
-    res.json({ ...goal.rows[0], history: history.rows, detail });
+    res.json({ ...cleanFields(goal.rows[0], GOAL_TEXT_FIELDS), history: history.rows, detail });
   } catch (err) {
     console.error('[GET /goals/:id]', err.stack);
     res.status(500).json({ error: err.message });

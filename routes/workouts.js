@@ -1,6 +1,15 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { cleanFields, cleanRows } = require('../lib/voice');
 const router = express.Router();
+
+const WORKOUT_TEXT_FIELDS = [
+  'title', 'focus', 'workout_focus', 'warmup', 'main_sets',
+  'body_notes', 'adjustment', 'splits',
+  'slowdown_notes', 'carries', 'failure_first',
+  'grip_feedback', 'legs_feedback', 'shoulder_feedback', 'cardio_feedback',
+  'plan_comparison_notes',
+];
 
 // Auto-link a freshly inserted workout to today's plan + the
 // preferred segment (matching by source / logging_target). No-op when
@@ -142,7 +151,7 @@ router.get('/', async (req, res) => {
       `SELECT * FROM workouts ${whereClause}
        ORDER BY ${orderBy} LIMIT $${i++} OFFSET $${i++}`, params
     );
-    res.json({ total, count: result.rows.length, workouts: result.rows });
+    res.json({ total, count: result.rows.length, workouts: cleanRows(result.rows, WORKOUT_TEXT_FIELDS) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -153,7 +162,7 @@ router.get('/:id', async (req, res) => {
   try {
     const result = await query('SELECT * FROM workouts WHERE id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
+    res.json(cleanFields(result.rows[0], WORKOUT_TEXT_FIELDS));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -13,6 +13,25 @@
 
 const express = require('express');
 const { query } = require('../db');
+const { cleanFields, cleanRows } = require('../lib/voice');
+
+// Coach response sub-objects clean their own narrative-bearing fields
+// before leaving the server. Coverage is intentionally targeted, not
+// recursive — most coach surface area routes through /briefing or the
+// standard CRUD endpoints (also voice-cleaned). Frontend runs a
+// defensive cleanForUI pass at render time as belt-and-suspenders.
+const COACHING_SESSION_FIELDS = [
+  'title', 'summary', 'injury_notes', 'nutrition_notes',
+  'recovery_notes', 'mental_notes', 'next_steps',
+];
+const INJURY_FIELDS = [
+  'title', 'symptoms', 'treatment', 'notes', 'mechanism',
+  'modifications', 'aggravating_movements', 'relieving_factors',
+];
+const PLAN_TEXT_FIELDS = [
+  'title', 'goal', 'workout_focus', 'workout_notes',
+  'recovery_notes', 'coaching_notes', 'rationale', 'completion_notes',
+];
 const router = express.Router();
 
 // ─── small helpers ─────────────────────────────────────────────────
@@ -256,12 +275,12 @@ router.get('/morning', async (req, res) => {
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
-      today_plan: todayPlan,
+      today_plan: cleanFields(todayPlan, PLAN_TEXT_FIELDS),
       readiness: readinessFromRows(vitalsRows, today),
       alerts: alertsArr,
-      active_injuries: injuries.rows,
+      active_injuries: cleanRows(injuries.rows, INJURY_FIELDS),
       yesterday_summary,
-      recent_coaching: recentCoaching.rows,
+      recent_coaching: cleanRows(recentCoaching.rows, COACHING_SESSION_FIELDS),
     });
   } catch (err) {
     console.error('[GET /coach/morning]', err.stack);
@@ -326,10 +345,10 @@ router.get('/midday-amend', async (req, res) => {
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
-      today_plan: todayPlan,
+      today_plan: cleanFields(todayPlan, PLAN_TEXT_FIELDS),
       readiness: readinessFromRows(vitalsRows, today),
       alerts: alertsArr,
-      active_injuries: injuries.rows,
+      active_injuries: cleanRows(injuries.rows, INJURY_FIELDS),
       today_session: todaySession.rows[0] || null,
     });
   } catch (err) {
@@ -372,7 +391,7 @@ router.get('/preworkout', async (req, res) => {
       generated_at: new Date().toISOString(),
       date: today,
       in_minutes: inMin,
-      today_plan: planRow.rows[0] || null,
+      today_plan: cleanFields(planRow.rows[0] || null, PLAN_TEXT_FIELDS),
       latest_body: latestWeight.rows[0] || null,
       today_macros: {
         meal_count: todayMeals.rows.length,
@@ -421,7 +440,7 @@ router.get('/postworkout', async (req, res) => {
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
-      latest_workout: latestWorkout.rows[0] || null,
+      latest_workout: cleanFields(latestWorkout.rows[0] || null, ['title', 'focus', 'workout_focus', 'body_notes', 'adjustment']),
       macros: {
         kcal_consumed: Math.round(totalKcal),
         kcal_target: target.target_calories || null,
@@ -554,8 +573,8 @@ router.get('/end-of-day', async (req, res) => {
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
-      today_plan: todayPlan,
-      today_workouts: todayWorkouts.rows,
+      today_plan: cleanFields(todayPlan, PLAN_TEXT_FIELDS),
+      today_workouts: cleanRows(todayWorkouts.rows, ['title', 'focus', 'workout_focus', 'body_notes', 'adjustment']),
       nutrition_summary: {
         meal_count: todayMeals.rows.length,
         kcal_consumed: Math.round(totalKcal),
@@ -664,9 +683,9 @@ router.get('/weekly', async (req, res) => {
         days: weeklyMeals.rows,
       },
       targets: targets.rows,
-      upcoming_race: upcomingRace.rows[0] || null,
+      upcoming_race: cleanFields(upcomingRace.rows[0] || null, ['name']),
       current_block: currentBlock.rows[0] || null,
-      week_coaching_sessions: weeklyCoaching.rows,
+      week_coaching_sessions: cleanRows(weeklyCoaching.rows, COACHING_SESSION_FIELDS),
     });
   } catch (err) {
     console.error('[GET /coach/weekly]', err.stack);
@@ -776,7 +795,7 @@ router.get('/race-pulse', async (req, res) => {
     res.json({
       generated_at: new Date().toISOString(),
       resolved_via: req.query.race_id ? 'race_id' : 'upcoming',
-      race: raceRow,
+      race: cleanFields(raceRow, ['name', 'location', 'notes']),
       taper_phase: phase,
       recommendation: phase ? TAPER_RECOMMENDATIONS[phase] : null,
       fueling_rehearsals: fuelingRehearsals.rows,

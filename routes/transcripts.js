@@ -1,6 +1,10 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { cleanFields, cleanRows } = require('../lib/voice');
 const router = express.Router();
+
+// Clean summary + preview only. raw_text is verbatim source — never modify.
+const TRANSCRIPT_TEXT_FIELDS = ['title', 'summary', 'preview'];
 
 router.get('/', async (req, res) => {
   try {
@@ -100,7 +104,7 @@ router.get('/', async (req, res) => {
        FROM transcripts ${whereClause}
        ORDER BY ${orderBy} LIMIT $${i++} OFFSET $${i++}`, params
     );
-    res.json({ total, count: result.rows.length, transcripts: result.rows });
+    res.json({ total, count: result.rows.length, transcripts: cleanRows(result.rows, TRANSCRIPT_TEXT_FIELDS) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -212,7 +216,7 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     );
 
-    res.json({ ...result.rows[0], speakers: speakers.rows });
+    res.json({ ...cleanFields(result.rows[0], TRANSCRIPT_TEXT_FIELDS), speakers: speakers.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
