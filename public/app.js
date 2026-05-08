@@ -953,13 +953,40 @@ async function showGoalDetail(goalId) {
        </div>`
     ).join('');
 
+    // v3.2: surface the audit-flagged unrendered fields. Keeps the
+    // existing 7-section detail intact; appends a confidence + role
+    // chip row to the header and a "Coach action" + "Race relevance"
+    // row before the existing where_you_are section.
+    const phaseRoleChip = (g.active_phase_role && g.active_phase_role !== 'inactive')
+      ? `<span class="ab-badge ab-badge-${g.active_phase_role === 'primary' ? 'hot' : 'waiting'}">${esc(g.active_phase_role)}</span>`
+      : '';
+    const evidenceChip = g.evidence_label
+      ? `<span class="ab-badge" title="Confidence in current_value source" style="opacity:0.75">${esc(g.evidence_label)}</span>`
+      : '';
+
     openModal(detail.header.title, `
       <!-- Section 1: header status -->
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <div style="background:${color};color:white;font-size:11px;padding:3px 10px;border-radius:8px;font-weight:600">${esc(detail.header.status_label)}</div>
         <span class="muted" style="font-size:13px">target ${esc(detail.header.target_date_display)} · ${detail.header.days_to_target}d left</span>
+        ${phaseRoleChip}
+        ${evidenceChip}
         ${lockChip}
       </div>
+
+      <!-- v3.2: Coach action + race relevance, surfaced from raw goal row -->
+      ${g.coaching_action ? `
+        <div style="margin-bottom:14px;padding:10px 12px;background:var(--ab-card);border-left:3px solid var(--ab-training-edge);border-radius:6px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ab-training-label);margin-bottom:4px">Coach action</div>
+          <div style="font-size:14px;line-height:1.4">${esc(g.coaching_action)}</div>
+        </div>` : ''}
+      ${g.race_relevance ? `
+        <div style="margin-bottom:14px;padding:10px 12px;background:var(--ab-card);border-left:3px solid var(--ab-personal-edge);border-radius:6px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ab-personal-label);margin-bottom:4px">Race relevance</div>
+          <div style="font-size:14px;line-height:1.4">${esc(g.race_relevance)}</div>
+        </div>` : ''}
+      ${g.last_update_label ? `
+        <div style="margin-bottom:14px;font-size:12px;color:var(--ab-muted)">Last update: ${esc(g.last_update_label)}</div>` : ''}
 
       <!-- Section 2: trajectory chart (hidden when there's no actual data yet) -->
       ${(detail.trajectory?.actual_points || []).length > 0
@@ -7473,19 +7500,55 @@ function renderTrainingGoalsSection(goals) {
   for (const g of list.slice(0, 5)) {
     const days = g.days_left != null ? `${g.days_left}d left` : '';
     const hasData = g.current_value != null;
-    const progress = hasData && g.target_value ? Math.min(100, Math.round((Number(g.current_value) / Number(g.target_value)) * 100)) : 0;
+    const progress = hasData && g.target_value
+      ? Math.min(100, Math.round((Number(g.current_value) / Number(g.target_value)) * 100))
+      : 0;
     const status = g.status || (g.is_at_baseline ? 'pending' : 'on_track');
+    const unit = unitFor(g.metric);
+
+    // v3.2: surface the rich audit-flagged fields.
+    //   active_phase_role  → "primary" / "maintenance" badge (skip inactive)
+    //   evidence_label     → "strong" / "heuristic" chip after status
+    //   coaching_action    → meta line when present (overrides generic value/target)
+    //   expected_today     → projected pace marker on the bar
+    //   is_at_baseline     → "Baseline set" copy instead of "no data yet"
+    const phaseChip = (g.active_phase_role && g.active_phase_role !== 'inactive')
+      ? `<span class="ab-badge ab-badge-${g.active_phase_role === 'primary' ? 'hot' : 'waiting'}" style="margin-left:6px">${esc(g.active_phase_role)}</span>`
+      : '';
+    const evidenceChip = g.evidence_label
+      ? `<span class="ab-badge" title="Confidence in current_value source" style="margin-left:6px;opacity:0.75">${esc(g.evidence_label)}</span>`
+      : '';
+    const expectedMarker = (hasData && g.expected_today != null && g.target_value)
+      ? `<div class="ab-progress-bar-marker" style="left:${Math.min(100, Math.round((Number(g.expected_today) / Number(g.target_value)) * 100))}%" title="Expected today: ${esc(String(g.expected_today))}${esc(unit)}"></div>`
+      : '';
+
+    const valueLine = hasData
+      ? `${g.current_value}${unit} / ${g.target_value || '?'}${unit}`
+      : (g.is_at_baseline ? 'Baseline set' : 'no data yet');
+    const expectedDelta = (hasData && g.expected_today != null)
+      ? ` · expected ${g.expected_today}${unit}`
+      : '';
+    const lastUpdate = g.last_update_label ? ` · ${g.last_update_label}` : '';
+    const coachingLine = g.coaching_action
+      ? `<div class="ab-list-row-meta" style="margin-top:4px;font-style:italic;opacity:0.85">${esc(g.coaching_action)}</div>`
+      : '';
+
     html += `<div class="ab-goal-row" onclick="showGoalDetail('${g.id}')">` +
       `<div class="ab-goal-row-head">` +
-        `<div class="ab-goal-row-title">${esc(g.title || 'Goal')}</div>` +
-        `<span class="ab-status-badge" data-state="${esc(status)}">${esc(String(status).replace('_',' '))}</span>` +
+        `<div class="ab-goal-row-title">${esc(g.title || 'Goal')}${phaseChip}</div>` +
+        `<span class="ab-status-badge" data-state="${esc(status)}">${esc(String(status).replace('_', ' '))}</span>` +
+        evidenceChip +
       `</div>` +
       (hasData
-        ? `<div class="ab-progress-bar ab-pillar-training"><div class="ab-progress-bar-fill" style="width:${progress}%"></div></div>`
+        ? `<div class="ab-progress-bar ab-pillar-training" style="position:relative">` +
+            `<div class="ab-progress-bar-fill" style="width:${progress}%"></div>` +
+            expectedMarker +
+          `</div>`
         : ''
       ) +
-      `<div class="ab-goal-row-meta"><span>${esc(hasData ? `${g.current_value} / ${g.target_value || '?'}` : 'no data yet')}</span>${days ? `<span>${esc(days)}</span>` : ''}</div>` +
-      `</div>`;
+      `<div class="ab-goal-row-meta"><span>${esc(valueLine + expectedDelta + lastUpdate)}</span>${days ? `<span>${esc(days)}</span>` : ''}</div>` +
+      coachingLine +
+    `</div>`;
   }
   return html;
 }
