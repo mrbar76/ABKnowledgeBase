@@ -116,7 +116,7 @@ router.get('/', async (req, res) => {
       recoveryYesterday,
       betweenPhases,
     ] = await Promise.all([
-      query("SELECT * FROM tasks WHERE status NOT IN ('done','archived','cancelled') AND deleted_at IS NULL"),
+      query("SELECT * FROM tasks WHERE status NOT IN ('done','archived','cancelled')"),
       query('SELECT * FROM tasks WHERE status = $1 AND completed_at >= $2::date AND completed_at < $2::date + INTERVAL \'1 day\'', ['done', yesterday]),
       query("SELECT id FROM tasks WHERE created_at >= NOW() - INTERVAL '24 hours' AND status NOT IN ('done','archived','cancelled')"),
       query('SELECT * FROM daily_plans WHERE plan_date = $1 LIMIT 1', [today]),
