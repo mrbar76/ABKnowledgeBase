@@ -3989,6 +3989,10 @@ body { font-family: var(--ab-font-ui); }
 .ab-status-badge[data-state="planned"]   { background: var(--ab-border-soft);    color: var(--ab-muted); }
 .ab-status-badge[data-state="partial"]   { background: var(--ab-amber-tint);     color: var(--ab-amber-label); }
 .ab-status-badge[data-state="missed"]    { background: var(--ab-urgency-tint);   color: var(--ab-urgency-label); }
+/* v3.3: skipped is intentional (user chose not to do it) — neutral visual,
+   distinct from "missed" which implies forgot/lapsed. */
+.ab-status-badge[data-state="skipped"]   { background: var(--ab-amber-tint);     color: var(--ab-amber-label); }
+.ab-status-badge[data-state="rest"]      { background: var(--ab-border-soft);    color: var(--ab-muted); }
 .ab-status-badge[data-state="on_track"]  { background: var(--ab-training-tint);  color: var(--ab-training-label); }
 .ab-status-badge[data-state="ahead"]     { background: #F5EBDD;                  color: var(--ab-celebration); }
 .ab-status-badge[data-state="pending"]   { background: var(--ab-border-soft);    color: var(--ab-muted); }

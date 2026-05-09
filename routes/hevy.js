@@ -938,12 +938,41 @@ router.post('/push-plan', async (req, res) => {
     if (!plan) return res.status(404).json({ error: 'plan not found' });
 
     const result = await pushPlanToHevy(plan, null, folder_id);
+
+    // v3.3: persist outcome on the plan so the UI can render a synced badge.
+    let pushStatus = 'failed';
+    let pushDetail = null;
+    if (result?.ok) {
+      pushStatus = 'synced';
+      pushDetail = result.segments_pushed != null
+        ? `${result.segments_pushed}/${result.total_hevy_segments} segments`
+        : 'pushed';
+    } else if (result?.skipped) {
+      pushStatus = 'skipped';
+      pushDetail = result.skipped;
+    } else if (result?.error) {
+      pushStatus = 'failed';
+      pushDetail = result.error;
+    }
+    try {
+      await query(
+        `UPDATE daily_plans SET hevy_push_status = $1, hevy_push_detail = $2, hevy_push_at = NOW()
+         WHERE id = $3`, [pushStatus, pushDetail, plan_id]
+      );
+    } catch (_) { /* informational */ }
+
     if (!result.ok) {
       return res.status(result.skipped ? 200 : 400).json(result);
     }
     res.json(result);
   } catch (err) {
     console.error(`[hevy/push-plan] ${err.stack}`);
+    try {
+      await query(
+        `UPDATE daily_plans SET hevy_push_status = 'failed', hevy_push_detail = $1, hevy_push_at = NOW()
+         WHERE id = $2`, [err.message, req.body?.plan_id]
+      );
+    } catch (_) { /* swallow */ }
     res.status(500).json({ error: err.message });
   }
 });

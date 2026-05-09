@@ -12,17 +12,59 @@ const PLAN_TEXT_FIELDS = [
 ];
 
 // Fire-and-forget Hevy push on plan create/update. Never blocks the
-// response. Silently no-ops when HEVY_API_KEY isn't set, when
-// workout_type isn't pushable, or when no resolvable exercises exist.
+// response. Persists the outcome to daily_plans.hevy_push_{status,detail,at}
+// so the UI can show a synced badge instead of relying on server logs.
+//
+//   pending        → in flight (set immediately so the UI shows "syncing…")
+//   synced         → at least one segment landed in Hevy
+//   skipped        → push ran but no_segments / no_api_key / no_resolvable_exercises
+//   failed         → exception thrown during push
+//   not_attempted  → default value before any push has fired
 function autoPushToHevy(planRow) {
-  if (!planRow) return;
+  if (!planRow || !planRow.id) return;
+  // Mark pending right away — the UI polls /daily-plans/:id and shows a
+  // chip while this is in flight.
+  query(
+    `UPDATE daily_plans SET hevy_push_status = 'pending', hevy_push_detail = NULL, hevy_push_at = NOW()
+     WHERE id = $1`, [planRow.id]
+  ).catch(() => {});
+
   Promise.resolve()
     .then(() => pushPlanToHevy(planRow))
-    .then(r => {
-      if (r?.ok) console.log(`[auto-hevy-push] plan ${planRow.id} → routine ${r.hevy_routine?.id || r.hevy_routine?.routine?.id || 'updated'}`);
-      else if (r?.skipped) console.log(`[auto-hevy-push] plan ${planRow.id} skipped: ${r.skipped}`);
+    .then(async (r) => {
+      let status = 'failed';
+      let detail = null;
+      if (r?.ok) {
+        status = 'synced';
+        detail = r.segments_pushed != null
+          ? `${r.segments_pushed}/${r.total_hevy_segments} segments`
+          : 'pushed';
+        console.log(`[auto-hevy-push] plan ${planRow.id} → ${detail}`);
+      } else if (r?.skipped) {
+        status = 'skipped';
+        detail = r.skipped;
+        console.log(`[auto-hevy-push] plan ${planRow.id} skipped: ${r.skipped}`);
+      } else if (r?.error) {
+        status = 'failed';
+        detail = r.error;
+        console.warn(`[auto-hevy-push] plan ${planRow.id} failed: ${r.error}`);
+      }
+      try {
+        await query(
+          `UPDATE daily_plans SET hevy_push_status = $1, hevy_push_detail = $2, hevy_push_at = NOW()
+           WHERE id = $3`, [status, detail, planRow.id]
+        );
+      } catch (_) { /* swallow — push outcome is informational */ }
     })
-    .catch(err => console.error(`[auto-hevy-push] plan ${planRow.id} failed: ${err.message}`));
+    .catch(async (err) => {
+      console.error(`[auto-hevy-push] plan ${planRow.id} failed: ${err.message}`);
+      try {
+        await query(
+          `UPDATE daily_plans SET hevy_push_status = 'failed', hevy_push_detail = $1, hevy_push_at = NOW()
+           WHERE id = $2`, [err.message, planRow.id]
+        );
+      } catch (_) { /* swallow */ }
+    });
 }
 
 // Segment writable fields. Coach supplies these inside the `segments`

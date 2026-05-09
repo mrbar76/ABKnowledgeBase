@@ -7914,25 +7914,62 @@ function shiftFitnessToday(delta) {
   loadFitnessToday();
 }
 
-// Hevy push status badge for the Today's Plan card. Three states:
-//   ✓ green "Hevy" — plan has hevy_routine_id (push succeeded)
-//   ⚠ amber "Hevy queued" — pushable workout type but no routine id yet
-//   (nothing) — workout_type isn't pushable (run, recovery, ruck, rest, etc.)
+// Hevy push status badge for the Today's Plan card.
+// v3.3: prefers the explicit plan.hevy_push_status field (persisted by
+// autoPushToHevy / POST /hevy/push-plan) so failures and skips show in
+// the UI instead of only the server console. Falls back to the legacy
+// segments-have-routine_id check for plans created before v3.3.
 function renderHevyBadge(plan) {
   if (!plan) return '';
-  // Segments-only path (legacy daily_plans.hevy_routine_id retired in
-  // v1.8.1). Badge logic:
-  //   - 0 hevy segments  → no badge (nothing to push, e.g. race day)
-  //   - all pushed       → green ✓ Hevy
-  //   - some unpushed    → amber ⚠ Hevy queued
-  //   - completed plan   → no badge regardless (the plan is done)
-  if (plan.status === 'completed' || plan.status === 'skipped') return '';
   const segs = Array.isArray(plan.segments) ? plan.segments : [];
   const hevySegs = segs.filter(s => s.logging_target === 'hevy');
-  if (hevySegs.length === 0) return '';
+  if (hevySegs.length === 0) return ''; // nothing to push (e.g. run day)
+  if (plan.status === 'completed' || plan.status === 'skipped') return '';
+
+  const status = plan.hevy_push_status;
+  const detail = plan.hevy_push_detail;
+
+  // Explicit v3.3 status wins.
+  if (status === 'synced') {
+    return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="Synced to Hevy${detail ? ' · ' + detail : ''}">✓ Hevy synced</span>`;
+  }
+  if (status === 'pending') {
+    return `<span class="badge-dynamic" style="background:#3b82f622;color:#3b82f6;font-size:0.65rem" title="Push in flight">… Hevy syncing</span>`;
+  }
+  if (status === 'failed') {
+    const safeDetail = (detail || 'failed').replace(/'/g, '');
+    return `<span class="badge-dynamic" style="background:#ef444422;color:#ef4444;font-size:0.65rem;cursor:pointer" title="Hevy push failed: ${safeDetail}" onclick="retryHevyPush('${plan.id}')">⚠ Hevy failed</span>`;
+  }
+  if (status === 'skipped') {
+    const safeDetail = (detail || 'skipped').replace(/'/g, '');
+    return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem;cursor:pointer" title="Hevy push skipped: ${safeDetail}" onclick="retryHevyPush('${plan.id}')">⚠ Hevy skipped</span>`;
+  }
+
+  // Legacy fallback for plans created before v3.3 (no hevy_push_status).
   const allPushed = hevySegs.every(s => s.hevy_routine_id);
   if (allPushed) return `<span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem" title="${hevySegs.length} Hevy routine${hevySegs.length === 1 ? '' : 's'} pushed">✓ Hevy</span>`;
-  return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem" title="${hevySegs.length} segment${hevySegs.length === 1 ? '' : 's'} routed to Hevy but not all pushed yet">⚠ Hevy queued</span>`;
+  return `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem;cursor:pointer" title="${hevySegs.length} segment${hevySegs.length === 1 ? '' : 's'} routed to Hevy but not all pushed yet" onclick="retryHevyPush('${plan.id}')">⚠ Hevy queued</span>`;
+}
+
+// Retry the auto-push for a given plan. Wired into the Hevy badge when
+// status is failed / skipped / queued.
+async function retryHevyPush(planId) {
+  if (!planId) return;
+  showToast('Retrying Hevy push…', 'info');
+  try {
+    const r = await api('/hevy/push-plan', { method: 'POST', body: JSON.stringify({ plan_id: planId }) });
+    if (r?.ok) {
+      showToast(`Hevy synced — ${r.segments_pushed}/${r.total_hevy_segments} segments`, 'success');
+    } else if (r?.skipped) {
+      showToast(`Hevy skipped: ${r.skipped}`, 'warning');
+    } else {
+      showToast(`Hevy push failed: ${r?.error || 'unknown'}`, 'error');
+    }
+    // Reload the Today screen if we're on it so the badge updates.
+    if (typeof loadFitnessToday === 'function') loadFitnessToday();
+  } catch (e) {
+    showToast(`Hevy push failed: ${e.message}`, 'error');
+  }
 }
 
 // Format a single planned exercise as one line. The legacy renderer

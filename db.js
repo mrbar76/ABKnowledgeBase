@@ -412,7 +412,7 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS daily_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_date DATE NOT NULL UNIQUE,
-      status TEXT DEFAULT 'planned' CHECK(status IN ('planned','completed','partial','missed','rest','amended')),
+      status TEXT DEFAULT 'planned' CHECK(status IN ('planned','completed','partial','missed','rest','amended','skipped')),
       title TEXT,
       goal TEXT,
       workout_type TEXT,
@@ -440,6 +440,30 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_daily_plans_status ON daily_plans(status);
     CREATE INDEX IF NOT EXISTS idx_daily_plans_tags ON daily_plans USING gin(tags)
   `);
+
+  // v3.3: extend daily_plans.status enum to include 'skipped'. Existing
+  // tables created before v3.3 have the old CHECK without 'skipped'; this
+  // ALTER drops it and re-adds the wider one. Idempotent — safeQuery
+  // swallows the duplicate-constraint error if the new constraint is
+  // already in place from a previous boot.
+  await safeQuery('daily_plans status enum +skipped (drop)',
+    `ALTER TABLE daily_plans DROP CONSTRAINT IF EXISTS daily_plans_status_check`);
+  await safeQuery('daily_plans status enum +skipped (add)',
+    `ALTER TABLE daily_plans ADD CONSTRAINT daily_plans_status_check
+       CHECK(status IN ('planned','completed','partial','missed','rest','amended','skipped'))`);
+
+  // v3.3: track Hevy push outcome on the plan itself so the UI can show
+  // a "synced" badge instead of relying on server console logs.
+  //   hevy_push_status: pending | synced | skipped | failed | not_attempted
+  //   hevy_push_detail: skip reason (e.g. 'no_resolvable_exercises') or
+  //                     error message; null on success
+  //   hevy_push_at:     when the most recent push attempt completed
+  await safeQuery('daily_plans +hevy_push_status',
+    `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_push_status TEXT DEFAULT 'not_attempted'`);
+  await safeQuery('daily_plans +hevy_push_detail',
+    `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_push_detail TEXT`);
+  await safeQuery('daily_plans +hevy_push_at',
+    `ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS hevy_push_at TIMESTAMPTZ`);
 
   // ===== INJURIES =====
   await safeQuery('injuries table', `
