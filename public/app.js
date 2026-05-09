@@ -659,7 +659,8 @@ function renderListFocus(item, rank) {
 
   const headBadges = [
     waitingPerson ? `<span class="ab-badge ab-badge-waiting">Waiting · ${esc(waitingPerson)}</span>` : '',
-    isHot ? `<span class="ab-badge ab-badge-hot">Hot</span>` : ''
+    isHot ? `<span class="ab-badge ab-badge-hot">Hot</span>` : '',
+    item.is_pinned ? `<span class="ab-badge" style="background:var(--ab-amber-tint);color:var(--ab-amber-label)" title="Pinned to Today">★</span>` : ''
   ].filter(Boolean).join('');
 
   const openCmd = item.kind === 'workout'
@@ -5506,7 +5507,18 @@ async function showTaskDetail(id) {
       </div>
     `).join('');
 
+    // v3.6: Pin toggle. Pinned tasks are forced into Today focus slot 2.
+    const pinned = task.pinned === true;
+    const pinBadge = pinned
+      ? `<span class="ab-badge" title="This task is pinned to Today's focus" style="background:var(--ab-amber-tint);color:var(--ab-amber-label)">★ Pinned</span>`
+      : '';
+    const pinBtnLabel = pinned ? '★ Unpin from Today' : '☆ Pin to Today';
+
     openModal('Task Detail', `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+        ${pinBadge}
+        <button class="btn-action btn-action-secondary" style="margin-left:auto;font-size:0.75rem;padding:4px 10px" onclick="toggleTaskPin('${id}', ${pinned ? 'false' : 'true'})">${pinBtnLabel}</button>
+      </div>
       <div class="form-group"><label>Title</label>
         <input type="text" value="${esc(task.title)}" onblur="updateTask('${id}', 'title', this.value)" style="width:100%;box-sizing:border-box;font-size:0.9rem;font-weight:600">
       </div>
@@ -5630,6 +5642,22 @@ async function showTaskDetail(id) {
       </div>
     `, { variant: 'sheet' });
   } catch (e) { openModal('Error', esc(e.message)); }
+}
+
+// v3.6: pin/unpin a task to the Today focus list. Pinned tasks are
+// forced into focus slot 2 by lib/focus-ranker.js regardless of score.
+async function toggleTaskPin(id, nextPinned) {
+  try {
+    await api(`/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ pinned: !!nextPinned }),
+    });
+    showToast(nextPinned ? 'Pinned to Today' : 'Unpinned', 'success', 1500);
+    closeModal();
+    showTaskDetail(id);
+  } catch (e) {
+    showToast(`Pin failed: ${e.message}`, 'error');
+  }
 }
 
 async function updateTask(id, field, value) {

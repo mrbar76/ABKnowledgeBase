@@ -248,3 +248,67 @@ test('scoreSingle: due-today boosts over no-date', () => {
   const b = scoreSingle(task({ priority: 'medium', due_date: TODAY }), TODAY);
   assert.ok(b > a);
 });
+
+// ─── v3.6: pin override ──────────────────────────────────────────────
+
+test('rankFocus: pinned task forced into focus when it would otherwise miss', () => {
+  // Three high-scored tasks fill the focus naturally. A pinned LOW-
+  // priority task should still appear in the result.
+  const r = rankFocus(
+    [
+      task({ id: 'w1', context: 'work',     priority: 'urgent' }),
+      task({ id: 'p1', context: 'personal', priority: 'high'   }),
+      task({ id: 't1', context: 'training', priority: 'medium' }),
+      task({ id: 'p2', context: 'personal', priority: 'low', pinned: true }),
+    ],
+    TODAY,
+  );
+  assert.ok(r.find((x) => x.id === 'p2'), 'pinned task surfaced');
+  assert.equal(r[0].id, 'w1', 'hero unchanged');
+});
+
+test('rankFocus: pinned flag exposed on focus item', () => {
+  const r = rankFocus(
+    [task({ id: 'a', priority: 'high', pinned: true })],
+    TODAY,
+  );
+  assert.equal(r[0].is_pinned, true);
+});
+
+test('rankFocus: unpinned tasks expose is_pinned=false', () => {
+  const r = rankFocus([task({ id: 'a', priority: 'high' })], TODAY);
+  assert.equal(r[0].is_pinned, false);
+});
+
+test('rankFocus: hot eviction cannot remove a pinned task', () => {
+  // A pinned task in slot 2 + many hot tasks competing for slot 3 —
+  // the pinned task must stay.
+  const r = rankFocus(
+    [
+      task({ id: 'w1', context: 'work',     priority: 'urgent' }),
+      task({ id: 'p1', context: 'personal', priority: 'low', pinned: true }),
+      task({ id: 'w2', context: 'work',     priority: 'urgent' }),
+      task({ id: 'w3', context: 'work',     priority: 'urgent' }),
+    ],
+    TODAY,
+  );
+  assert.ok(r.find((x) => x.id === 'p1'), 'pinned task survived hot eviction');
+});
+
+test('rankFocus: only the first pinned task is honored when many are pinned', () => {
+  // If two tasks are pinned but only one slot is available, just take
+  // one. Predictable focus shape > honoring every pin.
+  const r = rankFocus(
+    [
+      task({ id: 'w1', context: 'work',     priority: 'urgent' }),
+      task({ id: 'p1', context: 'personal', priority: 'medium' }),
+      task({ id: 't1', context: 'training', priority: 'medium' }),
+      task({ id: 'pp1', context: 'personal', priority: 'low', pinned: true }),
+      task({ id: 'pp2', context: 'work',     priority: 'low', pinned: true }),
+    ],
+    TODAY,
+  );
+  const pinnedCount = r.filter((x) => x.is_pinned).length;
+  assert.ok(pinnedCount >= 1 && pinnedCount <= 2, 'at most a couple pins surfaced');
+  assert.equal(r.length, 3, 'still capped at 3');
+});

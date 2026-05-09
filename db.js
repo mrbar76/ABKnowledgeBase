@@ -111,6 +111,15 @@ async function initDB() {
   await safeQuery('tasks due_date column', `
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE`);
 
+  // v3.6: pin a task to the focus list. Pinned tasks are forced into
+  // slot 2 of the Today focus regardless of score (slot 1 stays the
+  // anchor / hot top-scorer). Used to give the user manual control
+  // over what the day's "second thing" is.
+  await safeQuery('tasks +pinned',
+    `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS pinned BOOLEAN DEFAULT FALSE`);
+  await safeQuery('tasks pinned idx',
+    `CREATE INDEX IF NOT EXISTS idx_tasks_pinned ON tasks(pinned) WHERE pinned = TRUE`);
+
   // ===== TRANSCRIPTS =====
   await safeQuery('transcripts table', `
     CREATE TABLE IF NOT EXISTS transcripts (

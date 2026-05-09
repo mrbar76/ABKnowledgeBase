@@ -281,6 +281,7 @@ router.put('/:id', async (req, res) => {
     if (tags !== undefined) { sets.push(`tags = $${i++}::jsonb`); params.push(JSON.stringify(tags)); }
     if (checklist !== undefined) { sets.push(`checklist = $${i++}::jsonb`); params.push(JSON.stringify(checklist)); }
     if (waiting_on !== undefined) { sets.push(`waiting_on = $${i++}`); params.push(waiting_on || null); }
+    if (req.body.pinned !== undefined) { sets.push(`pinned = $${i++}`); params.push(!!req.body.pinned); }
     if (req.body.recurrence_rule !== undefined) {
       sets.push(`recurrence_rule = $${i++}::jsonb`);
       params.push(req.body.recurrence_rule ? JSON.stringify(req.body.recurrence_rule) : null);
