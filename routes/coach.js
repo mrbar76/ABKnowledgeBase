@@ -35,7 +35,11 @@ const PLAN_TEXT_FIELDS = [
 const router = express.Router();
 
 // ─── small helpers ─────────────────────────────────────────────────
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// v3.4: was returning UTC date. For users west of UTC after 8pm local
+// the returned date was tomorrow's, shifting week boundaries off by a
+// day (audit bug #12). Use the canonical local-date helper.
+const { todayLocalISO } = require('../lib/date-helpers');
+const todayISO = () => todayLocalISO();
 const yesterdayISO = () => new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
 const daysAgoISO = (n) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
 
@@ -560,11 +564,15 @@ router.get('/end-of-day', async (req, res) => {
       segments_completed: segmentsStatus.filter(s => s.completed).length,
       segments_total: segmentsStatus.length,
       unplanned_workouts: unplannedWorkouts,
+      // v3.4: was rounding consumed to integer before subtracting from
+      // target. Made the delta inconsistent with nutrition_summary which
+      // exposes 1-decimal precision (audit bug #5). Round to 1 decimal
+      // throughout for consistency.
       macros_delta: {
-        kcal: todayPlan?.target_calories
-          ? Math.round(totalKcal) - todayPlan.target_calories : null,
-        protein_g: todayPlan?.target_protein_g
-          ? Math.round(totalProtein) - todayPlan.target_protein_g : null,
+        kcal: todayPlan?.target_calories != null
+          ? Math.round((totalKcal - todayPlan.target_calories)) : null,
+        protein_g: todayPlan?.target_protein_g != null
+          ? Math.round((totalProtein - todayPlan.target_protein_g) * 10) / 10 : null,
       },
       effort_delta: todayPlan?.target_effort != null
         ? maxActualEffort - todayPlan.target_effort : null,
@@ -799,9 +807,12 @@ router.get('/race-pulse', async (req, res) => {
       taper_phase: phase,
       recommendation: phase ? TAPER_RECOMMENDATIONS[phase] : null,
       fueling_rehearsals: fuelingRehearsals.rows,
+      // v3.4: was using Date.now() vs raw date string, creating a
+      // boundary that flipped rehearsals in/out of the window by hours
+      // (audit bugs #3, #7). Anchor both at local midnight.
       fueling_rehearsal_count_28d: fuelingRehearsals.rows.filter(f => {
-        const days = Math.round((Date.now() - new Date(f.rehearsal_date).getTime()) / 86400_000);
-        return days <= 28;
+        const { daysBetween: db, todayLocalISO: today } = require('../lib/date-helpers');
+        return db(f.rehearsal_date, today()) <= 28;
       }).length,
       training_block: currentBlock.rows[0] || null,
       last_28d_build_summary: last28dBuild.rows[0] || null,

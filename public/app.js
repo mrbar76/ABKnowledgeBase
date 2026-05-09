@@ -279,7 +279,8 @@ async function loadPersonal() {
   // BigPicture: next family/personal event
   const next = upcoming[0];
   if (next) {
-    const days = Math.max(0, Math.round((new Date(String(next.due_date).slice(0,10) + 'T12:00:00') - new Date(today + 'T00:00:00')) / 86400000));
+    // v3.4: was mixing T12:00:00 anchor with T00:00:00 (audit bug #1).
+    const days = Math.max(0, daysBetween(today, next.due_date) ?? 0);
     html += '<div class="ab-big-picture ab-pillar-personal">' +
       '<div class="ab-big-picture-eyebrow">Coming up</div>' +
       `<div class="ab-big-picture-title">${esc(cleanTaskTitle(next.title) || 'Personal event')}</div>` +
@@ -7368,16 +7369,47 @@ function renderTrainingBigPicture(goals, racesPayload, viewDate) {
     '</div>';
 }
 
-function daysBetween(from, toDateStr) {
-  if (!toDateStr) return null;
-  const s = String(toDateStr);
-  // Accept YYYY-MM-DD or full ISO string. Normalize to noon local to avoid TZ rounding bugs.
-  const tail = s.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(tail)) return null;
-  const target = new Date(tail + 'T12:00:00');
-  if (isNaN(target.getTime())) return null;
-  const ref = new Date(localDateStr(from) + 'T12:00:00');
-  return Math.round((target - ref) / 86400000);
+// v3.4: daysBetween anchored at LOCAL MIDNIGHT (not noon). Matches the
+// backend canonical helper in lib/date-helpers.js. Handles ISO strings,
+// JS Date objects, and full ISO timestamps.
+//
+//   daysBetween(today, due_date) > 0  → due in the future
+//   daysBetween(today, due_date) === 0 → due today
+//   daysBetween(today, due_date) < 0  → overdue
+//
+// Returns null on invalid input (callers may treat as "no date set").
+function daysBetween(from, to) {
+  if (to == null) return null;
+  const toMidnight = (d) => {
+    if (d == null) return null;
+    if (d instanceof Date) {
+      if (isNaN(d.getTime())) return null;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    const s = String(d).slice(0, 10);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    const parsed = new Date(d);
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+  const a = toMidnight(from) || toMidnight(localDateStr(from));
+  const b = toMidnight(to);
+  if (!a || !b) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+// Calendar-correct n-days-from-date that doesn't trip the setDate trap
+// (Mar 31 - 30 days via setDate wraps to Feb 1 instead of Mar 1).
+// Returns ISO YYYY-MM-DD string anchored to local time.
+function shiftDaysISO(refDate, n) {
+  const d = refDate instanceof Date ? refDate : new Date(String(refDate).slice(0, 10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const yyyy = out.getFullYear();
+  const mm = String(out.getMonth() + 1).padStart(2, '0');
+  const dd = String(out.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function renderTrainingWeekStrip(plans, viewDate, realToday, weekWorkouts) {
@@ -11121,8 +11153,9 @@ async function showBodyTrendsDetail() {
     const rows = days === 0
       ? allRows
       : (() => {
-          const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-          const cutoffStr = localDateStr(cutoff);
+          // v3.4: was using setDate which wraps incorrectly at month
+          // boundaries (Mar 31 - 30 days = Feb 1, audit bug #4).
+          const cutoffStr = shiftDaysISO(new Date(), -days);
           return allRows.filter(r => {
             const d = String(r.measurement_date || '').slice(0, 10);
             return d >= cutoffStr;
@@ -11248,7 +11281,9 @@ async function showRaceDetail(id) {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Race not found.</div></div></div>';
       return;
     }
-    const days = race.race_date ? Math.max(0, Math.round((new Date(String(race.race_date).slice(0,10) + 'T12:00:00') - new Date()) / 86400000)) : null;
+    // v3.4: was using new Date() (current time) instead of midnight,
+    // making the countdown drift through the day (audit bug #2).
+    const days = race.race_date ? Math.max(0, daysBetween(localDateStr(), race.race_date) ?? 0) : null;
     const rows = [];
     rows.push(['Date', race.race_date ? formatDateShort(race.race_date) + (days != null ? ` · ${days}d away` : '') : '—']);
     if (race.distance) rows.push(['Distance', String(race.distance)]);

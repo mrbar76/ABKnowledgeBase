@@ -62,12 +62,15 @@ router.get('/upcoming', async (req, res) => {
        WHERE status = 'scheduled' AND race_date >= CURRENT_DATE
        ORDER BY race_date ASC LIMIT 5`
     );
-    const today = new Date(); today.setHours(0,0,0,0);
-    const enriched = result.rows.map(r => {
-      const raceDate = new Date(r.race_date);
-      const days_to_race = Math.round((raceDate - today) / 86400000);
-      return { ...r, days_to_race };
-    });
+    // v3.4: was constructing today via setHours(0,0,0,0) (local) and
+    // race_date via new Date() (UTC). Off-by-one for any user west of
+    // UTC. Use canonical helper. (Audit bug #9.)
+    const { daysBetween, todayLocalISO } = require('../lib/date-helpers');
+    const today = todayLocalISO();
+    const enriched = result.rows.map(r => ({
+      ...r,
+      days_to_race: daysBetween(today, r.race_date),
+    }));
     res.json({ count: enriched.length, races: enriched });
   } catch (err) {
     res.status(500).json({ error: err.message });
