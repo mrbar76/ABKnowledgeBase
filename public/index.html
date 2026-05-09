@@ -97,9 +97,9 @@
           <div class="sm-section-title">System Status</div>
           <div class="sm-group">
             <div class="settings-row"><div class="settings-row-label">Backend</div><div class="settings-row-value" id="sm-backend-val">checking...</div></div>
-            <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">&mdash;</div></div>
-            <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">&mdash;</div></div>
-            <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">&mdash;</div></div>
+            <div class="settings-row"><div class="settings-row-label">Bee Token</div><div class="settings-row-value" id="sm-bee-val">checking…</div></div>
+            <div class="settings-row"><div class="settings-row-label">OpenAI (Intake)</div><div class="settings-row-value" id="sm-openai-val">checking…</div></div>
+            <div class="settings-row"><div class="settings-row-label">Bee Synced</div><div class="settings-row-value" id="sm-synced-val">checking…</div></div>
           </div>
         </div>
 
@@ -150,14 +150,14 @@
                 style="width:100%;margin-top:8px;font-family:ui-monospace,monospace;font-size:0.65rem;height:160px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:8px;display:none"></textarea>
               <div id="sm-diag-result" class="sm-result"></div>
               <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
-                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Deep dive — full-day audit (workouts + activity + meals + body metrics + plan + segments + coaching sessions + raw imports + anomalies + overlap detection):</div>
+                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Deep dive: full-day audit covering workouts, activity, meals, body metrics, plan, segments, coaching sessions, raw imports, anomalies, and overlap detection.</div>
                 <div style="display:flex;gap:6px;align-items:center">
                   <input id="diag-fullday-date" type="date" style="padding:6px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem">
                   <button class="btn-action btn-action-secondary" onclick="reviewFullDay()" id="btn-diag-fullday">Audit Day</button>
                 </div>
               </div>
               <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
-                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Catch-up migrations — runs Apple/Hevy overlap dedupe, re-runs the workout_type classifier, rewrites legacy Hevy titles ("🔥 Hybrid ... GMT+0000"). Idempotent.</div>
+                <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">Catch-up migrations: runs Apple/Hevy overlap dedupe, re-runs the workout-type classifier, rewrites legacy Hevy titles. Idempotent.</div>
                 <button class="btn-action btn-action-secondary sm-btn-full" onclick="runCleanupNow()" id="btn-cleanup-now">Run Cleanup Migrations</button>
               </div>
               <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
@@ -210,7 +210,7 @@
             </div>
             <div class="sm-card">
               <div class="sm-card-label">ChatGPT Import</div>
-              <div class="sm-card-desc">Import exported conversations.json &mdash; duplicates auto-skipped.</div>
+              <div class="sm-card-desc">Import exported conversations.json. Duplicates are skipped automatically.</div>
               <input type="file" id="chatgpt-import-file" accept=".json" style="display:none" onchange="handleChatGPTImport(this)">
               <button class="btn-action btn-action-secondary sm-btn-full" onclick="document.getElementById('chatgpt-import-file').click()" id="chatgpt-import-btn">Choose File</button>
               <div id="chatgpt-import-progress" style="display:none;margin-top:8px">
@@ -318,7 +318,7 @@
           <div class="sm-group">
             <div class="sm-card">
               <div class="sm-card-label">Claude Schema</div>
-              <div class="sm-card-desc">Full OpenAPI spec for Claude — all endpoints, no limits</div>
+              <div class="sm-card-desc">Full OpenAPI spec for Claude. All endpoints, no limits.</div>
               <div class="sm-btn-row">
                 <button class="btn-action sm-btn-full" onclick="copyClaudeSchema()" id="btn-copy-claude-schema">Copy JSON Schema</button>
                 <button class="btn-action btn-action-secondary sm-btn-full" onclick="window.open('/claude-schema.json','_blank')">View JSON</button>
@@ -904,7 +904,7 @@
 
         <!-- ─── Version ─── -->
         <div style="text-align:center;padding:16px 0 8px;font-size:0.7rem;color:var(--text-dim)">
-          Forge <span id="sm-version">v1.8.23</span>
+          Forge <span id="sm-version">v3.5.0</span>
         </div>
 
       </div>
