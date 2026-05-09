@@ -3881,6 +3881,35 @@ html[data-theme="light"] .ring-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.
   --ab-urgency: #E26A5A; --ab-urgency-tint: #2A1715; --ab-urgency-label: #F4A496;
 }
 
+/* ─── v3.5: v1 → v2 token bridge ──────────────────────────────────────
+ *
+ * The Settings drawer (840 lines), login screen, and FAB still use v1
+ * tokens (--bg, --text, --bg-input, etc.). Rewriting all that markup is
+ * a multi-PR effort. Until then, redirect the v1 token values to v2
+ * tokens so those surfaces automatically pick up v2 colors and respond
+ * to light/dark mode the same way the rest of the app does.
+ *
+ * This MUST come after the v2 tokens are defined above. Order matters.
+ */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {
+  --bg:               var(--ab-bg);
+  --bg-card:          var(--ab-card);
+  --bg-card-solid:    var(--ab-card);
+  --bg-input:         var(--ab-card);
+  --bg-secondary:     var(--ab-border-soft);
+  --border:           var(--ab-border);
+  --text:             var(--ab-ink);
+  --text-dim:         var(--ab-muted);
+  --accent:           var(--ab-training-edge);
+  --accent-hover:     var(--ab-training-label);
+  --accent-glow:      var(--ab-training-tint);
+  --red:              var(--ab-urgency);
+  --green:            var(--ab-training-edge);
+  --blue:             var(--ab-work-edge);
+}
+
 /* DM Sans app-wide */
 body { font-family: var(--ab-font-ui); }
 
