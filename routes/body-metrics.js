@@ -113,7 +113,7 @@ router.get('/', async (req, res) => {
         `SELECT * FROM body_metrics ${whereClause} ORDER BY measurement_date DESC, measurement_time DESC NULLS LAST LIMIT 1`,
         params
       );
-      return res.json(result.rows[0] || null);
+      return res.json(deriveLeanMass(result.rows[0]));
     }
 
     let orderBy = 'measurement_date DESC, measurement_time DESC NULLS LAST';
@@ -130,18 +130,33 @@ router.get('/', async (req, res) => {
       `SELECT * FROM body_metrics ${whereClause}
        ORDER BY ${orderBy} LIMIT $${i++} OFFSET $${i++}`, params
     );
-    res.json({ total, count: result.rows.length, body_metrics: result.rows });
+    res.json({ total, count: result.rows.length, body_metrics: result.rows.map(deriveLeanMass) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ─── Get Single Body Metric ─────────────────────────────────
+// v3.4: lean_mass_lb is a stored column but never written by RENPHO or
+// most smart scales. Compute it server-side from weight × (1 - bf%/100)
+// when both inputs are present (audit bug #10). Stored value wins when
+// the scale provided one. Output is a NEW object — never mutates the
+// row. Returns null/undefined unchanged.
+function deriveLeanMass(row) {
+  if (!row || typeof row !== 'object') return row;
+  if (row.lean_mass_lb != null) return row;
+  const w = Number(row.weight_lb);
+  const bf = Number(row.body_fat_pct);
+  if (!Number.isFinite(w) || !Number.isFinite(bf) || w <= 0) return row;
+  const lean = w * (1 - bf / 100);
+  return { ...row, lean_mass_lb: Math.round(lean * 10) / 10, lean_mass_lb_derived: true };
+}
+
 router.get('/:id', async (req, res) => {
   try {
     const result = await query('SELECT * FROM body_metrics WHERE id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
+    res.json(deriveLeanMass(result.rows[0]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
