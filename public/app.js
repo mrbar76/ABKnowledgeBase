@@ -7249,9 +7249,9 @@ async function loadFitness() {
   const viewDate = trainingDate || realToday;
   const weekStart = mondayOfWeek(new Date(viewDate + 'T12:00:00'));
 
-  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [], races = null, weekWorkouts = null;
+  let dayData = null, goals = null, recovery = null, fuel = null, body = null, weekPlans = [], races = null, weekWorkouts = null, trainingLoad = null;
   try {
-    [dayData, goals, recovery, fuel, body, weekPlans, races, weekWorkouts] = await Promise.all([
+    [dayData, goals, recovery, fuel, body, weekPlans, races, weekWorkouts, trainingLoad] = await Promise.all([
       api('/training/day/' + viewDate).catch(() => null),
       api('/goals/dashboard').catch(() => null),
       api('/recovery/score?date=' + viewDate).catch(() => null),
@@ -7262,14 +7262,17 @@ async function loadFitness() {
       // Pull recent workouts so the week strip can mark completed days
       // based on actual workout records, not just plan.status (which is
       // often left as 'planned' even after the workout was logged).
-      api('/workouts?limit=30').catch(() => null)
+      api('/workouts?limit=30').catch(() => null),
+      // v3.7: training stress / load — TSB, CTL, ATL + recent TSS series
+      // for the Load card in Today.
+      api('/health/insights/training?days=42').catch(() => null)
     ]);
   } catch (e) {
     main.innerHTML = `<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Training.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
     return;
   }
 
-  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, races, weekWorkouts, viewDate, realToday });
+  main.innerHTML = renderTraining({ dayData, goals, recovery, fuel, body, weekPlans, races, weekWorkouts, trainingLoad, viewDate, realToday });
   renderIcons();
 }
 
@@ -7300,6 +7303,7 @@ function renderTraining(data) {
     renderTrainingTodaySession(data.dayData, data.viewDate, data.realToday),
     renderTrainingGoalsSection(data.goals),
     renderTrainingRecoverySection(data.recovery),
+    renderTrainingLoadSection(data.trainingLoad),
     renderTrainingFuelSection(data.fuel),
     renderTrainingBodySection(data.body)
   ].join('');
@@ -7635,6 +7639,133 @@ function renderTrainingRecoverySection(recovery) {
       `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Load</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(tload, 16))}</div></div>` +
       `<div class="ab-glance-card" onclick="showRecoveryDetail()" style="cursor:pointer"><div class="ab-glance-card-label">Muscle</div><div class="ab-glance-card-value" style="font-size:14px">${esc(truncate(muscle, 16))}</div></div>` +
     '</div>';
+}
+
+// v3.7: Training Stress / Load card. Surfaces TSB (form), CTL (fitness),
+// ATL (fatigue), weekly TSS, and Z2 minutes. Tap → full chart sheet
+// with TSS-over-time + Z2-by-week. Hides itself when there's no data.
+function renderTrainingLoadSection(load) {
+  if (!load || !load.current) return '';
+  const { current, weekly } = load;
+  const tsb = current.tsb != null ? Math.round(current.tsb) : null;
+  const ctl = current.ctl != null ? Math.round(current.ctl) : null;
+  const atl = current.atl != null ? Math.round(current.atl) : null;
+  const status = current.status || '';
+  const weekTss = weekly?.tss != null ? Math.round(weekly.tss) : null;
+  const weekZ2 = weekly?.time_in_zone_min?.z2 != null ? Math.round(weekly.time_in_zone_min.z2) : null;
+  const weekHours = weekly?.hours != null ? Number(weekly.hours).toFixed(1) : null;
+
+  if (tsb == null && ctl == null && weekTss == null) return '';
+
+  return '<div class="ab-section-label">Training load</div>' +
+    `<div class="ab-list-row" onclick="showTrainingLoadSheet()" style="cursor:pointer">` +
+      `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+      '<div class="ab-list-row-body">' +
+        `<div class="ab-list-row-title">TSB ${tsb != null ? (tsb > 0 ? '+' : '') + tsb : '—'} <span style="font-weight:400;color:var(--ab-muted)">${esc(status)}</span></div>` +
+        `<div class="ab-list-row-meta">CTL ${ctl ?? '—'} · ATL ${atl ?? '—'} · this week ${weekTss ?? 0} TSS / ${weekHours ?? '0.0'}h</div>` +
+      '</div>' +
+    '</div>' +
+    '<div class="ab-glance-row">' +
+      `<div class="ab-glance-card" onclick="showTrainingLoadSheet()" style="cursor:pointer"><div class="ab-glance-card-label">Form (TSB)</div><div class="ab-glance-card-value">${tsb != null ? (tsb > 0 ? '+' : '') + tsb : '—'}</div><div class="ab-glance-card-sub">${esc(status || 'tracking')}</div></div>` +
+      `<div class="ab-glance-card" onclick="showTrainingLoadSheet()" style="cursor:pointer"><div class="ab-glance-card-label">Fitness (CTL)</div><div class="ab-glance-card-value">${ctl ?? '—'}</div><div class="ab-glance-card-sub">42-day load</div></div>` +
+      `<div class="ab-glance-card" onclick="showTrainingLoadSheet()" style="cursor:pointer"><div class="ab-glance-card-label">Z2 / wk</div><div class="ab-glance-card-value">${weekZ2 ?? '—'}m</div><div class="ab-glance-card-sub">aerobic base</div></div>` +
+    '</div>';
+}
+
+// v3.7: detail sheet — daily TSS bars over the last 42 days + weekly Z2
+// minutes over the last 12 weeks. Both Chart.js. Falls back to plain
+// text if Chart.js unavailable.
+async function showTrainingLoadSheet() {
+  openModal('Training load', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
+  try {
+    const data = await api('/health/insights/training?days=42');
+    const c = data.current || {};
+    const wk = data.weekly || {};
+    const history = data.history || [];
+    const z2Weeks = data.z2_minutes_by_week || [];
+
+    const headStat = (label, val, sub) =>
+      `<div class="ab-glance-card" style="cursor:default"><div class="ab-glance-card-label">${esc(label)}</div><div class="ab-glance-card-value">${esc(String(val))}</div><div class="ab-glance-card-sub">${esc(sub)}</div></div>`;
+
+    const head = '<div class="ab-glance-row" style="margin-bottom:16px">' +
+      headStat('Form (TSB)', c.tsb != null ? (c.tsb > 0 ? '+' : '') + Math.round(c.tsb) : '—', c.status || 'tracking') +
+      headStat('Fitness (CTL)', c.ctl != null ? Math.round(c.ctl) : '—', '42-day load') +
+      headStat('Fatigue (ATL)', c.atl != null ? Math.round(c.atl) : '—', '7-day load') +
+    '</div>';
+
+    const weekly = '<div class="ab-section-label">This week</div>' +
+      '<div class="ab-list-row" style="cursor:default;margin-bottom:16px">' +
+        '<div class="ab-list-row-body">' +
+          `<div class="ab-list-row-title">${wk.workouts || 0} workouts · ${Math.round(wk.tss || 0)} TSS</div>` +
+          `<div class="ab-list-row-meta">${Number(wk.hours || 0).toFixed(1)}h · ${Number(wk.miles || 0).toFixed(1)} mi · Z2 ${Math.round(wk.time_in_zone_min?.z2 || 0)} min</div>` +
+        '</div>' +
+      '</div>';
+
+    const tssChart = history.length
+      ? '<div class="ab-section-label">Daily TSS · last 42 days</div>' +
+        '<canvas id="tl-tss-chart" height="180" style="margin:0 0 16px"></canvas>'
+      : '';
+
+    const z2Chart = z2Weeks.length
+      ? '<div class="ab-section-label">Z2 minutes · last 12 weeks</div>' +
+        '<canvas id="tl-z2-chart" height="160" style="margin:0 0 8px"></canvas>'
+      : '';
+
+    openModal('Training load', head + weekly + tssChart + z2Chart, { variant: 'sheet' });
+
+    // Defer chart paint so the modal animates in first.
+    setTimeout(() => {
+      const tssEl = document.getElementById('tl-tss-chart');
+      if (tssEl && typeof Chart !== 'undefined' && history.length) {
+        new Chart(tssEl, {
+          type: 'bar',
+          data: {
+            labels: history.map(h => h.date.slice(5)),
+            datasets: [
+              { label: 'TSS', data: history.map(h => h.tss), backgroundColor: 'rgba(69,104,89,0.5)', borderRadius: 2 },
+              { type: 'line', label: 'CTL', data: history.map(h => h.ctl), borderColor: 'rgba(69,104,89,1)', borderWidth: 2, pointRadius: 0, tension: 0.25 },
+              { type: 'line', label: 'ATL', data: history.map(h => h.atl), borderColor: 'rgba(184,60,44,1)', borderWidth: 2, pointRadius: 0, tension: 0.25, borderDash: [4, 4] },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
+            scales: {
+              x: { ticks: { autoSkip: true, maxTicksLimit: 8, font: { size: 9 } } },
+              y: { beginAtZero: true, ticks: { font: { size: 9 } } },
+            },
+          },
+        });
+      }
+      const z2El = document.getElementById('tl-z2-chart');
+      if (z2El && typeof Chart !== 'undefined' && z2Weeks.length) {
+        new Chart(z2El, {
+          type: 'bar',
+          data: {
+            labels: z2Weeks.map(w => (w.week_start || '').slice(5)),
+            datasets: [{
+              label: 'Z2 minutes',
+              data: z2Weeks.map(w => w.minutes),
+              backgroundColor: 'rgba(140, 85, 96, 0.55)',
+              borderRadius: 2,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { autoSkip: false, font: { size: 9 } } },
+              y: { beginAtZero: true, ticks: { font: { size: 9 } } },
+            },
+          },
+        });
+      }
+    }, 60);
+  } catch (e) {
+    openModal('Training load', `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`, { variant: 'sheet' });
+  }
 }
 
 function renderTrainingFuelSection(fuel) {
@@ -8323,10 +8454,11 @@ async function loadFitnessToday() {
   el.innerHTML = skeletonCards(3);
 
   try {
-    const [dayData, recoveryData, trendData] = await Promise.all([
+    const [dayData, recoveryData, trendData, trainingLoad] = await Promise.all([
       api(`/training/day/${fitnessTodayDate}`),
       api(`/recovery/score?date=${fitnessTodayDate}`),
       api(`/recovery/trend?date=${fitnessTodayDate}&days=7`),
+      api('/health/insights/training?days=42').catch(() => null),
     ]);
 
     const plan = dayData.daily_plan;
