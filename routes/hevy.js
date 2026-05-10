@@ -1592,9 +1592,167 @@ router.get('/routines', async (req, res) => {
   }
 });
 
+// ─── v3.9: Forge → Hevy logged-session push ─────────────────────
+//
+// Until v3.9 the Forge → Hevy data flow was routine-only: plans pushed as
+// templates, completed sessions had to be logged inside Hevy. This adds
+// the third leg — push a workout you logged in Forge as a logged session
+// in Hevy via POST /v1/workouts.
+//
+// Idempotent: writes the returned Hevy workout id back to
+// workouts.hevy_id; subsequent pushes for the same workout PUT
+// the existing one instead of creating duplicates.
+//
+// Skips silently when:
+//   - HEVY_API_KEY is missing  → { ok: false, skipped: 'no_api_key' }
+//   - workout has no exercises → { ok: false, skipped: 'no_exercises' }
+//   - none of the exercises resolve to Hevy templates
+//                              → { ok: false, skipped: 'no_resolvable_exercises' }
+
+const LB_TO_KG = 0.45359237;
+
+function lbToKg(lb) {
+  if (lb == null || lb === '' || isNaN(Number(lb))) return null;
+  return Math.round(Number(lb) * LB_TO_KG * 100) / 100;
+}
+
+// Build a Hevy /v1/workouts payload from an AB Brain workouts row.
+// Missing weights become bodyweight sets (type: 'normal' with weight_kg
+// omitted). Reps default to 0 if absent so Hevy still accepts the set.
+function workoutRowToHevyPayload(w, resolvedExercises) {
+  const startIso = w.started_at
+    ? new Date(w.started_at).toISOString()
+    : new Date(`${String(w.workout_date).slice(0, 10)}T06:00:00`).toISOString();
+  const endIso = w.ended_at
+    ? new Date(w.ended_at).toISOString()
+    : (w.duration_minutes
+        ? new Date(new Date(startIso).getTime() + Number(w.duration_minutes) * 60_000).toISOString()
+        : new Date(new Date(startIso).getTime() + 60 * 60_000).toISOString());
+
+  const titleParts = [];
+  if (w.title) titleParts.push(String(w.title));
+  else if (w.workout_type) titleParts.push(String(w.workout_type).replace(/_/g, ' '));
+  else titleParts.push('Workout');
+
+  const exercisesPayload = resolvedExercises.map((ex, idx) => ({
+    index: idx,
+    exercise_template_id: ex.hevy_exercise_template_id,
+    notes: ex.notes ? String(ex.notes).slice(0, 240) : '',
+    sets: (ex.sets || []).map((s, j) => {
+      const weight_kg = s.weight_kg != null
+        ? Number(s.weight_kg)
+        : (s.weight_lb != null ? lbToKg(s.weight_lb) : (s.weight_lbs != null ? lbToKg(s.weight_lbs) : null));
+      return {
+        index: j,
+        type: s.type || 'normal',
+        weight_kg,
+        reps: Number(s.reps) || 0,
+        ...(s.distance_meters != null ? { distance_meters: Number(s.distance_meters) } : {}),
+        ...(s.duration_seconds != null ? { duration_seconds: Number(s.duration_seconds) } : {}),
+        ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
+      };
+    }),
+  }));
+
+  return {
+    workout: {
+      title: titleParts.join(' ').slice(0, 80),
+      description: w.body_notes ? String(w.body_notes).slice(0, 600) : '',
+      start_time: startIso,
+      end_time: endIso,
+      is_private: false,
+      exercises: exercisesPayload,
+    },
+  };
+}
+
+async function pushWorkoutToHevy(workoutRow) {
+  if (!HEVY_API_KEY) return { ok: false, skipped: 'no_api_key' };
+  if (!workoutRow || !workoutRow.id) return { ok: false, error: 'workout not found' };
+
+  const exercises = Array.isArray(workoutRow.exercises) ? workoutRow.exercises : [];
+  if (exercises.length === 0) return { ok: false, skipped: 'no_exercises' };
+
+  // Resolve each exercise to a Hevy template id. Reuses the existing
+  // resolver pattern from the plan-push code path.
+  const resolved = [];
+  for (const ex of exercises) {
+    if (!ex.hevy_exercise_template_id) {
+      const r = await query(
+        `SELECT hevy_id AS id FROM hevy_template_cache
+         WHERE LOWER(title) = LOWER($1)
+         LIMIT 1`,
+        [String(ex.name || '')]
+      ).catch(() => ({ rows: [] }));
+      if (r.rows[0]?.id) ex.hevy_exercise_template_id = r.rows[0].id;
+    }
+    if (ex.hevy_exercise_template_id) resolved.push(ex);
+  }
+  if (resolved.length === 0) return { ok: false, skipped: 'no_resolvable_exercises' };
+
+  const payload = workoutRowToHevyPayload(workoutRow, resolved);
+  const isUpdate = !!workoutRow.hevy_id;
+  const path = isUpdate
+    ? `/workouts/${workoutRow.hevy_id}`
+    : '/workouts';
+  const method = isUpdate ? 'PUT' : 'POST';
+
+  let result;
+  try {
+    result = await hevyFetch(path, { method, body: JSON.stringify(payload) });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+
+  // Persist the Hevy workout id back to AB Brain so subsequent pushes
+  // are idempotent (PUT instead of POST).
+  const newHevyId = result?.workout?.id || result?.id || workoutRow.hevy_id || null;
+  try {
+    if (newHevyId) {
+      await query(
+        `UPDATE workouts SET hevy_id = $1, updated_at = NOW() WHERE id = $2`,
+        [newHevyId, workoutRow.id]
+      );
+    }
+  } catch (_) { /* informational */ }
+
+  return {
+    ok: true,
+    method,
+    hevy_id: newHevyId,
+    exercises_pushed: resolved.length,
+    total_exercises: exercises.length,
+  };
+}
+
+// ─── POST /api/hevy/push-workout ─────────────────────────────
+// Body: { workout_id }
+// Pushes a single Forge workout to Hevy as a logged session.
+router.post('/push-workout', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const { workout_id } = req.body || {};
+    if (!workout_id) return res.status(400).json({ error: 'workout_id required' });
+    const r = await query(`SELECT * FROM workouts WHERE id = $1`, [workout_id]);
+    const w = r.rows[0];
+    if (!w) return res.status(404).json({ error: 'workout not found' });
+
+    const result = await pushWorkoutToHevy(w);
+    if (!result.ok) {
+      return res.status(result.skipped ? 200 : 400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(`[hevy/push-workout] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.pushPlanToHevy = pushPlanToHevy;
 module.exports.pushSegmentToHevy = pushSegmentToHevy;
+module.exports.pushWorkoutToHevy = pushWorkoutToHevy;
+module.exports.workoutRowToHevyPayload = workoutRowToHevyPayload;
 module.exports.syncHevyWorkouts = syncHevyWorkouts;
 // Exposed for unit tests in tests/hevy.test.js. Don't import these
 // elsewhere — they're internal helpers.
