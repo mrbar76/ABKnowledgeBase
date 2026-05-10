@@ -2266,6 +2266,234 @@ html[data-theme="light"] .fab-btn { background: rgba(255,255,255,0.9); border-co
 .settings-row-label { font-size: 0.85rem; font-weight: 600; }
 .settings-row-value { font-size: 0.78rem; color: var(--text-dim); text-align: right; max-width: 55%; word-break: break-all; }
 
+/* ─── v3.10: Settings v2 component pass ───────────────────────────────
+ *
+ * The drawer markup is still v1 (settings-panel / sm-card / settings-row
+ * / btn-action). v3.5 already redirected its tokens to v2 colors. This
+ * pass tightens the visual patterns so the drawer feels native to the
+ * v2 design system: DM Sans typography, ab-radius standard, ab-list-card
+ * paddings + borders, cleaner segmented control, subtler buttons.
+ *
+ * Markup-free upgrade. The v1 selectors stay; their visual identity
+ * matches the rest of the app.
+ */
+
+/* Drawer shell */
+.settings-panel {
+  background: var(--ab-card);
+  border: 1px solid var(--ab-border);
+  border-radius: var(--ab-radius-lg, 18px);
+  font-family: var(--ab-font-ui, system-ui, sans-serif);
+}
+.settings-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ab-border-soft);
+}
+.settings-header h3 {
+  font-family: var(--ab-font-ui, system-ui, sans-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ab-ink);
+}
+.settings-body {
+  padding: 8px 18px 18px;
+  font-family: var(--ab-font-ui, system-ui, sans-serif);
+}
+
+/* Section + group titles match .ab-section-label spec */
+.sm-section { margin-bottom: 6px; }
+.sm-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ab-muted);
+  padding: 14px 0 6px;
+  border-top: 1px solid var(--ab-border-soft);
+}
+.sm-section:first-child .sm-section-title { border-top: none; padding-top: 6px; }
+.sm-group-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ab-muted);
+  margin-bottom: 8px;
+}
+
+/* Cards match .ab-list-card paddings + borders */
+.sm-card {
+  background: var(--ab-card);
+  border: 1px solid var(--ab-border-soft);
+  border-radius: var(--ab-radius, 12px);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.sm-card-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ab-ink);
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
+}
+.sm-card-desc {
+  font-size: 0.78rem;
+  color: var(--ab-muted);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+/* Doc text inside collapsed cards: slightly more readable */
+.sm-doc-text {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ab-body);
+}
+.sm-doc-text strong { color: var(--ab-ink); font-weight: 600; }
+.sm-doc-text code {
+  background: var(--ab-border-soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--ab-font-data, ui-monospace, monospace);
+  font-size: 0.85em;
+}
+
+/* Settings row uses ab-list-row spacing + subtler divider */
+.settings-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ab-border-soft);
+}
+.settings-row-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ab-ink);
+  letter-spacing: -0.005em;
+}
+.settings-row-value {
+  font-size: 0.8rem;
+  color: var(--ab-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons: replace v1's purple-glow gradient hover with a subtler v2 fill */
+.sm-card .btn-action,
+.sm-btn-row .btn-action,
+.sm-btn-full {
+  background: var(--ab-training-edge);
+  color: var(--ab-bg);
+  border: none;
+  border-radius: var(--ab-radius-sm, 8px);
+  padding: 9px 14px;
+  font-family: var(--ab-font-ui, system-ui, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  box-shadow: none;
+  transition: background 120ms ease, transform 80ms ease;
+}
+.sm-card .btn-action:hover,
+.sm-btn-row .btn-action:hover,
+.sm-btn-full:hover {
+  background: var(--ab-training-label);
+  box-shadow: none;
+  transform: none;
+}
+.sm-card .btn-action-secondary,
+.sm-btn-row .btn-action-secondary {
+  background: var(--ab-card);
+  color: var(--ab-ink);
+  border: 1px solid var(--ab-border);
+}
+.sm-card .btn-action-secondary:hover,
+.sm-btn-row .btn-action-secondary:hover {
+  background: var(--ab-border-soft);
+  border-color: var(--ab-border);
+}
+.sm-card .btn-action-danger,
+.sm-btn-row .btn-action-danger {
+  background: var(--ab-urgency-tint);
+  color: var(--ab-urgency-label);
+  border: 1px solid var(--ab-urgency);
+}
+.sm-card .btn-action-danger:hover {
+  background: var(--ab-urgency);
+  color: #fff;
+}
+
+/* Theme segmented control */
+.sm-theme-toggle {
+  background: var(--ab-border-soft);
+  border-radius: var(--ab-radius-sm, 8px);
+  padding: 3px;
+  gap: 2px;
+}
+.sm-theme-btn {
+  font-family: var(--ab-font-ui, system-ui, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ab-muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+}
+.sm-theme-btn.active,
+.sm-theme-btn[aria-pressed="true"] {
+  background: var(--ab-card);
+  color: var(--ab-ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+/* Date inputs match v2 input pattern */
+.sm-date-input {
+  background: var(--ab-card);
+  border: 1px solid var(--ab-border);
+  border-radius: var(--ab-radius-sm, 8px);
+  color: var(--ab-ink);
+  padding: 7px 10px;
+  font-family: var(--ab-font-ui, system-ui, sans-serif);
+  font-size: 0.8rem;
+}
+.sm-date-input:focus {
+  outline: none;
+  border-color: var(--ab-training-edge);
+}
+
+/* Collapsible chevron animates rotation */
+.sm-chevron {
+  color: var(--ab-muted);
+  font-size: 0.7rem;
+  transition: transform 160ms ease;
+}
+
+/* Result lines (success / error feedback inside cards) */
+.sm-result {
+  border: 1px solid var(--ab-border-soft);
+  background: var(--ab-bg);
+  color: var(--ab-body);
+  padding: 9px 12px;
+  border-radius: var(--ab-radius-sm, 8px);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-top: 10px;
+}
+
+/* Progress bar matches .ab-progress-bar */
+.sm-progress-bar {
+  height: 6px;
+  background: var(--ab-border-soft);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.sm-progress-fill {
+  background: var(--ab-training-edge);
+  border-radius: 999px;
+}
+.sm-progress-info {
+  font-size: 0.72rem;
+  color: var(--ab-muted);
+  margin-bottom: 6px;
+}
+
 /* --- Toast Notifications --- */
 .toast-container {
   position: fixed;
