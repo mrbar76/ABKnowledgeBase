@@ -9488,6 +9488,27 @@ async function showWorkoutDetail(id) {
 
       ${w.tags && w.tags.length ? `<div class="transcript-speakers mt-sm">${w.tags.map(t => `<span class="speaker-tag">${esc(t)}</span>`).join('')}</div>` : ''}
 
+      ${(() => {
+        // v3.9: Hevy push status chip + manual push button.
+        // - synced (green): hevy_id present from a successful push or sync
+        // - not synced (amber): no hevy_id, but exercises exist (pushable)
+        // - skipped (muted): no exercises (nothing to push)
+        const hasExercises = Array.isArray(w.exercises) && w.exercises.length > 0;
+        if (!hasExercises) {
+          return '<div style="margin-bottom:12px;font-size:0.7rem;color:var(--ab-muted)">No exercises logged · nothing to push to Hevy.</div>';
+        }
+        if (w.hevy_id) {
+          return `<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            <span class="badge-dynamic" style="background:#10b98122;color:#10b981;font-size:0.65rem">✓ In Hevy</span>
+            <button class="btn-action btn-action-secondary" style="font-size:0.65rem;padding:4px 10px" onclick="pushWorkoutToHevy('${w.id}')">Re-push</button>
+          </div>`;
+        }
+        return `<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b;font-size:0.65rem">Not in Hevy</span>
+          <button class="btn-action btn-action-secondary" style="font-size:0.65rem;padding:4px 10px" onclick="pushWorkoutToHevy('${w.id}')">Push to Hevy</button>
+        </div>`;
+      })()}
+
       <div class="action-row">
         <button class="btn-submit flex-1" onclick="showWorkoutForm('${w.id}')">Edit</button>
         <button class="btn-action btn-action-danger flex-half" onclick="deleteWorkout('${w.id}')">Delete</button>
@@ -9624,6 +9645,34 @@ async function saveWorkout(editId) {
     loadWorkouts(workoutFilters._q || '');
   } catch (e) {
     showToast('Error saving workout: ' + e.message);
+  }
+}
+
+// v3.9: push a Forge workout to Hevy as a logged session via
+// POST /api/hevy/push-workout. Idempotent — if hevy_id is already
+// set, the server PUTs the existing Hevy workout instead of creating
+// a duplicate. Toasts the outcome and reopens the workout detail
+// so the freshly-set hevy_id surfaces in the chip.
+async function pushWorkoutToHevy(id) {
+  if (!id) return;
+  showToast('Pushing to Hevy…', 'info');
+  try {
+    const r = await api('/hevy/push-workout', {
+      method: 'POST',
+      body: JSON.stringify({ workout_id: id }),
+    });
+    if (r?.ok) {
+      const action = r.method === 'PUT' ? 'updated in' : 'pushed to';
+      showToast(`Workout ${action} Hevy · ${r.exercises_pushed}/${r.total_exercises} exercises`, 'success');
+      closeModal();
+      setTimeout(() => showWorkoutDetail(id), 250);
+    } else if (r?.skipped) {
+      showToast(`Hevy push skipped: ${r.skipped}`, 'warning');
+    } else {
+      showToast(`Hevy push failed: ${r?.error || 'unknown'}`, 'error');
+    }
+  } catch (e) {
+    showToast(`Hevy push failed: ${e.message}`, 'error');
   }
 }
 
