@@ -11464,8 +11464,16 @@ async function showRaceDetail(id) {
     if (race.gear_list)    body += renderRaceField('Gear list', race.gear_list);
     if (race.fueling_plan) body += renderRaceField('Fueling plan', race.fueling_plan);
     if (race.notes)        body += renderRaceField('Notes', race.notes);
+
+    // v3.8: training blocks targeting this race + recent fueling rehearsals.
+    // Both are independent fetches that fail-soft (the section just hides
+    // if the request errors). No additional permissions needed.
+    body += '<div id="race-blocks-slot"></div><div id="race-fueling-slot"></div>';
     body += '</div>';
     document.getElementById('modal-body').innerHTML = body;
+    // Lazy-load blocks + fueling so the race detail renders fast.
+    loadRaceBlocksFor(race.id);
+    loadRaceFuelingFor(race.id);
   } catch (e) {
     document.getElementById('modal-body').innerHTML = `<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load race.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
   }
@@ -11476,6 +11484,101 @@ function renderRaceField(label, text) {
     `<div class="ab-section-label" style="padding:0 0 4px">${esc(label)}</div>` +
     `<div style="font-size:14px;line-height:1.5;color:var(--ab-body);white-space:pre-wrap">${esc(text)}</div>` +
     `</div>`;
+}
+
+// v3.8: training blocks targeting this race. Fetched lazily after the
+// race detail renders. Slot hides itself if no blocks are linked.
+async function loadRaceBlocksFor(raceId) {
+  const slot = document.getElementById('race-blocks-slot');
+  if (!slot) return;
+  try {
+    const r = await api('/races/blocks/list');
+    const all = r.blocks || [];
+    const mine = all.filter(b => b.target_race_id === raceId);
+    if (mine.length === 0) {
+      slot.innerHTML = '<div style="padding:12px 16px;border-top:1px solid var(--ab-border-soft)">' +
+        '<div class="ab-section-label" style="padding:0 0 4px">Training blocks</div>' +
+        '<div style="font-size:13px;color:var(--ab-muted)">No blocks linked to this race yet.</div>' +
+        '</div>';
+      return;
+    }
+    const today = localDateStr();
+    const rows = mine.map(b => {
+      const startD = b.start_date ? String(b.start_date).slice(0,10) : '';
+      const endD   = b.end_date   ? String(b.end_date).slice(0,10)   : '';
+      const isCurrent = startD <= today && endD >= today;
+      const dur = startD && endD ? Math.max(0, daysBetween(startD, endD) || 0) + 1 : 0;
+      const status = isCurrent ? 'current' : (endD < today ? 'past' : 'upcoming');
+      const phase = b.phase || 'block';
+      const label = `${esc(phase)}${dur ? ` · ${dur}d` : ''}`;
+      const dates = startD && endD
+        ? `${formatDateShort(startD)} → ${formatDateShort(endD)}`
+        : (startD || endD || 'no dates');
+      const thesis = b.thesis ? esc(b.thesis) : '';
+      return `<div class="ab-list-row" style="cursor:default">` +
+        `<div class="ab-list-row-dot ab-pillar-training"></div>` +
+        '<div class="ab-list-row-body">' +
+          `<div class="ab-list-row-head"><span class="ab-pillar-label ab-pillar-label-training">${esc(phase.toUpperCase())}</span>` +
+            `<span class="ab-status-badge" data-state="${esc(status === 'current' ? 'on_track' : status === 'past' ? 'completed' : 'planned')}">${esc(status)}</span>` +
+          '</div>' +
+          `<div class="ab-list-row-title">${label}</div>` +
+          `<div class="ab-list-row-meta">${esc(dates)}</div>` +
+          (thesis ? `<div class="ab-list-row-meta" style="font-style:italic;margin-top:4px">${thesis}</div>` : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    slot.innerHTML = '<div style="padding:12px 16px;border-top:1px solid var(--ab-border-soft)">' +
+      `<div class="ab-section-label" style="padding:0 0 4px">Training blocks · ${mine.length}</div>` +
+      rows +
+    '</div>';
+  } catch (e) {
+    slot.innerHTML = '';
+  }
+}
+
+// v3.8: fueling rehearsals targeting this race. Same lazy-load pattern.
+async function loadRaceFuelingFor(raceId) {
+  const slot = document.getElementById('race-fueling-slot');
+  if (!slot) return;
+  try {
+    const r = await api('/races/fueling/list?target_race_id=' + encodeURIComponent(raceId) + '&limit=8');
+    const list = r.fueling || r.rehearsals || [];
+    if (list.length === 0) {
+      slot.innerHTML = '<div style="padding:12px 16px;border-top:1px solid var(--ab-border-soft)">' +
+        '<div class="ab-section-label" style="padding:0 0 4px">Fueling rehearsals</div>' +
+        '<div style="font-size:13px;color:var(--ab-muted)">No fueling rehearsals logged for this race.</div>' +
+        '</div>';
+      return;
+    }
+    const rows = list.map(f => {
+      const dt = f.rehearsal_date ? formatDateShort(f.rehearsal_date) : '—';
+      const carb = f.g_carb_per_hr != null ? `${f.g_carb_per_hr}g/hr carbs` : '';
+      const fluid = f.ml_fluid_per_hr != null ? `${f.ml_fluid_per_hr}ml/hr` : '';
+      const sodium = f.g_sodium_per_hr != null ? `${f.g_sodium_per_hr}g/hr Na` : '';
+      const caf = f.mg_caffeine_total != null ? `${f.mg_caffeine_total}mg caf` : '';
+      const dur = f.duration_min != null ? `${f.duration_min}min` : '';
+      const stats = [carb, fluid, sodium, caf, dur].filter(Boolean).join(' · ');
+      const gut = f.gut_response ? cleanForUI(String(f.gut_response)) : '';
+      const energy = f.energy_response ? cleanForUI(String(f.energy_response)) : '';
+      const response = [gut && `gut: ${gut}`, energy && `energy: ${energy}`].filter(Boolean).join(' · ');
+      const notes = f.notes ? cleanForUI(String(f.notes)) : '';
+      return `<div class="ab-list-row" style="cursor:default">` +
+        `<div class="ab-list-row-dot ab-pillar-personal"></div>` +
+        '<div class="ab-list-row-body">' +
+          `<div class="ab-list-row-title">${esc(dt)}</div>` +
+          (stats ? `<div class="ab-list-row-meta">${esc(stats)}</div>` : '') +
+          (response ? `<div class="ab-list-row-meta" style="margin-top:4px">${esc(response)}</div>` : '') +
+          (notes ? `<div class="ab-list-row-meta" style="margin-top:4px;font-style:italic">${esc(notes)}</div>` : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    slot.innerHTML = '<div style="padding:12px 16px;border-top:1px solid var(--ab-border-soft)">' +
+      `<div class="ab-section-label" style="padding:0 0 4px">Fueling rehearsals · ${list.length}</div>` +
+      rows +
+    '</div>';
+  } catch (e) {
+    slot.innerHTML = '';
+  }
 }
 
 // Shortcut: tapping the GlanceBar overdue card with hot_count > 0 opens
