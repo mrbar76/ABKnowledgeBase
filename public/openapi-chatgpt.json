@@ -2032,7 +2032,16 @@
               "type": "string",
               "format": "date"
             },
-            "description": "Exact date to match"
+            "description": "Exact date to match (alias: plan_date)"
+          },
+          {
+            "name": "plan_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Alias for `date` — matches the DB column name"
           },
           {
             "name": "from",
@@ -2053,6 +2062,15 @@
             "description": "End date for range"
           },
           {
+            "name": "week_start",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Convenience alias: returns the 7-day window starting on this date. Equivalent to `from=<date>&to=<date+6>`."
+          },
+          {
             "name": "status",
             "in": "query",
             "schema": {
@@ -2063,7 +2081,8 @@
                 "partial",
                 "missed",
                 "rest",
-                "amended"
+                "amended",
+                "skipped"
               ]
             }
           },
@@ -2390,6 +2409,134 @@
           "200": {
             "description": "Plan with actual data and comparison summary"
           }
+        }
+      }
+    },
+    "/hevy/exercise-templates": {
+      "get": {
+        "operationId": "listHevyExerciseTemplates",
+        "summary": "List Hevy exercise template library (cached locally)",
+        "description": "Returns the user's Hevy exercise template library as cached in `hevy_template_cache`. Query this BEFORE writing a daily plan with `logging_target='hevy'` segments — the title returned here is the only string that will resolve to a Hevy template at push time. Case-insensitive exact-match resolution; no fuzzy match. If cache is stale, call `POST /api/hevy/templates/refresh` first.",
+        "responses": {
+          "200": {
+            "description": "Array of Hevy exercise templates with id and title",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "description": "Hevy exercise_template_id" },
+                      "title": { "type": "string", "description": "Canonical Hevy title (use verbatim in planned_exercises[].name)" },
+                      "type": { "type": "string" },
+                      "primary_muscle_group": { "type": "string" },
+                      "secondary_muscle_groups": { "type": "array", "items": { "type": "string" } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hevy/templates/refresh": {
+      "post": {
+        "operationId": "refreshHevyTemplates",
+        "summary": "Refresh local Hevy exercise template cache from Hevy API",
+        "description": "Pulls the current Hevy exercise template library from `api.hevyapp.com` and upserts into `hevy_template_cache`. Call this if `GET /api/hevy/exercise-templates` is missing exercises that exist in your Hevy library.",
+        "responses": {
+          "200": {
+            "description": "Refresh result with count of templates synced"
+          }
+        }
+      }
+    },
+    "/hevy/push-plan": {
+      "post": {
+        "operationId": "pushDailyPlanToHevy",
+        "summary": "Push (or re-push) a daily plan to Hevy as routines",
+        "description": "Auto-fires on `POST /api/daily-plans` and `PUT /api/daily-plans/{id}` — you typically don't need to call this manually. Call only to retry after a failed/skipped push (read `daily_plans.hevy_push_status`) or to force re-push without modifying the plan.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["plan_id"],
+                "properties": {
+                  "plan_id": { "type": "string", "format": "uuid" },
+                  "folder_id": { "type": "integer", "description": "Hevy folder id to drop routines into. Falls back to `HEVY_ROUTINE_FOLDER_ID` env var." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Push result. May be ok=true (synced) or ok=false with skipped/error reason."
+          }
+        }
+      }
+    },
+    "/hevy/push-segment": {
+      "post": {
+        "operationId": "pushPlanSegmentToHevy",
+        "summary": "Push (or re-push) a single plan_segment to Hevy as a routine",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["segment_id"],
+                "properties": {
+                  "segment_id": { "type": "string", "format": "uuid" },
+                  "folder_id": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Push result for the single segment" }
+        }
+      }
+    },
+    "/hevy/push-workout": {
+      "post": {
+        "operationId": "pushCompletedWorkoutToHevy",
+        "summary": "Push a completed Forge workout to Hevy as a logged session",
+        "description": "Converts a `workouts` row into a `POST /v1/workouts` payload on Hevy's API. Idempotent: if `workouts.hevy_id` is already set, PUTs the existing Hevy workout; otherwise POSTs a new one. Skips silently when the workout has no exercises or none resolve to Hevy templates.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["workout_id"],
+                "properties": {
+                  "workout_id": { "type": "string", "format": "uuid" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result: { ok, method (POST|PUT), hevy_id, exercises_pushed, total_exercises } or { ok: false, skipped: <reason> } / { ok: false, error: <message> }"
+          }
+        }
+      }
+    },
+    "/hevy/sync": {
+      "post": {
+        "operationId": "syncHevyWorkoutsToForge",
+        "summary": "Pull completed Hevy workouts into Forge",
+        "description": "Inserts any Hevy workouts not yet in Forge, deduped by `hevy_id`. Runs automatically via cron when `HEVY_API_KEY` is set; this endpoint forces a manual sync.",
+        "responses": {
+          "200": { "description": "Sync result with counts of imported/skipped workouts" }
         }
       }
     }
