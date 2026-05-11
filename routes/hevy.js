@@ -55,6 +55,14 @@ const router = express.Router();
 const HEVY_BASE = 'https://api.hevyapp.com/v1';
 const HEVY_API_KEY = process.env.HEVY_API_KEY;
 
+// v3.13: hardcoded fallback for the AB Brain "Plans" routine folder.
+// Single-user app, single Hevy account, single landing folder for
+// auto-pushed plan routines. Pre-v3.13, leaving HEVY_ROUTINE_FOLDER_ID
+// unset on deploy caused every push to fail with `no folder_id`. This
+// fallback eliminates that whole failure mode while preserving the env
+// var override for any future change of folder.
+const DEFAULT_HEVY_ROUTINE_FOLDER_ID = 2804154;
+
 // ─── Helpers ────────────────────────────────────────────────────
 
 function requireKey(res) {
@@ -209,10 +217,20 @@ function mapSegmentToHevyRoutine(plan, segment, planned_exercises, folder_id) {
     })).filter(e => e.exercise_template_id),
   };
 
-  // Hevy POST /routines requires a folder_id. Caller passes folder_id;
-  // fall back to env var HEVY_ROUTINE_FOLDER_ID if set. Field name is
-  // strictly `folder_id` — Hevy rejects `routine_folder_id`.
-  const fid = folder_id || process.env.HEVY_ROUTINE_FOLDER_ID;
+  // Hevy POST /routines requires a folder_id. Resolution order:
+  //   1. folder_id passed in the request body (per-call override)
+  //   2. HEVY_ROUTINE_FOLDER_ID env var (deploy config)
+  //   3. DEFAULT_HEVY_ROUTINE_FOLDER_ID hardcoded fallback (this file)
+  //
+  // The hardcoded fallback (v3.13) eliminates the silent "no folder_id"
+  // failure for the single-user-single-folder default case. If you ever
+  // create a second routine folder in Hevy and want plans to land
+  // there, set HEVY_ROUTINE_FOLDER_ID in the deploy env or pass
+  // folder_id in the body.
+  //
+  // Field name is strictly `folder_id` — Hevy rejects
+  // `routine_folder_id`.
+  const fid = folder_id || process.env.HEVY_ROUTINE_FOLDER_ID || DEFAULT_HEVY_ROUTINE_FOLDER_ID;
   if (fid) routine.folder_id = fid;
 
   return routine;

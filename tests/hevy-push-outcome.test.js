@@ -125,3 +125,20 @@ test('never null: ok=false with empty results array', () => {
   assert.ok(r.detail);
   assert.match(r.detail, /unknown shape/i);
 });
+
+// ─── v3.13: hardcoded folder_id fallback ─────────────────────────────
+
+test('v3.13: hevy.js exports DEFAULT_HEVY_ROUTINE_FOLDER_ID-shaped fallback', () => {
+  // Static check on the source — the fallback constant must be present
+  // and non-zero, otherwise the silent "no folder_id" regression
+  // returns the moment HEVY_ROUTINE_FOLDER_ID env var is unset.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../routes/hevy.js'), 'utf8');
+  assert.match(src, /DEFAULT_HEVY_ROUTINE_FOLDER_ID = \d+/, 'hardcoded fallback constant');
+  assert.match(
+    src,
+    /folder_id \|\| process\.env\.HEVY_ROUTINE_FOLDER_ID \|\| DEFAULT_HEVY_ROUTINE_FOLDER_ID/,
+    'three-tier resolution order: body → env → default',
+  );
+});
