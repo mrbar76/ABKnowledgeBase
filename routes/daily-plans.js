@@ -664,14 +664,19 @@ router.post('/week', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    // v3.11: validate Hevy contract on amend too, but only when the
-    // amendment actually touches the relevant inputs. If neither
-    // workout_type nor segments are part of this PUT, the contract
-    // can't have been broken by this request, so we skip the check.
-    if (req.body.workout_type !== undefined || req.body.segments !== undefined) {
-      // We need to know the EFFECTIVE workout_type + segments after the
-      // amend. Fall back to the stored values for whichever field is
-      // not in the body.
+    // v3.15: only validate the Hevy contract when this PUT is actually
+    // modifying segments. Pre-v3.15, the validator ran whenever
+    // workout_type was in the body — but the Edit Plan form always
+    // sends workout_type even on a pure status / notes / target edit.
+    // That blocked legitimate edits (e.g. "mark missed" or "mark
+    // skipped") on legacy strength plans created before v3.11 that
+    // never had hevy segments. The contract's purpose is to prevent
+    // accidentally creating an unpushable strength plan — once a plan
+    // exists, status changes and notes edits don't make it worse, so
+    // they pass through. POST still enforces strictly.
+    if (req.body.segments !== undefined) {
+      // Use the new workout_type if supplied, otherwise the stored
+      // one — both contribute to the effective post-amend shape.
       const stored = await query(
         `SELECT workout_type FROM daily_plans WHERE id = $1`,
         [req.params.id],
@@ -680,13 +685,9 @@ router.put('/:id', async (req, res) => {
         req.body.workout_type !== undefined
           ? req.body.workout_type
           : stored.rows[0]?.workout_type;
-      const effectiveSegments =
-        req.body.segments !== undefined
-          ? req.body.segments
-          : await loadSegments(req.params.id);
       const contractError = validateHevyContract({
         workout_type: effectiveType,
-        segments: effectiveSegments,
+        segments: req.body.segments,
       });
       if (contractError) return res.status(400).json(contractError);
     }

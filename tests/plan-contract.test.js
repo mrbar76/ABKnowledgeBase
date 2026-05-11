@@ -144,6 +144,28 @@ test('route: PUT /api/daily-plans/:id calls validateHevyContract on amendment', 
   assert.match(putBlock, /validateHevyContract/, 'PUT should validate too');
 });
 
+// v3.15 regression: PUT validator must NOT block status-only or
+// notes-only edits. The Edit Plan form always sends workout_type in
+// the body, so the pre-v3.15 trigger condition fired on every save and
+// blocked legitimate "mark missed / mark skipped" edits on legacy
+// plans without hevy segments.
+test('route: PUT validator scope is segments-only, not workout_type', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/daily-plans.js'), 'utf8');
+  const putBlock = src.slice(src.indexOf("router.put('/:id', async"), src.indexOf("router.post('/:id/wrap'"));
+  // The condition that triggers the validator should only check segments,
+  // not workout_type.
+  assert.match(
+    putBlock,
+    /if \(req\.body\.segments !== undefined\) \{/,
+    'PUT validator should trigger only on segments changes (v3.15)',
+  );
+  assert.doesNotMatch(
+    putBlock,
+    /if \(req\.body\.workout_type !== undefined \|\| req\.body\.segments !== undefined\)/,
+    'pre-v3.15 over-broad trigger condition must be removed',
+  );
+});
+
 // ─── OpenAPI coverage ──────────────────────────────────────────────
 
 test('openapi: /hevy/exercise-templates is documented', () => {
