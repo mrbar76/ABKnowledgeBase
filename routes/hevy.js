@@ -306,6 +306,14 @@ function mapHevyWorkoutToAB(hw) {
     }
   }
 
+  // v3.16: derive workouts.effort from the max RPE across WORKING sets
+  // (warmups excluded). Hevy lets you tap RPE on the hardest set per
+  // lift; "max RPE across working sets" is the canonical heaviness
+  // proxy. Half-point RPE (e.g. 8.5) rounds to the nearest integer to
+  // fit the 1-10 effort column. Returns null when no working set has
+  // RPE — in that case the caller leaves workouts.effort untouched.
+  const derivedEffort = deriveEffortFromRpe(hw.exercises);
+
   return {
     hevy_id: hw.id,
     workout_date: startedAt ? String(startedAt).slice(0, 10) : null,
@@ -320,6 +328,10 @@ function mapHevyWorkoutToAB(hw) {
     exercises: transformHevyExercises(hw.exercises),
     total_volume_lb: Math.round(totalVolumeLb),
     total_sets: totalSets,
+    // v3.16: present only when at least one working set carried an RPE.
+    // The upsert SQL only writes this when it's non-null (preserves
+    // existing manual effort if Hevy didn't capture any RPE).
+    effort: derivedEffort,
     source: 'hevy',
     ai_source: null,
     metadata: {
@@ -333,9 +345,44 @@ function mapHevyWorkoutToAB(hw) {
         // this value, no manual edit happened → safe to take Hevy's
         // new description. If they diverge, Forge keeps its edit.
         last_synced_description: hw.description || null,
+        // v3.16: keep the raw max-RPE (0.5 precision) for posterity,
+        // since effort rounds to integer. Useful for coach + downstream.
+        derived_effort_from_max_rpe: derivedEffort != null
+          ? maxWorkingSetRpe(hw.exercises)
+          : null,
       },
     },
   };
+}
+
+// v3.16: scan all exercises' sets, return the max RPE among WORKING
+// sets (warmups + the first-rep markers excluded). Returns null when
+// no working set has an RPE. Caller decides whether to round / clamp.
+function maxWorkingSetRpe(exercises) {
+  if (!Array.isArray(exercises)) return null;
+  let max = null;
+  for (const ex of exercises) {
+    for (const s of (ex.sets || [])) {
+      if (s == null) continue;
+      const isWarmup = s.type === 'warmup' || s.set_type === 'warmup';
+      if (isWarmup) continue;
+      if (s.rpe == null) continue; // skip before Number() (Number(null) is 0)
+      const rpe = Number(s.rpe);
+      if (!Number.isFinite(rpe)) continue;
+      if (max == null || rpe > max) max = rpe;
+    }
+  }
+  return max;
+}
+
+// Round + clamp the max working-set RPE to workouts.effort's domain
+// (integer 1-10). Returns null when no working set carried RPE so the
+// caller knows to leave existing effort alone instead of zeroing it.
+function deriveEffortFromRpe(exercises) {
+  const max = maxWorkingSetRpe(exercises);
+  if (max == null) return null;
+  const rounded = Math.round(max);
+  return Math.max(1, Math.min(10, rounded));
 }
 
 // ─── GET /api/hevy/test ───────────────────────────────────────
@@ -1222,6 +1269,7 @@ async function syncHevyWorkouts(since) {
                  THEN EXCLUDED.body_notes
                ELSE workouts.body_notes
              END,
+             effort = COALESCE(EXCLUDED.effort, workouts.effort),
              metadata = workouts.metadata || EXCLUDED.metadata,
              deleted_at = NULL,
              updated_at = NOW()
