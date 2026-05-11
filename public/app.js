@@ -9486,6 +9486,45 @@ async function showWorkoutDetail(id) {
 
       ${section('Adjustment Next Time', w.adjustment)}
 
+      ${(() => {
+        // v3.14: render the exercises array (populated by Hevy sync OR
+        // by manual workout logging) so per-exercise + per-set notes
+        // are visible. Pre-v3.14 these were stored on the row but never
+        // surfaced — silently lost from the user's POV.
+        const exs = Array.isArray(w.exercises) ? w.exercises : [];
+        if (!exs.length) return '';
+        const formatSet = (s, i) => {
+          const w_ = s.weight_lbs ?? s.weight_lb ?? null;
+          const r_ = s.reps ?? null;
+          const dur = s.duration_seconds ? `${s.duration_seconds}s` : null;
+          const dist = s.distance_meters ? `${s.distance_meters}m` : null;
+          const rpe = s.rpe ? `RPE ${s.rpe}` : null;
+          const setLabel = s.warmup ? 'WU' : (s.set_type && s.set_type !== 'normal' ? s.set_type : `${i + 1}`);
+          const main = w_ != null && r_ != null
+            ? `${w_}lb × ${r_}`
+            : (r_ != null ? `${r_} reps` : (dur || dist || '—'));
+          const meta = [rpe, dur && r_ != null ? dur : null, dist && r_ != null ? dist : null].filter(Boolean).join(' · ');
+          return `<div style="font-size:0.72rem;display:flex;gap:8px;align-items:baseline">
+            <span style="display:inline-block;min-width:24px;color:var(--ab-muted);font-variant-numeric:tabular-nums">${setLabel}</span>
+            <span>${esc(main)}</span>
+            ${meta ? `<span style="color:var(--ab-muted)">· ${esc(meta)}</span>` : ''}
+            ${s.notes ? `<span style="color:var(--ab-muted);font-style:italic;margin-left:4px">"${esc(s.notes)}"</span>` : ''}
+          </div>`;
+        };
+        const exBlocks = exs.map((ex) => {
+          const sets = Array.isArray(ex.sets) ? ex.sets : [];
+          return `<div style="margin-bottom:14px;padding:10px 12px;background:var(--ab-card);border:1px solid var(--ab-border-soft);border-radius:8px">
+            <div style="font-weight:600;font-size:0.82rem;margin-bottom:4px">${esc(ex.name || 'Unknown exercise')}</div>
+            ${ex.notes ? `<div style="font-size:0.7rem;color:var(--ab-muted);font-style:italic;margin-bottom:6px">${esc(ex.notes)}</div>` : ''}
+            ${sets.length ? `<div style="display:flex;flex-direction:column;gap:2px">${sets.map(formatSet).join('')}</div>` : ''}
+          </div>`;
+        }).join('');
+        return `<div class="workout-detail-section">
+          <div class="workout-detail-label">Exercises (${exs.length})</div>
+          ${exBlocks}
+        </div>`;
+      })()}
+
       ${w.tags && w.tags.length ? `<div class="transcript-speakers mt-sm">${w.tags.map(t => `<span class="speaker-tag">${esc(t)}</span>`).join('')}</div>` : ''}
 
       ${(() => {

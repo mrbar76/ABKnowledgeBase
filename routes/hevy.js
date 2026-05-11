@@ -266,6 +266,10 @@ function transformHevyExercises(hevyExercises) {
         set_type: s.type || s.set_type || 'normal',
         distance_meters: s.distance_meters ?? undefined,
         duration_seconds: s.duration_seconds ?? undefined,
+        // v3.14: per-set notes were silently dropped pre-v3.14. Hevy
+        // exposes them in the API; surfacing valuable context like
+        // "missed last rep" or "form broke at 4th rep".
+        notes: s.notes || undefined,
       };
     });
     return {
@@ -323,6 +327,12 @@ function mapHevyWorkoutToAB(hw) {
         id: hw.id,
         exercise_count: (hw.exercises || []).length,
         raw_exercises: hw.exercises,
+        // v3.14: snapshot the description we got from Hevy so the
+        // sync upsert can tell whether body_notes was manually edited
+        // in Forge after the last sync. If body_notes still equals
+        // this value, no manual edit happened → safe to take Hevy's
+        // new description. If they diverge, Forge keeps its edit.
+        last_synced_description: hw.description || null,
       },
     },
   };
@@ -1180,8 +1190,20 @@ async function syncHevyWorkouts(since) {
 
         // Conflict resolution: Hevy is the source of execution truth,
         // so its sets/reps/weight/timing/volume OVERWRITE on each sync.
-        // AB Brain owns the coaching context (body_notes) — preserved if
-        // Hevy returns null.
+        //
+        // body_notes (v3.14): smart 3-way merge.
+        //   - Forge stores the last description it saw from Hevy in
+        //     metadata.hevy.last_synced_description.
+        //   - On re-sync, if current body_notes still matches that
+        //     snapshot, the user hasn't manually edited it in Forge —
+        //     safe to take Hevy's new description (propagates Hevy
+        //     edits cleanly).
+        //   - If body_notes diverged from the last snapshot, the user
+        //     edited it in Forge — preserve the local edit.
+        //   - On first sync (no prior snapshot), take Hevy's value.
+        //
+        // Pre-v3.14 the rule was "Forge always wins if non-null", which
+        // silently lost Hevy edits made after the first sync.
         const upsert = await query(
           `INSERT INTO workouts (${cols.join(', ')})
            VALUES (${placeholders.join(', ')})
@@ -1194,7 +1216,12 @@ async function syncHevyWorkouts(since) {
              exercises = EXCLUDED.exercises,
              total_volume_lb = EXCLUDED.total_volume_lb,
              total_sets = EXCLUDED.total_sets,
-             body_notes = COALESCE(workouts.body_notes, EXCLUDED.body_notes),
+             body_notes = CASE
+               WHEN workouts.body_notes IS NULL THEN EXCLUDED.body_notes
+               WHEN workouts.body_notes IS NOT DISTINCT FROM (workouts.metadata #>> '{hevy,last_synced_description}')
+                 THEN EXCLUDED.body_notes
+               ELSE workouts.body_notes
+             END,
              metadata = workouts.metadata || EXCLUDED.metadata,
              deleted_at = NULL,
              updated_at = NOW()
