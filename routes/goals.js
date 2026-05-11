@@ -764,17 +764,38 @@ async function recomputeOneGoal(goal) {
     return goal;
   }
 
-  // Pull workouts since the anchor date
-  const workouts = await query(
-    `SELECT id, title, workout_date, workout_type, duration_minutes,
-            distance_value, exercises, created_at
-     FROM workouts
-     WHERE workout_date >= $1 AND deleted_at IS NULL
-     ORDER BY workout_date ASC`,
-    [goal.anchor_date]
-  );
+  // v3.17: load workouts OR body_metrics depending on the goal's
+  // compute_method. Body-composition goals (weight, body_fat_pct,
+  // lean_mass_lb, etc.) draw from body_metrics; everything else from
+  // workouts. The driver dispatch in computeValueForGoal handles the
+  // routing; here we just need to ensure the right dataset is available.
+  const { BODY_METRIC_COMPUTE_METHODS } = require('../lib/goal-compute');
+  const usesBodyMetrics = BODY_METRIC_COMPUTE_METHODS.has(goal.compute_method);
 
-  const { value, source_workout } = computeValueForGoal(goal, workouts.rows);
+  let workouts = { rows: [] };
+  let bodyMetrics = { rows: [] };
+  if (usesBodyMetrics) {
+    bodyMetrics = await query(
+      `SELECT id, measurement_date, weight_lb, body_fat_pct,
+              lean_mass_lb, skeletal_muscle_pct, bmi
+       FROM body_metrics
+       WHERE measurement_date >= $1
+       ORDER BY measurement_date DESC, measurement_time DESC NULLS LAST, created_at DESC`,
+      [goal.anchor_date]
+    );
+  } else {
+    workouts = await query(
+      `SELECT id, title, workout_date, workout_type, duration_minutes,
+              distance_value, exercises, created_at
+       FROM workouts
+       WHERE workout_date >= $1 AND deleted_at IS NULL
+       ORDER BY workout_date ASC`,
+      [goal.anchor_date]
+    );
+  }
+
+  const compResult = computeValueForGoal(goal, workouts.rows, bodyMetrics.rows);
+  const { value, source_workout } = compResult;
   if (value == null) {
     // No data yet; just refresh status (might transition from on_track to at_risk over time)
     const newStatus = computeStatus(goal);
@@ -803,11 +824,22 @@ async function recomputeOneGoal(goal) {
     return goal;
   }
 
-  const sourceDate = source_workout?.workout_date || new Date().toISOString().slice(0, 10);
+  // v3.17: source attribution branches on whether this is a workout-
+  // driven or body-metric-driven goal. The goal_history row's
+  // source_workout_id stays null for body-metric goals; source_note
+  // captures the weigh-in date so the trace is still readable.
+  const sourceDate = source_workout?.workout_date
+    || compResult.source_date
+    || new Date().toISOString().slice(0, 10);
   const sourceId = source_workout?.id || null;
-  const note = source_workout
-    ? `Workout ${source_workout.title || source_workout.id} on ${dateOnly(source_workout.workout_date)}`
-    : 'auto-compute';
+  let note;
+  if (source_workout) {
+    note = `Workout ${source_workout.title || source_workout.id} on ${dateOnly(source_workout.workout_date)}`;
+  } else if (compResult.source_body_metric_id) {
+    note = `Weigh-in on ${dateOnly(compResult.source_date)}`;
+  } else {
+    note = 'auto-compute';
+  }
 
   // Update goal + append history in one transaction-ish sequence
   await query(
@@ -888,6 +920,33 @@ async function recomputeForWorkout(workoutRow) {
       updated.push({ id: r.id, title: r.title, status: r.status, current_value: r.current_value });
     } catch (err) {
       console.error(`[goals recompute-for-workout] ${g.id} failed: ${err.message}`);
+    }
+  }
+  return { recomputed_count: updated.length, goals: updated };
+}
+
+// v3.17: companion hook for body_metrics writes. Called from
+// routes/body-metrics.js POST / PATCH / bulk paths. Recomputes every
+// active body-composition goal (compute_method='latest_body_value').
+// Body-metric writes are rarer than workout writes, so recomputing all
+// matching goals on every weigh-in is cheap. The hook is fire-and-
+// forget at the caller; we never fail the body_metric write because of
+// a goal-compute issue.
+async function recomputeForBodyMetric(bodyMetricRow) {
+  if (!bodyMetricRow) return { recomputed_count: 0 };
+  const goals = await query(
+    `SELECT * FROM goals
+     WHERE status NOT IN ('complete','failed','paused')
+       AND compute_method = 'latest_body_value'
+       AND manual_locked = false`
+  );
+  const updated = [];
+  for (const g of goals.rows) {
+    try {
+      const r = await recomputeOneGoal(g);
+      updated.push({ id: r.id, title: r.title, status: r.status, current_value: r.current_value });
+    } catch (err) {
+      console.error(`[goals recompute-for-body-metric] ${g.id} failed: ${err.message}`);
     }
   }
   return { recomputed_count: updated.length, goals: updated };
@@ -1034,5 +1093,7 @@ router.post('/seed-defaults', async (req, res) => {
 
 module.exports = router;
 module.exports.recomputeForWorkout = recomputeForWorkout;
+module.exports.recomputeForBodyMetric = recomputeForBodyMetric;
+module.exports.recomputeAllGoals = recomputeAllGoals;
 module.exports.recomputeAllGoals = recomputeAllGoals;
 module.exports.checkPhaseAdvance = checkPhaseAdvance;
