@@ -12,6 +12,8 @@ const PLAN_TEXT_FIELDS = [
 ];
 
 // Fire-and-forget Hevy push on plan create/update. Never blocks the
+const { derivePushOutcome } = require('../lib/hevy-push-outcome');
+
 // response. Persists the outcome to daily_plans.hevy_push_{status,detail,at}
 // so the UI can show a synced badge instead of relying on server logs.
 //
@@ -32,23 +34,16 @@ function autoPushToHevy(planRow) {
   Promise.resolve()
     .then(() => pushPlanToHevy(planRow))
     .then(async (r) => {
-      let status = 'failed';
-      let detail = null;
-      if (r?.ok) {
-        status = 'synced';
-        detail = r.segments_pushed != null
-          ? `${r.segments_pushed}/${r.total_hevy_segments} segments`
-          : 'pushed';
-        console.log(`[auto-hevy-push] plan ${planRow.id} → ${detail}`);
-      } else if (r?.skipped) {
-        status = 'skipped';
-        detail = r.skipped;
-        console.log(`[auto-hevy-push] plan ${planRow.id} skipped: ${r.skipped}`);
-      } else if (r?.error) {
-        status = 'failed';
-        detail = r.error;
-        console.warn(`[auto-hevy-push] plan ${planRow.id} failed: ${r.error}`);
-      }
+      // v3.12: status/detail derivation now ALWAYS yields a non-null
+      // detail. The pushPlanToHevy aggregator surfaces per-segment
+      // failures as a top-level `error` or `skipped` (see hevy.js); the
+      // fallback below catches any case where that didn't happen (e.g.
+      // a future return-shape change) so the column never reads null
+      // when status is failed/skipped.
+      const { status, detail } = derivePushOutcome(r);
+      if (status === 'synced') console.log(`[auto-hevy-push] plan ${planRow.id} → ${detail}`);
+      else if (status === 'skipped') console.log(`[auto-hevy-push] plan ${planRow.id} skipped: ${detail}`);
+      else console.warn(`[auto-hevy-push] plan ${planRow.id} failed: ${detail}`);
       try {
         await query(
           `UPDATE daily_plans SET hevy_push_status = $1, hevy_push_detail = $2, hevy_push_at = NOW()
