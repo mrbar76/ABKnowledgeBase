@@ -175,6 +175,18 @@ router.post('/', async (req, res) => {
       b.source || 'RENPHO',
       `Body metric: ${b.weight_lb}lb on ${b.measurement_date}`
     );
+
+    // v3.17: trigger goal recompute for body-composition goals
+    // (weight, body fat %, lean mass, etc.). Fire-and-forget — never
+    // let a recompute failure 500 the body_metric write.
+    try {
+      const { recomputeForBodyMetric } = require('./goals');
+      if (typeof recomputeForBodyMetric === 'function') {
+        recomputeForBodyMetric(result.rows[0]).catch(err =>
+          console.error('[goals recompute on body-metric create]', err.message));
+      }
+    } catch (_) { /* goals route not loaded yet (e.g., startup race) */ }
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -218,6 +230,23 @@ router.post('/bulk', async (req, res) => {
     }
 
     await logActivity('create', 'body_metric', 'bulk', 'import', `Bulk imported ${imported} body metrics (${errorCount} errors)`);
+
+    // v3.17: trigger one recompute after the bulk completes. The hook
+    // is keyed on "any body metric changed" not per-row, so a single
+    // call suffices regardless of how many rows landed.
+    if (imported > 0) {
+      try {
+        const { recomputeForBodyMetric } = require('./goals');
+        if (typeof recomputeForBodyMetric === 'function') {
+          // Pass the latest inserted row as the trigger marker; the hook
+          // recomputes every body-comp goal anyway, so the row identity
+          // doesn't matter for what gets recomputed.
+          recomputeForBodyMetric(results.find(r => r.id) || {}).catch(err =>
+            console.error('[goals recompute on body-metric bulk]', err.message));
+        }
+      } catch (_) { /* goals route not loaded */ }
+    }
+
     res.status(201).json({ message: `Imported ${imported} body metrics`, imported, errors: errorCount, results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -269,6 +298,17 @@ router.patch('/:id', async (req, res) => {
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
 
     await logActivity('update', 'body_metric', req.params.id, b.source || 'manual', 'Updated body metric');
+
+    // v3.17: trigger goal recompute on edit too — editing a weigh-in's
+    // weight value should re-evaluate matching body-composition goals.
+    try {
+      const { recomputeForBodyMetric } = require('./goals');
+      if (typeof recomputeForBodyMetric === 'function') {
+        recomputeForBodyMetric(result.rows[0]).catch(err =>
+          console.error('[goals recompute on body-metric update]', err.message));
+      }
+    } catch (_) { /* goals route not loaded */ }
+
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
