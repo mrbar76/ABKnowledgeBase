@@ -221,6 +221,44 @@ function stripDeprecated(plan) {
   return cleanFields(plan, PLAN_TEXT_FIELDS);
 }
 
+// v3.11: write-time enforcement of the Hevy contract for plan types
+// that are expected to push to Hevy. Strength + hybrid plans without
+// at least one segment carrying logging_target='hevy' AND non-empty
+// planned_exercises[] would silently skip the auto-push and leave
+// the user wondering where their routine went. Reject at the API
+// boundary instead.
+//
+// Returns null when the plan is valid, or an error envelope to send
+// back to the caller (400 status, structured detail).
+const HEVY_REQUIRED_WORKOUT_TYPES = new Set(['strength', 'hybrid']);
+
+function validateHevyContract(body) {
+  const workoutType = String(body?.workout_type || '').toLowerCase();
+  if (!HEVY_REQUIRED_WORKOUT_TYPES.has(workoutType)) return null;
+  const segments = Array.isArray(body?.segments) ? body.segments : [];
+  const hevyEligible = segments.some((s) => {
+    if (!s || String(s.logging_target || '').toLowerCase() !== 'hevy') return false;
+    const exs = Array.isArray(s.planned_exercises) ? s.planned_exercises : [];
+    return exs.length > 0;
+  });
+  if (hevyEligible) return null;
+  return {
+    error: 'strength_or_hybrid_plan_missing_hevy_segments',
+    detail:
+      `workout_type='${workoutType}' plans must include at least one ` +
+      `segment with logging_target='hevy' and a non-empty planned_exercises[] ` +
+      `array, so the Hevy auto-push can land a routine. If this plan is ` +
+      `deliberately not pushing to Hevy, use a different workout_type ` +
+      `(e.g. 'recovery', 'walk', 'mobility') or set logging_target='manual' ` +
+      `on all segments — but in that case you also can't use 'strength' / 'hybrid'.`,
+    workout_type: workoutType,
+    segments_provided: segments.length,
+    hevy_segments_provided: segments.filter(
+      (s) => String(s?.logging_target || '').toLowerCase() === 'hevy',
+    ).length,
+  };
+}
+
 function stripDeprecatedAll(plans) {
   if (!Array.isArray(plans)) return plans;
   return plans.map(stripDeprecated);
@@ -238,7 +276,30 @@ const JSONB_FIELDS = new Set(['tags', 'metadata']);
 
 router.get('/', async (req, res) => {
   try {
-    const { date, from, to, status: st, limit = 50, offset = 0 } = req.query;
+    // v3.11: accept caller-friendly aliases that match the DB column
+    // names and the frontend convention.
+    //   ?plan_date=   → alias for ?date=
+    //   ?week_start=  → alias for ?from= (7-day window starting that date)
+    // Previously these were silently ignored, which let plans queries
+    // return all 50 most-recent rows instead of the intended slice.
+    const aliasDate = req.query.plan_date || req.query.date;
+    let aliasFrom = req.query.from;
+    let aliasTo = req.query.to;
+    if (req.query.week_start && !aliasFrom) {
+      aliasFrom = req.query.week_start;
+      // If no explicit `to`, derive the end of the 7-day window. Uses
+      // the canonical date helper so month/year boundaries are correct.
+      if (!aliasTo) {
+        try {
+          const { shiftDaysISO } = require('../lib/date-helpers');
+          aliasTo = shiftDaysISO(aliasFrom, 6);
+        } catch (_) { /* helper not loaded — fall through with no `to` */ }
+      }
+    }
+    const { status: st, limit = 50, offset = 0 } = req.query;
+    const date = aliasDate;
+    const from = aliasFrom;
+    const to = aliasTo;
     const params = [];
     const where = [];
     let i = 1;
@@ -506,6 +567,10 @@ router.post('/', async (req, res) => {
   try {
     if (!req.body.plan_date) return res.status(400).json({ error: 'plan_date is required' });
 
+    // v3.11: enforce Hevy contract at write time for strength/hybrid plans.
+    const contractError = validateHevyContract(req.body);
+    if (contractError) return res.status(400).json(contractError);
+
     const cols = [];
     const vals = [];
     const placeholders = [];
@@ -604,6 +669,33 @@ router.post('/week', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    // v3.11: validate Hevy contract on amend too, but only when the
+    // amendment actually touches the relevant inputs. If neither
+    // workout_type nor segments are part of this PUT, the contract
+    // can't have been broken by this request, so we skip the check.
+    if (req.body.workout_type !== undefined || req.body.segments !== undefined) {
+      // We need to know the EFFECTIVE workout_type + segments after the
+      // amend. Fall back to the stored values for whichever field is
+      // not in the body.
+      const stored = await query(
+        `SELECT workout_type FROM daily_plans WHERE id = $1`,
+        [req.params.id],
+      );
+      const effectiveType =
+        req.body.workout_type !== undefined
+          ? req.body.workout_type
+          : stored.rows[0]?.workout_type;
+      const effectiveSegments =
+        req.body.segments !== undefined
+          ? req.body.segments
+          : await loadSegments(req.params.id);
+      const contractError = validateHevyContract({
+        workout_type: effectiveType,
+        segments: effectiveSegments,
+      });
+      if (contractError) return res.status(400).json(contractError);
+    }
+
     const fields = [];
     const vals = [];
     let i = 1;
