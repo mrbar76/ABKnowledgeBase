@@ -260,8 +260,20 @@ After the push fires, the plan row carries:
 | Column | Type | Values |
 |--------|------|--------|
 | `hevy_push_status` | TEXT | `not_attempted` / `pending` / `synced` / `skipped` / `failed` |
-| `hevy_push_detail` | TEXT | Skip reason or error message; null on success |
+| `hevy_push_detail` | TEXT | Skip reason / error message / segments-pushed summary. **Always non-null** when status is `skipped` or `failed` (v3.12+). May be null on `not_attempted` or in flight `pending`. |
 | `hevy_push_at` | TIMESTAMPTZ | Last attempt time |
+
+### Detail conventions (v3.12+)
+
+- **`synced`** → `detail` reads `"N/M segments"` (or `"pushed"` if no count).
+- **`skipped`** → `detail` is the canonical skip code (`no_api_key`, `no_segments_with_logging_target_hevy`, `no_resolvable_exercises`) OR — when multiple segments skipped — `"segment <id-prefix>: <reason>; segment <id-prefix>: <reason>; …"`.
+- **`failed`** → `detail` is an error message. Two prefixes you'll see:
+  - **`hevy_api: Hevy <METHOD> <PATH> → <STATUS>: <body>`** — Hevy's API rejected the request. Status code + body tell you why. Common: 400 (payload shape), 401 (bad API key), 404 (unknown template_id), 422 (validation).
+  - **No prefix** — Forge-side validation failure. Common: `"no folder_id (set HEVY_ROUTINE_FOLDER_ID env var or pass folder_id in body)"`.
+
+Distinguishing the two matters because the fix is different:
+- `hevy_api:` errors → fix the payload (exercise name, set shape, etc.) and re-PUT the plan.
+- No-prefix errors → fix Forge config (env var, folder_id in body) and retry. Plan body may be fine.
 
 **Workflow:**
 

@@ -894,7 +894,13 @@ async function pushPlanToHevy(planRow, _unused, folderId) {
         const r = await pushSegmentToHevy(planRow, seg, folderId);
         results.push(r);
       } catch (err) {
-        results.push({ ok: false, segment_id: seg.id, error: err.message });
+        // v3.12: prefix hevy-api errors so the caller (and the
+        // hevy_push_detail column) can distinguish a Hevy-side
+        // rejection (400 from /v1/routines) from a Forge-side
+        // validation failure (no folder_id, no resolvable exercises).
+        const raw = err?.message || String(err);
+        const prefixed = raw.startsWith('Hevy ') ? `hevy_api: ${raw}` : raw;
+        results.push({ ok: false, segment_id: seg.id, error: prefixed });
       }
     }
     const okCount = results.filter(r => r.ok).length;
@@ -904,11 +910,37 @@ async function pushPlanToHevy(planRow, _unused, folderId) {
     if (titleCollisions.length) {
       console.warn(`[hevy/push] plan ${planRow.id} has ${titleCollisions.length} routine title collision(s) — Coach forgot to set title_suffix on segments sharing a block_label.`);
     }
+
+    // v3.12: when every segment fails, aggregate the per-segment
+    // reasons into a top-level `error` or `skipped` so callers
+    // (autoPushToHevy, POST /push-plan, the UI badge) get a usable
+    // diagnostic without walking results[]. Two precedence rules:
+    //   1. If ANY segment threw a hard error, surface those as `error`
+    //      (hard errors deserve attention more than soft skips).
+    //   2. Otherwise, surface skip reasons as `skipped`.
+    let aggregateError = null;
+    let aggregateSkipped = null;
+    if (okCount === 0 && results.length > 0) {
+      const errored = results.filter((r) => r.error);
+      const skipped = results.filter((r) => r.skipped);
+      const formatSeg = (r) => {
+        const sid = r.segment_id ? `segment ${String(r.segment_id).slice(0, 8)}` : 'segment';
+        return `${sid}: ${r.error || r.skipped}`;
+      };
+      if (errored.length > 0) {
+        aggregateError = errored.map(formatSeg).join('; ');
+      } else if (skipped.length > 0) {
+        aggregateSkipped = skipped.map(formatSeg).join('; ');
+      }
+    }
+
     return {
       ok: okCount > 0,
       segments_pushed: okCount,
       total_hevy_segments: hevySegments.length,
       results,
+      ...(aggregateSkipped ? { skipped: aggregateSkipped } : {}),
+      ...(aggregateError ? { error: aggregateError } : {}),
       ...(titleCollisions.length ? { warnings: { title_collisions: titleCollisions } } : {}),
     };
   }
@@ -939,21 +971,12 @@ router.post('/push-plan', async (req, res) => {
 
     const result = await pushPlanToHevy(plan, null, folder_id);
 
-    // v3.3: persist outcome on the plan so the UI can render a synced badge.
-    let pushStatus = 'failed';
-    let pushDetail = null;
-    if (result?.ok) {
-      pushStatus = 'synced';
-      pushDetail = result.segments_pushed != null
-        ? `${result.segments_pushed}/${result.total_hevy_segments} segments`
-        : 'pushed';
-    } else if (result?.skipped) {
-      pushStatus = 'skipped';
-      pushDetail = result.skipped;
-    } else if (result?.error) {
-      pushStatus = 'failed';
-      pushDetail = result.error;
-    }
+    // v3.12: use the shared derivePushOutcome helper so failed pushes
+    // always carry a non-null detail. Previously this path had the same
+    // fall-through bug as autoPushToHevy (status='failed', detail=null
+    // when results[] held per-segment failures but no top-level error).
+    const { derivePushOutcome } = require('../lib/hevy-push-outcome');
+    const { status: pushStatus, detail: pushDetail } = derivePushOutcome(result);
     try {
       await query(
         `UPDATE daily_plans SET hevy_push_status = $1, hevy_push_detail = $2, hevy_push_at = NOW()
