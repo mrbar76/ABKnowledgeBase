@@ -18,7 +18,15 @@ const assert = require('node:assert/strict');
 // Set HEVY_API_KEY so the route module loads without warnings.
 process.env.HEVY_API_KEY = process.env.HEVY_API_KEY || 'test-key';
 const { _test } = require('../routes/hevy');
-const { mapSegmentToHevyRoutine, formatPlanDate, lbToKg, abMetricsToHevy, mapHevyWorkoutToAB } = _test;
+const {
+  mapSegmentToHevyRoutine,
+  formatPlanDate,
+  lbToKg,
+  abMetricsToHevy,
+  mapHevyWorkoutToAB,
+  lookupHevyTemplateByName,
+  searchHevyTemplates,
+} = _test;
 
 test('routine payload uses folder_id, not routine_folder_id (regression: commit 7ccef38)', () => {
   const plan = {
@@ -179,4 +187,95 @@ test('mapSegmentToHevyRoutine drops exercises without template id', () => {
   );
   assert.equal(r.exercises.length, 1);
   assert.equal(r.exercises[0].exercise_template_id, 'X');
+});
+
+// ─── Resolver: exact-only push path (regression for duplicate-exercises bug) ───
+//
+// lookupHevyTemplateByName used to fall back to a 0.35-threshold
+// trigram fuzzy match against hevy_template_cache as Tier 3. Production
+// docs claimed "no fuzzy match in production push path" — but the code
+// silently mapped near-misses to whichever template won the trigram
+// race, baking the wrong template_id into hevy_routine_id and
+// propagating duplicates through logged workouts. The fuzzy tier was
+// removed; fuzzy is now only available via the discovery-only
+// searchHevyTemplates() helper for explicit confirmation.
+
+function fakeQuery(handlers) {
+  // handlers: array of (sql, params) -> rows | null, run in order. The
+  // first handler whose return value is not undefined wins. Throws if
+  // an unexpected query lands.
+  let i = 0;
+  return async (sql, params) => {
+    const h = handlers[i++];
+    if (!h) throw new Error(`unexpected query #${i}: ${sql.slice(0, 80)}`);
+    const result = await h(sql, params);
+    return { rows: result || [] };
+  };
+}
+
+test('resolver: returns map hit (Tier 1)', async () => {
+  const q = fakeQuery([
+    () => [{ id: 'T1', title: 'Bench Press', type: 'weight_reps' }],
+  ]);
+  const r = await lookupHevyTemplateByName('Bench Press', q);
+  assert.equal(r.id, 'T1');
+  assert.equal(r.source, 'map');
+});
+
+test('resolver: falls through to cache exact when map misses (Tier 2)', async () => {
+  const q = fakeQuery([
+    () => [], // map miss
+    () => [{ id: 'T2', title: 'Bench Press', type: 'weight_reps' }], // cache exact
+  ]);
+  const r = await lookupHevyTemplateByName('Bench Press', q);
+  assert.equal(r.id, 'T2');
+  assert.equal(r.source, 'cache_exact');
+});
+
+test('resolver: returns null when both map and cache exact miss — no fuzzy fallback', async () => {
+  const calls = [];
+  const q = async (sql) => {
+    calls.push(sql);
+    return { rows: [] }; // both queries miss
+  };
+  const r = await lookupHevyTemplateByName('Bulgarian Split Squat', q);
+  assert.equal(r, null);
+  // Critical: only TWO queries — no fuzzy fallback. Previously the
+  // resolver would run a third trigram-similarity query and accept
+  // any result with sim > 0.35.
+  assert.equal(calls.length, 2, `resolver ran ${calls.length} queries; expected 2 (no fuzzy)`);
+  assert.ok(/hevy_exercise_map/.test(calls[0]));
+  assert.ok(/hevy_template_cache/.test(calls[1]));
+  assert.ok(!/similarity/.test(calls[0] + calls[1]), 'resolver must not run a similarity query');
+});
+
+test('searchHevyTemplates: filters by minSimilarity', async () => {
+  const q = async () => ({
+    rows: [
+      { id: 'A', title: 'Bench Press', type: 'weight_reps', is_custom: false, similarity: 0.95 },
+      { id: 'B', title: 'Bench Press (Smith)', type: 'weight_reps', is_custom: false, similarity: 0.7 },
+      { id: 'C', title: 'Overhead Press', type: 'weight_reps', is_custom: false, similarity: 0.35 },
+    ],
+  });
+  const r = await searchHevyTemplates('Bench Press', { minSimilarity: 0.5 }, q);
+  assert.equal(r.length, 2);
+  assert.equal(r[0].id, 'A');
+  assert.equal(r[1].id, 'B');
+});
+
+test('searchHevyTemplates: empty name returns []', async () => {
+  // Note: also verifies the queryFn is not even called for empty names.
+  const q = async () => { throw new Error('should not query for empty name'); };
+  const r = await searchHevyTemplates('', {}, q);
+  assert.deepEqual(r, []);
+});
+
+test('searchHevyTemplates: respects custom limit and minSimilarity defaults', async () => {
+  let receivedLimit = null;
+  const q = async (_sql, params) => {
+    receivedLimit = params[1];
+    return { rows: [{ id: 'A', title: 'X', similarity: 0.6 }] };
+  };
+  await searchHevyTemplates('X', { limit: 10 }, q);
+  assert.equal(receivedLimit, 10);
 });

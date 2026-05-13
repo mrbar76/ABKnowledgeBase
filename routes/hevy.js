@@ -559,9 +559,9 @@ router.get('/health', async (req, res) => {
 // 3 templates and the rank can shuffle. A persistent map locks the
 // chosen template so logs stay comparable across sessions.
 
-async function lookupHevyTemplateByName(name) {
-  // 1) hevy_exercise_map (manual or previously auto-populated)
-  const mapR = await query(
+async function lookupHevyTemplateByName(name, queryFn = query) {
+  // 1) hevy_exercise_map (manual or previously confirmed binding)
+  const mapR = await queryFn(
     `SELECT hevy_exercise_template_id AS id, hevy_title AS title, hevy_type AS type
        FROM hevy_exercise_map
       WHERE lower(ab_brain_exercise_name) = lower($1)
@@ -571,7 +571,7 @@ async function lookupHevyTemplateByName(name) {
   if (mapR.rows.length) return { ...mapR.rows[0], source: 'map' };
 
   // 2) hevy_template_cache exact title match
-  const exactR = await query(
+  const exactR = await queryFn(
     `SELECT hevy_id AS id, title, type
        FROM hevy_template_cache
       WHERE lower(title) = lower($1)
@@ -580,20 +580,35 @@ async function lookupHevyTemplateByName(name) {
   );
   if (exactR.rows.length) return { ...exactR.rows[0], source: 'cache_exact' };
 
-  // 3) hevy_template_cache trigram fuzzy
-  const fuzzyR = await query(
-    `SELECT hevy_id AS id, title, type, similarity(title, $1) AS sim
+  // Exact-only on the production push path. The 0.35-threshold trigram
+  // fuzzy fallback was removed because silent wrong-template bindings
+  // baked into hevy_routine_id and propagated to logged workouts —
+  // producing the duplicate-exercises symptom this resolver is supposed
+  // to prevent. Fuzzy discovery is still available via
+  // searchHevyTemplates() but only as explicit suggestions for a human
+  // (or Coach) to confirm, never as a silent push-time fallback.
+  return null;
+}
+
+// Discovery-only fuzzy search over hevy_template_cache. NOT called from
+// the push pipeline — its job is to surface candidates for explicit
+// confirmation (via POST /api/hevy/exercise-map) when an exact match is
+// missing. Returns rows already filtered by minSimilarity, ordered most
+// to least similar.
+async function searchHevyTemplates(name, opts = {}, queryFn = query) {
+  if (!name) return [];
+  const limit = opts.limit ?? 5;
+  const minSimilarity = opts.minSimilarity ?? 0.5;
+  const { rows } = await queryFn(
+    `SELECT hevy_id AS id, title, type, is_custom,
+            similarity(title, $1) AS similarity
        FROM hevy_template_cache
       WHERE title % $1
-      ORDER BY sim DESC
-      LIMIT 1`,
-    [name]
+      ORDER BY similarity DESC
+      LIMIT $2`,
+    [name, limit]
   );
-  if (fuzzyR.rows.length && Number(fuzzyR.rows[0].sim) > 0.35) {
-    return { ...fuzzyR.rows[0], source: 'cache_fuzzy' };
-  }
-
-  return null;
+  return rows.filter(r => Number(r.similarity) >= minSimilarity);
 }
 
 // GET /api/hevy/exercise-map — list all mappings
@@ -704,25 +719,25 @@ router.delete('/exercise-map/:id', async (req, res) => {
 
 // POST /api/hevy/exercise-map/auto-populate
 //
-// Body: { auto_create_custom?: boolean }
+// Body: (none required)
 //
 // For every distinct exercise name referenced in plan_segments
-// .planned_exercises[].name (or daily_plans.planned_exercises) that
-// isn't already mapped, look up a Hevy template via the cache. Three
-// outcome buckets:
-//   mapped:    confident match auto-inserted
-//   ambiguous: fuzzy match, awaiting manual review
-//   unmapped:  no match
+// .planned_exercises[].name that isn't already mapped, look up a Hevy
+// template via the cache. Three outcome buckets:
+//   mapped:    exact match auto-inserted into hevy_exercise_map
+//   ambiguous: only fuzzy matches in cache; surfaced as suggestions for
+//              the user/Coach to confirm via POST /api/hevy/exercise-map
+//   unmapped:  no exact and no fuzzy candidates
 //
-// If `auto_create_custom: true`, unmapped names get a custom Hevy
-// exercise_template POSTed to the user's library (with sensible
-// defaults), then mapped. Use sparingly — Coach should normally
-// confirm with the user before creating customs.
+// The legacy `auto_create_custom: true` flag was removed: silently
+// minting Hevy customs on a resolver miss produced duplicate templates
+// in the user's library and was the primary source of the
+// duplicate-exercises bug. To bind a new exercise now: create the
+// template in Hevy, POST /api/hevy/templates/refresh, then POST
+// /api/hevy/exercise-map with the chosen hevy_exercise_template_id.
 router.post('/exercise-map/auto-populate', async (req, res) => {
   if (!requireKey(res)) return;
   try {
-    const autoCreateCustom = Boolean(req.body?.auto_create_custom);
-
     // Ensure cache has data — auto-populate is useless without it.
     const { rows: cacheCount } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
     if (!cacheCount[0].n) await refreshTemplateCache();
@@ -744,17 +759,12 @@ router.post('/exercise-map/auto-populate', async (req, res) => {
     const mapped = [];
     const ambiguous = [];
     const unmapped = [];
-    const customCreated = [];
 
     for (const name of names) {
       if (have.has(name)) continue;
       const hit = await lookupHevyTemplateByName(name);
-      if (hit && hit.source === 'cache_fuzzy') {
-        ambiguous.push({ name, suggestion: hit });
-        continue;
-      }
       if (hit) {
-        // Exact map or cache match.
+        // Exact map or cache match — safe to auto-bind.
         await query(
           `INSERT INTO hevy_exercise_map (
              ab_brain_exercise_name, hevy_exercise_template_id, hevy_title, hevy_type, confidence
@@ -765,46 +775,13 @@ router.post('/exercise-map/auto-populate', async (req, res) => {
         mapped.push({ name, hevy_id: hit.id, hevy_title: hit.title });
         continue;
       }
-      // No match anywhere.
-      if (!autoCreateCustom) { unmapped.push(name); continue; }
-
-      // Auto-create custom Hevy template + map. Title-cases the AB
-      // Brain name for Hevy display ("cat cow" → "Cat Cow").
-      const titled = name.replace(/\b\w/g, c => c.toUpperCase());
-      try {
-        const data = await hevyFetch('/exercise_templates', {
-          method: 'POST',
-          body: JSON.stringify({
-            exercise_template: {
-              title: titled,
-              primary_muscle_group: 'other',
-              equipment: 'none',
-            },
-          }),
-        });
-        const tpl = data.exercise_template || data;
-        const newId = tpl.id || tpl.exercise_template_id;
-        if (!newId) { unmapped.push(name); continue; }
-
-        // Map immediately and add to cache so future passes find it.
-        await query(
-          `INSERT INTO hevy_exercise_map (
-             ab_brain_exercise_name, hevy_exercise_template_id, hevy_title, hevy_type, is_custom, confidence
-           ) VALUES ($1, $2, $3, $4, TRUE, 'auto')
-           ON CONFLICT (lower(ab_brain_exercise_name)) DO NOTHING`,
-          [name, newId, titled, tpl.type || 'weight_reps']
-        );
-        await query(
-          `INSERT INTO hevy_template_cache (hevy_id, title, type, is_custom, raw)
-           VALUES ($1, $2, $3, TRUE, $4::jsonb)
-           ON CONFLICT (hevy_id) DO NOTHING`,
-          [newId, titled, tpl.type || 'weight_reps', JSON.stringify(tpl)]
-        );
-        customCreated.push({ name, hevy_id: newId, hevy_title: titled });
-        mapped.push({ name, hevy_id: newId, hevy_title: titled, custom: true });
-      } catch (err) {
+      // No exact match. Offer fuzzy candidates for explicit review —
+      // never bind them automatically.
+      const candidates = await searchHevyTemplates(name, { limit: 3, minSimilarity: 0.5 });
+      if (candidates.length) {
+        ambiguous.push({ name, candidates });
+      } else {
         unmapped.push(name);
-        console.error(`[hevy/auto-populate] custom create failed for "${name}": ${err.message}`);
       }
     }
 
@@ -812,11 +789,241 @@ router.post('/exercise-map/auto-populate', async (req, res) => {
       mapped: mapped.length,
       ambiguous: ambiguous.length,
       unmapped: unmapped.length,
-      custom_created: customCreated.length,
-      details: { mapped, ambiguous, unmapped, customCreated },
+      details: { mapped, ambiguous, unmapped },
     });
   } catch (err) {
     console.error(`[hevy/exercise-map/auto-populate] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/hevy/exercise-map/audit
+//
+// Read-only diagnostic for the exercise-mapping pipeline. Surfaces the
+// four duplicate-flavored conditions that historically produced the
+// "same exercise appears twice" symptom in Forge and Hevy:
+//
+//   forge_name_collisions: rows in hevy_exercise_map sharing a
+//     normalized AB Brain name (should be empty given the UNIQUE
+//     constraint; reported defensively).
+//   hevy_title_duplicates: hevy_template_cache entries grouped by
+//     lower(title) with count > 1. Catches "stock vs accidental
+//     custom" pairs, the most common cause of duplicates.
+//   orphan_mappings: hevy_exercise_map rows whose template_id is no
+//     longer present in hevy_template_cache (template deleted in Hevy
+//     after binding).
+//   custom_lookalikes: custom templates with similarity > 0.85 to a
+//     stock template — likely accidental duplicates created before
+//     the auto-spawn path was removed.
+//
+// Use this before calling /exercise-map/merge to pick which pairs to
+// repoint.
+router.get('/exercise-map/audit', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const [collisions, titleDupes, orphans, lookalikes] = await Promise.all([
+      query(
+        `SELECT lower(ab_brain_exercise_name) AS normalized_name,
+                COUNT(*)::int AS cnt,
+                json_agg(json_build_object(
+                  'id', id,
+                  'ab_brain_exercise_name', ab_brain_exercise_name,
+                  'hevy_exercise_template_id', hevy_exercise_template_id,
+                  'hevy_title', hevy_title,
+                  'is_custom', is_custom,
+                  'confidence', confidence
+                )) AS rows
+           FROM hevy_exercise_map
+          GROUP BY lower(ab_brain_exercise_name)
+         HAVING COUNT(*) > 1
+          ORDER BY cnt DESC, normalized_name`
+      ),
+      query(
+        `SELECT lower(title) AS normalized_title,
+                COUNT(*)::int AS cnt,
+                json_agg(json_build_object(
+                  'hevy_id', hevy_id,
+                  'title', title,
+                  'type', type,
+                  'is_custom', is_custom
+                ) ORDER BY is_custom ASC, hevy_id) AS templates
+           FROM hevy_template_cache
+          GROUP BY lower(title)
+         HAVING COUNT(*) > 1
+          ORDER BY cnt DESC, normalized_title`
+      ),
+      query(
+        `SELECT m.id, m.ab_brain_exercise_name, m.hevy_exercise_template_id,
+                m.hevy_title, m.is_custom, m.confidence
+           FROM hevy_exercise_map m
+           LEFT JOIN hevy_template_cache c
+             ON c.hevy_id = m.hevy_exercise_template_id
+          WHERE c.hevy_id IS NULL
+          ORDER BY m.ab_brain_exercise_name`
+      ),
+      query(
+        `SELECT c1.hevy_id AS custom_id, c1.title AS custom_title,
+                c2.hevy_id AS stock_id, c2.title AS stock_title,
+                similarity(c1.title, c2.title) AS similarity
+           FROM hevy_template_cache c1
+           JOIN hevy_template_cache c2
+             ON c1.title % c2.title
+          WHERE c1.is_custom = TRUE
+            AND c2.is_custom = FALSE
+            AND c1.hevy_id <> c2.hevy_id
+            AND similarity(c1.title, c2.title) > 0.85
+          ORDER BY similarity DESC, c1.title`
+      ),
+    ]);
+
+    const totalIssues =
+      collisions.rows.length +
+      titleDupes.rows.length +
+      orphans.rows.length +
+      lookalikes.rows.length;
+
+    res.json({
+      total_issues: totalIssues,
+      forge_name_collisions: {
+        count: collisions.rows.length,
+        rows: collisions.rows,
+      },
+      hevy_title_duplicates: {
+        count: titleDupes.rows.length,
+        rows: titleDupes.rows,
+      },
+      orphan_mappings: {
+        count: orphans.rows.length,
+        rows: orphans.rows,
+      },
+      custom_lookalikes: {
+        count: lookalikes.rows.length,
+        rows: lookalikes.rows,
+      },
+    });
+  } catch (err) {
+    console.error(`[hevy/exercise-map/audit] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/hevy/exercise-map/merge
+//
+// Body: { keep_template_id, drop_template_id, confirm: true }
+//
+// Destructive merge. Repoints every reference to drop_template_id at
+// keep_template_id and removes the dropped template from the local
+// cache:
+//   - hevy_exercise_map.hevy_exercise_template_id rows
+//   - workouts.exercises[] JSONB entries
+//   - plan_segments.planned_exercises[] JSONB entries
+//   - hevy_template_cache row for drop_template_id (deleted)
+//
+// Does NOT delete the template from Hevy itself. The dropped template
+// remains in the user's Hevy library until they clean it up there or
+// until a future endpoint proxies a delete with explicit confirmation.
+// Wrapped in a single transaction; partial failure rolls back the
+// whole merge.
+router.post('/exercise-map/merge', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const { keep_template_id, drop_template_id, confirm } = req.body || {};
+    if (!keep_template_id || !drop_template_id) {
+      return res.status(400).json({ error: 'keep_template_id and drop_template_id required' });
+    }
+    if (String(keep_template_id) === String(drop_template_id)) {
+      return res.status(400).json({ error: 'keep_template_id and drop_template_id must differ' });
+    }
+    if (!confirm) {
+      return res.status(400).json({ error: 'confirm: true required for destructive merge' });
+    }
+
+    const summary = await withTransaction(async (client) => {
+      const keepCheck = await client.query(
+        `SELECT hevy_id, title, type FROM hevy_template_cache WHERE hevy_id = $1`,
+        [keep_template_id]
+      );
+      if (!keepCheck.rows.length) {
+        throw new Error(`keep_template_id ${keep_template_id} not found in hevy_template_cache`);
+      }
+      const keepTitle = keepCheck.rows[0].title;
+      const keepType = keepCheck.rows[0].type;
+
+      const mapUpdates = await client.query(
+        `UPDATE hevy_exercise_map
+            SET hevy_exercise_template_id = $1,
+                hevy_title = $2,
+                hevy_type = $3,
+                updated_at = NOW()
+          WHERE hevy_exercise_template_id = $4
+        RETURNING id, ab_brain_exercise_name`,
+        [keep_template_id, keepTitle, keepType, drop_template_id]
+      );
+
+      const workoutUpdates = await client.query(
+        `UPDATE workouts
+            SET exercises = (
+                  SELECT jsonb_agg(
+                    CASE WHEN e->>'hevy_exercise_template_id' = $2
+                         THEN jsonb_set(e, '{hevy_exercise_template_id}', to_jsonb($1::text))
+                         ELSE e
+                    END
+                    ORDER BY ord
+                  )
+                    FROM jsonb_array_elements(workouts.exercises)
+                         WITH ORDINALITY AS arr(e, ord)
+                ),
+                updated_at = NOW()
+          WHERE EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(workouts.exercises) AS e
+                   WHERE e->>'hevy_exercise_template_id' = $2
+                )
+        RETURNING id`,
+        [keep_template_id, drop_template_id]
+      );
+
+      const segmentUpdates = await client.query(
+        `UPDATE plan_segments
+            SET planned_exercises = (
+                  SELECT jsonb_agg(
+                    CASE WHEN e->>'hevy_exercise_template_id' = $2
+                         THEN jsonb_set(e, '{hevy_exercise_template_id}', to_jsonb($1::text))
+                         ELSE e
+                    END
+                    ORDER BY ord
+                  )
+                    FROM jsonb_array_elements(plan_segments.planned_exercises)
+                         WITH ORDINALITY AS arr(e, ord)
+                ),
+                updated_at = NOW()
+          WHERE EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(plan_segments.planned_exercises) AS e
+                   WHERE e->>'hevy_exercise_template_id' = $2
+                )
+        RETURNING id`,
+        [keep_template_id, drop_template_id]
+      );
+
+      const cacheDelete = await client.query(
+        `DELETE FROM hevy_template_cache WHERE hevy_id = $1 RETURNING hevy_id`,
+        [drop_template_id]
+      );
+
+      return {
+        keep_template_id,
+        drop_template_id,
+        keep_title: keepTitle,
+        mappings_repointed: mapUpdates.rows.length,
+        workouts_updated: workoutUpdates.rows.length,
+        plan_segments_updated: segmentUpdates.rows.length,
+        cache_rows_removed: cacheDelete.rows.length,
+        repointed_names: mapUpdates.rows.map(r => r.ab_brain_exercise_name),
+      };
+    });
+
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    console.error(`[hevy/exercise-map/merge] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1879,4 +2086,6 @@ module.exports._test = {
   abMetricsToHevy,
   lbToKg,
   TYPE_PREFIX,
+  lookupHevyTemplateByName,
+  searchHevyTemplates,
 };
