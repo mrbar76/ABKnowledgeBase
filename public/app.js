@@ -3694,17 +3694,21 @@ async function refreshHevyTemplates() {
 async function autoPopulateHevyMap() {
   const btn = document.getElementById('btn-hevy-auto-populate');
   const out = document.getElementById('sm-hevy-result');
-  const autoCustom = confirm('Auto-create Hevy custom templates for unmapped exercises? OK = yes (Coach\'s prescribed names appear in your Hevy library), Cancel = no (leave unmapped for manual review).');
   if (btn) { btn.disabled = true; btn.textContent = 'Mapping…'; }
   if (out) { out.style.display = 'block'; out.style.color = 'var(--text-dim)'; out.textContent = 'Resolving exercise names against Hevy cache…'; }
   try {
+    // Auto-populate only binds exact matches. Ambiguous (fuzzy) names
+    // come back with candidates for manual review via POST
+    // /api/hevy/exercise-map. Customs must be created inside Hevy then
+    // pulled in via POST /api/hevy/templates/refresh.
     const data = await api('/hevy/exercise-map/auto-populate', {
       method: 'POST',
-      body: JSON.stringify({ auto_create_custom: autoCustom }),
+      body: '{}',
     });
     if (out) {
       out.style.color = 'var(--green)';
-      out.textContent = `✓ Mapped ${data.mapped} · ambiguous ${data.ambiguous} · unmapped ${data.unmapped}${data.custom_created ? ' · custom ' + data.custom_created : ''}`;
+      const ambiguousHint = data.ambiguous ? ' (review via /exercise-map/audit)' : '';
+      out.textContent = `✓ Mapped ${data.mapped} · ambiguous ${data.ambiguous}${ambiguousHint} · unmapped ${data.unmapped}`;
     }
   } catch (e) {
     if (out) { out.style.color = 'var(--red)'; out.textContent = `✗ ${e.message}`; }
