@@ -4,6 +4,13 @@
 
 const express = require('express');
 
+// Postgres returns DATE columns as JS Date objects by default, not strings.
+// Normalizing here so downstream string-key Maps and string comparisons
+// behave correctly. Same shape as lib/recovery.js's dateStr helper.
+function dateStr(d) {
+  return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+}
+
 // ─── BMR fallback ─────────────────────────────────────────────────
 // HAE's daily payload doesn't reliably include basal_energy_kcal —
 // depends on the user's HAE app config and which export format is
@@ -618,6 +625,15 @@ router.get('/training', async (req, res) => {
       [startDate, endDate]
     );
     const workouts = w.rows;
+
+    // Normalize workout_date to YYYY-MM-DD string up front. Postgres returns
+    // DATE columns as Date objects, which silently break the dailyTss Map
+    // lookup (string keys) and the weekly string comparison below. Caused
+    // the entire daily TSS series to read as zeros, hiding all logged
+    // training. Bug predated end_date param work.
+    for (const wo of workouts) {
+      wo.workout_date = dateStr(wo.workout_date);
+    }
 
     // Per-workout TSS — fill missing. Uses zones in effect at endDate
     // (not "today") so historical TSS reflects the zones at that time
