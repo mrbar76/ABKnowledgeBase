@@ -601,28 +601,36 @@ router.get('/today', async (req, res) => {
 router.get('/training', async (req, res) => {
   try {
     const days = Math.min(Number(req.query.days) || 90, 365);
-    const startDate = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+    // end_date anchors the rolling window. Defaults to today. When set,
+    // the entire calculation (daily TSS series, EWMA, weekly summary,
+    // Z2-by-week) is computed as if `end_date` were the current day.
+    // Lets the Training tab show past-date load context.
+    const endDate = req.query.end_date || new Date().toISOString().slice(0, 10);
+    const endMs = new Date(endDate + 'T12:00:00').getTime();
+    const startDate = new Date(endMs - days * 86400_000).toISOString().slice(0, 10);
 
     const w = await query(
       `SELECT id, workout_date, started_at, workout_type, time_duration,
               heart_rate_avg, effort, distance, tss, hr_zones
        FROM workouts
-       WHERE workout_date >= $1
+       WHERE workout_date >= $1 AND workout_date <= $2
        ORDER BY workout_date ASC`,
-      [startDate]
+      [startDate, endDate]
     );
     const workouts = w.rows;
 
-    // Per-workout TSS — fill missing
-    const zonesRow = await getZonesForDate(new Date().toISOString().slice(0, 10));
+    // Per-workout TSS — fill missing. Uses zones in effect at endDate
+    // (not "today") so historical TSS reflects the zones at that time
+    // if the helper supports past-dated lookups.
+    const zonesRow = await getZonesForDate(endDate);
     for (const wo of workouts) {
       if (wo.tss == null) wo.tss = computeTSS(wo, zonesRow);
     }
 
-    // Daily TSS series
+    // Daily TSS series — anchored to endDate, walking back `days` days.
     const dailyTss = new Map();
     for (let i = 0; i < days; i++) {
-      const d = new Date(Date.now() - (days - 1 - i) * 86400_000).toISOString().slice(0, 10);
+      const d = new Date(endMs - (days - 1 - i) * 86400_000).toISOString().slice(0, 10);
       dailyTss.set(d, 0);
     }
     for (const wo of workouts) {
@@ -637,6 +645,8 @@ router.get('/training', async (req, res) => {
     const ctl = ewma(tssSeries, 42);
     const tsb = atl.map((a, i) => ctl[i] - a);
 
+    // "Current" here means the value at endDate (the last entry in the
+    // series), which equals "today" when end_date is omitted.
     const todayATL = atl[atl.length - 1] || 0;
     const todayCTL = ctl[ctl.length - 1] || 0;
     const todayTSB = tsb[tsb.length - 1] || 0;
@@ -645,9 +655,9 @@ router.get('/training', async (req, res) => {
       : todayTSB > -20 ? 'fatigued'
       : 'very_fatigued';
 
-    // Weekly summary (last 7 days)
-    const weekStart = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
-    const weekWorkouts = workouts.filter(wo => wo.workout_date >= weekStart);
+    // Weekly summary — 7 days ending at endDate.
+    const weekStart = new Date(endMs - 7 * 86400_000).toISOString().slice(0, 10);
+    const weekWorkouts = workouts.filter(wo => wo.workout_date >= weekStart && wo.workout_date <= endDate);
     let weekMiles = 0, weekSec = 0, weekTss = 0;
     const zoneMin = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
     for (const wo of weekWorkouts) {
@@ -681,7 +691,7 @@ router.get('/training', async (req, res) => {
         ctl: round1(ctl[i]),
         tsb: round1(tsb[i]),
       })),
-      z2_minutes_by_week: z2MinutesByWeek(workouts, 12),
+      z2_minutes_by_week: z2MinutesByWeek(workouts, 12, endDate),
     });
   } catch (err) {
     console.error(`[insights/training] ${err.stack}`);
@@ -693,7 +703,7 @@ router.get('/training', async (req, res) => {
 // last `weeks` weeks. Returns [{ week_start, minutes }, ...] in chronological
 // order. Z2 is the aerobic-base zone; tracking weekly volume here is the key
 // long-term endurance KPI.
-function z2MinutesByWeek(workouts, weeks = 12) {
+function z2MinutesByWeek(workouts, weeks = 12, endDate = null) {
   // Map each workout to its ISO-week-start (Monday)
   function isoWeekStart(dateStr) {
     const d = new Date(dateStr + 'T12:00:00');
@@ -702,14 +712,15 @@ function z2MinutesByWeek(workouts, weeks = 12) {
     return d.toISOString().slice(0, 10);
   }
   const buckets = new Map();
-  // Initialize empty buckets for the last `weeks` weeks
-  const today = new Date();
-  const todayDow = (today.getDay() + 6) % 7;
-  const thisMonday = new Date(today);
-  thisMonday.setDate(today.getDate() - todayDow);
+  // Initialize empty buckets for the last `weeks` weeks ending at endDate
+  // (or today when endDate is null).
+  const anchor = endDate ? new Date(endDate + 'T12:00:00') : new Date();
+  const anchorDow = (anchor.getDay() + 6) % 7;
+  const anchorMonday = new Date(anchor);
+  anchorMonday.setDate(anchor.getDate() - anchorDow);
   for (let i = weeks - 1; i >= 0; i--) {
-    const m = new Date(thisMonday);
-    m.setDate(thisMonday.getDate() - i * 7);
+    const m = new Date(anchorMonday);
+    m.setDate(anchorMonday.getDate() - i * 7);
     buckets.set(m.toISOString().slice(0, 10), 0);
   }
   for (const w of workouts) {

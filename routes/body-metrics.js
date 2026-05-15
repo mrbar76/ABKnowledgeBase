@@ -91,7 +91,7 @@ const INSERT_SQL = `INSERT INTO body_metrics (
 // ─── List / Search Body Metrics ──────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const { q, source, since, before, latest, limit = 50, offset = 0, sort } = req.query;
+    const { q, source, since, before, on_or_before, latest, limit = 50, offset = 0, sort } = req.query;
     const params = [];
     const where = [];
     let i = 1;
@@ -104,6 +104,11 @@ router.get('/', async (req, res) => {
     if (source) { where.push(`source = $${i++}`); params.push(source); }
     if (since) { where.push(`measurement_date >= $${i++}`); params.push(since); }
     if (before) { where.push(`measurement_date < $${i++}`); params.push(before); }
+    // on_or_before is the inclusive sibling of `before`. Used by the Training
+    // tab's Body section to show the most recent weigh-in as of a given date,
+    // including that date itself. `before` (strict <) preserved for callers
+    // that need exclusive semantics.
+    if (on_or_before) { where.push(`measurement_date <= $${i++}`); params.push(on_or_before); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
