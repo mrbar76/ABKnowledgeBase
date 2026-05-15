@@ -631,8 +631,15 @@ router.get('/training', async (req, res) => {
     // lookup (string keys) and the weekly string comparison below. Caused
     // the entire daily TSS series to read as zeros, hiding all logged
     // training. Bug predated end_date param work.
+    //
+    // Also defensively re-parse hr_zones if a row was somehow stored as
+    // TEXT (column is JSONB so this is rare, but cheap insurance — without
+    // it, a string hr_zones silently zeros out weekly Z2 minutes).
     for (const wo of workouts) {
       wo.workout_date = dateStr(wo.workout_date);
+      if (typeof wo.hr_zones === 'string') {
+        try { wo.hr_zones = JSON.parse(wo.hr_zones); } catch (_) { wo.hr_zones = null; }
+      }
     }
 
     // Per-workout TSS — fill missing. Uses zones in effect at endDate

@@ -7729,12 +7729,12 @@ async function showTrainingLoadSheet() {
 
     const tssChart = history.length
       ? '<div class="ab-section-label">Daily TSS · last 42 days</div>' +
-        '<canvas id="tl-tss-chart" height="180" style="margin:0 0 16px"></canvas>'
+        '<div style="position:relative;height:180px;margin:0 0 16px"><canvas id="tl-tss-chart"></canvas></div>'
       : '';
 
     const z2Chart = z2Weeks.length
       ? '<div class="ab-section-label">Z2 minutes · last 12 weeks</div>' +
-        '<canvas id="tl-z2-chart" height="160" style="margin:0 0 8px"></canvas>'
+        '<div style="position:relative;height:160px;margin:0 0 8px"><canvas id="tl-z2-chart"></canvas></div>'
       : '';
 
     openModal('Training load', head + weekly + tssChart + z2Chart, { variant: 'sheet' });
