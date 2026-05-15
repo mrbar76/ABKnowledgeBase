@@ -230,6 +230,68 @@ Returns:
 
 ---
 
+## Workout-to-plan routing contract (v3.19)
+
+Every skill that posts a workout MUST set `source` correctly. Pre-v3.19
+the auto-linker fell back to `segments[0]` whenever `source='manual'`
+(the default), silently misrouting cardio workouts to the strength
+segment. The 2026-05-14 stair-master misrouting was this exact bug.
+
+### Required source value per call site
+
+| Call site | source | Why |
+|---|---|---|
+| image-intake logging an Apple-Health-tracked workout (stair, run, walk, hike, cycle) | `'apple_health'` | Auto-link finds the `logging_target='apple_health'` segment |
+| workout-review for a Hevy-logged session | `'hevy'` | Auto-link finds the `logging_target='hevy'` segment |
+| Manual workout that doesn't map to either tracker | `'manual'` | Explicit fallback; auto-link uses first segment |
+| log-fueling-rehearsal posting a session row | match the segment being logged | Same as above |
+
+If the workout's segment is known with certainty, pass it directly
+instead of relying on inference:
+
+```
+POST /api/workouts
+{
+  ...,
+  source: 'apple_health',         // still set it
+  plan_segment_id: '<segment uuid>',  // explicit wins; no inference run
+  daily_plan_id: '<plan uuid>'    // optional; derived from segment if omitted
+}
+```
+
+### Precedence (v3.19+)
+
+1. `plan_segment_id` in body → bound directly. No source inference.
+2. `daily_plan_id` only → segment inferred from source within that plan.
+3. Neither → look up plan by `workout_date`, segment by source→logging_target match.
+4. No matching segment → fallback to `segments[0]` AND emit a structured
+   warning log naming the workout id, source, and ai_source. **If you
+   see this warning in logs, the skill is misconfigured — fix the source.**
+
+### Fixing existing misrouted workouts
+
+```
+POST /api/workouts/relink
+{
+  workout_id: '<uuid>',
+  plan_segment_id: '<correct segment uuid>',
+  force: true
+}
+```
+
+For a whole day's worth of unlinked workouts (case B — workouts posted
+before the daily_plan existed):
+
+```
+POST /api/workouts/relink
+{ date: 'YYYY-MM-DD' }
+```
+
+`force: true` overwrites existing routing. Without it, the link only
+fills NULLs — safe to re-run idempotently.
+
+---
+
 ## What every skill should do post-pivot
 
 1. **Hit ONE composite endpoint first.** No fan-outs.
@@ -238,12 +300,15 @@ Returns:
 3. **Write coaching_snapshots when posting briefs/decisions** — pinned
    values for reproducible retros.
 4. **Use plan_segment_id, not daily_plan_id** for workout-to-plan links.
-5. **No references to dropped columns:** `planned_exercises`,
+5. **Set `source` correctly on every workout POST** — see the routing
+   contract above. The default `'manual'` will silently fallback-route
+   cardio workouts to your strength segment.
+6. **No references to dropped columns:** `planned_exercises`,
    `actual_exercises`, `cadence_avg`, `splits`, `pace_avg`, `adjustment`,
    `fiber_g`, `sugar_g`, `sodium_mg`, `serving_size`, `treatment` (folded
    into `modifications`), `expected_weather`, `goal_process`, sleep stages
    in cache (use `daily_activity` for historical only).
-6. **Use the new `is_stale` generated column** on `daily_vitals_cache`
+7. **Use the new `is_stale` generated column** on `daily_vitals_cache`
    for "is the cache fresh?" checks instead of computing from `updated_at`.
 
 When in doubt: hit `/api/coach/<scenario>` first. If the data you need

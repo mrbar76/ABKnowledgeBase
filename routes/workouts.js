@@ -1,6 +1,7 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
 const { cleanFields, cleanRows } = require('../lib/voice');
+const { linkWorkoutToPlan } = require('../lib/workout-link');
 const router = express.Router();
 
 const WORKOUT_TEXT_FIELDS = [
@@ -11,48 +12,22 @@ const WORKOUT_TEXT_FIELDS = [
   'plan_comparison_notes',
 ];
 
-// Auto-link a freshly inserted workout to today's plan + the
-// preferred segment (matching by source / logging_target). No-op when
-// caller already supplied daily_plan_id, or when no plan exists for
-// the workout's date.
+// Auto-link wrapper. Adapts the workoutRow shape to the shared helper
+// in lib/workout-link.js. Pre-fix this lived as a local twin of
+// routes/health.js linkWorkoutToPlan — both implementations drifted
+// independently. The shared helper is now the only place link logic
+// lives (Hevy sync keeps its own inline query because it hardcodes
+// logging_target='hevy' + has additional metadata-merge logic).
 async function autoLinkWorkout(workoutRow) {
   if (!workoutRow || !workoutRow.id || !workoutRow.workout_date) return;
-  if (workoutRow.daily_plan_id) return;
-  try {
-    const source = workoutRow.source || 'manual';
-    const targetPref = source === 'apple_health' ? 'apple_health'
-      : source === 'hevy' ? 'hevy' : 'manual';
-    const r = await query(
-      `SELECT dp.id AS plan_id,
-        (SELECT id FROM plan_segments
-         WHERE daily_plan_id = dp.id AND logging_target = $2
-         ORDER BY block_order LIMIT 1) AS preferred_segment_id,
-        (SELECT id FROM plan_segments
-         WHERE daily_plan_id = dp.id
-         ORDER BY block_order LIMIT 1) AS first_segment_id
-       FROM daily_plans dp WHERE dp.plan_date = $1 LIMIT 1`,
-      [workoutRow.workout_date, targetPref]
-    );
-    if (!r.rows[0]?.plan_id) return;
-    const segmentId = r.rows[0].preferred_segment_id || r.rows[0].first_segment_id;
-    await query(
-      `UPDATE workouts
-       SET daily_plan_id = $1,
-           plan_segment_id = COALESCE(plan_segment_id, $2),
-           updated_at = NOW()
-       WHERE id = $3`,
-      [r.rows[0].plan_id, segmentId, workoutRow.id]
-    );
-    if (segmentId) {
-      await query(
-        `UPDATE plan_segments SET status = 'completed', updated_at = NOW()
-         WHERE id = $1 AND status IN ('planned','in_progress')`,
-        [segmentId]
-      );
-    }
-  } catch (err) {
-    console.error(`[workouts/autoLink] ${workoutRow.id}: ${err.message}`);
-  }
+  return linkWorkoutToPlan({
+    workoutId: workoutRow.id,
+    workoutDate: workoutRow.workout_date,
+    source: workoutRow.source || 'manual',
+    aiSource: workoutRow.ai_source || null,
+    planSegmentId: workoutRow.plan_segment_id || null,
+    dailyPlanId: workoutRow.daily_plan_id || null,
+  });
 }
 
 // Canonical writable fields (matches read schema). v1.9.4 dropped:
@@ -69,7 +44,7 @@ const WRITABLE_FIELDS = [
   'grip_feedback', 'legs_feedback', 'cardio_feedback', 'shoulder_feedback',
   'completion_status', 'plan_comparison_notes',
   'tags', 'source', 'ai_source', 'metadata',
-  'daily_plan_id',
+  'daily_plan_id', 'plan_segment_id',
   'duration_minutes', 'distance_value', 'elevation_gain_ft',
   'hr_avg', 'hr_max', 'cadence', 'cal_active', 'cal_total',
 ];
@@ -187,6 +162,7 @@ router.post('/', async (req, res) => {
         grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
         completion_status, plan_comparison_notes,
         tags, source, ai_source, metadata,
+        daily_plan_id, plan_segment_id,
         duration_minutes, distance_value, elevation_gain_ft,
         hr_avg, hr_max, cadence, cal_active, cal_total
       ) VALUES (
@@ -200,8 +176,9 @@ router.post('/', async (req, res) => {
         $22, $23, $24, $25,
         $26, $27,
         $28, $29, $30, $31,
-        $32, $33, $34,
-        $35, $36, $37, $38, $39
+        $32, $33,
+        $34, $35, $36,
+        $37, $38, $39, $40, $41
       ) RETURNING *`,
       [
         title,
@@ -235,6 +212,8 @@ router.post('/', async (req, res) => {
         b.source || 'manual',
         b.ai_source || null,
         JSON.stringify(b.metadata || {}),
+        b.daily_plan_id || null,
+        b.plan_segment_id || null,
         b.duration_minutes != null ? parseInt(b.duration_minutes, 10) : parseDurationMin(timeDur),
         b.distance_value != null ? parseFloat(b.distance_value) : parseNumFrom(b.distance),
         b.elevation_gain_ft != null ? parseInt(b.elevation_gain_ft, 10) : parseIntFrom(b.elevation_gain),
@@ -296,6 +275,7 @@ router.post('/bulk', async (req, res) => {
             grip_feedback, legs_feedback, cardio_feedback, shoulder_feedback,
             completion_status, plan_comparison_notes,
             tags, source, ai_source, metadata,
+            daily_plan_id, plan_segment_id,
             duration_minutes, distance_value, elevation_gain_ft,
             hr_avg, hr_max, cadence, cal_active, cal_total
           ) VALUES (
@@ -309,9 +289,10 @@ router.post('/bulk', async (req, res) => {
             $22, $23, $24, $25,
             $26, $27,
             $28, $29, $30, $31,
-            $32, $33, $34,
-            $35, $36, $37, $38, $39
-          ) RETURNING id, title, workout_date, workout_type`,
+            $32, $33,
+            $34, $35, $36,
+            $37, $38, $39, $40, $41
+          ) RETURNING id, title, workout_date, workout_type, source, ai_source`,
           [
             title,
             b.workout_date || req.getToday(),
@@ -344,6 +325,8 @@ router.post('/bulk', async (req, res) => {
             b.source || 'import',
             b.ai_source || null,
             JSON.stringify(b.metadata || {}),
+            b.daily_plan_id || null,
+            b.plan_segment_id || null,
             b.duration_minutes != null ? parseInt(b.duration_minutes, 10) : parseDurationMin(timeDur),
             b.distance_value != null ? parseFloat(b.distance_value) : parseNumFrom(b.distance),
             b.elevation_gain_ft != null ? parseInt(b.elevation_gain_ft, 10) : parseIntFrom(b.elevation_gain),
@@ -359,8 +342,10 @@ router.post('/bulk', async (req, res) => {
         await autoLinkWorkout({
           id: result.rows[0].id,
           workout_date: result.rows[0].workout_date,
-          source: b.source || 'import',
+          source: result.rows[0].source,
+          ai_source: result.rows[0].ai_source,
           daily_plan_id: b.daily_plan_id || null,
+          plan_segment_id: b.plan_segment_id || null,
         });
         imported++;
       } catch (itemErr) {
@@ -372,6 +357,87 @@ router.post('/bulk', async (req, res) => {
     await logActivity('create', 'workout', 'bulk', 'import', `Bulk imported ${imported} workouts (${errors} errors)`);
     res.status(201).json({ message: `Imported ${imported} workouts`, imported, errors, results });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Retroactive re-link ─────────────────────────────────────
+// POST /api/workouts/relink
+// Body: { workout_id?, date?, plan_segment_id?, daily_plan_id?,
+//         source?, force?: boolean }
+//
+// Re-runs the auto-link logic for a workout (or every workout on a
+// date). Use cases:
+//   - Workout was logged before its daily_plan existed (case B: caller
+//     posts with no plan, then plan is created later → workout stays
+//     unlinked → run /relink to attach it).
+//   - Workout was routed by source-fallback to the wrong segment
+//     (case A: skill posted source='manual', auto-link fell back to
+//     segments[0]) → run /relink with explicit plan_segment_id +
+//     force=true to MOVE the workout.
+//
+// Either `workout_id` or `date` is required. When both are given,
+// `workout_id` wins.
+//
+// `plan_segment_id` is only valid when `workout_id` is set (moving a
+// single workout). Applying one segment_id to every workout on a date
+// is almost always a mistake; rejected explicitly.
+//
+// `force: true` overwrites existing daily_plan_id / plan_segment_id.
+// Without force, the link UPDATE uses COALESCE — fills nulls only.
+router.post('/relink', async (req, res) => {
+  try {
+    const { workout_id, date, plan_segment_id, daily_plan_id, source, force } = req.body || {};
+    if (!workout_id && !date) {
+      return res.status(400).json({ error: 'workout_id or date required' });
+    }
+    if (date && plan_segment_id) {
+      return res.status(400).json({
+        error: 'plan_segment_id only valid with workout_id (per-workout move); ' +
+               'omit it when re-linking a whole date',
+      });
+    }
+
+    if (workout_id) {
+      const r = await query(
+        `SELECT id, workout_date, source, ai_source FROM workouts WHERE id = $1`,
+        [workout_id]
+      );
+      if (!r.rows.length) return res.status(404).json({ error: 'workout not found' });
+      const w = r.rows[0];
+      const result = await linkWorkoutToPlan({
+        workoutId: w.id,
+        workoutDate: w.workout_date,
+        source: source || w.source,
+        aiSource: w.ai_source,
+        planSegmentId: plan_segment_id || null,
+        dailyPlanId: daily_plan_id || null,
+        force: Boolean(force),
+      });
+      return res.json({ ok: Boolean(result.linked), ...result });
+    }
+
+    // Bulk by date
+    const r = await query(
+      `SELECT id, workout_date, source, ai_source FROM workouts WHERE workout_date = $1`,
+      [date]
+    );
+    const results = [];
+    for (const w of r.rows) {
+      const linkRes = await linkWorkoutToPlan({
+        workoutId: w.id,
+        workoutDate: w.workout_date,
+        source: source || w.source,
+        aiSource: w.ai_source,
+        planSegmentId: null,
+        dailyPlanId: daily_plan_id || null,
+        force: Boolean(force),
+      });
+      results.push({ workout_id: w.id, source: w.source, ...linkRes });
+    }
+    res.json({ ok: true, count: results.length, results });
+  } catch (err) {
+    console.error('[POST /workouts/relink]', err.stack);
     res.status(500).json({ error: err.message });
   }
 });
