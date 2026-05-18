@@ -7260,7 +7260,9 @@ async function loadFitness() {
       api('/goals/dashboard').catch(() => null),
       api('/recovery/score?date=' + viewDate).catch(() => null),
       api('/nutrition/daily-summary?date=' + viewDate).catch(() => null),
-      api('/body-metrics?limit=1').catch(() => null),
+      // Body metrics anchored to viewDate so past-date views show the
+      // most recent weigh-in on or before that date, not a future one.
+      api('/body-metrics?on_or_before=' + viewDate + '&limit=1').catch(() => null),
       api('/daily-plans?week_start=' + weekStart).catch(() => []),
       api('/races/upcoming').catch(() => null),
       // Pull recent workouts so the week strip can mark completed days
@@ -7268,8 +7270,9 @@ async function loadFitness() {
       // often left as 'planned' even after the workout was logged).
       api('/workouts?limit=30').catch(() => null),
       // v3.7: training stress / load — TSB, CTL, ATL + recent TSS series
-      // for the Load card in Today.
-      api('/health/insights/training?days=42').catch(() => null)
+      // for the Load card in Today. end_date anchors the 42-day window
+      // to viewDate so past-date views show that date's load context.
+      api('/health/insights/training?days=42&end_date=' + viewDate).catch(() => null)
     ]);
   } catch (e) {
     main.innerHTML = `<div class="ab-list-row" style="cursor:default;margin:32px 16px;border:1px solid var(--ab-border);border-radius:16px"><div class="ab-list-row-body"><div class="ab-list-row-title">Couldn't load Training.</div><div class="ab-list-row-meta">${esc(e.message)}</div></div></div>`;
@@ -7309,7 +7312,7 @@ function renderTraining(data) {
     renderTrainingRecoverySection(data.recovery),
     renderTrainingLoadSection(data.trainingLoad),
     renderTrainingFuelSection(data.fuel),
-    renderTrainingBodySection(data.body)
+    renderTrainingBodySection(data.body, data.viewDate)
   ].join('');
 }
 
@@ -7541,7 +7544,10 @@ function renderTrainingTodaySession(dayData, viewDate, realToday) {
     if (avgEffort) debriefLines.push(`avg effort ${avgEffort}/10`);
     if (workouts.length > 1) debriefLines.push(`${workouts.length} sessions logged`);
   }
-  if (plan.coaching_notes) debriefLines.push(plan.coaching_notes);
+  // coaching_notes deliberately not surfaced here — it ballooned the hero
+  // to a wall of text on iPhone. Detail sheet (showDailyPlanDetail) renders
+  // the full prose. Hero stays scannable: badge + kicker + title + optional
+  // short debrief metrics.
 
   const onclick = plan.id ? ` onclick="showDailyPlanDetail('${plan.id}')" style="cursor:pointer"` : '';
   return `<div class="ab-section-label">${sectionLabel}</div>` +
@@ -7682,11 +7688,27 @@ function renderTrainingLoadSection(load) {
 async function showTrainingLoadSheet() {
   openModal('Training load', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
-    const data = await api('/health/insights/training?days=42');
+    const data = await api('/health/insights/training?days=42&end_date=' + (trainingDate || localDateStr()));
     const c = data.current || {};
     const wk = data.weekly || {};
     const history = data.history || [];
     const z2Weeks = data.z2_minutes_by_week || [];
+
+    // Empty state: no logged training in the window. The route always
+    // returns one history entry per day in the window (zero-padded), so
+    // checking `history.length` doesn't help — check that every day has
+    // zero TSS instead. Sparse data (any non-zero day) still renders.
+    const noTraining = history.every(h => !h.tss);
+    if (noTraining) {
+      const empty = '<div class="ab-list-row" style="cursor:default;margin:24px 16px;border:1px solid var(--ab-border);border-radius:16px">' +
+        '<div class="ab-list-row-body">' +
+          '<div class="ab-list-row-title">No training in the last 42 days.</div>' +
+          '<div class="ab-list-row-meta">Once you log a few sessions, this view shows your form, fitness, and fatigue trends.</div>' +
+        '</div>' +
+      '</div>';
+      openModal('Training load', empty, { variant: 'sheet' });
+      return;
+    }
 
     const headStat = (label, val, sub) =>
       `<div class="ab-glance-card" style="cursor:default"><div class="ab-glance-card-label">${esc(label)}</div><div class="ab-glance-card-value">${esc(String(val))}</div><div class="ab-glance-card-sub">${esc(sub)}</div></div>`;
@@ -7707,12 +7729,12 @@ async function showTrainingLoadSheet() {
 
     const tssChart = history.length
       ? '<div class="ab-section-label">Daily TSS · last 42 days</div>' +
-        '<canvas id="tl-tss-chart" height="180" style="margin:0 0 16px"></canvas>'
+        '<div style="position:relative;height:180px;margin:0 0 16px"><canvas id="tl-tss-chart"></canvas></div>'
       : '';
 
     const z2Chart = z2Weeks.length
       ? '<div class="ab-section-label">Z2 minutes · last 12 weeks</div>' +
-        '<canvas id="tl-z2-chart" height="160" style="margin:0 0 8px"></canvas>'
+        '<div style="position:relative;height:160px;margin:0 0 8px"><canvas id="tl-z2-chart"></canvas></div>'
       : '';
 
     openModal('Training load', head + weekly + tssChart + z2Chart, { variant: 'sheet' });
@@ -7789,7 +7811,7 @@ function renderTrainingFuelSection(fuel) {
     '</div>';
 }
 
-function renderTrainingBodySection(body) {
+function renderTrainingBodySection(body, viewDate) {
   // /api/body-metrics returns { total, count, body_metrics: [...] } sorted DESC by date.
   const rows = body?.body_metrics || (Array.isArray(body) ? body : []);
   const latest = rows[0];
@@ -7808,8 +7830,11 @@ function renderTrainingBodySection(body) {
     : (latest.skeletal_muscle_pct != null ? Number(latest.skeletal_muscle_pct).toFixed(1) + '%' : '—');
   const bmr = latest.bmr ? String(latest.bmr) : '—';
   const dateStr = latest.measurement_date ? formatDateShort(latest.measurement_date) : '';
-  const today = localDateStr();
-  const stale = latest.measurement_date && String(latest.measurement_date).slice(0,10) !== today;
+  // Stale = the latest weigh-in is older than the date currently being viewed.
+  // On past-date views, viewDate is what the user is looking at, so we compare
+  // to that — not to today.
+  const refDate = viewDate || localDateStr();
+  const stale = latest.measurement_date && String(latest.measurement_date).slice(0,10) !== refDate;
   // Always render all three sub-stats so the Body section reads as a
   // proper dashboard. Missing values show as "—" rather than collapsing
   // the row to a single card.
@@ -11734,7 +11759,9 @@ async function showHotItemsSheet() {
 async function showRecoveryDetail() {
   openModal('Recovery', '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-meta">Loading…</div></div></div>', { variant: 'sheet' });
   try {
-    const r = await api('/recovery/score?date=' + localDateStr());
+    // Honor the Training tab's viewDate so tapping into Recovery from a
+    // past-date view shows that date's score, not today's.
+    const r = await api('/recovery/score?date=' + (trainingDate || localDateStr()));
     if (!r) {
       document.getElementById('modal-body').innerHTML = '<div class="ab-list-row" style="cursor:default"><div class="ab-list-row-body"><div class="ab-list-row-title">No recovery data yet.</div></div></div>';
       return;
