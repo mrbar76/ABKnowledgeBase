@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { query, logActivity } = require('../db');
 const { computeTSS } = require('./insights');
+const { linkWorkoutToPlan: linkWorkoutToPlanShared } = require('../lib/workout-link');
 const router = express.Router();
 
 // Recompute workouts.tss for any rows missing tss within a date window.
@@ -934,44 +935,16 @@ const WORKOUT_MERGE_WINDOW_SEC = 900;
 // plan + the apple_health-target segment. Falls back to first segment
 // of any kind if no apple_health segment exists. No-op when no plan
 // exists for the workout's date.
+// Thin adapter over the shared lib/workout-link.js helper. Pre-fix
+// this was a local twin of routes/workouts.js autoLinkWorkout; both
+// drifted independently. Consolidated so the link contract has one
+// canonical implementation.
 async function linkWorkoutToPlan(workoutId, workoutDate, source) {
-  if (!workoutId || !workoutDate) return;
-  try {
-    const targetPref = source === 'apple_health' ? 'apple_health'
-      : source === 'hevy' ? 'hevy' : 'manual';
-    const r = await query(
-      `SELECT dp.id AS plan_id,
-        (SELECT id FROM plan_segments
-         WHERE daily_plan_id = dp.id AND logging_target = $2
-         ORDER BY block_order LIMIT 1) AS preferred_segment_id,
-        (SELECT id FROM plan_segments
-         WHERE daily_plan_id = dp.id
-         ORDER BY block_order LIMIT 1) AS first_segment_id
-       FROM daily_plans dp
-       WHERE dp.plan_date = $1
-       LIMIT 1`,
-      [workoutDate, targetPref]
-    );
-    if (!r.rows[0]?.plan_id) return;
-    const segmentId = r.rows[0].preferred_segment_id || r.rows[0].first_segment_id;
-    await query(
-      `UPDATE workouts
-       SET daily_plan_id = COALESCE(daily_plan_id, $1),
-           plan_segment_id = COALESCE(plan_segment_id, $2),
-           updated_at = NOW()
-       WHERE id = $3`,
-      [r.rows[0].plan_id, segmentId, workoutId]
-    );
-    if (segmentId) {
-      await query(
-        `UPDATE plan_segments SET status = 'completed', updated_at = NOW()
-         WHERE id = $1 AND status IN ('planned','in_progress')`,
-        [segmentId]
-      );
-    }
-  } catch (err) {
-    console.error(`[health/link] workout ${workoutId} → plan failed: ${err.message}`);
-  }
+  return linkWorkoutToPlanShared({
+    workoutId,
+    workoutDate,
+    source,
+  });
 }
 
 async function upsertWorkouts(workouts) {

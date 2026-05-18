@@ -279,3 +279,62 @@ test('searchHevyTemplates: respects custom limit and minSimilarity defaults', as
   await searchHevyTemplates('X', { limit: 10 }, q);
   assert.equal(receivedLimit, 10);
 });
+
+// ─── Regression guards: source-grep checks against re-introducing the bug ───
+//
+// The duplicate-exercises bug had two causes (PR #39):
+//   1. lookupHevyTemplateByName running a Tier 3 trigram fuzzy match
+//      on the production push path — silently mapping near-misses to
+//      the wrong Hevy template.
+//   2. /exercise-map/auto-populate accepting an `auto_create_custom`
+//      flag that POSTed to Hevy /exercise_templates, accumulating
+//      duplicate customs in the user's library.
+//
+// These tests fail loudly if either pattern slips back in. Brittle by
+// design — the failure message tells the next reader exactly which
+// bug they're about to recreate and which PR explains why it was
+// removed.
+
+test('regression guard: lookupHevyTemplateByName has no similarity() call', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'routes', 'hevy.js'),
+    'utf8'
+  );
+  const fn = src.match(/async function lookupHevyTemplateByName[\s\S]*?\n\}\n/);
+  assert.ok(fn, 'lookupHevyTemplateByName not found in routes/hevy.js');
+  assert.ok(
+    !/similarity\(/.test(fn[0]),
+    'Tier 3 fuzzy similarity() was reintroduced into the production push resolver. ' +
+    'See PR #39 — the 0.35-threshold trigram match was the root cause of the ' +
+    'duplicate-exercises bug. If discovery-by-similarity is needed, use the ' +
+    'separate searchHevyTemplates() helper, which is never called from the push path.'
+  );
+});
+
+test('regression guard: auto_create_custom flag is fully removed from code', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const files = [
+    'routes/hevy.js',
+    'public/app.js',
+  ];
+  for (const rel of files) {
+    const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+    // Strip line and block comments — the route handler comment legitimately
+    // mentions the flag in past tense ("was removed"). Code references would
+    // recreate the bug.
+    const stripped = src
+      .replace(/\/\/[^\n]*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(
+      !/auto_create_custom/.test(stripped),
+      `auto_create_custom referenced in ${rel} (outside comments). ` +
+      'See PR #39 — silently minting custom Hevy templates on resolver miss ' +
+      'was the second root cause of the duplicate-exercises bug. To create a ' +
+      'custom now: user creates it in Hevy, POST /api/hevy/templates/refresh, ' +
+      'then POST /api/hevy/exercise-map.'
+    );
+  }
+});
