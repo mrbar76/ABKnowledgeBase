@@ -1,0 +1,880 @@
+{
+  "World's Greatest Stretch": {
+    "orig_idx": 1,
+    "slug": "worlds_greatest_stretch",
+    "source": "free-exercise-db",
+    "reference_name": "World's Greatest Stretch",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Worlds_Greatest_Stretch/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Worlds_Greatest_Stretch/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/worlds_greatest_stretch_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/worlds_greatest_stretch_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "90/90 Hip Switch": {
+    "orig_idx": 3,
+    "slug": "90_90_hip_switch",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Inchworm to Push-Up": {
+    "orig_idx": 5,
+    "slug": "inchworm_to_push_up",
+    "source": "free-exercise-db",
+    "reference_name": "Inchworm",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Inchworm/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Inchworm/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/inchworm_to_push_up_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/inchworm_to_push_up_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Scapular Wall Slides": {
+    "orig_idx": 6,
+    "slug": "scapular_wall_slides",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Hip Circles (standing)": {
+    "orig_idx": 7,
+    "slug": "hip_circles_standing",
+    "source": "free-exercise-db",
+    "reference_name": "Standing Hip Circles",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Standing_Hip_Circles/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Standing_Hip_Circles/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/hip_circles_standing_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/hip_circles_standing_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Arm Circles (forward/backward)": {
+    "orig_idx": 8,
+    "slug": "arm_circles_forward_backward",
+    "source": "free-exercise-db",
+    "reference_name": "Arm Circles",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Arm_Circles/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Arm_Circles/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/arm_circles_forward_backward_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/arm_circles_forward_backward_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Bodyweight Squat (warmup tempo)": {
+    "orig_idx": 9,
+    "slug": "bodyweight_squat_warmup_tempo",
+    "source": "free-exercise-db",
+    "reference_name": "Bodyweight Squat",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bodyweight_Squat/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bodyweight_Squat/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/bodyweight_squat_warmup_tempo_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/bodyweight_squat_warmup_tempo_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "A-Skips": {
+    "orig_idx": 10,
+    "slug": "a_skips",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "B-Skips": {
+    "orig_idx": 11,
+    "slug": "b_skips",
+    "source": "free-exercise-db",
+    "reference_name": "Box Skip",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Box_Skip/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Box_Skip/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/b_skips_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/b_skips_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Butt Kicks": {
+    "orig_idx": 13,
+    "slug": "butt_kicks",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Leg Swings (Forward/Back)": {
+    "orig_idx": 14,
+    "slug": "leg_swings_forward_back",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Leg Swings (Lateral)": {
+    "orig_idx": 15,
+    "slug": "leg_swings_lateral",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Ankle Circles": {
+    "orig_idx": 16,
+    "slug": "ankle_circles",
+    "source": "free-exercise-db",
+    "reference_name": "Ankle Circles",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Ankle_Circles/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Ankle_Circles/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/ankle_circles_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/ankle_circles_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Walking Lunge with Twist": {
+    "orig_idx": 17,
+    "slug": "walking_lunge_with_twist",
+    "source": "wger",
+    "reference_name": "Lunge with Twist Stretch",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/1868/446e7065-215d-4a91-9da7-9416101442bb.png"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/walking_lunge_with_twist_0.png"
+    ],
+    "status": "ready"
+  },
+  "Carioca / Grapevine": {
+    "orig_idx": 18,
+    "slug": "carioca_grapevine",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Lying Hamstring Stretch with Strap": {
+    "orig_idx": 19,
+    "slug": "lying_hamstring_stretch_with_strap",
+    "source": "free-exercise-db",
+    "reference_name": "Leg-Up Hamstring Stretch",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Leg-Up_Hamstring_Stretch/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Leg-Up_Hamstring_Stretch/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lying_hamstring_stretch_with_strap_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lying_hamstring_stretch_with_strap_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Couch Stretch": {
+    "orig_idx": 20,
+    "slug": "couch_stretch",
+    "source": "free-exercise-db",
+    "reference_name": "Quad Stretch",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Quad_Stretch/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Quad_Stretch/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/couch_stretch_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/couch_stretch_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Pigeon Pose": {
+    "orig_idx": 21,
+    "slug": "pigeon_pose",
+    "source": "wger",
+    "reference_name": "Pigeon Stretch",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/1872/df982df1-512a-4eb9-acd9-68cc1c265df6.png"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/pigeon_pose_0.png"
+    ],
+    "status": "ready"
+  },
+  "Frog Stretch": {
+    "orig_idx": 22,
+    "slug": "frog_stretch",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Lying Figure-4 Stretch": {
+    "orig_idx": 23,
+    "slug": "lying_figure_4_stretch",
+    "source": "wger",
+    "reference_name": "Lying Figure Four Stretch",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/1869/c49187bd-9f90-4a7a-b25e-1d50e857a104.png"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lying_figure_4_stretch_0.png"
+    ],
+    "status": "ready"
+  },
+  "Supine Piriformis Stretch (Active Pull variation)": {
+    "orig_idx": 24,
+    "slug": "supine_piriformis_stretch_active_pull_variation",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Cossack Squat (mobility version)": {
+    "orig_idx": 26,
+    "slug": "cossack_squat_mobility_version",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Standing Calf Stretch (Wall, gastroc)": {
+    "orig_idx": 27,
+    "slug": "standing_calf_stretch_wall_gastroc",
+    "source": "free-exercise-db",
+    "reference_name": "Cat Stretch",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Cat_Stretch/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Cat_Stretch/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/standing_calf_stretch_wall_gastroc_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/standing_calf_stretch_wall_gastroc_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Soleus Stretch (Bent-Knee)": {
+    "orig_idx": 28,
+    "slug": "soleus_stretch_bent_knee",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Banded Ankle Distraction": {
+    "orig_idx": 29,
+    "slug": "banded_ankle_distraction",
+    "source": "wger",
+    "reference_name": "Banded Ankle Mobility",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/1865/c2c9848e-5094-4ed9-bd81-0831b6551483.png"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/banded_ankle_distraction_0.png"
+    ],
+    "status": "ready"
+  },
+  "Child's Pose": {
+    "orig_idx": 30,
+    "slug": "childs_pose",
+    "source": "free-exercise-db",
+    "reference_name": "Child's Pose",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Childs_Pose/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Childs_Pose/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/childs_pose_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/childs_pose_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Supine Spinal Twist": {
+    "orig_idx": 31,
+    "slug": "supine_spinal_twist",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Cobra Pose": {
+    "orig_idx": 32,
+    "slug": "cobra_pose",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "McKenzie Press-Up": {
+    "orig_idx": 33,
+    "slug": "mckenzie_press_up",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Prone Press-Up Hold": {
+    "orig_idx": 34,
+    "slug": "prone_press_up_hold",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Cobra to Down Dog Flow": {
+    "orig_idx": 35,
+    "slug": "cobra_to_down_dog_flow",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Knee-to-Chest (Single)": {
+    "orig_idx": 36,
+    "slug": "knee_to_chest_single",
+    "source": "free-exercise-db",
+    "reference_name": "One Knee To Chest",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/One_Knee_To_Chest/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/One_Knee_To_Chest/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_single_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_single_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Knee-to-Chest (Double)": {
+    "orig_idx": 37,
+    "slug": "knee_to_chest_double",
+    "source": "free-exercise-db",
+    "reference_name": "Hug Knees To Chest",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Hug_Knees_To_Chest/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Hug_Knees_To_Chest/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_double_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_double_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Pec Doorway Stretch": {
+    "orig_idx": 38,
+    "slug": "pec_doorway_stretch",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sleeper Stretch (internal rotation)": {
+    "orig_idx": 39,
+    "slug": "sleeper_stretch_internal_rotation",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Foam Roll IT Band": {
+    "orig_idx": 40,
+    "slug": "foam_roll_it_band",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Foam Roll Quads": {
+    "orig_idx": 41,
+    "slug": "foam_roll_quads",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Foam Roll Hamstrings": {
+    "orig_idx": 42,
+    "slug": "foam_roll_hamstrings",
+    "source": "wger",
+    "reference_name": "Hamstring Foam roller",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/1855/a6597ed8-1613-4458-ba56-4b63bc946a35.webp"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_hamstrings_0.webp"
+    ],
+    "status": "ready"
+  },
+  "Foam Roll Calves": {
+    "orig_idx": 43,
+    "slug": "foam_roll_calves",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Foam Roll Glutes": {
+    "orig_idx": 44,
+    "slug": "foam_roll_glutes",
+    "source": "wger",
+    "reference_name": "Foam Roller Gluteus",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/1859/2465d5eb-c249-454d-93eb-58aa13bdc080.webp"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_glutes_0.webp"
+    ],
+    "status": "ready"
+  },
+  "Foam Roll Upper Back / T-spine": {
+    "orig_idx": 45,
+    "slug": "foam_roll_upper_back_t_spine",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Foam Roll Adductors": {
+    "orig_idx": 46,
+    "slug": "foam_roll_adductors",
+    "source": "free-exercise-db",
+    "reference_name": "Adductor",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Adductor/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Adductor/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_adductors_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_adductors_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Lacrosse Ball Glute Release": {
+    "orig_idx": 47,
+    "slug": "lacrosse_ball_glute_release",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Lacrosse Ball Piriformis Release": {
+    "orig_idx": 48,
+    "slug": "lacrosse_ball_piriformis_release",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Lacrosse Ball Pec Release": {
+    "orig_idx": 49,
+    "slug": "lacrosse_ball_pec_release",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Lacrosse Ball Suboccipital": {
+    "orig_idx": 50,
+    "slug": "lacrosse_ball_suboccipital",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Banded Hip Capsule Distraction": {
+    "orig_idx": 51,
+    "slug": "banded_hip_capsule_distraction",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Banded Shoulder Capsule Distraction": {
+    "orig_idx": 52,
+    "slug": "banded_shoulder_capsule_distraction",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Glute Med Side-Lying Leg Raise": {
+    "orig_idx": 54,
+    "slug": "glute_med_side_lying_leg_raise",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Tibialis Anterior Raises": {
+    "orig_idx": 55,
+    "slug": "tibialis_anterior_raises",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sciatic Nerve Glides": {
+    "orig_idx": 56,
+    "slug": "sciatic_nerve_glides",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Bucket Carry": {
+    "orig_idx": 57,
+    "slug": "bucket_carry",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sandbag Bear Hug Carry (light, 25 lb)": {
+    "orig_idx": 58,
+    "slug": "sandbag_bear_hug_carry_light_25_lb",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sandbag Shoulder Carry (light, 25 lb)": {
+    "orig_idx": 59,
+    "slug": "sandbag_shoulder_carry_light_25_lb",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sandbag Clean to Shoulder (light, 25 lb)": {
+    "orig_idx": 60,
+    "slug": "sandbag_clean_to_shoulder_light_25_lb",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sandbag Floor-to-Shoulder (Atlas Carry simulation)": {
+    "orig_idx": 61,
+    "slug": "sandbag_floor_to_shoulder_atlas_carry_simulation",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Dumbbell Bear Hug Carry (heavy)": {
+    "orig_idx": 62,
+    "slug": "dumbbell_bear_hug_carry_heavy",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Single-Dumbbell Shoulder Carry (heavy)": {
+    "orig_idx": 63,
+    "slug": "single_dumbbell_shoulder_carry_heavy",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Sled Drag (Backwards)": {
+    "orig_idx": 64,
+    "slug": "sled_drag_backwards",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Wall Climb / Wall Get-Up": {
+    "orig_idx": 66,
+    "slug": "wall_climb_wall_get_up",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Towel Pull-up": {
+    "orig_idx": 69,
+    "slug": "towel_pull_up",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Rope Climb (or Towel Rope Pull from rig)": {
+    "orig_idx": 70,
+    "slug": "rope_climb_or_towel_rope_pull_from_rig",
+    "source": "free-exercise-db",
+    "reference_name": "Rope Climb",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Rope_Climb/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Rope_Climb/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/rope_climb_or_towel_rope_pull_from_rig_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/rope_climb_or_towel_rope_pull_from_rig_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Lateral Hang / Side-to-Side Bar Travel": {
+    "orig_idx": 71,
+    "slug": "lateral_hang_side_to_side_bar_travel",
+    "source": "free-exercise-db",
+    "reference_name": "Side To Side Chins",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Side_To_Side_Chins/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Side_To_Side_Chins/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lateral_hang_side_to_side_bar_travel_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lateral_hang_side_to_side_bar_travel_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Cable Pulldown Standing (Hercules Hoist simulation)": {
+    "orig_idx": 72,
+    "slug": "cable_pulldown_standing_hercules_hoist_simulation",
+    "source": "free-exercise-db",
+    "reference_name": "Underhand Cable Pulldowns",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Underhand_Cable_Pulldowns/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Underhand_Cable_Pulldowns/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/cable_pulldown_standing_hercules_hoist_simulation_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/cable_pulldown_standing_hercules_hoist_simulation_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Plate Pinch Carry": {
+    "orig_idx": 73,
+    "slug": "plate_pinch_carry",
+    "source": "free-exercise-db",
+    "reference_name": "Plate Pinch",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Plate_Pinch/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Plate_Pinch/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/plate_pinch_carry_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/plate_pinch_carry_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "McGill Curl-Up": {
+    "orig_idx": 74,
+    "slug": "mcgill_curl_up",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Pallof Press": {
+    "orig_idx": 75,
+    "slug": "pallof_press",
+    "source": "free-exercise-db",
+    "reference_name": "Pallof Press",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Pallof_Press/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Pallof_Press/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/pallof_press_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/pallof_press_1.jpg"
+    ],
+    "status": "ready"
+  },
+  "Suitcase Deadlift": {
+    "orig_idx": 76,
+    "slug": "suitcase_deadlift",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Hollow Hold": {
+    "orig_idx": 77,
+    "slug": "hollow_hold",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Copenhagen Plank": {
+    "orig_idx": 78,
+    "slug": "copenhagen_plank",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Reverse Nordic": {
+    "orig_idx": 83,
+    "slug": "reverse_nordic",
+    "source": "wger",
+    "reference_name": "Reverse Nordic Curl",
+    "grade": "C",
+    "original_urls": [
+      "https://wger.de/media/exercise-images/909/159222d9-c1e4-46ae-89ee-6a2dfaab978d.png"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/reverse_nordic_0.png"
+    ],
+    "status": "ready"
+  },
+  "Box Step-Down (Slow Eccentric Tempo)": {
+    "orig_idx": 85,
+    "slug": "box_step_down_slow_eccentric_tempo",
+    "source": null,
+    "reference_name": null,
+    "grade": "D",
+    "original_urls": [],
+    "new_urls": [],
+    "status": "no_match \u2014 needs YouTube/web fallback"
+  },
+  "Banded External Rotation (Shoulder)": {
+    "orig_idx": 88,
+    "slug": "banded_external_rotation_shoulder",
+    "source": "free-exercise-db",
+    "reference_name": "External Rotation with Band",
+    "grade": "B",
+    "original_urls": [
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/External_Rotation_with_Band/0.jpg",
+      "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/External_Rotation_with_Band/1.jpg"
+    ],
+    "new_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/banded_external_rotation_shoulder_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/banded_external_rotation_shoulder_1.jpg"
+    ],
+    "status": "ready"
+  }
+}
