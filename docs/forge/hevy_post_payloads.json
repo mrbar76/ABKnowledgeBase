@@ -1,0 +1,1213 @@
+[
+  {
+    "orig_idx": 1,
+    "title": "World's Greatest Stretch",
+    "payload": {
+      "title": "World's Greatest Stretch",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "hamstrings",
+      "other_muscles": [
+        "glutes",
+        "quadriceps"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/worlds_greatest_stretch_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/worlds_greatest_stretch_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 3,
+    "title": "90/90 Hip Switch",
+    "payload": {
+      "title": "90/90 Hip Switch",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "glutes",
+      "other_muscles": [
+        "adductors",
+        "abductors"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 5,
+    "title": "Inchworm to Push-Up",
+    "payload": {
+      "title": "Inchworm to Push-Up",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "hamstrings",
+        "chest",
+        "abdominals"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/inchworm_to_push_up_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/inchworm_to_push_up_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 6,
+    "title": "Scapular Wall Slides",
+    "payload": {
+      "title": "Scapular Wall Slides",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "upper_back",
+      "other_muscles": [
+        "shoulders"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 7,
+    "title": "Hip Circles (standing)",
+    "payload": {
+      "title": "Hip Circles (standing)",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "abductors",
+      "other_muscles": [
+        "adductors",
+        "glutes"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/hip_circles_standing_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/hip_circles_standing_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 8,
+    "title": "Arm Circles (forward/backward)",
+    "payload": {
+      "title": "Arm Circles (forward/backward)",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "shoulders",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/arm_circles_forward_backward_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/arm_circles_forward_backward_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 9,
+    "title": "Bodyweight Squat (warmup tempo)",
+    "payload": {
+      "title": "Bodyweight Squat (warmup tempo)",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "quadriceps",
+      "other_muscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/bodyweight_squat_warmup_tempo_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/bodyweight_squat_warmup_tempo_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 10,
+    "title": "A-Skips",
+    "payload": {
+      "title": "A-Skips",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "cardio",
+      "other_muscles": [
+        "hamstrings",
+        "calves"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 11,
+    "title": "B-Skips",
+    "payload": {
+      "title": "B-Skips",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "cardio",
+      "other_muscles": [
+        "hamstrings",
+        "calves"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/b_skips_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/b_skips_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 13,
+    "title": "Butt Kicks",
+    "payload": {
+      "title": "Butt Kicks",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "hamstrings",
+      "other_muscles": [
+        "cardio"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 14,
+    "title": "Leg Swings (Forward/Back)",
+    "payload": {
+      "title": "Leg Swings (Forward/Back)",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "hamstrings",
+      "other_muscles": [
+        "glutes"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 15,
+    "title": "Leg Swings (Lateral)",
+    "payload": {
+      "title": "Leg Swings (Lateral)",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "adductors",
+      "other_muscles": [
+        "abductors"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 16,
+    "title": "Ankle Circles",
+    "payload": {
+      "title": "Ankle Circles",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "calves",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/ankle_circles_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/ankle_circles_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 17,
+    "title": "Walking Lunge with Twist",
+    "payload": {
+      "title": "Walking Lunge with Twist",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "quadriceps",
+      "other_muscles": [
+        "glutes",
+        "abdominals"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/walking_lunge_with_twist_0.png"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 18,
+    "title": "Carioca / Grapevine",
+    "payload": {
+      "title": "Carioca / Grapevine",
+      "exercise_type": "distance_duration",
+      "equipment_category": "none",
+      "muscle_group": "cardio",
+      "other_muscles": [
+        "adductors"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 19,
+    "title": "Lying Hamstring Stretch with Strap",
+    "payload": {
+      "title": "Lying Hamstring Stretch with Strap",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "hamstrings",
+      "other_muscles": [
+        "calves"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lying_hamstring_stretch_with_strap_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lying_hamstring_stretch_with_strap_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 20,
+    "title": "Couch Stretch",
+    "payload": {
+      "title": "Couch Stretch",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "quadriceps",
+      "other_muscles": [
+        "hamstrings"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/couch_stretch_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/couch_stretch_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 21,
+    "title": "Pigeon Pose",
+    "payload": {
+      "title": "Pigeon Pose",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "glutes",
+      "other_muscles": [
+        "hamstrings"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/pigeon_pose_0.png"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 22,
+    "title": "Frog Stretch",
+    "payload": {
+      "title": "Frog Stretch",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "adductors",
+      "other_muscles": [
+        "glutes"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 23,
+    "title": "Lying Figure-4 Stretch",
+    "payload": {
+      "title": "Lying Figure-4 Stretch",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "glutes",
+      "other_muscles": [
+        "hamstrings"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lying_figure_4_stretch_0.png"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 24,
+    "title": "Supine Piriformis Stretch (Active Pull variation)",
+    "payload": {
+      "title": "Supine Piriformis Stretch (Active Pull variation)",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "glutes",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 26,
+    "title": "Cossack Squat (mobility version)",
+    "payload": {
+      "title": "Cossack Squat (mobility version)",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "adductors",
+      "other_muscles": [
+        "quadriceps",
+        "glutes"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 27,
+    "title": "Standing Calf Stretch (Wall, gastroc)",
+    "payload": {
+      "title": "Standing Calf Stretch (Wall, gastroc)",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "calves",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/standing_calf_stretch_wall_gastroc_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/standing_calf_stretch_wall_gastroc_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 28,
+    "title": "Soleus Stretch (Bent-Knee)",
+    "payload": {
+      "title": "Soleus Stretch (Bent-Knee)",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "calves",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 29,
+    "title": "Banded Ankle Distraction",
+    "payload": {
+      "title": "Banded Ankle Distraction",
+      "exercise_type": "duration",
+      "equipment_category": "resistance_band",
+      "muscle_group": "calves",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/banded_ankle_distraction_0.png"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 30,
+    "title": "Child's Pose",
+    "payload": {
+      "title": "Child's Pose",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "lower_back",
+      "other_muscles": [
+        "lats"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/childs_pose_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/childs_pose_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 31,
+    "title": "Supine Spinal Twist",
+    "payload": {
+      "title": "Supine Spinal Twist",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "lower_back",
+      "other_muscles": [
+        "glutes"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 32,
+    "title": "Cobra Pose",
+    "payload": {
+      "title": "Cobra Pose",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "lower_back",
+      "other_muscles": [
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 33,
+    "title": "McKenzie Press-Up",
+    "payload": {
+      "title": "McKenzie Press-Up",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "lower_back",
+      "other_muscles": [
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 34,
+    "title": "Prone Press-Up Hold",
+    "payload": {
+      "title": "Prone Press-Up Hold",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "lower_back",
+      "other_muscles": [
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 35,
+    "title": "Cobra to Down Dog Flow",
+    "payload": {
+      "title": "Cobra to Down Dog Flow",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "lower_back",
+        "hamstrings"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 36,
+    "title": "Knee-to-Chest (Single)",
+    "payload": {
+      "title": "Knee-to-Chest (Single)",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "glutes",
+      "other_muscles": [
+        "lower_back"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_single_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_single_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 37,
+    "title": "Knee-to-Chest (Double)",
+    "payload": {
+      "title": "Knee-to-Chest (Double)",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "lower_back",
+      "other_muscles": [
+        "glutes"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_double_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/knee_to_chest_double_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 38,
+    "title": "Pec Doorway Stretch",
+    "payload": {
+      "title": "Pec Doorway Stretch",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "chest",
+      "other_muscles": [
+        "shoulders"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 39,
+    "title": "Sleeper Stretch (internal rotation)",
+    "payload": {
+      "title": "Sleeper Stretch (internal rotation)",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "shoulders",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 40,
+    "title": "Foam Roll IT Band",
+    "payload": {
+      "title": "Foam Roll IT Band",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "quadriceps",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 41,
+    "title": "Foam Roll Quads",
+    "payload": {
+      "title": "Foam Roll Quads",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "quadriceps",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 42,
+    "title": "Foam Roll Hamstrings",
+    "payload": {
+      "title": "Foam Roll Hamstrings",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "hamstrings",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_hamstrings_0.webp"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 43,
+    "title": "Foam Roll Calves",
+    "payload": {
+      "title": "Foam Roll Calves",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "calves",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 44,
+    "title": "Foam Roll Glutes",
+    "payload": {
+      "title": "Foam Roll Glutes",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "glutes",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_glutes_0.webp"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 45,
+    "title": "Foam Roll Upper Back / T-spine",
+    "payload": {
+      "title": "Foam Roll Upper Back / T-spine",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "upper_back",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 46,
+    "title": "Foam Roll Adductors",
+    "payload": {
+      "title": "Foam Roll Adductors",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "adductors",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_adductors_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/foam_roll_adductors_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 47,
+    "title": "Lacrosse Ball Glute Release",
+    "payload": {
+      "title": "Lacrosse Ball Glute Release",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "glutes",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 48,
+    "title": "Lacrosse Ball Piriformis Release",
+    "payload": {
+      "title": "Lacrosse Ball Piriformis Release",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "glutes",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 49,
+    "title": "Lacrosse Ball Pec Release",
+    "payload": {
+      "title": "Lacrosse Ball Pec Release",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "chest",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 50,
+    "title": "Lacrosse Ball Suboccipital",
+    "payload": {
+      "title": "Lacrosse Ball Suboccipital",
+      "exercise_type": "duration",
+      "equipment_category": "other",
+      "muscle_group": "neck",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 51,
+    "title": "Banded Hip Capsule Distraction",
+    "payload": {
+      "title": "Banded Hip Capsule Distraction",
+      "exercise_type": "duration",
+      "equipment_category": "resistance_band",
+      "muscle_group": "glutes",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 52,
+    "title": "Banded Shoulder Capsule Distraction",
+    "payload": {
+      "title": "Banded Shoulder Capsule Distraction",
+      "exercise_type": "duration",
+      "equipment_category": "resistance_band",
+      "muscle_group": "shoulders",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 54,
+    "title": "Glute Med Side-Lying Leg Raise",
+    "payload": {
+      "title": "Glute Med Side-Lying Leg Raise",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "abductors",
+      "other_muscles": [
+        "glutes"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 55,
+    "title": "Tibialis Anterior Raises",
+    "payload": {
+      "title": "Tibialis Anterior Raises",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "calves",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 56,
+    "title": "Sciatic Nerve Glides",
+    "payload": {
+      "title": "Sciatic Nerve Glides",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "hamstrings",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 57,
+    "title": "Bucket Carry",
+    "payload": {
+      "title": "Bucket Carry",
+      "exercise_type": "short_distance_weight",
+      "equipment_category": "other",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "forearms",
+        "traps"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 58,
+    "title": "Sandbag Bear Hug Carry (light, 25 lb)",
+    "payload": {
+      "title": "Sandbag Bear Hug Carry (light, 25 lb)",
+      "exercise_type": "short_distance_weight",
+      "equipment_category": "other",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "chest",
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 59,
+    "title": "Sandbag Shoulder Carry (light, 25 lb)",
+    "payload": {
+      "title": "Sandbag Shoulder Carry (light, 25 lb)",
+      "exercise_type": "short_distance_weight",
+      "equipment_category": "other",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "traps",
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 60,
+    "title": "Sandbag Clean to Shoulder (light, 25 lb)",
+    "payload": {
+      "title": "Sandbag Clean to Shoulder (light, 25 lb)",
+      "exercise_type": "reps_only",
+      "equipment_category": "other",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "glutes",
+        "shoulders"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 61,
+    "title": "Sandbag Floor-to-Shoulder (Atlas Carry simulation)",
+    "payload": {
+      "title": "Sandbag Floor-to-Shoulder (Atlas Carry simulation)",
+      "exercise_type": "reps_only",
+      "equipment_category": "other",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "glutes",
+        "hamstrings",
+        "upper_back"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 62,
+    "title": "Dumbbell Bear Hug Carry (heavy)",
+    "payload": {
+      "title": "Dumbbell Bear Hug Carry (heavy)",
+      "exercise_type": "short_distance_weight",
+      "equipment_category": "dumbbell",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "chest",
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 63,
+    "title": "Single-Dumbbell Shoulder Carry (heavy)",
+    "payload": {
+      "title": "Single-Dumbbell Shoulder Carry (heavy)",
+      "exercise_type": "short_distance_weight",
+      "equipment_category": "dumbbell",
+      "muscle_group": "full_body",
+      "other_muscles": [
+        "traps",
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 64,
+    "title": "Sled Drag (Backwards)",
+    "payload": {
+      "title": "Sled Drag (Backwards)",
+      "exercise_type": "distance_duration",
+      "equipment_category": "other",
+      "muscle_group": "quadriceps",
+      "other_muscles": [
+        "glutes",
+        "calves"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 66,
+    "title": "Wall Climb / Wall Get-Up",
+    "payload": {
+      "title": "Wall Climb / Wall Get-Up",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "shoulders",
+      "other_muscles": [
+        "full_body"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 69,
+    "title": "Towel Pull-up",
+    "payload": {
+      "title": "Towel Pull-up",
+      "exercise_type": "reps_only",
+      "equipment_category": "other",
+      "muscle_group": "lats",
+      "other_muscles": [
+        "forearms",
+        "biceps"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 70,
+    "title": "Rope Climb (or Towel Rope Pull from rig)",
+    "payload": {
+      "title": "Rope Climb (or Towel Rope Pull from rig)",
+      "exercise_type": "reps_only",
+      "equipment_category": "other",
+      "muscle_group": "lats",
+      "other_muscles": [
+        "forearms",
+        "biceps"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/rope_climb_or_towel_rope_pull_from_rig_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/rope_climb_or_towel_rope_pull_from_rig_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 71,
+    "title": "Lateral Hang / Side-to-Side Bar Travel",
+    "payload": {
+      "title": "Lateral Hang / Side-to-Side Bar Travel",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "lats",
+      "other_muscles": [
+        "forearms"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lateral_hang_side_to_side_bar_travel_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/lateral_hang_side_to_side_bar_travel_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 72,
+    "title": "Cable Pulldown Standing (Hercules Hoist simulation)",
+    "payload": {
+      "title": "Cable Pulldown Standing (Hercules Hoist simulation)",
+      "exercise_type": "weight_reps",
+      "equipment_category": "machine",
+      "muscle_group": "lats",
+      "other_muscles": [
+        "upper_back"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/cable_pulldown_standing_hercules_hoist_simulation_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/cable_pulldown_standing_hercules_hoist_simulation_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 73,
+    "title": "Plate Pinch Carry",
+    "payload": {
+      "title": "Plate Pinch Carry",
+      "exercise_type": "short_distance_weight",
+      "equipment_category": "plate",
+      "muscle_group": "forearms",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/plate_pinch_carry_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/plate_pinch_carry_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 74,
+    "title": "McGill Curl-Up",
+    "payload": {
+      "title": "McGill Curl-Up",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "abdominals",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 75,
+    "title": "Pallof Press",
+    "payload": {
+      "title": "Pallof Press",
+      "exercise_type": "weight_reps",
+      "equipment_category": "machine",
+      "muscle_group": "abdominals",
+      "other_muscles": [
+        "shoulders"
+      ]
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/pallof_press_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/pallof_press_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  },
+  {
+    "orig_idx": 76,
+    "title": "Suitcase Deadlift",
+    "payload": {
+      "title": "Suitcase Deadlift",
+      "exercise_type": "weight_reps",
+      "equipment_category": "dumbbell",
+      "muscle_group": "glutes",
+      "other_muscles": [
+        "hamstrings",
+        "forearms"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 77,
+    "title": "Hollow Hold",
+    "payload": {
+      "title": "Hollow Hold",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "abdominals",
+      "other_muscles": []
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 78,
+    "title": "Copenhagen Plank",
+    "payload": {
+      "title": "Copenhagen Plank",
+      "exercise_type": "duration",
+      "equipment_category": "none",
+      "muscle_group": "adductors",
+      "other_muscles": [
+        "abdominals"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 83,
+    "title": "Reverse Nordic",
+    "payload": {
+      "title": "Reverse Nordic",
+      "exercise_type": "reps_only",
+      "equipment_category": "none",
+      "muscle_group": "quadriceps",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/reverse_nordic_0.png"
+    ],
+    "reference_source": "wger"
+  },
+  {
+    "orig_idx": 85,
+    "title": "Box Step-Down (Slow Eccentric Tempo)",
+    "payload": {
+      "title": "Box Step-Down (Slow Eccentric Tempo)",
+      "exercise_type": "reps_only",
+      "equipment_category": "other",
+      "muscle_group": "quadriceps",
+      "other_muscles": [
+        "glutes"
+      ]
+    },
+    "has_assets": false,
+    "image_urls": [],
+    "reference_source": null
+  },
+  {
+    "orig_idx": 88,
+    "title": "Banded External Rotation (Shoulder)",
+    "payload": {
+      "title": "Banded External Rotation (Shoulder)",
+      "exercise_type": "reps_only",
+      "equipment_category": "resistance_band",
+      "muscle_group": "shoulders",
+      "other_muscles": []
+    },
+    "has_assets": true,
+    "image_urls": [
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/banded_external_rotation_shoulder_0.jpg",
+      "https://raw.githubusercontent.com/mrbar76/abknowledgebase/main/assets/exercises/banded_external_rotation_shoulder_1.jpg"
+    ],
+    "reference_source": "free-exercise-db"
+  }
+]
