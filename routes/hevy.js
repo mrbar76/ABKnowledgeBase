@@ -466,17 +466,107 @@ async function refreshTemplateCache() {
   return templates.length;
 }
 
-// ─── GET /api/hevy/exercise-templates?q=squat ────────────────
-// Reads from the postgres cache first. If empty, lazy-refreshes once.
+// Pure SQL helper: filter + paginate hevy_template_cache. No network,
+// no cache-refresh — the route handler owns that. Extracted so the
+// filter / pagination behavior is unit-testable via queryFn DI.
+//
+// Filters (all optional):
+//   q         — substring match on lower(title)
+//   isCustom  — true → customs only; false → stock only; null/undefined
+//               → no filter (the latter matches the pre-fix behavior)
+//
+// Pagination:
+//   limit     — page size, default 25, clamped to [1, 500]. Raised from
+//               the old 100 cap so the ~500-row catalog enumerates in
+//               one call. Offset still supports paging for smaller pages.
+//   offset    — default 0, clamped to ≥ 0
+//
+// Returns:
+//   { matched, results, offset, limit }
+//     matched is the COUNT(*) under the filter — used by callers to
+//     know when to stop paginating. Pre-fix this was reported as
+//     `rows.length` which capped at the page size (the bug).
+async function queryExerciseTemplatesPage(opts = {}, queryFn = query) {
+  const normalizedLimit = Math.min(Math.max(Number(opts.limit) || 25, 1), 500);
+  const normalizedOffset = Math.max(Number(opts.offset) || 0, 0);
+  const q = opts.q ? String(opts.q).toLowerCase().trim() : '';
+
+  const where = [];
+  const params = [];
+  let p = 1;
+  if (q) {
+    where.push(`lower(title) LIKE $${p++}`);
+    params.push(`%${q}%`);
+  }
+  // Explicit boolean check — `null`/`undefined` means "no filter", and
+  // we accept `false` (stock-only) without skipping it as falsy.
+  if (opts.isCustom === true || opts.isCustom === false) {
+    where.push(`is_custom = $${p++}`);
+    params.push(opts.isCustom);
+  }
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countRes = await queryFn(
+    `SELECT COUNT(*)::int AS n FROM hevy_template_cache ${whereClause}`,
+    params
+  );
+  const matched = countRes.rows[0].n;
+
+  // q-search ranks shortest matching title first (substring most
+  // relevant); enumeration goes alphabetical.
+  const orderClause = q
+    ? 'ORDER BY length(title) ASC, title ASC'
+    : 'ORDER BY title ASC';
+
+  const pageParams = [...params, normalizedLimit, normalizedOffset];
+  const pageRes = await queryFn(
+    `SELECT hevy_id AS id, title, type, primary_muscle_group, secondary_muscle_groups,
+            equipment, is_custom, raw
+       FROM hevy_template_cache
+       ${whereClause}
+       ${orderClause}
+       LIMIT $${p++} OFFSET $${p++}`,
+    pageParams
+  );
+
+  return {
+    matched,
+    results: pageRes.rows,
+    offset: normalizedOffset,
+    limit: normalizedLimit,
+  };
+}
+
+// ─── GET /api/hevy/exercise-templates ────────────────────────
+// Reads from the postgres cache first. If empty/stale, lazy-refreshes.
+//
+// Query params (all optional):
+//   q          — substring match on title (case-insensitive)
+//   is_custom  — 'true'/'1' → customs only; 'false'/'0' → stock only;
+//                anything else (or absent) → no filter
+//   limit      — page size, default 25, clamped to [1, 500]
+//   offset     — page offset, default 0
+//   refresh    — '1' forces a fresh pull from Hevy upstream
+//
+// Response: { total, matched, offset, limit, results }
+//   total    — total rows in the cache (independent of filter)
+//   matched  — total rows under the current filter (use this for paging;
+//              pre-v3.20 this was incorrectly `results.length` which
+//              capped at the page size and made filters look broken)
+//   results  — the current page (length ≤ limit)
 router.get('/exercise-templates', async (req, res) => {
   if (!requireKey(res)) return;
   try {
-    const q = String(req.query.q || '').toLowerCase().trim();
-    const limit = Math.min(Number(req.query.limit) || 25, 100);
+    // Parse is_custom: accept stringified booleans. Anything else is
+    // treated as "no filter" so old callers passing nothing still work.
+    let isCustom = null;
+    const ic = req.query.is_custom;
+    if (ic === 'true' || ic === '1') isCustom = true;
+    else if (ic === 'false' || ic === '0') isCustom = false;
 
     // Lazy-refresh on:
     //   1. Empty cache (first ever call)
-    //   2. Cache older than 7 days (Hevy templates change rarely; weekly is plenty)
+    //   2. Cache older than 7 days (Hevy templates change rarely)
     //   3. Caller passed ?refresh=1
     const force = String(req.query.refresh || '') === '1';
     let { rows: stat } = await query(
@@ -491,29 +581,20 @@ router.get('/exercise-templates', async (req, res) => {
     }
     const total = stat[0].n;
 
-    let rows;
-    if (q) {
-      ({ rows } = await query(
-        `SELECT hevy_id AS id, title, type, primary_muscle_group, secondary_muscle_groups,
-                equipment, is_custom, raw
-           FROM hevy_template_cache
-          WHERE lower(title) LIKE $1
-          ORDER BY length(title) ASC, title ASC
-          LIMIT $2`,
-        [`%${q}%`, limit]
-      ));
-    } else {
-      ({ rows } = await query(
-        `SELECT hevy_id AS id, title, type, primary_muscle_group, secondary_muscle_groups,
-                equipment, is_custom, raw
-           FROM hevy_template_cache
-          ORDER BY title ASC
-          LIMIT $1`,
-        [limit]
-      ));
-    }
+    const page = await queryExerciseTemplatesPage({
+      q: req.query.q,
+      limit: req.query.limit,
+      offset: req.query.offset,
+      isCustom,
+    });
 
-    res.json({ total, matched: rows.length, results: rows });
+    res.json({
+      total,
+      matched: page.matched,
+      offset: page.offset,
+      limit: page.limit,
+      results: page.results,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2088,4 +2169,5 @@ module.exports._test = {
   TYPE_PREFIX,
   lookupHevyTemplateByName,
   searchHevyTemplates,
+  queryExerciseTemplatesPage,
 };

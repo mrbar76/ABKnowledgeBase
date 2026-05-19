@@ -1049,21 +1049,58 @@
     "/hevy/exercise-templates": {
       "get": {
         "operationId": "searchHevyTemplates",
-        "summary": "Search Hevy's exercise catalog. Used by Coach to resolve exercise names to template_ids before pushing a routine.",
+        "summary": "Search / enumerate Hevy's exercise catalog. Used by Coach to resolve exercise names to template_ids before pushing a routine, or to enumerate the user's full custom library.",
         "parameters": [
           {
             "name": "q",
             "in": "query",
             "schema": { "type": "string" },
-            "description": "Substring match on exercise title"
+            "description": "Substring match on exercise title (case-insensitive)"
+          },
+          {
+            "name": "is_custom",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["true", "false", "1", "0"] },
+            "description": "'true'/'1' returns only user-created customs; 'false'/'0' returns only Hevy stock. Omit for no filter."
           },
           {
             "name": "limit",
             "in": "query",
-            "schema": { "type": "integer", "default": 25 }
+            "schema": { "type": "integer", "default": 25, "minimum": 1, "maximum": 500 },
+            "description": "Page size. Clamped to [1, 500]."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": { "type": "integer", "default": 0, "minimum": 0 },
+            "description": "Page offset for pagination. Use response.matched to know when to stop."
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["1"] },
+            "description": "'1' forces a fresh pull from Hevy upstream before responding."
           }
         ],
-        "responses": { "200": { "description": "Matching templates" } }
+        "responses": {
+          "200": {
+            "description": "Filtered, paginated page of templates with totals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": { "type": "integer", "description": "Total rows in the cache (independent of filter)" },
+                    "matched": { "type": "integer", "description": "Total rows matching the current filter (use for paging)" },
+                    "offset": { "type": "integer" },
+                    "limit": { "type": "integer" },
+                    "results": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
         "operationId": "createHevyTemplate",
