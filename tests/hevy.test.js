@@ -26,6 +26,7 @@ const {
   mapHevyWorkoutToAB,
   lookupHevyTemplateByName,
   searchHevyTemplates,
+  queryExerciseTemplatesPage,
 } = _test;
 
 test('routine payload uses folder_id, not routine_folder_id (regression: commit 7ccef38)', () => {
@@ -337,4 +338,151 @@ test('regression guard: auto_create_custom flag is fully removed from code', () 
       'then POST /api/hevy/exercise-map.'
     );
   }
+});
+
+// ─── queryExerciseTemplatesPage: filter + pagination contract ──────
+//
+// Pre-v3.20 GET /api/hevy/exercise-templates silently ignored
+// `is_custom` and `offset`, and reported `matched` as the page-row
+// count (capped at 100). That made the endpoint look like it only had
+// 100 templates and made the is_custom filter look broken.
+//
+// These tests lock the fixed contract:
+//   - is_custom=true/false → WHERE is_custom = $N
+//   - is_custom null/undefined → no is_custom WHERE clause
+//   - offset → SQL OFFSET
+//   - limit clamp [1, 500]
+//   - matched comes from COUNT(*), not from results.length
+//   - q + is_custom combine via AND
+
+test('queryExerciseTemplatesPage: is_custom=true adds WHERE is_custom filter', async () => {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/COUNT\(\*\)/.test(sql)) return { rows: [{ n: 5 }] };
+    return { rows: [] };
+  };
+  const r = await queryExerciseTemplatesPage({ isCustom: true, limit: 10, offset: 0 }, q);
+  assert.equal(calls.length, 2, 'expected COUNT + page query');
+  assert.ok(/is_custom = \$/.test(calls[0].sql), `COUNT must include is_custom filter; got: ${calls[0].sql}`);
+  assert.ok(/is_custom = \$/.test(calls[1].sql), 'page query must include is_custom filter');
+  assert.equal(calls[0].params[0], true);
+  assert.equal(calls[1].params[0], true);
+  assert.equal(r.matched, 5);
+});
+
+test('queryExerciseTemplatesPage: is_custom=false also filters (not skipped as falsy)', async () => {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/COUNT/.test(sql)) return { rows: [{ n: 3 }] };
+    return { rows: [] };
+  };
+  await queryExerciseTemplatesPage({ isCustom: false, limit: 10, offset: 0 }, q);
+  assert.ok(/is_custom = \$/.test(calls[0].sql),
+    'is_custom=false must still apply the filter (stock-only); otherwise stock filtering is silently broken'
+  );
+  assert.equal(calls[0].params[0], false);
+});
+
+test('queryExerciseTemplatesPage: is_custom null/undefined omits the filter', async () => {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/COUNT/.test(sql)) return { rows: [{ n: 100 }] };
+    return { rows: [] };
+  };
+  await queryExerciseTemplatesPage({ isCustom: null, limit: 10, offset: 0 }, q);
+  // Check for the predicate form `is_custom = $N`, not bare token, because
+  // the page SELECT legitimately returns is_custom as a column.
+  assert.ok(!/is_custom = \$/.test(calls[0].sql), `COUNT must not filter on is_custom: ${calls[0].sql}`);
+  assert.ok(!/is_custom = \$/.test(calls[1].sql), `page must not filter on is_custom: ${calls[1].sql}`);
+});
+
+test('queryExerciseTemplatesPage: offset is bound to SQL OFFSET clause', async () => {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/COUNT/.test(sql)) return { rows: [{ n: 506 }] };
+    return { rows: [] };
+  };
+  await queryExerciseTemplatesPage({ offset: 200, limit: 50 }, q);
+  // Last two params on the page query are limit, offset.
+  const params = calls[1].params;
+  assert.equal(params[params.length - 2], 50, 'limit must be second-to-last param');
+  assert.equal(params[params.length - 1], 200, 'offset must be last param');
+  assert.ok(/OFFSET \$/.test(calls[1].sql), 'page SQL must contain an OFFSET clause');
+});
+
+test('queryExerciseTemplatesPage: limit clamped to max 500', async () => {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/COUNT/.test(sql)) return { rows: [{ n: 0 }] };
+    return { rows: [] };
+  };
+  const r = await queryExerciseTemplatesPage({ limit: 9999 }, q);
+  assert.equal(r.limit, 500, 'limit must be clamped to 500');
+  assert.equal(calls[1].params[calls[1].params.length - 2], 500);
+});
+
+test('queryExerciseTemplatesPage: limit floor of 1, offset floor of 0', async () => {
+  const q = async (sql) => {
+    if (/COUNT/.test(sql)) return { rows: [{ n: 0 }] };
+    return { rows: [] };
+  };
+  const r = await queryExerciseTemplatesPage({ limit: 0, offset: -50 }, q);
+  assert.equal(r.limit, 25, 'limit=0 falls through to default 25');
+  assert.equal(r.offset, 0, 'negative offset clamped to 0');
+});
+
+test('queryExerciseTemplatesPage: q + is_custom combine via AND', async () => {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/COUNT/.test(sql)) return { rows: [{ n: 8 }] };
+    return { rows: [] };
+  };
+  await queryExerciseTemplatesPage({ q: 'Foam', isCustom: true, limit: 10 }, q);
+  assert.ok(/lower\(title\) LIKE \$/.test(calls[0].sql), 'must include q filter');
+  assert.ok(/is_custom = \$/.test(calls[0].sql), 'must include is_custom filter');
+  assert.equal(calls[0].params[0], '%foam%', 'q must be lowercased and wrapped in %');
+  assert.equal(calls[0].params[1], true);
+});
+
+test('queryExerciseTemplatesPage: matched returns COUNT row, not page row count', async () => {
+  // This is the bug being fixed. Pre-v3.20 the route returned
+  // `matched: rows.length` (capped at limit). Callers couldn't tell if
+  // there were more pages.
+  const q = async (sql) => {
+    if (/COUNT/.test(sql)) return { rows: [{ n: 506 }] };
+    return { rows: [{ id: 'A' }, { id: 'B' }] };
+  };
+  const r = await queryExerciseTemplatesPage({ limit: 2, offset: 0 }, q);
+  assert.equal(r.matched, 506,
+    'matched must come from COUNT(*), not results.length. Pre-v3.20 this returned page size, ' +
+    'making the endpoint look like it had ≤100 rows even when the catalog was 506.'
+  );
+  assert.equal(r.results.length, 2);
+});
+
+test('queryExerciseTemplatesPage: 506-template enumeration via offset paging', async () => {
+  // Simulates the user's "give me all the customs" use case. With the
+  // fix, paging via offset works; matched stays constant so the caller
+  // knows when to stop. Pre-fix you couldn't get past row 100.
+  const total = 506;
+  let seen = 0;
+  for (let offset = 0; offset < total + 100; offset += 100) {
+    const remaining = Math.max(0, total - offset);
+    const pageSize = Math.min(100, remaining);
+    const q = async (sql) => {
+      if (/COUNT/.test(sql)) return { rows: [{ n: total }] };
+      const rows = Array.from({ length: pageSize }, (_, i) => ({ id: `T${offset + i}` }));
+      return { rows };
+    };
+    const r = await queryExerciseTemplatesPage({ limit: 100, offset }, q);
+    assert.equal(r.matched, total, `matched stays ${total} on every page`);
+    seen += r.results.length;
+  }
+  assert.equal(seen, total, 'all rows enumerable via offset paging');
 });
