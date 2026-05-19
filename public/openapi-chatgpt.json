@@ -2415,23 +2415,66 @@
     "/hevy/exercise-templates": {
       "get": {
         "operationId": "listHevyExerciseTemplates",
-        "summary": "List Hevy exercise template library (cached locally)",
-        "description": "Returns the user's Hevy exercise template library as cached in `hevy_template_cache`. Query this BEFORE writing a daily plan with `logging_target='hevy'` segments — the title returned here is the only string that will resolve to a Hevy template at push time. Case-insensitive exact-match resolution; no fuzzy match. If cache is stale, call `POST /api/hevy/templates/refresh` first.",
+        "summary": "List / search / enumerate Hevy exercise template library (cached locally)",
+        "description": "Returns templates from `hevy_template_cache`. Query this BEFORE writing a daily plan with `logging_target='hevy'` segments — the title returned here is the only string that will resolve to a Hevy template at push time. Case-insensitive exact-match resolution; no fuzzy match. If cache is stale, call `POST /api/hevy/templates/refresh` first.\n\nTo enumerate the full library (e.g. to find all customs the user has uploaded), use `?is_custom=true&limit=500` for a single-call dump, or paginate with `offset`. Use `response.matched` (not `results.length`) to know how many rows the filter actually has.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Case-insensitive substring match on title."
+          },
+          {
+            "name": "is_custom",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["true", "false", "1", "0"] },
+            "description": "'true'/'1' returns only user-created customs; 'false'/'0' returns only Hevy stock. Omit for no filter."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 25, "minimum": 1, "maximum": 500 },
+            "description": "Page size. Clamped to [1, 500]."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": { "type": "integer", "default": 0, "minimum": 0 },
+            "description": "Page offset. Combine with limit to walk the catalog."
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["1"] },
+            "description": "'1' forces a fresh pull from Hevy upstream before responding."
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Array of Hevy exercise templates with id and title",
+            "description": "Filtered, paginated page of templates with totals.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": { "type": "string", "description": "Hevy exercise_template_id" },
-                      "title": { "type": "string", "description": "Canonical Hevy title (use verbatim in planned_exercises[].name)" },
-                      "type": { "type": "string" },
-                      "primary_muscle_group": { "type": "string" },
-                      "secondary_muscle_groups": { "type": "array", "items": { "type": "string" } }
+                  "type": "object",
+                  "properties": {
+                    "total": { "type": "integer", "description": "Total rows in the cache (independent of any filter)." },
+                    "matched": { "type": "integer", "description": "Total rows matching the current filter (q + is_custom). Use this — not results.length — to know when to stop paginating." },
+                    "offset": { "type": "integer" },
+                    "limit": { "type": "integer" },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "description": "Hevy exercise_template_id" },
+                          "title": { "type": "string", "description": "Canonical Hevy title (use verbatim in planned_exercises[].name)" },
+                          "type": { "type": "string" },
+                          "primary_muscle_group": { "type": "string" },
+                          "secondary_muscle_groups": { "type": "array", "items": { "type": "string" } },
+                          "equipment": { "type": "string" },
+                          "is_custom": { "type": "boolean" }
+                        }
+                      }
                     }
                   }
                 }
