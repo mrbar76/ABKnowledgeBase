@@ -398,8 +398,23 @@ async function findExistingKnowledge(contentPrefix, aiSource) {
 
 // ─── Store helpers ─────────────────────────────────────────
 
+// Normalize a caller-supplied DB handle into a callable query function.
+// Callers pass one of three things:
+//   - nothing             → fall back to the module-level `query`
+//   - a query function    → `query`, or `client.query.bind(client)`
+//   - a raw pg PoolClient → exposes `.query()` but is NOT itself callable
+// The incremental sync wraps each item in withTransaction(), which hands
+// its callback a raw PoolClient. Passing that straight to a store helper
+// used to set `q` to the client object, so `q(...)` threw "q is not a
+// function" on every insert. Normalizing here accepts either form.
+function asQueryFn(client) {
+  if (typeof client === 'function') return client;
+  if (client && typeof client.query === 'function') return client.query.bind(client);
+  return query;
+}
+
 async function storeFact(factText, fact, client) {
-  const q = client || query;
+  const q = asQueryFn(client);
   const factDate = fact.created_at ? new Date(fact.created_at).toISOString() : new Date().toISOString();
   const r = await q(
     `INSERT INTO knowledge (title, content, category, tags, source, ai_source, confirmed, created_at)
@@ -411,7 +426,7 @@ async function storeFact(factText, fact, client) {
 }
 
 async function storeTodo(todoText, todo, client) {
-  const q = client || query;
+  const q = asQueryFn(client);
   const todoDate = todo.created_at ? new Date(todo.created_at).toISOString() : new Date().toISOString();
   const r = await q(
     `INSERT INTO tasks (title, status, priority, ai_agent, next_steps, created_at)
@@ -422,7 +437,7 @@ async function storeTodo(todoText, todo, client) {
 }
 
 async function storeConversation(convo, full, rawResult, client) {
-  const q = client || query;
+  const q = asQueryFn(client);
   const title = (full.short_summary || convo.short_summary || (full.summary ? full.summary.substring(0, 80) : null) ||
     `Bee Conversation ${convo.created_at ? new Date(convo.created_at).toLocaleDateString() : ''}`).substring(0, 200);
   const durationMs = (convo.end_time && convo.start_time) ? convo.end_time - convo.start_time : null;
@@ -496,7 +511,7 @@ async function storeConversation(convo, full, rawResult, client) {
 }
 
 async function storeJournal(journal, client) {
-  const q = client || query;
+  const q = asQueryFn(client);
   const jText = journal.text || journal.content || journal.body || journal.markdown || '';
   const jTitle = (journal.title || journal.short_summary || (jText ? jText.substring(0, 80) : `Journal ${journal.id}`)).substring(0, 200);
   const journalDate = journal.created_at ? new Date(journal.created_at).toISOString() : (journal.date ? new Date(journal.date).toISOString() : new Date().toISOString());
@@ -509,7 +524,7 @@ async function storeJournal(journal, client) {
 }
 
 async function storeDaily(day, client) {
-  const q = client || query;
+  const q = asQueryFn(client);
   const dText = day.text || day.content || day.body || day.summary || day.markdown || '';
   const dDate = day.date || day.created_at || '';
   const dTitle = (day.title || `Daily Summary ${dDate ? new Date(dDate).toLocaleDateString() : day.id}`).substring(0, 200);
@@ -1177,3 +1192,6 @@ router.post('/reimport-misordered', async (req, res) => {
 
 module.exports = router;
 module.exports.autoIdentifySpeakers = autoIdentifySpeakers;
+// Exposed for unit tests in tests/bee.test.js. Internal helper — don't
+// import elsewhere.
+module.exports._test = { asQueryFn };
