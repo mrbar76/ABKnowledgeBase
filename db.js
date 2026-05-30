@@ -274,6 +274,129 @@ async function initDB() {
       (coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) gin_trgm_ops
     )`);
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  PHASE 0 — Architecture foundations (v3.22)
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // Three columns on `exercises` and one new table. Unblocks later
+  // phases (responsive Coach endpoint, substitution maps, gap analysis,
+  // reference-library import). No behavior change at landing —
+  // existing routes ignore the new columns and table until later work
+  // wires them in.
+  //
+  //   exercises.hevy_template_id
+  //     Direct link to hevy_template_cache.hevy_id. Collapses the
+  //     two-hop indirection through hevy_exercise_map (which joined
+  //     on case-insensitive name). The map stays as a compat layer
+  //     until callers are migrated; backfilled here from the map.
+  //
+  //   exercises.movement_pattern
+  //     hinge | squat | push_h | push_v | pull_h | pull_v |
+  //     loaded_carry | core | cardio_z2 | cardio_intensity | mobility.
+  //     Nullable; new rows fill it, old rows fill incrementally.
+  //     Powers gap analysis in Phase 3.
+  //
+  //   exercises.last_logged_at
+  //     Most recent date this exercise appeared in a logged workout.
+  //     Column-only here. Backfill is a separate one-shot job — no
+  //     clean per-exercise log on `workouts`; would have to walk
+  //     workouts.metadata Hevy payloads. Gap analysis treats NULL as
+  //     "never logged via this column."
+  //
+  //   exercises_reference table
+  //     Empty research library. Phase 3 imports free-exercise-db /
+  //     wger here. NEVER auto-promoted to `exercises`; promotion is
+  //     Coach proposal → user approval → Hevy POST → exercises insert.
+  //     See architecture doc's catalog growth flow.
+  await safeQuery('exercises +hevy_template_id',
+    `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS hevy_template_id TEXT`);
+  await safeQuery('exercises +movement_pattern',
+    `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS movement_pattern TEXT`);
+  await safeQuery('exercises +last_logged_at',
+    `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS last_logged_at TIMESTAMPTZ`);
+
+  await safeQuery('exercises hevy_template_id idx', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_hevy_template_id
+      ON exercises(hevy_template_id) WHERE hevy_template_id IS NOT NULL
+  `);
+  await safeQuery('exercises movement_pattern idx', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_movement_pattern
+      ON exercises(movement_pattern) WHERE movement_pattern IS NOT NULL
+  `);
+  await safeQuery('exercises last_logged_at idx', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_last_logged_at
+      ON exercises(last_logged_at DESC NULLS LAST)
+  `);
+
+  // Backfill hevy_template_id from the name-based hevy_exercise_map.
+  // Only fills rows where the column is NULL — idempotent, re-running
+  // after a manual override won't clobber. Guarded by an existence
+  // check so a fresh DB without the map table doesn't error out
+  // during initDB on cold boot.
+  await safeQuery('backfill exercises.hevy_template_id', `
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+         WHERE table_name = 'hevy_exercise_map'
+      ) THEN
+        UPDATE exercises e
+           SET hevy_template_id = m.hevy_exercise_template_id
+          FROM hevy_exercise_map m
+         WHERE lower(e.name) = lower(m.ab_brain_exercise_name)
+           AND e.hevy_template_id IS NULL;
+      END IF;
+    END $$;
+  `);
+
+  // ===== EXERCISES REFERENCE LIBRARY (Phase 0 namespace) =====
+  // Research catalog — sources like free-exercise-db (Unlicense) and
+  // wger (CC-BY-SA) get imported here in Phase 3. Coach reads it
+  // during deliberate-mode gap analysis to propose additions, but
+  // entries NEVER auto-promote to `exercises`. UNIQUE on
+  // (source, source_id) so a re-import doesn't dupe rows.
+  await safeQuery('exercises_reference table', `
+    CREATE TABLE IF NOT EXISTS exercises_reference (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      primary_muscle_group TEXT,
+      secondary_muscle_groups TEXT[],
+      equipment TEXT,
+      movement_pattern TEXT,
+      level TEXT,
+      mechanic TEXT,
+      force TEXT,
+      category TEXT,
+      description TEXT,
+      instructions TEXT[],
+      image_urls JSONB DEFAULT '[]'::jsonb,
+      source TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      license TEXT,
+      tags JSONB DEFAULT '[]'::jsonb,
+      raw JSONB,
+      imported_at TIMESTAMPTZ DEFAULT NOW(),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await safeQuery('exercises_reference source unique', `
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_exercises_reference_source_id
+      ON exercises_reference(source, source_id)
+  `);
+  await safeQuery('exercises_reference name idx', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_reference_name
+      ON exercises_reference(lower(name))
+  `);
+  await safeQuery('exercises_reference movement_pattern idx', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_reference_movement_pattern
+      ON exercises_reference(movement_pattern) WHERE movement_pattern IS NOT NULL
+  `);
+  await safeQuery('exercises_reference name trgm idx', `
+    CREATE INDEX IF NOT EXISTS idx_exercises_reference_name_trgm
+      ON exercises_reference USING gin(name gin_trgm_ops)
+  `);
+
   // ===== GYM PROFILES =====
   await safeQuery('gym_profiles table', `
     CREATE TABLE IF NOT EXISTS gym_profiles (
