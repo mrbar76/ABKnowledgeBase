@@ -1262,7 +1262,10 @@ function extractHrSamplesFromB(body) {
     if (normalizeMetricId(metric.id) !== 'heartrate') continue;
     for (const dp of metric.data_points || []) {
       const t = dp.timestamp || dp.start_date || dp.date;
-      const raw = dp.value ?? dp.qty ?? dp.quantity;
+      // Apple Health Auto Export aggregates per-minute samples as
+      // { Avg, Max, Min, units, source }. Earlier shapes used
+      // { value | qty | quantity }. We accept all.
+      const raw = dp.value ?? dp.qty ?? dp.quantity ?? dp.Avg ?? dp.avg ?? dp.AVG;
       const v = Number(raw);
       if (t && isFinite(v)) samples.push({ t, value: v });
     }
