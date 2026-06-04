@@ -1171,30 +1171,25 @@ function normalizeWorkoutType(t) {
 
 // ─── HR zone computation (joins format B HR samples to a workout window) ──
 
-async function computeHrZonesForWorkout(workoutId, hrSamples) {
-  const w = (await query('SELECT id, started_at, ended_at FROM workouts WHERE id = $1', [workoutId])).rows[0];
-  if (!w || !w.started_at) return null;
-
-  const zones = await getEffectiveZones(w.started_at);
-  if (!zones || !zones.z1_max) return null;
-
-  // Filter samples to workout window
-  const start = new Date(w.started_at).getTime();
-  const end = w.ended_at ? new Date(w.ended_at).getTime() : start + 3 * 3600 * 1000;
-  const inWindow = hrSamples.filter(s => {
-    const t = new Date(s.t).getTime();
-    return t >= start && t <= end;
-  });
-  if (!inWindow.length) return null;
-
-  // Bucket each sample by zone (assuming samples are roughly 1/sec; weight by gap to next sample)
+// Pure bucketing: given normalized samples + a zone-threshold row, return
+// { z1, z2, z3, z4, z5 } in MINUTES. Each sample contributes the gap to
+// the next sample (capped at 60s so HealthKit hiccups don't bloat a zone).
+// Extracted so the bucketing logic is unit-testable without a workout row
+// or DB connection — see tests/hr-zones.test.js.
+function bucketSamplesByZone(samples, zones) {
+  if (!Array.isArray(samples) || !samples.length) return { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+  if (!zones || zones.z1_max == null) return null;
+  // Sort ascending by timestamp so the gap-to-next math is meaningful even
+  // if the caller passed an unsorted array.
+  const sorted = [...samples].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
   const minutesByZone = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-  for (let i = 0; i < inWindow.length; i++) {
-    const cur = inWindow[i];
-    const next = inWindow[i + 1];
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = sorted[i];
+    const next = sorted[i + 1];
     const gapSec = next ? (new Date(next.t).getTime() - new Date(cur.t).getTime()) / 1000 : 1;
-    const dur = Math.min(Math.max(gapSec, 0), 60); // cap gaps at 60s
-    const hr = cur.value;
+    const dur = Math.min(Math.max(gapSec, 0), 60);
+    const hr = Number(cur.value);
+    if (!isFinite(hr)) continue;
     const zone = hr <= zones.z1_max ? 'z1'
       : hr <= zones.z2_max ? 'z2'
       : hr <= zones.z3_max ? 'z3'
@@ -1202,6 +1197,36 @@ async function computeHrZonesForWorkout(workoutId, hrSamples) {
       : 'z5';
     minutesByZone[zone] += dur / 60;
   }
+  return minutesByZone;
+}
+
+async function computeHrZonesForWorkout(workoutId, hrSamples) {
+  const w = (await query('SELECT id, started_at, ended_at, time_duration FROM workouts WHERE id = $1', [workoutId])).rows[0];
+  if (!w || !w.started_at) return null;
+
+  const zones = await getEffectiveZones(w.started_at);
+  if (!zones || !zones.z1_max) return null;
+
+  // Filter samples to workout window. Window = [started_at, ended_at]; if
+  // ended_at is missing we fall back to started_at + 3h (legacy guard for
+  // workouts whose end timestamp wasn't recorded).
+  const start = new Date(w.started_at).getTime();
+  const end = w.ended_at ? new Date(w.ended_at).getTime() : start + 3 * 3600 * 1000;
+  const inWindow = (hrSamples || []).filter(s => {
+    const t = new Date(s.t).getTime();
+    return t >= start && t <= end;
+  });
+  if (!inWindow.length) return null;
+
+  const minutesByZone = bucketSamplesByZone(inWindow, zones);
+  if (!minutesByZone) return null;
+
+  // Coverage = (sum of zone minutes) / (workout duration). Falls back to
+  // null when duration is unknown so the caller can decide what to do.
+  const totalMin = minutesByZone.z1 + minutesByZone.z2 + minutesByZone.z3 + minutesByZone.z4 + minutesByZone.z5;
+  const durSec = durationToSeconds(w.time_duration);
+  const coverage_pct = durSec > 0 ? Math.min(100, Math.round((totalMin / (durSec / 60)) * 100)) : null;
+
   return {
     zones_used: { z1_max: zones.z1_max, z2_max: zones.z2_max, z3_max: zones.z3_max, z4_max: zones.z4_max, z5_max: zones.z5_max, max_hr: zones.max_hr },
     minutes: {
@@ -1211,6 +1236,7 @@ async function computeHrZonesForWorkout(workoutId, hrSamples) {
       z4: round1(minutesByZone.z4),
       z5: round1(minutesByZone.z5),
     },
+    coverage_pct,
     sample_count: inWindow.length,
     method: zones.method,
     computed_at: new Date().toISOString(),
@@ -2422,6 +2448,7 @@ router.get('/diag/deprecated-columns', async (req, res) => {
 
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
+module.exports.bucketSamplesByZone = bucketSamplesByZone;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
 module.exports.parseFormatB = parseFormatB;
 module.exports.parseFormatD = parseFormatD;

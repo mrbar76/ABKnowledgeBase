@@ -47,9 +47,14 @@ const WRITABLE_FIELDS = [
   'daily_plan_id', 'plan_segment_id',
   'duration_minutes', 'distance_value', 'elevation_gain_ft',
   'hr_avg', 'hr_max', 'cadence', 'cal_active', 'cal_total',
+  // hr_zones (JSONB) used to be silently dropped on PUT/PATCH — the
+  // polarization endpoint depends on it, so clients that already have
+  // precomputed zone minutes need a write path. Raw HR traces go
+  // through POST /:id/hr-samples (below) instead.
+  'hr_zones',
 ];
 
-const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata']);
+const JSONB_FIELDS = new Set(['exercises', 'tags', 'metadata', 'hr_zones']);
 
 // Parse text duration into minutes.
 // v1.8.16: regex was unanchored and treated mm:ss the same as h:mm,
@@ -438,6 +443,95 @@ router.post('/relink', async (req, res) => {
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
     console.error('[POST /workouts/relink]', err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/workouts/:id/hr-samples ───────────────────────────
+//
+// Ingest a per-workout heart-rate trace and compute `hr_zones` for the
+// row. Forge has no live HealthKit→server bridge, so HR samples enter
+// via three documented paths:
+//
+//   1. The Apple Health "Format B" /api/health/ingest payload picks
+//      up samples in batch as a side effect (`routes/health.js` Format
+//      B branch). No code change needed for that path.
+//   2. A separate one-shot script (`scripts/backfill-hr-zones-from-
+//      metadata.js`) walks workouts whose Format A sync stashed the
+//      heart-rate array in `metadata.heartRateData` but never derived
+//      `hr_zones`. See that file for the recovery flow.
+//   3. This endpoint — for direct uploads of a single workout's trace,
+//      typically from an iOS Shortcut that exports HKWorkout HR samples
+//      and POSTs them here. The body shape is whatever the client has;
+//      both `{t, value}` and `{timestamp, bpm}` are accepted so the
+//      shortcut author doesn't have to fight schema.
+//
+// Body:
+//   {
+//     "samples": [{ "t": "2026-06-04T18:30:01Z", "value": 92 }, ...]
+//     // or aliases:
+//     // { "timestamp": "...", "bpm": 92 }
+//     // { "date": "...", "qty": 92 }
+//   }
+//
+// Returns the computed `hr_zones` row (minutes + zones_used + coverage_pct)
+// or an explicit skip reason. Use PATCH /api/workouts/:id with
+// `{ hr_zones: {...} }` instead when zones are pre-computed and you do
+// NOT want server-side bucketing.
+router.post('/:id/hr-samples', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+    const raw = Array.isArray(body.samples) ? body.samples : (Array.isArray(body) ? body : null);
+    if (!raw) return res.status(400).json({ error: 'body.samples must be an array' });
+    if (!raw.length) return res.status(400).json({ error: 'body.samples is empty' });
+
+    // Normalize to {t, value}. The iOS Shortcuts author tends to flip
+    // between `bpm`, `value`, `qty`; the HealthKit dump uses `date`. We
+    // accept all three pairs.
+    const samples = [];
+    for (const s of raw) {
+      if (!s) continue;
+      const t = s.t || s.timestamp || s.date || s.start_date;
+      const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity);
+      if (t && isFinite(v)) samples.push({ t, value: v });
+    }
+    if (!samples.length) return res.status(400).json({ error: 'no samples had both timestamp and numeric value' });
+
+    // Confirm the workout exists before computing (cheaper error than the
+    // null-return path inside the helper).
+    const wRes = await query('SELECT id, started_at FROM workouts WHERE id = $1', [id]);
+    if (!wRes.rows.length) return res.status(404).json({ error: 'workout not found' });
+    if (!wRes.rows[0].started_at) {
+      return res.status(409).json({ error: 'workout has no started_at; cannot bucket samples to a time window' });
+    }
+
+    // Lazy-require to avoid a top-of-file circular with health.js (which
+    // imports from this file via the link helper).
+    const { computeHrZonesForWorkout } = require('./health');
+    const zones = await computeHrZonesForWorkout(id, samples);
+    if (!zones) {
+      // Two reasons this can return null: no athlete_zones row covering
+      // the workout date, or no samples landed inside the workout window.
+      // Surface both as a 422 so the client knows it's not a 5xx.
+      return res.status(422).json({
+        error: 'could not compute hr_zones',
+        hints: [
+          'check athlete_zones has a row whose effective_from <= workout.started_at',
+          'check sample timestamps fall inside [workout.started_at, workout.ended_at]',
+        ],
+        samples_received: samples.length,
+      });
+    }
+
+    await query(
+      'UPDATE workouts SET hr_zones = $1::jsonb, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(zones), id]
+    );
+
+    res.json({ ok: true, workout_id: id, hr_zones: zones });
+  } catch (err) {
+    console.error('[POST /workouts/:id/hr-samples]', err.stack);
     res.status(500).json({ error: err.message });
   }
 });
