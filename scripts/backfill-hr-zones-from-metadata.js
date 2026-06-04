@@ -44,18 +44,21 @@ function parseArgs(argv) {
 }
 
 // Normalize whatever the Apple Health pipeline stashed in
-// metadata.heartRateData into [{t, value}]. We've seen at least three
-// shapes from HealthKit exports / Shortcuts:
-//   { date, qty }
-//   { startDate, value }
-//   { timestamp, bpm }
+// metadata.heartRateData into [{t, value}]. The shapes we have seen:
+//   { date, qty }                           older HK exports
+//   { startDate, value }                    HK direct dump
+//   { timestamp, bpm }                      Shortcuts
+//   { date, Avg, Max, Min, units, source }  Apple Health Auto Export
+//                                           — the dominant shape in
+//                                           Forge's actual data. Avg
+//                                           is the per-minute mean.
 function normalizeSamples(arr) {
   if (!Array.isArray(arr)) return [];
   const out = [];
   for (const s of arr) {
     if (!s) continue;
     const t = s.t || s.timestamp || s.date || s.start_date || s.startDate;
-    const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity);
+    const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity ?? s.Avg ?? s.avg ?? s.AVG);
     if (t && isFinite(v)) out.push({ t, value: v });
   }
   return out;
