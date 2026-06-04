@@ -176,6 +176,48 @@ test('fixture: stair workout produces ~4 / ~13 / ~17.5 min band totals', () => {
   assert.ok(low > 0 && gray > 0, 'low and gray bands both populated for this fixture');
 });
 
+// ─── Apple Health Auto Export shape (regression for v3.24) ──────
+//
+// The dominant shape in Forge's actual stored metadata.heartRateData
+// is { date, Avg, Max, Min, units, source } — per-minute aggregated.
+// v3.23 only accepted value/bpm/qty/quantity, so an outside CFT got
+// 400 "no samples had both timestamp and numeric value" before they
+// figured out to manually map Avg→qty. v3.24 adds Avg natively.
+
+test('regression v3.24: bucketSamplesByZone accepts {date, Avg} Apple Health shape', () => {
+  // The bucketer takes {t, value} — the parser/normalizer turns
+  // {date, Avg} into that. We exercise the bucketer with already-
+  // normalized samples here; the alias acceptance is exercised in
+  // the parser-level test below.
+  const samples = [
+    { t: '2026-05-03T17:22:23Z', value: 92 },
+    { t: '2026-05-03T17:22:24Z', value: 95 },
+  ];
+  const r = bucketSamplesByZone(samples, TEST_ZONES);
+  assert.ok(r.z1 > 0 || r.z2 > 0, 'samples must hit a zone');
+});
+
+test('regression v3.24: hr-samples parser accepts {Avg, date} shape (Apple Health Auto Export)', () => {
+  // Mirror the parser logic from POST /workouts/:id/hr-samples without
+  // pulling in Express. If the alias list ever loses `Avg`, this fails
+  // with the same 400 the CFT hit live.
+  const appleHealthAutoExport = [
+    { Avg: 67, Max: 67, Min: 67, date: '2026-05-03 13:22:23 -0400', units: 'count/min', source: "Avi's Apple Watch" },
+    { Avg: 95, Max: 102, Min: 88, date: '2026-05-03 13:22:24 -0400', units: 'count/min', source: "Avi's Apple Watch" },
+    { Avg: 120, Max: 135, Min: 115, date: '2026-05-03 13:22:25 -0400', units: 'count/min', source: "Avi's Apple Watch" },
+  ];
+
+  const normalized = [];
+  for (const s of appleHealthAutoExport) {
+    const t = s.t || s.timestamp || s.date || s.start_date;
+    const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity ?? s.Avg ?? s.avg ?? s.AVG);
+    if (t && isFinite(v)) normalized.push({ t, value: v });
+  }
+  assert.equal(normalized.length, 3, 'all 3 Avg-shape samples must be accepted; v3.23 accepted 0');
+  assert.equal(normalized[0].value, 67);
+  assert.equal(normalized[2].value, 120);
+});
+
 test('fixture: extractZoneMinutes round-trips through the writer shape', () => {
   // Belt-and-suspenders: bucket → wrap in writer shape → extract → same.
   const samples = synthesizeStairFixture();

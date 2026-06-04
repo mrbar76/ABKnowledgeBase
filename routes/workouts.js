@@ -486,14 +486,21 @@ router.post('/:id/hr-samples', async (req, res) => {
     if (!raw) return res.status(400).json({ error: 'body.samples must be an array' });
     if (!raw.length) return res.status(400).json({ error: 'body.samples is empty' });
 
-    // Normalize to {t, value}. The iOS Shortcuts author tends to flip
-    // between `bpm`, `value`, `qty`; the HealthKit dump uses `date`. We
-    // accept all three pairs.
+    // Normalize to {t, value}. HealthKit and the various export tools
+    // emit at least four different shapes:
+    //   { t,          value }                          // canonical
+    //   { timestamp,  bpm }                            // HK Shortcuts
+    //   { date,       qty }                            // older HK exports
+    //   { date, Avg, Max, Min, units, source }         // Apple Health
+    //                                                  // Auto Export
+    // The aggregated Auto Export shape is what 99% of Forge's stored
+    // metadata.heartRateData rows look like — Avg is the per-minute
+    // average sample. We accept it. value/bpm/qty/Avg, in that order.
     const samples = [];
     for (const s of raw) {
       if (!s) continue;
       const t = s.t || s.timestamp || s.date || s.start_date;
-      const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity);
+      const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity ?? s.Avg ?? s.avg ?? s.AVG);
       if (t && isFinite(v)) samples.push({ t, value: v });
     }
     if (!samples.length) return res.status(400).json({ error: 'no samples had both timestamp and numeric value' });
