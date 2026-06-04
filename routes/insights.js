@@ -164,6 +164,24 @@ async function getZonesForDate(date) {
   return r.rows[0] || null;
 }
 
+// Normalize a workouts.hr_zones JSONB row into a flat { z1..z5 } minutes
+// object. The writer (`computeHrZonesForWorkout` in routes/health.js) stores
+// `{ minutes: { z1, z2, z3, z4, z5 }, ... }`. Some legacy / external writers
+// (and an older shape that pre-dated the nested form) stored
+// `{ z1, z2, z3, z4, z5 }` at the top level. Two read paths in this file
+// used to read the top-level shape exclusively, which silently zeroed out
+// every modern row's contribution to polarization. Reading through this
+// helper makes both shapes work.
+function extractZoneMinutes(hr_zones) {
+  if (!hr_zones || typeof hr_zones !== 'object') return null;
+  const src = hr_zones.minutes && typeof hr_zones.minutes === 'object' ? hr_zones.minutes : hr_zones;
+  const z = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+  for (const k of ['z1', 'z2', 'z3', 'z4', 'z5']) {
+    z[k] = Number(src[k] || src[k.toUpperCase()] || 0);
+  }
+  return z;
+}
+
 function computeTSS(workout, zones) {
   const durSec = durationToSeconds(workout.time_duration);
   const durHr = durSec / 3600;
@@ -1554,16 +1572,11 @@ router.get('/trends', async (req, res) => {
       weeklyMiles += Number(w.distance) || 0;
       const sec = durationToSeconds(w.time_duration);
       weeklyHours += sec / 3600;
-      if (w.hr_zones && typeof w.hr_zones === 'object') {
+      const zm = extractZoneMinutes(w.hr_zones);
+      if (zm && (zm.z1 + zm.z2 + zm.z3 + zm.z4 + zm.z5) > 0) {
         weeklyZonesCovered++;
-        const z = w.hr_zones;
-        const z1 = Number(z.z1 || z.Z1 || 0);
-        const z2 = Number(z.z2 || z.Z2 || 0);
-        const z3 = Number(z.z3 || z.Z3 || 0);
-        const z4 = Number(z.z4 || z.Z4 || 0);
-        const z5 = Number(z.z5 || z.Z5 || 0);
-        weeklyZ1 += z1; weeklyZ2 += z2; weeklyZ3 += z3; weeklyZ4 += z4; weeklyZ5 += z5;
-        weeklyZ_total += z1 + z2 + z3 + z4 + z5;
+        weeklyZ1 += zm.z1; weeklyZ2 += zm.z2; weeklyZ3 += zm.z3; weeklyZ4 += zm.z4; weeklyZ5 += zm.z5;
+        weeklyZ_total += zm.z1 + zm.z2 + zm.z3 + zm.z4 + zm.z5;
       }
     }
 
@@ -1989,12 +2002,10 @@ router.get('/weekly-review', async (req, res) => {
       weekTss += Number(w.tss) || 0;
       weekDist += Number(w.distance) || 0;
       if (w.effort != null) { weekEffortSum += Number(w.effort); weekEffortN++; }
-      if (w.hr_zones && typeof w.hr_zones === 'object') {
+      const zm = extractZoneMinutes(w.hr_zones);
+      if (zm && (zm.z1 + zm.z2 + zm.z3 + zm.z4 + zm.z5) > 0) {
         z.covered++;
-        for (const k of ['z1','z2','z3','z4','z5']) {
-          const v = Number(w.hr_zones[k] || w.hr_zones[k.toUpperCase()] || 0);
-          z[k] += v; z.total += v;
-        }
+        for (const k of ['z1','z2','z3','z4','z5']) { z[k] += zm[k]; z.total += zm[k]; }
       }
     }
     const polar = z.total > 0 ? {
@@ -2073,12 +2084,11 @@ router.get('/polarization', async (req, res) => {
       if (!buckets.has(wk)) buckets.set(wk, { z1:0, z2:0, z3:0, z4:0, z5:0, covered:0, total:0 });
       const b = buckets.get(wk);
       b.total++;
-      if (w.hr_zones && typeof w.hr_zones === 'object') {
+      const zm = extractZoneMinutes(w.hr_zones);
+      if (zm && (zm.z1 + zm.z2 + zm.z3 + zm.z4 + zm.z5) > 0) {
         b.covered++;
         totalCovered++;
-        for (const k of ['z1','z2','z3','z4','z5']) {
-          b[k] += Number(w.hr_zones[k] || w.hr_zones[k.toUpperCase()] || 0);
-        }
+        for (const k of ['z1','z2','z3','z4','z5']) b[k] += zm[k];
       }
     }
     const series = [];
@@ -2122,3 +2132,4 @@ function isoWeek(dateStr) {
 module.exports = router;
 module.exports.computeTSS = computeTSS;
 module.exports.durationToSeconds = durationToSeconds;
+module.exports.extractZoneMinutes = extractZoneMinutes;
