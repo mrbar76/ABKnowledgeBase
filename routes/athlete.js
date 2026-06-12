@@ -251,4 +251,149 @@ router.put('/profile/:id', async (req, res) => {
   }
 });
 
+// ─── POST /api/athlete/zones/canonical-correct ───────────────────
+// One-shot remote-triggerable equivalent of
+// scripts/correct-athlete-zones-canonical.js. Same logic; lets the
+// operator fix the table from any client (curl from phone, Postman,
+// etc.) instead of shelling into the Railway container.
+//
+// Body (all optional):
+//   { apply?: bool=false, from?: 'YYYY-MM-DD'='2024-01-01',
+//     nullHrZones?: bool=true }
+//
+// Canonical zones are hardcoded — they match the locked v2 profile
+// (max_hr=190, LTHR=165, Z1<130/Z2 130-150/Z3 151-165/Z4 166-180).
+// Any future correction wants a new endpoint, not a parameter,
+// because the whole point is "the one true row."
+//
+// Returns:
+//   { dry_run, existing_before, canonical_inserted, hr_zones_nulled,
+//     verdict }
+const CANONICAL_ZONES = {
+  max_hr: 190, lthr: 165,
+  z1_max: 129, z2_max: 150, z3_max: 165, z4_max: 180, z5_max: 200,
+  method: 'absolute_bpm',
+};
+
+router.post('/zones/canonical-correct', async (req, res) => {
+  try {
+    const apply = req.body?.apply === true;
+    const from = req.body?.from || '2024-01-01';
+    const nullHrZones = req.body?.nullHrZones !== false;
+
+    // Validate YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      return res.status(400).json({ error: 'from must be YYYY-MM-DD' });
+    }
+
+    const existing = await query(
+      `SELECT id, effective_from, effective_to, max_hr, lthr,
+              z1_max, z2_max, z3_max, z4_max, z5_max, method, set_by
+         FROM athlete_zones
+        WHERE zone_type = 'heart_rate'
+        ORDER BY effective_from DESC`
+    );
+
+    // Already-canonical short-circuit (idempotency).
+    const already = existing.rows.find(r =>
+      r.max_hr === CANONICAL_ZONES.max_hr &&
+      r.z1_max === CANONICAL_ZONES.z1_max &&
+      r.z2_max === CANONICAL_ZONES.z2_max &&
+      r.z3_max === CANONICAL_ZONES.z3_max &&
+      r.z4_max === CANONICAL_ZONES.z4_max &&
+      r.effective_from && new Date(r.effective_from).toISOString().slice(0, 10) <= from
+    );
+    if (already) {
+      return res.json({
+        dry_run: !apply,
+        already_canonical: true,
+        existing_canonical_row_id: already.id,
+        verdict: `Row ${already.id} already covers ${from} onward with canonical bounds. No write needed.`,
+      });
+    }
+
+    const candidatesQ = await query(
+      `SELECT COUNT(*)::int AS n FROM workouts
+        WHERE workout_date >= $1::date
+          AND jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) > 0`,
+      [from]
+    );
+    const hrZoneCandidates = candidatesQ.rows[0].n;
+
+    if (!apply) {
+      return res.json({
+        dry_run: true,
+        existing_before: existing.rows,
+        would_delete: existing.rows.length,
+        would_insert_canonical: { ...CANONICAL_ZONES, effective_from: from, effective_to: null },
+        would_null_hr_zones_on_workouts: nullHrZones ? hrZoneCandidates : 0,
+        verdict: `Dry run. Re-POST with { "apply": true } to execute.`,
+      });
+    }
+
+    // APPLY path — single transaction.
+    await query('BEGIN');
+    let result;
+    try {
+      const del = await query(`DELETE FROM athlete_zones WHERE zone_type = 'heart_rate' RETURNING id`);
+      const ins = await query(
+        `INSERT INTO athlete_zones (
+           effective_from, effective_to, zone_type,
+           max_hr, lthr,
+           z1_max, z2_max, z3_max, z4_max, z5_max,
+           method, set_by, rationale, source_data
+         ) VALUES (
+           $1::date, NULL, 'heart_rate',
+           $2, $3,
+           $4, $5, $6, $7, $8,
+           $9, 'admin-endpoint',
+           'Canonical correction via POST /api/athlete/zones/canonical-correct. Prior row(s) deleted.',
+           '{}'::jsonb
+         ) RETURNING id, effective_from, max_hr, lthr, z1_max, z2_max, z3_max, z4_max, z5_max`,
+        [
+          from, CANONICAL_ZONES.max_hr, CANONICAL_ZONES.lthr,
+          CANONICAL_ZONES.z1_max, CANONICAL_ZONES.z2_max,
+          CANONICAL_ZONES.z3_max, CANONICAL_ZONES.z4_max,
+          CANONICAL_ZONES.z5_max, CANONICAL_ZONES.method,
+        ]
+      );
+
+      let nulled = 0;
+      if (nullHrZones) {
+        const upd = await query(
+          `UPDATE workouts
+              SET hr_zones = NULL, updated_at = NOW()
+            WHERE workout_date >= $1::date
+              AND jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) > 0`,
+          [from]
+        );
+        nulled = upd.rowCount;
+      }
+
+      await query('COMMIT');
+      result = {
+        dry_run: false,
+        existing_before: existing.rows,
+        deleted: del.rowCount,
+        canonical_inserted: ins.rows[0],
+        hr_zones_nulled: nulled,
+        verdict: `Done. Next: POST /api/health/backfill/hr-zones-from-metadata { "apply": true } to recompute hr_zones for the ${nulled} workouts whose data was stashed.`,
+      };
+    } catch (err) {
+      await query('ROLLBACK');
+      throw err;
+    }
+
+    try {
+      await logActivity('canonical_correct', 'athlete_zones', result.canonical_inserted.id, 'admin-endpoint',
+        `Deleted ${result.deleted} prior rows; canonical zones backdated to ${from}; ${result.hr_zones_nulled} workouts queued for backfill.`);
+    } catch (_) { /* logActivity is best-effort */ }
+
+    res.json(result);
+  } catch (err) {
+    console.error(`[athlete/zones/canonical-correct] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
