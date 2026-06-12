@@ -2449,6 +2449,124 @@ router.get('/diag/deprecated-columns', async (req, res) => {
   }
 });
 
+// ─── GET /api/health/diag/hr-sample-coverage?days=14 ─────────────
+// Triage endpoint for "why is my Z2 chart near-zero?". Surfaces three
+// orthogonal failure modes and tells the operator which to act on:
+//
+//   (a) Wrong athlete_zones row → boundaries place real Z2 effort in Z1/Z3.
+//       Fix by PATCHing /api/athlete/zones/:id or backdating a corrected
+//       row's effective_from, then re-running the backfill.
+//   (b) Format A workouts (Apple Watch summary) → no per-sample HR exists,
+//       so zones can't be computed. Needs iOS-side ingest to add HR-stream.
+//   (c) Format B/D workouts with stashed samples in metadata.heartRateData
+//       but no derived hr_zones → run
+//       scripts/backfill-hr-zones-from-metadata.js --apply.
+router.get('/diag/hr-sample-coverage', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 14, 365));
+
+    const summary = await query(
+      `SELECT
+         COUNT(*)::int AS total_workouts,
+         COUNT(*) FILTER (WHERE hr_zones IS NOT NULL)::int AS with_zones,
+         COUNT(*) FILTER (WHERE hr_zones IS NULL)::int AS without_zones,
+         COUNT(*) FILTER (
+           WHERE hr_zones IS NULL
+             AND jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) > 0
+         )::int AS backfillable_now,
+         COUNT(*) FILTER (
+           WHERE hr_zones IS NULL
+             AND jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) = 0
+         )::int AS no_samples_needs_ios
+       FROM workouts
+       WHERE workout_date >= (CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day')::date`,
+      [days]
+    );
+
+    const bySource = await query(
+      `SELECT source, ai_source,
+              COUNT(*)::int AS workouts,
+              COUNT(*) FILTER (WHERE hr_zones IS NOT NULL)::int AS with_zones,
+              COUNT(*) FILTER (
+                WHERE jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) > 0
+              )::int AS with_hr_samples
+         FROM workouts
+        WHERE workout_date >= (CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day')::date
+        GROUP BY source, ai_source
+        ORDER BY workouts DESC`,
+      [days]
+    );
+
+    const zonesNow = await query(
+      `SELECT id, effective_from, effective_to, max_hr, lthr, resting_hr,
+              z1_max, z2_max, z3_max, z4_max, z5_max, method, set_by
+         FROM athlete_zones
+        WHERE zone_type = 'heart_rate'
+          AND effective_from <= CURRENT_DATE
+          AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
+        ORDER BY effective_from DESC LIMIT 1`
+    );
+
+    const zonesHistory = await query(
+      `SELECT id, effective_from, effective_to, max_hr,
+              z1_max, z2_max, z3_max, z4_max, z5_max
+         FROM athlete_zones
+        WHERE zone_type = 'heart_rate'
+        ORDER BY effective_from DESC LIMIT 10`
+    );
+
+    // Z2-band examples: workouts whose avg HR sits inside the *new
+    // canonical* Z2 band (130-150 bpm) but were computed under different
+    // zones. These are the smoking-gun rows for "the chart should show
+    // these but doesn't."
+    const z2BandExamples = await query(
+      `SELECT id, workout_date, source, ai_source, title,
+              hr_avg, hr_max, time_duration,
+              hr_zones->'minutes' AS minutes,
+              (hr_zones->'zones_used'->>'z2_max')::int AS zones_z2_max_used
+         FROM workouts
+        WHERE workout_date >= (CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day')::date
+          AND hr_avg BETWEEN 130 AND 150
+        ORDER BY workout_date DESC LIMIT 20`,
+      [days]
+    );
+
+    const s = summary.rows[0];
+    const z = zonesNow.rows[0];
+
+    let verdict;
+    if (!s || s.total_workouts === 0) {
+      verdict = 'No workouts in window — nothing to diagnose.';
+    } else if (!z) {
+      verdict = 'No active athlete_zones row — set one via POST /api/athlete/zones before any backfill.';
+    } else if (z.z2_max < 130 || z.max_hr < 180) {
+      verdict = `Active zones (max=${z.max_hr}, z2_max=${z.z2_max}) look stale vs the canonical max=190 / z2_max=150. ` +
+                `Correct via PATCH /api/athlete/zones/${z.id} or by running scripts/correct-athlete-zones-canonical.js, then backfill.`;
+    } else if (s.backfillable_now > 0) {
+      verdict = `${s.backfillable_now} workouts have HR samples in metadata but no derived hr_zones. ` +
+                `Run scripts/backfill-hr-zones-from-metadata.js --apply.`;
+    } else if (s.no_samples_needs_ios > 0 && s.with_zones === 0) {
+      verdict = `${s.no_samples_needs_ios}/${s.total_workouts} workouts have no per-sample HR — iOS-side ingest is summary-only (Format A) or the HR-stream metric isn't being exported.`;
+    } else {
+      verdict = `All ${s.with_zones}/${s.total_workouts} computable workouts already have zones.`;
+    }
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      window_days: days,
+      summary: s,
+      by_source: bySource.rows,
+      zones_now: z || null,
+      zones_history: zonesHistory.rows,
+      z2_band_examples: z2BandExamples.rows,
+      verdict,
+    });
+  } catch (err) {
+    console.error(`[health/diag/hr-sample-coverage] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.bucketSamplesByZone = bucketSamplesByZone;
