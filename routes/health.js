@@ -2567,6 +2567,137 @@ router.get('/diag/hr-sample-coverage', async (req, res) => {
   }
 });
 
+// ─── POST /api/health/backfill/hr-zones-from-metadata ────────────
+// Remote-triggerable equivalent of
+// scripts/backfill-hr-zones-from-metadata.js. Mirrors the script's
+// candidate query, sample-shape normalization, and update path.
+//
+// Body (all optional):
+//   { apply?: bool=false, since?: 'YYYY-MM-DD', workout_id?: uuid,
+//     limit?: int=500 }
+//
+// Returns:
+//   { dry_run, candidates, processed, updated,
+//     skipped_no_normalizable_samples, skipped_no_zones_or_window,
+//     rows: [...per-workout results] }
+//
+// Each row has: id, workout_date, status, samples_in, samples_in_window,
+//               coverage_pct, minutes.
+//
+// Idempotency: only touches rows where hr_zones IS NULL. NULL the
+// column first (via /api/athlete/zones/canonical-correct or a manual
+// UPDATE) to force a recompute.
+
+function normalizeHrSamplesFromMetadata(arr) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const s of arr) {
+    if (!s) continue;
+    const t = s.t || s.timestamp || s.date || s.start_date || s.startDate;
+    const v = Number(s.value ?? s.bpm ?? s.qty ?? s.quantity ?? s.Avg ?? s.avg ?? s.AVG);
+    if (t && isFinite(v)) out.push({ t, value: v });
+  }
+  return out;
+}
+
+router.post('/backfill/hr-zones-from-metadata', async (req, res) => {
+  try {
+    const apply = req.body?.apply === true;
+    const limit = Math.max(1, Math.min(parseInt(req.body?.limit, 10) || 500, 5000));
+    const since = req.body?.since;
+    const workoutId = req.body?.workout_id;
+
+    if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
+      return res.status(400).json({ error: 'since must be YYYY-MM-DD' });
+    }
+
+    const where = [
+      `hr_zones IS NULL`,
+      `metadata->'heartRateData' IS NOT NULL`,
+      `jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) > 0`,
+    ];
+    const params = [];
+    let p = 1;
+    if (workoutId) { where.push(`id = $${p++}`); params.push(workoutId); }
+    if (since) { where.push(`workout_date >= $${p++}::date`); params.push(since); }
+
+    const sql = `SELECT id, workout_date,
+                        jsonb_array_length(metadata->'heartRateData') AS sample_count
+                   FROM workouts
+                  WHERE ${where.join(' AND ')}
+                  ORDER BY workout_date DESC
+                  LIMIT ${limit}`;
+
+    const { rows: candidates } = await query(sql, params);
+
+    let updated = 0;
+    let skippedNoSamples = 0;
+    let skippedNoZones = 0;
+    const results = [];
+
+    for (const w of candidates) {
+      const raw = await query(
+        `SELECT metadata->'heartRateData' AS samples FROM workouts WHERE id = $1`,
+        [w.id]
+      );
+      const samples = normalizeHrSamplesFromMetadata(raw.rows[0].samples);
+      if (!samples.length) {
+        skippedNoSamples++;
+        results.push({ id: w.id, status: 'skipped', reason: 'no_normalizable_samples', raw_count: w.sample_count });
+        continue;
+      }
+
+      let zones;
+      try {
+        zones = await computeHrZonesForWorkout(w.id, samples);
+      } catch (err) {
+        results.push({ id: w.id, status: 'error', message: err.message });
+        continue;
+      }
+
+      if (!zones) {
+        skippedNoZones++;
+        results.push({ id: w.id, status: 'skipped', reason: 'no_zones_or_window', samples: samples.length });
+        continue;
+      }
+
+      if (apply) {
+        await query(
+          `UPDATE workouts SET hr_zones = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+          [JSON.stringify(zones), w.id]
+        );
+        updated++;
+      }
+
+      results.push({
+        id: w.id,
+        workout_date: w.workout_date instanceof Date ? w.workout_date.toISOString().slice(0, 10) : w.workout_date,
+        status: apply ? 'updated' : 'would_update',
+        samples_in: samples.length,
+        samples_in_window: zones.sample_count,
+        coverage_pct: zones.coverage_pct,
+        minutes: zones.minutes,
+      });
+    }
+
+    res.json({
+      dry_run: !apply,
+      candidates: candidates.length,
+      processed: results.length,
+      updated,
+      skipped_no_normalizable_samples: skippedNoSamples,
+      skipped_no_zones_or_window: skippedNoZones,
+      rows: results,
+      verdict: apply
+        ? `Updated ${updated} workouts. Re-fetch /api/health/diag/hr-sample-coverage to verify.`
+        : `Dry run — ${candidates.length} candidates, ${results.filter(r => r.status === 'would_update').length} would update. Re-POST with { "apply": true } to execute.`,
+    });
+  } catch (err) {
+    console.error(`[health/backfill/hr-zones-from-metadata] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.bucketSamplesByZone = bucketSamplesByZone;

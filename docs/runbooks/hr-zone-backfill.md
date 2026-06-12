@@ -18,11 +18,14 @@
 
 ## Procedure
 
+Two paths: HTTP (no shell access needed, works from phone or laptop) or CLI (if you're already SSH'd into the Railway container).
+
+> Replace `$FORGE` with your live Forge base URL, e.g. `https://ab-brain.up.railway.app`.
+
 ### 1. Verify the symptom
 
 ```
-GET /api/health/diag/hr-sample-coverage?days=90
-```
+curl -s "$FORGE/api/health/diag/hr-sample-coverage?days=90" | jq
 
 Look at the response:
 - `summary.with_zones` vs `summary.total_workouts` — coverage rate
@@ -34,32 +37,67 @@ Look at the response:
 
 ### 2. Correct the athlete_zones table
 
-```
-node scripts/correct-athlete-zones-canonical.js
-```
-
-Dry run prints what it would do. Review the existing rows + the candidate count of workouts whose `hr_zones` would be NULLed.
+**HTTP (recommended):**
 
 ```
-node scripts/correct-athlete-zones-canonical.js --apply
+# Dry run — prints what it would do, writes nothing
+curl -sX POST "$FORGE/api/athlete/zones/canonical-correct" \
+  -H 'Content-Type: application/json' \
+  -d '{}' | jq
+
+# Apply — single transaction; safe to re-run (idempotent)
+curl -sX POST "$FORGE/api/athlete/zones/canonical-correct" \
+  -H 'Content-Type: application/json' \
+  -d '{"apply": true}' | jq
 ```
 
-This is one transaction:
-1. Deletes all existing `heart_rate` rows in `athlete_zones`
-2. Inserts the canonical row with `effective_from = 2024-01-01` (backdated)
-3. NULLs `hr_zones` on every workout from that date forward that has HR samples in `metadata.heartRateData`
+**CLI (alternative if you're already shelled in):**
 
-The NULL step is the trigger for step 3 — `scripts/backfill-hr-zones-from-metadata.js` only touches rows where `hr_zones IS NULL`.
+```
+node scripts/correct-athlete-zones-canonical.js          # dry run
+node scripts/correct-athlete-zones-canonical.js --apply  # write
+```
+
+Both paths run the same transaction:
+1. `DELETE` all existing `heart_rate` rows in `athlete_zones`
+2. `INSERT` the canonical row with `effective_from = 2024-01-01` (backdated)
+3. `NULL hr_zones` on every workout from that date forward that has HR samples in `metadata.heartRateData`
+
+The NULL step is the trigger for step 3 — the backfill endpoint only touches rows where `hr_zones IS NULL`.
 
 ### 3. Recompute zones from stored samples
+
+**HTTP (recommended):**
+
+```
+# Dry run — shows per-row what would happen, writes nothing
+curl -sX POST "$FORGE/api/health/backfill/hr-zones-from-metadata" \
+  -H 'Content-Type: application/json' \
+  -d '{}' | jq
+
+# Apply — recomputes hr_zones for up to 500 candidates by default
+curl -sX POST "$FORGE/api/health/backfill/hr-zones-from-metadata" \
+  -H 'Content-Type: application/json' \
+  -d '{"apply": true, "limit": 500}' | jq
+```
+
+For a single workout only (debugging the fixture):
+
+```
+curl -sX POST "$FORGE/api/health/backfill/hr-zones-from-metadata" \
+  -H 'Content-Type: application/json' \
+  -d '{"apply": true, "workout_id": "<uuid>"}' | jq
+```
+
+**CLI (alternative):**
 
 ```
 node scripts/backfill-hr-zones-from-metadata.js --apply
 ```
 
-This pre-existing script (PR #47) iterates workouts with `hr_zones IS NULL` and `metadata.heartRateData` non-empty, normalizes the various HR-sample shapes (HK direct, Shortcut, Apple Health Auto Export `{Avg, date}`), and runs `computeHrZonesForWorkout` — which now uses the canonical bounds because step 2 backdated them.
+Both paths iterate workouts with `hr_zones IS NULL` and `metadata.heartRateData` non-empty, normalize the various HR-sample shapes (HK direct, Shortcut, Apple Health Auto Export `{Avg, date}`), and run `computeHrZonesForWorkout` — which now uses the canonical bounds because step 2 backdated them.
 
-Per-row output (JSON line) tells you sample count, in-window count, coverage %, and bucketed minutes.
+Per-row output tells you sample count, in-window count, coverage %, and bucketed minutes.
 
 ### 4. Verify the fix
 
