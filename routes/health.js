@@ -1200,6 +1200,20 @@ function bucketSamplesByZone(samples, zones) {
   return minutesByZone;
 }
 
+// Pure window filter: given samples and the workout's [start, end] in
+// epoch milliseconds, return only the samples that fall inside.
+// Extracted so the window logic is unit-testable without a DB row.
+// Used by computeHrZonesForWorkout AND persistHrSamplesForWorkout so
+// the zone math and the persisted snapshot stay in sync.
+function filterSamplesToWindow(samples, startMs, endMs) {
+  if (!Array.isArray(samples) || !samples.length) return [];
+  if (!isFinite(startMs) || !isFinite(endMs) || endMs <= startMs) return [];
+  return samples.filter(s => {
+    const t = new Date(s.t).getTime();
+    return isFinite(t) && t >= startMs && t <= endMs;
+  });
+}
+
 async function computeHrZonesForWorkout(workoutId, hrSamples) {
   const w = (await query('SELECT id, started_at, ended_at, time_duration FROM workouts WHERE id = $1', [workoutId])).rows[0];
   if (!w || !w.started_at) return null;
@@ -1207,15 +1221,12 @@ async function computeHrZonesForWorkout(workoutId, hrSamples) {
   const zones = await getEffectiveZones(w.started_at);
   if (!zones || !zones.z1_max) return null;
 
-  // Filter samples to workout window. Window = [started_at, ended_at]; if
-  // ended_at is missing we fall back to started_at + 3h (legacy guard for
-  // workouts whose end timestamp wasn't recorded).
-  const start = new Date(w.started_at).getTime();
-  const end = w.ended_at ? new Date(w.ended_at).getTime() : start + 3 * 3600 * 1000;
-  const inWindow = (hrSamples || []).filter(s => {
-    const t = new Date(s.t).getTime();
-    return t >= start && t <= end;
-  });
+  // Window = [started_at, ended_at]; if ended_at is missing we fall back
+  // to started_at + 3h (legacy guard for workouts whose end timestamp
+  // wasn't recorded).
+  const startMs = new Date(w.started_at).getTime();
+  const endMs = w.ended_at ? new Date(w.ended_at).getTime() : startMs + 3 * 3600 * 1000;
+  const inWindow = filterSamplesToWindow(hrSamples, startMs, endMs);
   if (!inWindow.length) return null;
 
   const minutesByZone = bucketSamplesByZone(inWindow, zones);
@@ -1241,6 +1252,41 @@ async function computeHrZonesForWorkout(workoutId, hrSamples) {
     method: zones.method,
     computed_at: new Date().toISOString(),
   };
+}
+
+// Persist HR samples that fall inside a workout's window to
+// workouts.metadata.heartRateData. Lets future zones corrections
+// re-derive hr_zones without needing a fresh iOS export. Stores in the
+// canonical { t, value } shape — the same shape /workouts/:id/hr-samples
+// and scripts/backfill-hr-zones-from-metadata.js both accept on read.
+//
+// Behavior:
+//   - Filters caller's hrSamples to the workout's [started_at, ended_at]
+//   - Replaces metadata.heartRateData with the in-window slice (preserves
+//     other metadata keys via jsonb_build_object merge)
+//   - No-op when no samples land in the window (returns persisted: 0)
+//
+// Returns { persisted: N, reason? }.
+async function persistHrSamplesForWorkout(workoutId, hrSamples) {
+  const w = (await query('SELECT id, started_at, ended_at FROM workouts WHERE id = $1', [workoutId])).rows[0];
+  if (!w || !w.started_at) return { persisted: 0, reason: 'no_started_at' };
+
+  const startMs = new Date(w.started_at).getTime();
+  const endMs = w.ended_at ? new Date(w.ended_at).getTime() : startMs + 3 * 3600 * 1000;
+  const inWindow = filterSamplesToWindow(hrSamples, startMs, endMs);
+  if (!inWindow.length) return { persisted: 0, reason: 'no_samples_in_window' };
+
+  // jsonb concatenation (`||`) merges keys — overwrites heartRateData
+  // while preserving any other metadata fields the row already has.
+  await query(
+    `UPDATE workouts
+        SET metadata   = COALESCE(metadata, '{}'::jsonb)
+                         || jsonb_build_object('heartRateData', $1::jsonb),
+            updated_at = NOW()
+      WHERE id = $2`,
+    [JSON.stringify(inWindow), workoutId]
+  );
+  return { persisted: inWindow.length };
 }
 
 async function getEffectiveZones(date) {
@@ -1308,9 +1354,15 @@ async function processPayload(body) {
         ? await mergeBodyMetricDuplicates({ dryRun: false })
         : { merged: 0 };
 
-      // If we have HR samples, recompute zones for any workouts in the window
+      // If we have HR samples: (1) persist the in-window slice to each
+      // workout's metadata.heartRateData so future zones corrections can
+      // re-derive without another iOS export, (2) compute hr_zones using
+      // the active athlete_zones row. Both happen per-workout so a
+      // missing athlete_zones row doesn't drop the samples on the floor —
+      // they survive for a later backfill once the zones are set.
       const hrSamples = extractHrSamplesFromB(body);
       let zonesComputed = 0;
+      let samplesPersisted = 0;
       if (hrSamples.length) {
         const startD = body.date_range.start;
         const endD = body.date_range.end;
@@ -1320,6 +1372,8 @@ async function processPayload(body) {
           [startD, endD]
         );
         for (const w of windowWorkouts.rows) {
+          const persistResult = await persistHrSamplesForWorkout(w.id, hrSamples);
+          if (persistResult.persisted > 0) samplesPersisted++;
           const zones = await computeHrZonesForWorkout(w.id, hrSamples);
           if (zones) {
             await query('UPDATE workouts SET hr_zones = $1::jsonb WHERE id = $2', [JSON.stringify(zones), w.id]);
@@ -1339,6 +1393,7 @@ async function processPayload(body) {
         mapped_metrics: mappedMetrics,
         skipped_metrics: skippedMetrics,
         zones_computed: zonesComputed,
+        samples_persisted: samplesPersisted,
       };
     } else if (format === 'C') {
       const { dailyRows, workoutTypeOverrides } = parseFormatC(body);
@@ -2701,6 +2756,8 @@ router.post('/backfill/hr-zones-from-metadata', async (req, res) => {
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.bucketSamplesByZone = bucketSamplesByZone;
+module.exports.filterSamplesToWindow = filterSamplesToWindow;
+module.exports.persistHrSamplesForWorkout = persistHrSamplesForWorkout;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
 module.exports.parseFormatB = parseFormatB;
 module.exports.parseFormatD = parseFormatD;

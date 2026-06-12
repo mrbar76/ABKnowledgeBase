@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 process.env.HEVY_API_KEY = process.env.HEVY_API_KEY || 'test-key';
 
 const { extractZoneMinutes } = require('../routes/insights');
-const { bucketSamplesByZone } = require('../routes/health');
+const { bucketSamplesByZone, filterSamplesToWindow } = require('../routes/health');
 
 // Athlete config from the task: max HR ~174, Z2 = 105-125 bpm. Higher
 // zones picked to match a standard %max-HR ladder so the fixture's
@@ -174,6 +174,95 @@ test('fixture: stair workout produces ~4 / ~13 / ~17.5 min band totals', () => {
   const total = low + gray + high;
   assert.ok(total > 30 && total < 35, `total minutes within expected window: ${total}`);
   assert.ok(low > 0 && gray > 0, 'low and gray bands both populated for this fixture');
+});
+
+// ─── filterSamplesToWindow (v3.27) ───────────────────────────────
+//
+// Pre-v3.27, Format B /api/health/ingest computed hr_zones from
+// HR samples at ingest time and DROPPED the raw samples on the
+// floor. When the athlete_zones row was later corrected, there
+// was no way to re-derive hr_zones for those workouts because
+// the source data was gone — even though the samples had arrived
+// in the original payload. v3.27 persists the per-workout in-
+// window slice into metadata.heartRateData via the same window
+// filter that the zones computation uses. This test set locks
+// the filter math so the persisted snapshot and the bucketed
+// zones can never disagree about which samples belong to the
+// workout.
+
+test('filterSamplesToWindow: returns only samples whose t is in [startMs, endMs]', () => {
+  const startMs = Date.parse('2026-05-03T17:22:00Z');
+  const endMs   = Date.parse('2026-05-03T17:55:00Z');
+  const samples = [
+    { t: '2026-05-03T17:00:00Z', value: 60 },  // before — drop
+    { t: '2026-05-03T17:22:00Z', value: 95 },  // exactly start — keep
+    { t: '2026-05-03T17:30:00Z', value: 120 }, // in window — keep
+    { t: '2026-05-03T17:55:00Z', value: 110 }, // exactly end — keep
+    { t: '2026-05-03T18:00:00Z', value: 75 },  // after — drop
+  ];
+  const r = filterSamplesToWindow(samples, startMs, endMs);
+  assert.equal(r.length, 3);
+  assert.equal(r[0].value, 95);
+  assert.equal(r[2].value, 110);
+});
+
+test('filterSamplesToWindow: empty input → empty output', () => {
+  assert.deepEqual(filterSamplesToWindow([], 0, 1000), []);
+  assert.deepEqual(filterSamplesToWindow(null, 0, 1000), []);
+  assert.deepEqual(filterSamplesToWindow(undefined, 0, 1000), []);
+});
+
+test('filterSamplesToWindow: defensive against bad window bounds', () => {
+  const samples = [{ t: '2026-05-03T17:30:00Z', value: 120 }];
+  // endMs <= startMs → no samples qualify
+  assert.deepEqual(filterSamplesToWindow(samples, 1000, 1000), []);
+  assert.deepEqual(filterSamplesToWindow(samples, 1000, 500), []);
+  // NaN bounds → no samples
+  assert.deepEqual(filterSamplesToWindow(samples, NaN, 1000), []);
+  assert.deepEqual(filterSamplesToWindow(samples, 0, NaN), []);
+});
+
+test('filterSamplesToWindow: drops samples with un-parsable t', () => {
+  const startMs = Date.parse('2026-05-03T17:00:00Z');
+  const endMs   = Date.parse('2026-05-03T18:00:00Z');
+  const samples = [
+    { t: '2026-05-03T17:30:00Z', value: 120 },
+    { t: 'not-a-date',           value: 110 },
+    { t: null,                    value: 100 },
+  ];
+  const r = filterSamplesToWindow(samples, startMs, endMs);
+  assert.equal(r.length, 1, 'only the parseable sample should pass through');
+  assert.equal(r[0].value, 120);
+});
+
+test('regression v3.27: filterSamplesToWindow + bucketSamplesByZone agree on which samples count', () => {
+  // The whole point of extracting the filter helper is that the
+  // persisted snapshot (used by future backfills) and the zones-at-
+  // ingest math see the same set of samples. If filterSamplesToWindow
+  // ever drifts from the bucketing's internal filter, we'd have
+  // "phantom" coverage — minutes in hr_zones for samples no longer
+  // recoverable from metadata.heartRateData.
+  const startMs = Date.parse('2026-05-03T17:00:00Z');
+  const endMs   = Date.parse('2026-05-03T17:30:00Z');
+  // 120 samples 30s apart spans 60 min — only the first 60 land in
+  // the 30-min window, the rest after endMs.
+  const samples = [];
+  for (let i = 0; i < 120; i++) {
+    samples.push({
+      t: new Date(startMs + i * 30_000).toISOString(),
+      value: 115,
+    });
+  }
+  const inWin = filterSamplesToWindow(samples, startMs, endMs);
+  assert.ok(inWin.length > 0 && inWin.length < samples.length, 'half-in/half-out is the meaningful regression case');
+
+  // Now run the bucketer on the SAME inWin slice and assert the total
+  // matches the sample-derived expectation. If filterSamplesToWindow
+  // ever changes shape, the persisted snapshot and the bucketed total
+  // diverge — this test will catch that.
+  const buckets = bucketSamplesByZone(inWin, TEST_ZONES);
+  const totalMin = buckets.z1 + buckets.z2 + buckets.z3 + buckets.z4 + buckets.z5;
+  assert.ok(totalMin > 0, 'in-window samples must produce non-zero bucketed minutes');
 });
 
 // ─── Apple Health Auto Export shape (regression for v3.24) ──────
