@@ -382,12 +382,15 @@ function formatPace(secPerUnit, unit = 'mi') {
 
 // Apple Shortcuts / Health Auto Export send PascalCase HealthKit identifiers,
 // optionally prefixed with `HKQuantityTypeIdentifier` or `HKCategoryTypeIdentifier`.
-// Normalize to a lowercase key with the prefix stripped so we can match either form.
+// Some tools also emit snake_case names ("heart_rate"). Normalize all three
+// forms — PascalCase, prefixed, and snake_case — to a lowercase no-separator
+// key so map lookups and equality checks ("heartrate") all match.
 function normalizeMetricId(id) {
   if (!id) return '';
   return String(id)
     .replace(/^HK(Quantity|Category|Correlation)TypeIdentifier/i, '')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/_/g, '');
 }
 
 // target='daily'        → aggregate into a daily_activity row
@@ -1274,6 +1277,64 @@ function extractHrSamplesFromB(body) {
   return samples;
 }
 
+// Format D = Health Auto Export native JSON. Wrapping/key names differ
+// from Format B in three ways that matter for HR sample extraction:
+//
+//   Format B                     Format D (Health Auto Export v2)
+//   ────────────────────         ───────────────────────────────────
+//   body.metrics[]               body.data.metrics[]
+//   metric.id (canonical name)   metric.name (HAE name) or units-only
+//   metric.data_points[]         metric.data[]
+//   dp.value | qty | quantity    dp.Avg | Max | Min (per-sample agg)
+//
+// HR is identified by metric.name when present (HAE includes it in newer
+// schemas), or by units === 'count/min' as a fallback when name is
+// missing (HAE's Heart Rate export action emits only HR with that unit,
+// so the heuristic is safe for single-metric payloads from that action).
+// Falls back further to id for forward-compat with any future Format D
+// payload that picks up Format B's identifier.
+function extractHrSamplesFromD(body) {
+  const samples = [];
+  const metrics = body?.data?.metrics;
+  if (!Array.isArray(metrics)) return samples;
+  for (const metric of metrics) {
+    const isHr =
+      normalizeMetricId(metric.name) === 'heartrate' ||
+      normalizeMetricId(metric.id) === 'heartrate' ||
+      (metric.units === 'count/min' && metrics.length === 1);
+    if (!isHr) continue;
+    const points = Array.isArray(metric.data) ? metric.data : (Array.isArray(metric.data_points) ? metric.data_points : []);
+    for (const dp of points) {
+      const t = dp.timestamp || dp.start_date || dp.date;
+      const raw = dp.value ?? dp.qty ?? dp.quantity ?? dp.Avg ?? dp.avg ?? dp.AVG;
+      const v = Number(raw);
+      if (t && isFinite(v)) samples.push({ t, value: v });
+    }
+  }
+  samples.sort((a, b) => new Date(a.t) - new Date(b.t));
+  return samples;
+}
+
+// Compute a YYYY-MM-DD date range from sample timestamps. Used by the
+// Format D HR-samples-to-workouts loop when the payload lacks an
+// explicit date_range (HAE's per-metric export action doesn't include
+// one). Returns null on empty input.
+function dateRangeFromSamples(samples) {
+  if (!Array.isArray(samples) || !samples.length) return null;
+  let minMs = Infinity, maxMs = -Infinity;
+  for (const s of samples) {
+    const t = new Date(s.t).getTime();
+    if (!isFinite(t)) continue;
+    if (t < minMs) minMs = t;
+    if (t > maxMs) maxMs = t;
+  }
+  if (!isFinite(minMs) || !isFinite(maxMs)) return null;
+  return {
+    start: new Date(minMs).toISOString().slice(0, 10),
+    end: new Date(maxMs).toISOString().slice(0, 10),
+  };
+}
+
 // ─── POST /api/health/ingest ────────────────────────────────────
 
 // Parse + upsert a payload (no dedupe check). Used by /ingest and /reparse.
@@ -1371,6 +1432,38 @@ async function processPayload(body) {
       // an existing manual workout get merged in rather than left as duplicates.
       const dupesMerged = workouts.length ? await dedupeAppleWorkouts() : 0;
 
+      // v3.28: same HR-samples-to-workouts handling Format B got in v3.27.
+      // HAE's "Export Heart Rate using Seconds" Shortcut action produces a
+      // payload Forge detects as Format D — but the prior Format D branch
+      // ignored per-second HR samples entirely, so those payloads landed
+      // zone-less even though all the data was right there. Now we
+      // extract via the HAE-shape-aware helper, derive the date range
+      // from the samples themselves (HAE's per-metric action doesn't
+      // include date_range top-level), then run the same persist +
+      // compute loop Format B uses.
+      const hrSamplesD = extractHrSamplesFromD(body);
+      let zonesComputedD = 0;
+      let samplesPersistedD = 0;
+      if (hrSamplesD.length) {
+        const range = dateRangeFromSamples(hrSamplesD);
+        if (range) {
+          const windowWorkouts = await query(
+            `SELECT id FROM workouts WHERE source = 'apple_health'
+              AND started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')`,
+            [range.start, range.end]
+          );
+          for (const w of windowWorkouts.rows) {
+            const persistResult = await persistHrSamplesForWorkout(w.id, hrSamplesD);
+            if (persistResult.persisted > 0) samplesPersistedD++;
+            const zones = await computeHrZonesForWorkout(w.id, hrSamplesD);
+            if (zones) {
+              await query('UPDATE workouts SET hr_zones = $1::jsonb WHERE id = $2', [JSON.stringify(zones), w.id]);
+              zonesComputedD++;
+            }
+          }
+        }
+      }
+
       result = {
         format: 'D',
         date_range: rangeFromDailyRows(dailyRows),
@@ -1384,6 +1477,9 @@ async function processPayload(body) {
         workouts_merged: workoutStats.merged + dupesMerged,
         mapped_metrics: mappedMetrics,
         skipped_metrics: skippedMetrics,
+        hr_samples_received: hrSamplesD.length,
+        samples_persisted: samplesPersistedD,
+        zones_computed: zonesComputedD,
       };
   }
 
@@ -2702,6 +2798,8 @@ module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.bucketSamplesByZone = bucketSamplesByZone;
 module.exports.extractHrSamplesFromB = extractHrSamplesFromB;
+module.exports.extractHrSamplesFromD = extractHrSamplesFromD;
+module.exports.dateRangeFromSamples = dateRangeFromSamples;
 module.exports.parseFormatB = parseFormatB;
 module.exports.parseFormatD = parseFormatD;
 module.exports.normalizeMetricId = normalizeMetricId;
