@@ -1543,22 +1543,35 @@ async function processPayload(body) {
 
 // Full ingest pipeline: dedup, parse, upsert, log. Returns the same shape
 // as POST /ingest. Used by the HTTP route and the Dropbox poller.
-async function ingestPayload(body) {
+//
+// options.force === true bypasses the file_hash dedupe check and
+// re-runs the parse pipeline. On a successful force-run, the existing
+// raw_health_imports row's parse_result is replaced with the fresh
+// output so subsequent reads see the latest state. Use when the
+// world has changed since the previous ingest (e.g., a workout the
+// payload references didn't exist yet at first POST but now does, so
+// the v3.28 HR-samples-to-workouts loop should re-fire with samples
+// that can now actually attach).
+async function ingestPayload(body, options = {}) {
   if (!body || typeof body !== 'object') {
     return { ok: false, status: 400, error: 'payload must be a JSON object' };
   }
+  const force = options.force === true;
   const hash = fileHash(body);
-  const dup = await query(
-    'SELECT id, source_format, ingested_at, parse_result FROM raw_health_imports WHERE file_hash = $1',
-    [hash]
-  );
-  if (dup.rows.length) {
-    return { ok: true, status: 200, body: { duplicate: true, file_hash: hash, ...dup.rows[0] } };
+
+  if (!force) {
+    const dup = await query(
+      'SELECT id, source_format, ingested_at, parse_result FROM raw_health_imports WHERE file_hash = $1',
+      [hash]
+    );
+    if (dup.rows.length) {
+      return { ok: true, status: 200, body: { duplicate: true, file_hash: hash, ...dup.rows[0] } };
+    }
   }
 
   const { format, result } = await processPayload(body);
   if (format === 'unknown') {
-    await logImport(hash, 'unknown', body, null, { error: 'unknown format' });
+    if (!force) await logImport(hash, 'unknown', body, null, { error: 'unknown format' });
     return { ok: false, status: 400, error: 'unknown payload format', file_hash: hash };
   }
 
@@ -1567,16 +1580,24 @@ async function ingestPayload(body) {
     if (merged) result.duplicates_merged = merged;
   }
 
-  await logImport(hash, format, body, result, null);
+  await logImport(hash, format, body, result, null, { upsert: force });
   await logActivity('create', 'health_import', hash.slice(0, 12), 'apple_health',
-    `Ingested ${format}: ${JSON.stringify(result)}`);
+    `Ingested ${format}${force ? ' (forced)' : ''}: ${JSON.stringify(result)}`);
 
-  return { ok: true, status: 200, body: { duplicate: false, file_hash: hash, ...result } };
+  return {
+    ok: true,
+    status: 200,
+    body: { duplicate: false, force_reprocessed: force, file_hash: hash, ...result },
+  };
 }
 
 router.post('/ingest', async (req, res) => {
   try {
-    const out = await ingestPayload(req.body);
+    // ?force=true bypasses the file_hash dedupe. Useful when re-POSTing
+    // the same payload after the world state changed (e.g., a workout
+    // showed up that the payload's HR samples can now attach to).
+    const force = req.query.force === 'true' || req.query.force === '1';
+    const out = await ingestPayload(req.body, { force });
     if (!out.ok) return res.status(out.status).json({ error: out.error, file_hash: out.file_hash });
     res.json(out.body);
   } catch (err) {
@@ -1685,17 +1706,29 @@ function rangeFromDailyRows(rows) {
   return { start: dates[0], end: dates[dates.length - 1] };
 }
 
-async function logImport(hash, format, body, parseResult, errResult) {
+async function logImport(hash, format, body, parseResult, errResult, options = {}) {
   try {
     const dateRange = format === 'A' ? rangeFromDailyRowsBody(body)
       : format === 'B' ? body.date_range
       : format === 'C' ? body.metadata?.dateRange
       : format === 'D' ? parseResult?.date_range
       : null;
+    // options.upsert (default false) switches the conflict clause from
+    // DO NOTHING to DO UPDATE, replacing parse_result and refreshing
+    // ingested_at. Used by force-reprocess so a stale cached result
+    // gets overwritten with the fresh parse output.
+    const conflictClause = options.upsert
+      ? `ON CONFLICT (file_hash) DO UPDATE SET
+           source_format = EXCLUDED.source_format,
+           parse_result  = EXCLUDED.parse_result,
+           date_range_start = EXCLUDED.date_range_start,
+           date_range_end   = EXCLUDED.date_range_end,
+           ingested_at   = NOW()`
+      : 'ON CONFLICT (file_hash) DO NOTHING';
     await query(
       `INSERT INTO raw_health_imports (source_format, filename, file_hash, file_bytes, date_range_start, date_range_end, payload, parse_result)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
-       ON CONFLICT (file_hash) DO NOTHING`,
+       ${conflictClause}`,
       [format, null, hash, JSON.stringify(body).length,
        dateRange?.start || null, dateRange?.end || null,
        JSON.stringify(body), JSON.stringify(parseResult || errResult)]
