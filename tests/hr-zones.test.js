@@ -19,7 +19,12 @@ const assert = require('node:assert/strict');
 process.env.HEVY_API_KEY = process.env.HEVY_API_KEY || 'test-key';
 
 const { extractZoneMinutes } = require('../routes/insights');
-const { bucketSamplesByZone, filterSamplesToWindow } = require('../routes/health');
+const {
+  bucketSamplesByZone,
+  filterSamplesToWindow,
+  extractHrSamplesFromD,
+  dateRangeFromSamples,
+} = require('../routes/health');
 
 // Athlete config from the task: max HR ~174, Z2 = 105-125 bpm. Higher
 // zones picked to match a standard %max-HR ladder so the fixture's
@@ -322,4 +327,128 @@ test('fixture: extractZoneMinutes round-trips through the writer shape', () => {
   // Within rounding (the writer applies round1 in production; this test
   // skips that step so we expect exact equality).
   assert.deepEqual(extracted, buckets);
+});
+
+// ─── extractHrSamplesFromD (v3.28) ───────────────────────────────
+//
+// Format D = Health Auto Export native JSON. The fixture below is
+// trimmed from an actual HAE response — the wrapping (data.metrics),
+// the per-metric shape (units + data, no id/name in the metric),
+// and the per-sample shape (date + Avg/Max/Min) all came from a
+// real run of HAE's "Export Heart Rate using Seconds" Shortcut
+// action. Pre-v3.28 the Format D ingest branch ignored HR samples
+// entirely; the payload would land with zones_computed: 0 even
+// though the data was right there.
+
+test('extractHrSamplesFromD: parses real HAE single-metric payload (units = count/min)', () => {
+  const haeBody = {
+    data: {
+      metrics: [{
+        units: 'count/min',
+        data: [
+          { Max: 60, Avg: 60, Min: 60, source: "Avi's Apple Watch", date: '2026-06-15 07:07:12 -0400' },
+          { Max: 64, Avg: 64, Min: 64, source: "Avi's Apple Watch", date: '2026-06-15 07:09:17 -0400' },
+          { Max: 120, Avg: 120, Min: 120, source: "Avi's Apple Watch", date: '2026-06-15 07:30:00 -0400' },
+        ],
+      }],
+    },
+  };
+  const samples = extractHrSamplesFromD(haeBody);
+  assert.equal(samples.length, 3, 'all 3 HAE samples must be extracted');
+  assert.equal(samples[0].value, 60);
+  assert.equal(samples[2].value, 120);
+  // Timestamps preserved as-is (not normalized — caller uses new Date()).
+  assert.equal(samples[0].t, '2026-06-15 07:07:12 -0400');
+});
+
+test('extractHrSamplesFromD: single-metric units=count/min heuristic only fires when alone', () => {
+  // Multi-metric payload without explicit name → the count/min metric
+  // is ambiguous (could be respiratory_rate, which also uses count/min
+  // in HealthKit). Better to drop than to misclassify.
+  const ambiguous = {
+    data: {
+      metrics: [
+        { units: 'count/min', data: [{ date: 't', Avg: 70 }] },
+        { units: 'count/min', data: [{ date: 't', Avg: 15 }] },
+      ],
+    },
+  };
+  const samples = extractHrSamplesFromD(ambiguous);
+  assert.equal(samples.length, 0, 'multi-metric with no name must NOT auto-classify either as HR');
+});
+
+test('extractHrSamplesFromD: explicit metric.name = "heart_rate" identifies HR even in multi-metric payload', () => {
+  const multi = {
+    data: {
+      metrics: [
+        { name: 'heart_rate', units: 'count/min', data: [
+          { date: '2026-06-15 07:07:12 -0400', Avg: 95 },
+        ]},
+        { name: 'respiratory_rate', units: 'count/min', data: [
+          { date: '2026-06-15 07:07:12 -0400', Avg: 15 },
+        ]},
+      ],
+    },
+  };
+  const samples = extractHrSamplesFromD(multi);
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].value, 95);
+});
+
+test('extractHrSamplesFromD: empty / wrong shape → []', () => {
+  assert.deepEqual(extractHrSamplesFromD(null), []);
+  assert.deepEqual(extractHrSamplesFromD({}), []);
+  assert.deepEqual(extractHrSamplesFromD({ data: {} }), []);
+  assert.deepEqual(extractHrSamplesFromD({ data: { metrics: [] } }), []);
+  // Not wrapped in data (this is the Format B shape — that's a separate handler)
+  assert.deepEqual(extractHrSamplesFromD({ metrics: [{ units: 'count/min', data: [{ date: 't', Avg: 60 }] }] }), []);
+});
+
+test('extractHrSamplesFromD: samples returned sorted by timestamp ascending', () => {
+  const haeBody = {
+    data: {
+      metrics: [{
+        units: 'count/min',
+        data: [
+          { date: '2026-06-15 07:30:00 -0400', Avg: 120 },
+          { date: '2026-06-15 07:07:12 -0400', Avg: 60 },
+          { date: '2026-06-15 07:09:17 -0400', Avg: 64 },
+        ],
+      }],
+    },
+  };
+  const samples = extractHrSamplesFromD(haeBody);
+  assert.equal(samples[0].value, 60, 'earliest first');
+  assert.equal(samples[2].value, 120, 'latest last');
+});
+
+// ─── dateRangeFromSamples (v3.28) ────────────────────────────────
+
+test('dateRangeFromSamples: returns YYYY-MM-DD start/end from sample timestamps', () => {
+  const samples = [
+    { t: '2026-06-15 07:07:12 -0400', value: 60 },
+    { t: '2026-06-15 23:30:00 -0400', value: 70 },
+    { t: '2026-06-16 06:00:00 -0400', value: 80 },
+  ];
+  const r = dateRangeFromSamples(samples);
+  // Note: UTC conversion. 07:07 EDT = 11:07 UTC same day; 06:00 EDT (16th) = 10:00 UTC same day.
+  assert.equal(r.start, '2026-06-15');
+  assert.equal(r.end, '2026-06-16');
+});
+
+test('dateRangeFromSamples: empty / null → null (not a runtime error)', () => {
+  assert.equal(dateRangeFromSamples([]), null);
+  assert.equal(dateRangeFromSamples(null), null);
+  assert.equal(dateRangeFromSamples(undefined), null);
+});
+
+test('dateRangeFromSamples: skips unparseable timestamps but still derives range from valid ones', () => {
+  const samples = [
+    { t: 'not-a-date', value: 80 },
+    { t: '2026-06-15 12:00:00 -0400', value: 90 },
+    { t: 'also-bad', value: 100 },
+  ];
+  const r = dateRangeFromSamples(samples);
+  assert.equal(r.start, '2026-06-15');
+  assert.equal(r.end, '2026-06-15');
 });
