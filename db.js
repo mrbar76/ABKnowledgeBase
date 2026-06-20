@@ -635,15 +635,27 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
-  await safeQuery('injuries indexes', `
-    CREATE INDEX IF NOT EXISTS idx_injuries_status ON injuries(status);
-    CREATE INDEX IF NOT EXISTS idx_injuries_body_area ON injuries(body_area);
-    CREATE INDEX IF NOT EXISTS idx_injuries_onset ON injuries(onset_date DESC);
-    CREATE INDEX IF NOT EXISTS idx_injuries_tags ON injuries USING gin(tags);
-    CREATE INDEX IF NOT EXISTS idx_injuries_search ON injuries USING gin(search_vector);
-    CREATE INDEX IF NOT EXISTS idx_injuries_trgm ON injuries USING gin(
-      (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(notes,'')) gin_trgm_ops
-    )`);
+  // v3.34 round 3: split into per-index safeQuery calls so a single
+  // bad statement (e.g. idx_injuries_tags after `tags` was dropped) can't
+  // tank the whole block atomically. Production was reporting "injuries
+  // indexes failed: column tags does not exist" for the entire block,
+  // which meant the round-2 trigram-index fix never even ran.
+  await safeQuery('injuries idx status', `CREATE INDEX IF NOT EXISTS idx_injuries_status ON injuries(status)`);
+  await safeQuery('injuries idx body_area', `CREATE INDEX IF NOT EXISTS idx_injuries_body_area ON injuries(body_area)`);
+  await safeQuery('injuries idx onset', `CREATE INDEX IF NOT EXISTS idx_injuries_onset ON injuries(onset_date DESC)`);
+  await safeQuery('injuries idx search', `CREATE INDEX IF NOT EXISTS idx_injuries_search ON injuries USING gin(search_vector)`);
+  // idx_injuries_tags removed — column `tags` was dropped in v1.9.4 and
+  // re-adding wastes a slot. Drop the stale index if it survived on
+  // production from a prior boot (pre-v1.9.4) so subsequent DROP COLUMN
+  // attempts on `tags` won't be blocked by the index dependency.
+  await safeQuery('injuries drop legacy idx_tags', `DROP INDEX IF EXISTS idx_injuries_tags`);
+  // Drop the stale trigram index that references `treatment` (column
+  // dropped in this PR). CREATE INDEX IF NOT EXISTS won't replace it,
+  // so we have to explicitly drop the old expression before recreating.
+  await safeQuery('injuries drop legacy idx_trgm', `DROP INDEX IF EXISTS idx_injuries_trgm`);
+  await safeQuery('injuries idx trgm', `CREATE INDEX IF NOT EXISTS idx_injuries_trgm ON injuries USING gin(
+    (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(notes,'')) gin_trgm_ops
+  )`);
 
   // (goal_profiles table removed — readiness system removed)
 
@@ -973,14 +985,18 @@ async function initDB() {
       END IF;
     END $$;
   `);
-  await safeQuery('dc +day_type', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS day_type TEXT`);
+  // v3.34 round 3: removed `dc +day_type / +energy_rating / +hunger_rating
+  // / +cravings / +digestion / +tags` ADD COLUMNs. These were the
+  // canonical add → drop shuttle (added here, immediately DROPped at
+  // ~line 1395). On production they finally hit Postgres's 1600-attribute
+  // hard ceiling and every boot raised "tables can have at most 1600
+  // columns" — surfaced now via the v3.34 #4 failed-migrations log.
+  // The DROPs below remain (no-op on production where the columns are
+  // already gone; idempotent on any future fresh DB). Permanent slot
+  // reclamation still requires the operator-gated
+  // scripts/rebuild-daily-context.js.
   await safeQuery('dc +hydration_liters', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS hydration_liters NUMERIC(4,2)`);
-  await safeQuery('dc +energy_rating', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS energy_rating INTEGER`);
-  await safeQuery('dc +hunger_rating', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS hunger_rating INTEGER`);
-  await safeQuery('dc +cravings', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS cravings TEXT`);
-  await safeQuery('dc +digestion', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS digestion TEXT`);
   await safeQuery('dc +notes', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS notes TEXT`);
-  await safeQuery('dc +tags', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('dc +search_vector', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('dc +updated_at', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
