@@ -928,9 +928,22 @@ async function initDB() {
       heart_rate_max = NULL
       WHERE heart_rate_max IS NOT NULL AND lower(heart_rate_max) IN ('nan','null','none','-')
   `);
+  // v3.34 round 4 fix-up: gate on column existence. Round 4 removed
+  // cadence_avg from CREATE TABLE + ADD COLUMN, so on fresh DBs the
+  // column never exists and the bare UPDATE raised "column cadence_avg
+  // does not exist". Same DO $$ ... information_schema $$ guard
+  // pattern as the facts→knowledge migration in round 3.
   await safeQuery('backfill cadence', `
-    UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int
-    WHERE cadence IS NULL AND cadence_avg IS NOT NULL AND cadence_avg ~ '\\d'
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'workouts' AND column_name = 'cadence_avg'
+      ) THEN
+        UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int
+        WHERE cadence IS NULL AND cadence_avg IS NOT NULL AND cadence_avg ~ '\\d';
+      END IF;
+    END $$;
   `);
   await safeQuery('backfill cal_active', `
     UPDATE workouts SET cal_active = REGEXP_REPLACE(active_calories, '[^\\d]', '', 'g')::int
