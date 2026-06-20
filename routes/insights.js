@@ -183,7 +183,13 @@ function extractZoneMinutes(hr_zones) {
 }
 
 function computeTSS(workout, zones) {
-  const durSec = durationToSeconds(workout.time_duration);
+  // v3.31: prefer numeric duration_minutes column, fall back to text
+  // time_duration parser. Pre-v3.31 the order was reversed; the text
+  // parser only handles `h:mm:ss` / `mm:ss`, so strings like "45 min"
+  // or "90" returned 0 and TSS came out null even when duration_minutes
+  // had the real value sitting right there.
+  let durSec = (Number(workout.duration_minutes) || 0) * 60;
+  if (!durSec) durSec = durationToSeconds(workout.time_duration);
   const durHr = durSec / 3600;
   if (durHr <= 0) return null;
 
@@ -193,10 +199,26 @@ function computeTSS(workout, zones) {
     const intensity = avgHR / lthr;
     return Math.round(durHr * intensity * intensity * 100);
   }
-  // Fallback: effort-based estimate. effort 1-10. duration_min × effort × 1.5
-  const effort = Number(workout.effort) || 5;
-  const tss = (durSec / 60) * effort * 1.5;
-  return Math.min(Math.round(tss), 200);
+  // v3.31: effort-fallback now mirrors the HR-IF² structure so it caps
+  // naturally at 100 TSS/hr at max effort, instead of the prior
+  // (durMin × effort × 1.5) ceiling of 200 which biased CTL upward on
+  // every 1+ hour session.
+  //
+  //   IF_proxy = effort / 10        (1-10 scale → 0.1-1.0 dimensionless)
+  //   TSS      = durHr × IF² × 100
+  //
+  //   effort 10: 100 TSS/hr  (matches IF=1.0 == threshold)
+  //   effort  8:  64 TSS/hr
+  //   effort  7:  49 TSS/hr
+  //   effort  5:  25 TSS/hr
+  //
+  // No HR + no effort → return null. The prior `Number(workout.effort)
+  // || 5` default silently imputed effort=5 for every effort-less row,
+  // inflating the dataset with phantom moderate-load sessions.
+  const effort = Number(workout.effort);
+  if (!isFinite(effort) || effort <= 0) return null;
+  const ifProxy = Math.min(effort, 10) / 10;
+  return Math.round(durHr * ifProxy * ifProxy * 100);
 }
 
 // ─── GET /api/health/insights/today — recovery readiness ────────

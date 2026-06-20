@@ -2909,7 +2909,7 @@ router.get('/diag/tss-integrity', async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 42, 1), 365);
 
-    const [dupes, staleZones, fallback, perHour] = await Promise.all([
+    const [dupes, staleZones, fallback, perHour, nullWithInputs] = await Promise.all([
       // (a) Same-day cross-source duplicates
       query(
         `SELECT workout_date,
@@ -2994,6 +2994,26 @@ router.get('/diag/tss-integrity', async (req, res) => {
           ORDER BY tss_per_hour DESC LIMIT 50`,
         [days]
       ),
+      // (e) v3.31: null TSS on rows that have enough inputs to compute
+      // it. The post-PR-#56 trap: dedupe wiped duplicate rows but left
+      // every surviving row with tss = NULL, so the integrity check
+      // passed (no dupes, no stale, no fallback, no implausible) while
+      // CTL silently collapsed to ~7. Surface a count + verdict line
+      // for null-with-inputs so a sea of NULLs can never pass silently
+      // again.
+      query(
+        `SELECT COUNT(*)::int AS n_null_with_inputs
+           FROM workouts
+          WHERE tss IS NULL
+            AND workout_date >= CURRENT_DATE - ($1::int || ' days')::interval
+            AND (duration_minutes IS NOT NULL OR time_duration IS NOT NULL)
+            AND (
+              (heart_rate_avg IS NOT NULL
+               AND lower(heart_rate_avg) NOT IN ('nan','null','none','-',''))
+              OR (effort IS NOT NULL AND effort > 0)
+            )`,
+        [days]
+      ),
     ]);
 
     // Top-line summary so the operator can decide what to do without
@@ -3006,6 +3026,7 @@ router.get('/diag/tss-integrity', async (req, res) => {
       canonical_zones_created_at: staleZones.rows[0]?.canonical_zones_created_at || null,
       effort_fallback_likely_rows: fallback.rows[0]?.n_fallback_likely || 0,
       implausible_per_hour_rows: perHour.rows.length,
+      null_tss_with_inputs: nullWithInputs.rows[0]?.n_null_with_inputs || 0,
       verdict: null,
     };
 
@@ -3014,6 +3035,7 @@ router.get('/diag/tss-integrity', async (req, res) => {
     if (summary.stale_tss_rows > 0) concerns.push(`${summary.stale_tss_rows} row(s) with TSS computed against pre-canonical zones — run /insights/recompute-tss`);
     if (summary.effort_fallback_likely_rows > 0) concerns.push(`${summary.effort_fallback_likely_rows} row(s) likely using effort-fallback (no HR) — TSS may be artificially capped at 200`);
     if (summary.implausible_per_hour_rows > 0) concerns.push(`${summary.implausible_per_hour_rows} row(s) above 130 TSS/hour — likely inflated`);
+    if (summary.null_tss_with_inputs > 0) concerns.push(`${summary.null_tss_with_inputs} row(s) with null TSS that have enough inputs to compute it — run POST /api/health/diag/backfill-tss`);
     summary.verdict = concerns.length ? concerns.join('; ') : 'No obvious integrity issues in the window.';
 
     res.json({
@@ -3029,9 +3051,189 @@ router.get('/diag/tss-integrity', async (req, res) => {
         top_rows: fallback.rows[0]?.top_rows || [],
       },
       implausible_per_hour: perHour.rows,
+      null_tss_with_inputs: {
+        count: nullWithInputs.rows[0]?.n_null_with_inputs || 0,
+        // Note: full per-row sample available via POST /diag/backfill-tss
+        // dry-run; this endpoint stays read-only-light to keep response
+        // size bounded on big windows.
+      },
     });
   } catch (err) {
     console.error(`[health/diag/tss-integrity] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/health/diag/backfill-tss ──────────────────────────
+// Backfill workouts.tss for rows that are currently NULL. Uses the
+// canonical computeTSS from routes/insights.js — same formula the
+// /training dashboard's CTL/ATL rollup expects, so the backfill
+// can't drift from what downstream readers assume.
+//
+// Defaults to DRY-RUN. Set { apply: true } to write.
+//
+// Body (all optional):
+//   apply:                  bool=false   // false = preview, true = write
+//   days:                   int=90       // lookback window
+//   flag_threshold_per_hour: int=100     // rows above this are flagged, not written
+//   workout_id:             uuid         // single-row scope (overrides days)
+//
+// Per-row decision tree:
+//   - No computable inputs (no duration, OR no HR+no effort) →
+//     action: skip_no_data, reason names which input is missing.
+//   - Computable + tss_per_hour <= threshold → action: write.
+//   - Computable + tss_per_hour >  threshold → action: flag_implausible.
+//     Reason names the per-hour rate. Not written on apply=true.
+//
+// Each response row echoes the athlete_zones values that were used
+// (lthr, max_hr) so the operator can verify the formula didn't
+// silently fall back to an empty/stale zones row.
+//
+// Returns:
+//   { summary: { window_days, flag_threshold_per_hour, applied,
+//                total_null_tss, would_write, would_flag_implausible,
+//                would_skip_no_data, written },
+//     rows:    [...per-workout breakdown ordered by date desc] }
+router.post('/diag/backfill-tss', async (req, res) => {
+  try {
+    const apply = req.body?.apply === true;
+    const days = Math.min(Math.max(parseInt(req.body?.days, 10) || 90, 1), 365);
+    const flagThreshold = Math.max(Number(req.body?.flag_threshold_per_hour) || 100, 1);
+    const workoutId = req.body?.workout_id;
+
+    const where = ['tss IS NULL'];
+    const params = [];
+    let p = 1;
+    if (workoutId) {
+      where.push(`id = $${p++}`);
+      params.push(workoutId);
+    } else {
+      where.push(`workout_date >= CURRENT_DATE - ($${p++}::int || ' days')::interval`);
+      params.push(days);
+    }
+
+    const { rows: candidates } = await query(
+      `SELECT id, workout_date, source, title,
+              time_duration, duration_minutes, heart_rate_avg, effort
+         FROM workouts
+        WHERE ${where.join(' AND ')}
+        ORDER BY workout_date DESC, started_at DESC NULLS LAST
+        LIMIT 1000`,
+      params
+    );
+
+    // Cache zones lookup per date — most workouts on the same day
+    // share the same active zones row.
+    const dateZonesCache = new Map();
+    async function zonesForDate(dateLike) {
+      const d = dateLike instanceof Date
+        ? dateLike.toISOString().slice(0, 10)
+        : String(dateLike).slice(0, 10);
+      if (dateZonesCache.has(d)) return dateZonesCache.get(d);
+      const zones = await getEffectiveZones(d);
+      dateZonesCache.set(d, zones);
+      return zones;
+    }
+
+    let wouldWrite = 0;
+    let wouldFlag = 0;
+    let wouldSkip = 0;
+    const rowsOut = [];
+
+    for (const w of candidates) {
+      const zones = await zonesForDate(w.workout_date);
+      const computedTss = computeTSS(w, zones);
+      const durMin = Number(w.duration_minutes)
+        || Math.round(durationToSeconds(w.time_duration) / 60);
+
+      const dateStr = w.workout_date instanceof Date
+        ? w.workout_date.toISOString().slice(0, 10)
+        : String(w.workout_date).slice(0, 10);
+
+      // No usable inputs to compute TSS at all.
+      if (computedTss == null || durMin <= 0) {
+        wouldSkip++;
+        const reason = durMin <= 0
+          ? 'no_usable_duration'
+          : (!w.heart_rate_avg && (w.effort == null || Number(w.effort) <= 0))
+            ? 'no_hr_and_no_effort'
+            : 'insufficient_inputs';
+        rowsOut.push({
+          id: w.id, workout_date: dateStr, source: w.source, title: w.title,
+          duration_min: durMin || null,
+          heart_rate_avg: w.heart_rate_avg, effort: w.effort,
+          zones_used: zones ? { lthr: zones.lthr, max_hr: zones.max_hr } : null,
+          method: null, computed_tss: null, tss_per_hour: null,
+          action: 'skip_no_data', reason,
+        });
+        continue;
+      }
+
+      const tssPerHour = Math.round((computedTss * 60 / durMin) * 10) / 10;
+      const usedHr = w.heart_rate_avg
+        && /\d/.test(String(w.heart_rate_avg))
+        && zones
+        && (zones.lthr || zones.max_hr);
+      const method = usedHr ? 'hr' : 'effort_fallback';
+
+      const row = {
+        id: w.id,
+        workout_date: dateStr,
+        source: w.source,
+        title: w.title,
+        duration_min: durMin,
+        heart_rate_avg: w.heart_rate_avg,
+        effort: w.effort,
+        zones_used: zones ? { lthr: zones.lthr, max_hr: zones.max_hr } : null,
+        method,
+        computed_tss: computedTss,
+        tss_per_hour: tssPerHour,
+        action: null,
+      };
+
+      if (tssPerHour > flagThreshold) {
+        row.action = 'flag_implausible';
+        row.reason = `${tssPerHour} TSS/hr > ${flagThreshold}/hr threshold — review before writing`;
+        wouldFlag++;
+      } else {
+        row.action = 'write';
+        wouldWrite++;
+      }
+      rowsOut.push(row);
+    }
+
+    // Apply path — write only the rows tagged 'write'. Flagged and
+    // skipped rows stay NULL until manually triaged.
+    let written = 0;
+    if (apply) {
+      for (const r of rowsOut) {
+        if (r.action !== 'write') continue;
+        await query(
+          `UPDATE workouts SET tss = $1, updated_at = NOW() WHERE id = $2`,
+          [r.computed_tss, r.id]
+        );
+        written++;
+      }
+    }
+
+    res.json({
+      summary: {
+        window_days: workoutId ? null : days,
+        flag_threshold_per_hour: flagThreshold,
+        applied: apply,
+        total_null_tss: candidates.length,
+        would_write: wouldWrite,
+        would_flag_implausible: wouldFlag,
+        would_skip_no_data: wouldSkip,
+        written: apply ? written : 0,
+        verdict: apply
+          ? `Wrote ${written} of ${wouldWrite} write-eligible rows; ${wouldFlag} flagged + ${wouldSkip} skipped left NULL`
+          : `Dry-run: would write ${wouldWrite}, flag ${wouldFlag} (>${flagThreshold} TSS/hr), skip ${wouldSkip} (no inputs). POST with { "apply": true } to execute.`,
+      },
+      rows: rowsOut,
+    });
+  } catch (err) {
+    console.error(`[health/diag/backfill-tss] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
