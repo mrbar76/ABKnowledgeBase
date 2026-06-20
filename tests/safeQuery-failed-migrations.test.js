@@ -90,15 +90,22 @@ test('routes/health.js: sentinel surfaces failed_migrations + count', () => {
     'response must include the failed_migrations array');
 });
 
-test('routes/health.js: sentinel verdict reflects both drift and boot failures', () => {
+test('routes/health.js: sentinel verdict reflects drift, boot failures, and zone-compute skips', () => {
+  // v3.34 hr_zones gap extension: verdict refactored from a 4-state
+  // hardcoded ternary into a verdictParts.join('; ') pattern. The OK
+  // case still requires ALL counts at 0; degraded cases append a part
+  // per concern. Pin the structural invariants.
   const src = fs.readFileSync(path.join(__dirname, '../routes/health.js'), 'utf8');
-  // The verdict must distinguish 4 states: OK, drift only, boot failures
-  // only, both. Bare "OK" should require both counts at 0.
-  const verdictBlock = src.match(/verdict: drifts === 0 && failedMigrations\.length === 0[\s\S]*?,\n/);
-  assert.ok(verdictBlock,
-    'verdict must check BOTH drift AND failed-migration counts for the OK case');
-  assert.ok(/BOTH:/.test(src),
-    'verdict must have a combined "BOTH" branch when both drift and failures present');
-  assert.ok(/BOOT FAILURES:/.test(src),
-    'verdict must have a "BOOT FAILURES" branch for failures-only state');
+  // OK case: all three counts must gate "OK".
+  assert.ok(/const ok = drifts === 0 && failedMigrations\.length === 0 && zoneSkipCount === 0/.test(src),
+    'sentinel OK gate must require drifts=0 AND failedMigrations=0 AND zoneSkipCount=0');
+  // Verdict text on the OK path must name all three.
+  assert.ok(/OK: live schema matches manifest, all boot migrations succeeded, no zone-compute skips/.test(src),
+    'OK verdict text must mention all three invariants');
+  // Each verdictParts branch contributes a string for the non-OK
+  // verdict. Pin one phrase per concern so a future "drop the zone
+  // line" regression fails this test.
+  assert.ok(/schema drift\(s\)/.test(src), 'verdictParts must include schema-drift phrase');
+  assert.ok(/boot migration failure\(s\)/.test(src), 'verdictParts must include boot-migration phrase');
+  assert.ok(/zone-compute skip\(s\)\/error\(s\)/.test(src), 'verdictParts must include zone-compute phrase');
 });

@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const { query, logActivity, getFailedMigrations } = require('../db');
+const zoneLog = require('../lib/zone-compute-log');
 const { computeTSS } = require('./insights');
 const { linkWorkoutToPlan: linkWorkoutToPlanShared } = require('../lib/workout-link');
 const router = express.Router();
@@ -1255,6 +1256,50 @@ async function computeHrZonesForWorkout(workoutId, hrSamples) {
   };
 }
 
+// v3.34: wrapper around computeHrZonesForWorkout that ALSO writes the
+// result to workouts.hr_zones and records the outcome (wrote / skipped /
+// error + reason) in the in-process zone-compute log. Same surfacing
+// pattern as db.js FAILED_MIGRATIONS — the silent-skip class of bug
+// (caller gets null, just moves on, no log line) becomes visible at
+// the schema sentinel.
+//
+// Returns the outcome string so callers can update their own counters
+// (e.g. zonesComputed++ in the ingest paths).
+async function attemptZoneCompute(workoutId, hrSamples, source) {
+  let outcome, reason = null;
+  try {
+    if (!Array.isArray(hrSamples) || hrSamples.length === 0) {
+      outcome = 'skipped_no_samples';
+    } else {
+      const w = (await query('SELECT started_at FROM workouts WHERE id = $1', [workoutId])).rows[0];
+      if (!w || !w.started_at) {
+        outcome = 'skipped_no_started_at';
+      } else {
+        const zones = await computeHrZonesForWorkout(workoutId, hrSamples);
+        if (zones) {
+          await query(
+            'UPDATE workouts SET hr_zones = $1::jsonb, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(zones), workoutId]
+          );
+          outcome = 'wrote';
+        } else {
+          // computeHrZonesForWorkout returns null for two remaining
+          // reasons. Probe to distinguish so the log entry is actionable.
+          const zonesRow = await getEffectiveZones(w.started_at);
+          outcome = (!zonesRow || !zonesRow.z1_max)
+            ? 'skipped_no_zones_row'
+            : 'skipped_no_window_match';
+        }
+      }
+    }
+  } catch (err) {
+    outcome = 'error';
+    reason = err.message;
+  }
+  zoneLog.record({ workoutId, source, outcome, reason });
+  return outcome;
+}
+
 // Persist HR samples that fall inside a workout's window to
 // workouts.metadata.heartRateData. Lets future zones corrections
 // re-derive hr_zones without needing a fresh iOS export. Stores in the
@@ -1433,11 +1478,11 @@ async function processPayload(body) {
         for (const w of windowWorkouts.rows) {
           const persistResult = await persistHrSamplesForWorkout(w.id, hrSamples);
           if (persistResult.persisted > 0) samplesPersisted++;
-          const zones = await computeHrZonesForWorkout(w.id, hrSamples);
-          if (zones) {
-            await query('UPDATE workouts SET hr_zones = $1::jsonb WHERE id = $2', [JSON.stringify(zones), w.id]);
-            zonesComputed++;
-          }
+          // v3.34: routed through attemptZoneCompute so silent skips
+          // (no zones row, no window match, no samples in slice) show
+          // up in the in-process log and surface via the sentinel.
+          const outcome = await attemptZoneCompute(w.id, hrSamples, 'ingest:format_b');
+          if (outcome === 'wrote') zonesComputed++;
         }
       }
 
@@ -1508,11 +1553,10 @@ async function processPayload(body) {
           for (const w of windowWorkouts.rows) {
             const persistResult = await persistHrSamplesForWorkout(w.id, hrSamplesD);
             if (persistResult.persisted > 0) samplesPersistedD++;
-            const zones = await computeHrZonesForWorkout(w.id, hrSamplesD);
-            if (zones) {
-              await query('UPDATE workouts SET hr_zones = $1::jsonb WHERE id = $2', [JSON.stringify(zones), w.id]);
-              zonesComputedD++;
-            }
+            // v3.34: routed through attemptZoneCompute — see Format B
+            // parallel call site for rationale.
+            const outcome = await attemptZoneCompute(w.id, hrSamplesD, 'ingest:format_d');
+            if (outcome === 'wrote') zonesComputedD++;
           }
         }
       }
@@ -2682,19 +2726,41 @@ router.get('/diag/deprecated-columns', async (req, res) => {
     const failedMigrations = typeof getFailedMigrations === 'function'
       ? getFailedMigrations() : [];
 
+    // v3.34 hr_zones gap: same surfacing pattern for the silent-skip
+    // class of bug in HR-zone computation. attemptZoneCompute (above)
+    // records every ingest-path attempt; the sentinel reports the
+    // rolling summary + last 20 entries. by_outcome counts let
+    // operators spot patterns like "every Format A workout skipped for
+    // no_samples — iOS side needs to start exporting the HR stream".
+    const zoneSummary = zoneLog.summary();
+    const zoneRecent = zoneLog.getRecent(20);
+    const zoneSkipCount = Object.entries(zoneSummary.by_outcome)
+      .filter(([k]) => k.startsWith('skipped_') || k === 'error')
+      .reduce((s, [, v]) => s + v, 0);
+
+    const verdictParts = [];
+    if (drifts === 0) verdictParts.push('schema matches');
+    else verdictParts.push(`${drifts} schema drift(s)`);
+    if (failedMigrations.length === 0) verdictParts.push('all boot migrations OK');
+    else verdictParts.push(`${failedMigrations.length} boot migration failure(s)`);
+    if (zoneSkipCount === 0) verdictParts.push('zone compute clean');
+    else verdictParts.push(`${zoneSkipCount} zone-compute skip(s)/error(s) — see zone_compute.by_outcome`);
+
+    const ok = drifts === 0 && failedMigrations.length === 0 && zoneSkipCount === 0;
     res.json({
       generated_at: new Date().toISOString(),
       schema_drift_count: drifts,
       failed_migrations_count: failedMigrations.length,
-      verdict: drifts === 0 && failedMigrations.length === 0
-        ? 'OK: live schema matches the deprecation manifest and all boot migrations succeeded.'
-        : drifts > 0 && failedMigrations.length > 0
-          ? `BOTH: ${drifts} drift(s) AND ${failedMigrations.length} failed migration(s) — investigate failed_migrations first (likely cause of drift).`
-          : drifts > 0
-            ? `DRIFT: ${drifts} deprecated column(s) still present — see entries with column_exists=true.`
-            : `BOOT FAILURES: ${failedMigrations.length} migration(s) failed at boot — see failed_migrations.`,
+      zone_compute_skip_count: zoneSkipCount,
+      verdict: ok
+        ? 'OK: live schema matches manifest, all boot migrations succeeded, no zone-compute skips.'
+        : verdictParts.join('; '),
       columns: cols,
       failed_migrations: failedMigrations,
+      zone_compute: {
+        ...zoneSummary,
+        last_20: zoneRecent,
+      },
     });
   } catch (err) {
     console.error(`[health/diag/deprecated-columns] ${err.stack}`);
