@@ -103,6 +103,17 @@ async function bmrForDate(weightKg, dateStr) {
   return Math.round(full * fraction);
 }
 const { query } = require('../db');
+// v3.32: TSS / EWMA math lives in lib/training-load.js so the Recovery
+// panel (lib/recovery.js) and this dashboard compute from one source.
+// These were defined inline here pre-v3.32; re-exported below for the
+// existing importers (routes/health.js, tests).
+const {
+  computeTSS,
+  durationToSeconds,
+  ewma,
+  getEffectiveZones,
+  fillMissingTss,
+} = require('../lib/training-load');
 const router = express.Router();
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -126,42 +137,12 @@ function lastN(rows, n, key) {
     .filter(v => isFinite(v));
 }
 
-// Exponentially-weighted moving average — used for ATL (7d) and CTL (42d).
-// Uses standard fitness-modeling formula: today = yesterday * (1 - 1/N) + tss/N.
-function ewma(dailyTss, n) {
-  let v = 0;
-  const out = [];
-  for (const tss of dailyTss) {
-    v = v * (1 - 1 / n) + (tss || 0) / n;
-    out.push(v);
-  }
-  return out;
-}
-
-// ─── TSS computation ────────────────────────────────────────────
-// If athlete_zones row covers the workout's date and we have heart_rate_avg
-// and duration: compute hrTSS = duration_hours × IF² × 100, where
-// IF = avg_HR / LTHR. Otherwise fall back to effort-based estimate
-// (duration_min × effort × 1.5, capped at 200).
-
-function durationToSeconds(s) {
-  if (!s) return 0;
-  const m = String(s).match(/^(?:(\d+):)?(\d+):(\d+)$/);
-  if (!m) return 0;
-  const [, h, mm, ss] = m;
-  return (Number(h) || 0) * 3600 + Number(mm) * 60 + Number(ss);
-}
-
+// ewma / durationToSeconds / computeTSS now imported from
+// lib/training-load.js (see require block above). Thin wrapper keeps
+// the call sites in this file unchanged while routing zones lookup
+// through the shared, query-injectable helper.
 async function getZonesForDate(date) {
-  const r = await query(
-    `SELECT * FROM athlete_zones
-     WHERE zone_type = 'heart_rate'
-       AND effective_from <= $1
-       AND (effective_to IS NULL OR effective_to >= $1)
-     ORDER BY effective_from DESC LIMIT 1`,
-    [date]
-  );
-  return r.rows[0] || null;
+  return getEffectiveZones(date, query);
 }
 
 // Normalize a workouts.hr_zones JSONB row into a flat { z1..z5 } minutes
@@ -182,44 +163,7 @@ function extractZoneMinutes(hr_zones) {
   return z;
 }
 
-function computeTSS(workout, zones) {
-  // v3.31: prefer numeric duration_minutes column, fall back to text
-  // time_duration parser. Pre-v3.31 the order was reversed; the text
-  // parser only handles `h:mm:ss` / `mm:ss`, so strings like "45 min"
-  // or "90" returned 0 and TSS came out null even when duration_minutes
-  // had the real value sitting right there.
-  let durSec = (Number(workout.duration_minutes) || 0) * 60;
-  if (!durSec) durSec = durationToSeconds(workout.time_duration);
-  const durHr = durSec / 3600;
-  if (durHr <= 0) return null;
-
-  const avgHR = workout.heart_rate_avg ? Number(String(workout.heart_rate_avg).replace(/[^\d.]/g, '')) : null;
-  const lthr = zones?.lthr || (zones?.max_hr ? Math.round(zones.max_hr * 0.88) : null);
-  if (avgHR && lthr) {
-    const intensity = avgHR / lthr;
-    return Math.round(durHr * intensity * intensity * 100);
-  }
-  // v3.31: effort-fallback now mirrors the HR-IF² structure so it caps
-  // naturally at 100 TSS/hr at max effort, instead of the prior
-  // (durMin × effort × 1.5) ceiling of 200 which biased CTL upward on
-  // every 1+ hour session.
-  //
-  //   IF_proxy = effort / 10        (1-10 scale → 0.1-1.0 dimensionless)
-  //   TSS      = durHr × IF² × 100
-  //
-  //   effort 10: 100 TSS/hr  (matches IF=1.0 == threshold)
-  //   effort  8:  64 TSS/hr
-  //   effort  7:  49 TSS/hr
-  //   effort  5:  25 TSS/hr
-  //
-  // No HR + no effort → return null. The prior `Number(workout.effort)
-  // || 5` default silently imputed effort=5 for every effort-less row,
-  // inflating the dataset with phantom moderate-load sessions.
-  const effort = Number(workout.effort);
-  if (!isFinite(effort) || effort <= 0) return null;
-  const ifProxy = Math.min(effort, 10) / 10;
-  return Math.round(durHr * ifProxy * ifProxy * 100);
-}
+// computeTSS imported from lib/training-load.js (see require block).
 
 // ─── GET /api/health/insights/today — recovery readiness ────────
 
