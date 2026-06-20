@@ -2541,94 +2541,114 @@ router.post('/cleanup-now', async (req, res) => {
   }
 });
 
+// ─── Schema sentinel: deprecation manifest ──────────────────────
+// Every column the codebase has intentionally dropped, paired with
+// where (if anywhere) the value was preserved. Drives the
+// GET /diag/deprecated-columns drift detector below — and is the
+// canonical "what columns should NOT exist" list. Add an entry every
+// time a new column is dropped.
+const DEPRECATED_COLUMNS = [
+  { table: 'daily_plans', column: 'planned_exercises', dropped_in: 'v1.8.20',
+    stash_table: null, stash_key: null, jsonb: true },
+  { table: 'daily_plans', column: 'actual_exercises', dropped_in: 'v1.8.20',
+    stash_table: 'daily_plans', stash_key: 'legacy_actual_exercises', jsonb: true },
+  { table: 'daily_plans', column: 'hevy_routine_id', dropped_in: 'v1.8.20',
+    stash_table: null, stash_key: null, jsonb: false },
+  // v3.33 Phase A/B: pace_avg/splits/cadence_avg were already dropped
+  // pre-Phase A (no FK or trigger dependencies blocked the boot DROP).
+  // adjustment becomes droppable for the first time in Phase B (trigger
+  // rebuilt without NEW.adjustment) and its data is preserved at
+  // metadata.legacy_adjustment.
+  { table: 'workouts', column: 'pace_avg', dropped_in: 'v1.9.4',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'workouts', column: 'splits', dropped_in: 'v1.9.4',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'workouts', column: 'cadence_avg', dropped_in: 'v1.9.4',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'workouts', column: 'adjustment', dropped_in: 'v3.33',
+    stash_table: 'workouts', stash_key: 'legacy_adjustment', jsonb: false },
+];
+
 // ─── GET /api/health/diag/deprecated-columns ───────────────────
-// Pre-drop audit endpoint. v1.8.20 dropped the 3 columns; this now
-// reports the post-drop state. Each column reports whether it still
-// exists in the schema (information_schema check) — if it doesn't,
-// the drop succeeded and there's nothing to audit.
+// Live-schema drift detector. For each entry in DEPRECATED_COLUMNS:
+//   - confirm the live schema no longer carries it (the happy path)
+//   - if it's still there, surface the row count so we know what's at
+//     stake before re-running the DROP
+//   - if the value was preserved in metadata.<stash_key>, report the
+//     stash row count + a recovery query.
+// schema_drift_count == 0 is the green-light invariant.
 router.get('/diag/deprecated-columns', async (req, res) => {
   try {
-    async function colExists(col) {
+    async function colExists(table, col) {
       const r = await query(
         `SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'daily_plans' AND column_name = $1 LIMIT 1`,
-        [col]
+         WHERE table_name = $1 AND column_name = $2 LIMIT 1`,
+        [table, col]
       );
       return r.rows.length > 0;
     }
-    const peExists = await colExists('planned_exercises');
-    const aeExists = await colExists('actual_exercises');
-    const hrExists = await colExists('hevy_routine_id');
+    async function rowsWithData(table, col, isJsonbArray) {
+      const where = isJsonbArray
+        ? `${col} IS NOT NULL AND jsonb_typeof(${col}) = 'array' AND jsonb_array_length(${col}) > 0`
+        : `${col} IS NOT NULL AND length(trim(${col}::text)) > 0`;
+      try {
+        const r = await query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${where}`);
+        return r.rows[0]?.n || 0;
+      } catch (_) { return null; }
+    }
+    async function stashCount(table, key) {
+      if (!table || !key) return null;
+      try {
+        const r = await query(
+          `SELECT COUNT(*)::int AS n FROM ${table} WHERE metadata ? $1`, [key]
+        );
+        return r.rows[0]?.n || 0;
+      } catch (_) { return null; }
+    }
 
-    // Also report the metadata.legacy_actual_exercises stash (v1.8.20).
-    let stashCount = 0;
-    try {
-      const r = await query(
-        `SELECT COUNT(*)::int AS n FROM daily_plans
-         WHERE metadata ? 'legacy_actual_exercises'`
-      );
-      stashCount = r.rows[0]?.n || 0;
-    } catch (_) { /* metadata column may not exist on legacy schemas */ }
+    const cols = [];
+    let drifts = 0;
+    for (const d of DEPRECATED_COLUMNS) {
+      const exists = await colExists(d.table, d.column);
+      const entry = {
+        table: d.table,
+        column: d.column,
+        dropped_in: d.dropped_in,
+        column_exists: exists,
+      };
+      if (exists) {
+        drifts++;
+        entry.rows_with_data = await rowsWithData(d.table, d.column, d.jsonb);
+        entry.verdict =
+          `DRIFT: column still present — initDB log "${d.table} -${d.column}" likely failed (dependency block, or migration not run).`;
+      } else {
+        entry.verdict = `OK: dropped per ${d.dropped_in}.`;
+      }
+      if (d.stash_key) {
+        const sc = await stashCount(d.stash_table, d.stash_key);
+        if (sc != null) {
+          entry.stash_rows = sc;
+          entry.recovery_query =
+            `SELECT id, metadata->'${d.stash_key}' AS recovered FROM ${d.stash_table} WHERE metadata ? '${d.stash_key}'`;
+        }
+      }
+      cols.push(entry);
+    }
 
-    const result = {
+    res.json({
       generated_at: new Date().toISOString(),
-      planned_exercises: peExists
-        ? await (async () => {
-            const t = await query(
-              `SELECT COUNT(*)::int AS n FROM daily_plans
-               WHERE planned_exercises IS NOT NULL
-                 AND jsonb_typeof(planned_exercises) = 'array'
-                 AND jsonb_array_length(planned_exercises) > 0`
-            );
-            return {
-              column_exists: true,
-              rows_with_data: t.rows[0].n,
-              verdict: 'Column still present — check db.js drop migration ran.',
-            };
-          })()
-        : { column_exists: false, verdict: 'DROPPED in v1.8.20.' },
-      actual_exercises: aeExists
-        ? await (async () => {
-            const t = await query(
-              `SELECT id, plan_date, jsonb_array_length(actual_exercises) AS exercise_count
-               FROM daily_plans
-               WHERE actual_exercises IS NOT NULL
-                 AND jsonb_typeof(actual_exercises) = 'array'
-                 AND jsonb_array_length(actual_exercises) > 0
-               ORDER BY plan_date DESC LIMIT 50`
-            );
-            return {
-              column_exists: true,
-              rows_with_data: t.rows.length,
-              sample: t.rows,
-              verdict: 'Column still present — check db.js drop migration ran.',
-            };
-          })()
-        : { column_exists: false, verdict: `DROPPED in v1.8.20. ${stashCount} row(s) have data preserved at metadata.legacy_actual_exercises.` },
-      hevy_routine_id: hrExists
-        ? await (async () => {
-            const t = await query(
-              `SELECT COUNT(*)::int AS n FROM daily_plans
-               WHERE hevy_routine_id IS NOT NULL AND hevy_routine_id <> ''`
-            );
-            return {
-              column_exists: true,
-              rows_with_data: t.rows[0].n,
-              verdict: 'Column still present — check db.js drop migration ran.',
-            };
-          })()
-        : { column_exists: false, verdict: 'DROPPED in v1.8.20.' },
-      legacy_stash: {
-        rows_with_legacy_actual_exercises: stashCount,
-        recovery_query: `SELECT id, plan_date, metadata->'legacy_actual_exercises' AS actual_exercises FROM daily_plans WHERE metadata ? 'legacy_actual_exercises'`,
-      },
-    };
-    res.json(result);
+      schema_drift_count: drifts,
+      verdict: drifts === 0
+        ? 'OK: live schema matches the deprecation manifest.'
+        : `DRIFT: ${drifts} deprecated column(s) still present — see entries with column_exists=true.`,
+      columns: cols,
+    });
   } catch (err) {
     console.error(`[health/diag/deprecated-columns] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── GET /api/health/diag/hr-sample-coverage?days=14 ─────────────
 // Triage endpoint for "why is my Z2 chart near-zero?". Surfaces three

@@ -265,6 +265,47 @@ test('db.js: search_vector backfill for workouts does not reference adjustment',
     'workouts search backfill must not reference adjustment');
 });
 
+// ─── Schema sentinel: deprecation manifest is the source of truth ──
+test('health.js: DEPRECATED_COLUMNS manifest covers every db.js DROP', () => {
+  // The /diag/deprecated-columns endpoint detects drift by comparing the
+  // live schema against this manifest. If a DROP exists in db.js but no
+  // manifest entry, the sentinel reports green when it shouldn't —
+  // worst-case the column is still on disk and we'd never know.
+  const healthSrc = fs.readFileSync(path.join(__dirname, '../routes/health.js'), 'utf8');
+  const dbSrc = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+
+  // Pull every (table, column) pair appearing in safeQuery('<table> -<col>', ...).
+  const dropTags = [...dbSrc.matchAll(/safeQuery\(['"]([a-z_]+) -([a-z_]+)['"]/g)]
+    .map(m => ({ table: m[1], column: m[2] }));
+  assert.ok(dropTags.length >= 4, 'expected at least 4 DROP tags in db.js');
+
+  // Pull every (table, column) pair from the manifest. Loose regex on the
+  // entry shape so reformatting doesn't break the test.
+  const manifestBlock = healthSrc.match(/const DEPRECATED_COLUMNS = \[([\s\S]*?)\];/);
+  assert.ok(manifestBlock, 'DEPRECATED_COLUMNS manifest must exist in routes/health.js');
+  const manifestEntries = [...manifestBlock[1].matchAll(/table:\s*'([a-z_]+)'[\s\S]*?column:\s*'([a-z_]+)'/g)]
+    .map(m => ({ table: m[1], column: m[2] }));
+  const manifestKeys = new Set(manifestEntries.map(e => `${e.table}.${e.column}`));
+
+  // Every workouts DROP must have a manifest entry (Phase A/B scope).
+  for (const d of dropTags.filter(t => t.table === 'workouts')) {
+    assert.ok(manifestKeys.has(`${d.table}.${d.column}`),
+      `DEPRECATED_COLUMNS missing entry for ${d.table}.${d.column} (DROP in db.js but no sentinel coverage)`);
+  }
+});
+
+test('health.js: DEPRECATED_COLUMNS lists workouts.adjustment with stash key', () => {
+  // Phase B preserves adjustment text into metadata.legacy_adjustment.
+  // The sentinel must report the stash row count so we can recover.
+  const src = fs.readFileSync(path.join(__dirname, '../routes/health.js'), 'utf8');
+  const manifestBlock = src.match(/const DEPRECATED_COLUMNS = \[([\s\S]*?)\];/);
+  assert.ok(manifestBlock, 'manifest present');
+  const adjustmentEntry = manifestBlock[1].match(/\{\s*table:\s*'workouts',\s*column:\s*'adjustment'[\s\S]*?\}/);
+  assert.ok(adjustmentEntry, 'workouts.adjustment entry must exist in DEPRECATED_COLUMNS');
+  assert.ok(/stash_key:\s*'legacy_adjustment'/.test(adjustmentEntry[0]),
+    'workouts.adjustment must declare stash_key=legacy_adjustment for recovery');
+});
+
 test('db.js: adjustment snapshot migration runs before the DROP', () => {
   const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
   // The snapshot copies the column value into metadata.legacy_adjustment
