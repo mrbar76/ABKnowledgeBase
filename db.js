@@ -237,9 +237,6 @@ async function initDB() {
       elevation_gain TEXT,
       heart_rate_avg TEXT,
       heart_rate_max TEXT,
-      pace_avg TEXT,
-      splits TEXT,
-      cadence_avg TEXT,
       active_calories TEXT,
       total_calories TEXT,
       effort INTEGER CHECK(effort >= 1 AND effort <= 10),
@@ -479,10 +476,6 @@ async function initDB() {
       protein_g NUMERIC(6,1),
       carbs_g NUMERIC(6,1),
       fat_g NUMERIC(6,1),
-      fiber_g NUMERIC(6,1),
-      sugar_g NUMERIC(6,1),
-      sodium_mg NUMERIC(7,1),
-      serving_size TEXT,
       hunger_before INTEGER CHECK(hunger_before >= 1 AND hunger_before <= 10),
       fullness_after INTEGER CHECK(fullness_after >= 1 AND fullness_after <= 10),
       energy_after INTEGER CHECK(energy_after >= 1 AND energy_after <= 10),
@@ -509,14 +502,12 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS daily_context (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       date DATE NOT NULL UNIQUE,
-      day_type TEXT CHECK(day_type IN ('rest','strength','run','hill','hybrid','race','travel')),
+      -- v3.34 round 4: day_type / energy_rating / hunger_rating /
+      -- cravings / digestion / tags removed from CREATE TABLE — they
+      -- map 1:1 to DROP COLUMNs in the simplify block, and leaving
+      -- them in CREATE was costing fresh DBs 6 tombstones per boot.
       hydration_liters NUMERIC(4,2),
-      energy_rating INTEGER CHECK(energy_rating >= 1 AND energy_rating <= 10),
-      hunger_rating INTEGER CHECK(hunger_rating >= 1 AND hunger_rating <= 10),
-      cravings TEXT,
-      digestion TEXT,
       notes TEXT,
-      tags JSONB DEFAULT '[]'::jsonb,
       search_vector TSVECTOR,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -628,7 +619,6 @@ async function initDB() {
       resolved_date DATE,
       symptoms TEXT,
       notes TEXT,
-      tags JSONB DEFAULT '[]'::jsonb,
       ai_source TEXT,
       metadata JSONB DEFAULT '{}'::jsonb,
       search_vector TSVECTOR,
@@ -787,9 +777,11 @@ async function initDB() {
   await safeQuery('workouts +ai_source', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS ai_source TEXT`);
   await safeQuery('workouts +heart_rate_avg', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS heart_rate_avg TEXT`);
   await safeQuery('workouts +heart_rate_max', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS heart_rate_max TEXT`);
-  await safeQuery('workouts +pace_avg', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS pace_avg TEXT`);
-  await safeQuery('workouts +splits', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS splits TEXT`);
-  await safeQuery('workouts +cadence_avg', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS cadence_avg TEXT`);
+  // v3.34 round 4 leak fix: removed `workouts +pace_avg / +splits /
+  // +cadence_avg` ADD COLUMNs. They map 1:1 to the DROPs at line ~1990.
+  // Adding then dropping the same column in one initDB run creates a
+  // per-boot tombstone leak — production was at 298 tombstones on
+  // workouts, root cause was here.
   await safeQuery('workouts +active_calories', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS active_calories TEXT`);
   await safeQuery('workouts +total_calories', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_calories TEXT`);
   await safeQuery('workouts +exercises', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS exercises JSONB DEFAULT '[]'::jsonb`);
@@ -936,9 +928,22 @@ async function initDB() {
       heart_rate_max = NULL
       WHERE heart_rate_max IS NOT NULL AND lower(heart_rate_max) IN ('nan','null','none','-')
   `);
+  // v3.34 round 4 fix-up: gate on column existence. Round 4 removed
+  // cadence_avg from CREATE TABLE + ADD COLUMN, so on fresh DBs the
+  // column never exists and the bare UPDATE raised "column cadence_avg
+  // does not exist". Same DO $$ ... information_schema $$ guard
+  // pattern as the facts→knowledge migration in round 3.
   await safeQuery('backfill cadence', `
-    UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int
-    WHERE cadence IS NULL AND cadence_avg IS NOT NULL AND cadence_avg ~ '\\d'
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'workouts' AND column_name = 'cadence_avg'
+      ) THEN
+        UPDATE workouts SET cadence = REGEXP_REPLACE(cadence_avg, '[^\\d]', '', 'g')::int
+        WHERE cadence IS NULL AND cadence_avg IS NOT NULL AND cadence_avg ~ '\\d';
+      END IF;
+    END $$;
   `);
   await safeQuery('backfill cal_active', `
     UPDATE workouts SET cal_active = REGEXP_REPLACE(active_calories, '[^\\d]', '', 'g')::int
@@ -957,10 +962,10 @@ async function initDB() {
   await safeQuery('meals +protein_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS protein_g NUMERIC(6,1)`);
   await safeQuery('meals +carbs_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS carbs_g NUMERIC(6,1)`);
   await safeQuery('meals +fat_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS fat_g NUMERIC(6,1)`);
-  await safeQuery('meals +fiber_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS fiber_g NUMERIC(6,1)`);
-  await safeQuery('meals +sugar_g', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS sugar_g NUMERIC(6,1)`);
-  await safeQuery('meals +sodium_mg', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS sodium_mg NUMERIC(7,1)`);
-  await safeQuery('meals +serving_size', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS serving_size TEXT`);
+  // v3.34 round 4 leak fix: removed `meals +fiber_g / +sugar_g /
+  // +sodium_mg / +serving_size` ADD COLUMNs. They map 1:1 to the
+  // DROPs in the v1.9.4 cleanup block. Per-boot tombstone leak —
+  // production was at 396 tombstones on meals, root cause was here.
   await safeQuery('meals +hunger_before', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS hunger_before INTEGER`);
   await safeQuery('meals +fullness_after', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS fullness_after INTEGER`);
   await safeQuery('meals +energy_after', `ALTER TABLE meals ADD COLUMN IF NOT EXISTS energy_after INTEGER`);
@@ -1368,7 +1373,10 @@ async function initDB() {
   await safeQuery('coaching_sessions +mental_notes', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS mental_notes TEXT`);
   await safeQuery('coaching_sessions +next_steps', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS next_steps TEXT`);
   await safeQuery('coaching_sessions +data_reviewed', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS data_reviewed JSONB DEFAULT '{}'::jsonb`);
-  await safeQuery('coaching_sessions +training_plan_id', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS training_plan_id UUID`);
+  // v3.34 round 4 leak fix: removed `coaching_sessions +training_plan_id`
+  // ADD COLUMN — paired with `coaching drop training_plan_id` DROP at
+  // line ~1091. Per-boot tombstone leak; production was at 302
+  // tombstones on coaching_sessions, root cause was here.
   await safeQuery('coaching_sessions +conversation_id', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS conversation_id UUID`);
   await safeQuery('coaching_sessions +ai_source', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS ai_source TEXT DEFAULT 'chatgpt'`);
   await safeQuery('coaching_sessions +tags', `ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
@@ -1391,7 +1399,9 @@ async function initDB() {
   // removing the ADD COLUMN here prevents the add → drop shuttle that
   // wastes one Postgres attribute slot per boot.
   await safeQuery('injuries +notes', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS notes TEXT`);
-  await safeQuery('injuries +tags', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
+  // v3.34 round 4 leak fix: removed `injuries +tags` ADD COLUMN —
+  // paired with `injuries -tags` DROP. Per-boot tombstone leak;
+  // production was at 100 tombstones on injuries, root cause was here.
   await safeQuery('injuries +ai_source', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS ai_source TEXT`);
   await safeQuery('injuries +metadata', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('injuries +mechanism', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS mechanism TEXT`);
@@ -1873,11 +1883,12 @@ async function initDB() {
       status TEXT CHECK(status IN ('scheduled','dnf','completed','withdrawn','cancelled')) DEFAULT 'scheduled',
       location TEXT,
       course_notes TEXT,
-      expected_weather TEXT,
+      -- v3.34 round 4: expected_weather / goal_process removed from
+      -- CREATE TABLE. Both DROP'd in v1.9.4 (line ~2003); leaving them
+      -- in CREATE cost fresh DBs 2 tombstones per boot.
       fueling_plan TEXT,
       gear_list TEXT,
       goal_outcome TEXT,
-      goal_process TEXT,
       result_time_seconds INTEGER,
       result_notes TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
@@ -1926,7 +1937,9 @@ async function initDB() {
       g_carb_per_hr NUMERIC(5,1),
       g_sodium_per_hr NUMERIC(5,1),
       ml_fluid_per_hr NUMERIC(5,1),
-      g_caffeine_total NUMERIC(5,1),
+      -- v3.34 round 4: g_caffeine_total removed from CREATE — renamed
+      -- to mg_caffeine_total in the migration block below (different
+      -- units), so fresh DBs allocating + dropping cost 1 tombstone.
       products TEXT,
       gut_response INTEGER CHECK(gut_response >= 1 AND gut_response <= 10),
       energy_response INTEGER CHECK(energy_response >= 1 AND energy_response <= 10),
@@ -2008,13 +2021,15 @@ async function initDB() {
   // transition while historical daily_activity still holds pre-Shortcut data.
   await safeQuery('daily_vitals_cache table', `
     CREATE TABLE IF NOT EXISTS daily_vitals_cache (
+      -- v3.34 round 4: sleep_deep_min / sleep_rem_min / source_device
+      -- removed from CREATE TABLE. They map 1:1 to DROP COLUMNs in the
+      -- Series-3 cleanup block. Series 3 hardware can't supply sleep
+      -- stages or named-device metadata; leaving them in CREATE cost
+      -- fresh DBs 3 tombstones per boot.
       date DATE PRIMARY KEY,
       hrv_ms NUMERIC(5,1),
       rhr_bpm INTEGER,
       sleep_total_min INTEGER,
-      sleep_deep_min INTEGER,
-      sleep_rem_min INTEGER,
-      source_device TEXT,
       recorded_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
