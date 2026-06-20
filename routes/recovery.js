@@ -10,6 +10,7 @@ const {
   computeSubjectiveScore,
   dateStr,
 } = require('../lib/recovery');
+const { getEffectiveZones, fillMissingTss } = require('../lib/training-load');
 const router = express.Router();
 
 // ═══════════════════════════════════════════════════════════════
@@ -61,6 +62,13 @@ router.get('/trend', async (req, res) => {
       query("SELECT * FROM injuries WHERE status IN ('active','monitoring') ORDER BY severity DESC NULLS LAST"),
       query('SELECT meal_date, SUM(calories) as total_calories, SUM(protein_g) as total_protein_g FROM meals WHERE meal_date >= $1::date - 1 AND meal_date <= $2 GROUP BY meal_date', [startDate, endDate]),
     ]);
+
+    // v3.32: fill null-tss rows on the fly so the trend's TSB matches
+    // /insights/training and the single-date /recovery/score. endDate
+    // zones anchor the fill (matches the dashboard's single-zonesRow
+    // pattern); computeTSS falls through to effort when zones is null.
+    const trendZones = await getEffectiveZones(endDate, query);
+    fillMissingTss(workoutsResult.rows, trendZones);
 
     const ctxByDate = {};
     ctxResult.rows.forEach((r) => { ctxByDate[dateStr(r.date)] = r; });

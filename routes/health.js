@@ -2896,13 +2896,18 @@ router.post('/backfill/hr-zones-from-metadata', async (req, res) => {
 //       against the athlete_zones row in effect at that time. If
 //       zones change later (canonical-correct), the cached tss is
 //       stale and likely high.
-//   (c) Fallback-formula rows — when HR is missing, computeTSS uses
-//       (durSec/60) * effort * 1.5 capped at 200. The cap itself is
-//       above the ~100/hour physiological max at threshold and can
-//       bias CTL upward.
+//   (c) Fallback-formula rows — workouts with no HR that used the
+//       effort fallback. Post-v3.31 this is TSS = durHr × (effort/10)²
+//       × 100, bounded by 100 TSS/hr at max effort — informational,
+//       NOT a defect. (Pre-v3.31 it was durMin × effort × 1.5 capped
+//       at 200, which did bias CTL upward; that's fixed.)
 //   (d) Implausibly high per-hour TSS — anything above 130 TSS/hour
 //       is suspicious regardless of cause; surfaces rows the operator
 //       should review individually.
+//   (e) Null TSS with enough inputs — rows that have duration + (HR or
+//       effort) but tss IS NULL. These should be backfilled via POST
+//       /api/health/diag/backfill-tss; left null they silently drop
+//       out of the CTL/ATL rollup.
 //
 // Query string: ?days=42 (default 42, max 365).
 router.get('/diag/tss-integrity', async (req, res) => {
@@ -3033,7 +3038,7 @@ router.get('/diag/tss-integrity', async (req, res) => {
     const concerns = [];
     if (summary.same_day_duplicate_rows > 0) concerns.push(`${summary.same_day_duplicate_rows} duplicate-row(s) on ${summary.same_day_duplicate_dates} day(s) — cross-source dedupe needed`);
     if (summary.stale_tss_rows > 0) concerns.push(`${summary.stale_tss_rows} row(s) with TSS computed against pre-canonical zones — run /insights/recompute-tss`);
-    if (summary.effort_fallback_likely_rows > 0) concerns.push(`${summary.effort_fallback_likely_rows} row(s) likely using effort-fallback (no HR) — TSS may be artificially capped at 200`);
+    if (summary.effort_fallback_likely_rows > 0) concerns.push(`${summary.effort_fallback_likely_rows} row(s) using effort-fallback (no HR) — TSS = durHr × (effort/10)² × 100, bounded by 100 TSS/hr at max effort (v3.31). Informational, not a defect`);
     if (summary.implausible_per_hour_rows > 0) concerns.push(`${summary.implausible_per_hour_rows} row(s) above 130 TSS/hour — likely inflated`);
     if (summary.null_tss_with_inputs > 0) concerns.push(`${summary.null_tss_with_inputs} row(s) with null TSS that have enough inputs to compute it — run POST /api/health/diag/backfill-tss`);
     summary.verdict = concerns.length ? concerns.join('; ') : 'No obvious integrity issues in the window.';
