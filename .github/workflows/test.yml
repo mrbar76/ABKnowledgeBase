@@ -1,0 +1,67 @@
+# v3.34 #3: CI gate for the test suite + live-DB validation of the
+# migration scripts. Two jobs:
+#   - `unit`: runs the 486-test static suite. Fast, no Postgres. Gates merges.
+#   - `integration`: spins up Postgres 16 as a service, runs initDB() +
+#                     each migration script's dry-run path against it.
+#                     This is what the silent-swallow safeQuery bug was
+#                     missing — without a real boot, the trigger-pinned
+#                     DROP failure was invisible.
+#
+# Both jobs run on every push and every PR. Make `unit` a required
+# status check on redesign/v2 in repo settings to gate merges.
+
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit tests (static)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  integration:
+    name: Integration (live Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector/pgvector:pg16 is postgres:16 with the vector extension
+        # pre-installed. db.js's `CREATE EXTENSION IF NOT EXISTS vector`
+        # for email_threads and calendar_events would otherwise fail and
+        # cascade into 7+ dependent migration failures on bare postgres:16.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: forge_test
+        ports:
+          - 5432:5432
+        # Wait until Postgres accepts connections before any step runs.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/forge_test
+      HEVY_API_KEY: test-key
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run integration suite
+        run: npm run test:integration

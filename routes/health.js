@@ -6,7 +6,8 @@
 
 const crypto = require('crypto');
 const express = require('express');
-const { query, logActivity } = require('../db');
+const { query, logActivity, getFailedMigrations } = require('../db');
+const zoneLog = require('../lib/zone-compute-log');
 const { computeTSS } = require('./insights');
 const { linkWorkoutToPlan: linkWorkoutToPlanShared } = require('../lib/workout-link');
 const router = express.Router();
@@ -1255,6 +1256,50 @@ async function computeHrZonesForWorkout(workoutId, hrSamples) {
   };
 }
 
+// v3.34: wrapper around computeHrZonesForWorkout that ALSO writes the
+// result to workouts.hr_zones and records the outcome (wrote / skipped /
+// error + reason) in the in-process zone-compute log. Same surfacing
+// pattern as db.js FAILED_MIGRATIONS — the silent-skip class of bug
+// (caller gets null, just moves on, no log line) becomes visible at
+// the schema sentinel.
+//
+// Returns the outcome string so callers can update their own counters
+// (e.g. zonesComputed++ in the ingest paths).
+async function attemptZoneCompute(workoutId, hrSamples, source) {
+  let outcome, reason = null;
+  try {
+    if (!Array.isArray(hrSamples) || hrSamples.length === 0) {
+      outcome = 'skipped_no_samples';
+    } else {
+      const w = (await query('SELECT started_at FROM workouts WHERE id = $1', [workoutId])).rows[0];
+      if (!w || !w.started_at) {
+        outcome = 'skipped_no_started_at';
+      } else {
+        const zones = await computeHrZonesForWorkout(workoutId, hrSamples);
+        if (zones) {
+          await query(
+            'UPDATE workouts SET hr_zones = $1::jsonb, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(zones), workoutId]
+          );
+          outcome = 'wrote';
+        } else {
+          // computeHrZonesForWorkout returns null for two remaining
+          // reasons. Probe to distinguish so the log entry is actionable.
+          const zonesRow = await getEffectiveZones(w.started_at);
+          outcome = (!zonesRow || !zonesRow.z1_max)
+            ? 'skipped_no_zones_row'
+            : 'skipped_no_window_match';
+        }
+      }
+    }
+  } catch (err) {
+    outcome = 'error';
+    reason = err.message;
+  }
+  zoneLog.record({ workoutId, source, outcome, reason });
+  return outcome;
+}
+
 // Persist HR samples that fall inside a workout's window to
 // workouts.metadata.heartRateData. Lets future zones corrections
 // re-derive hr_zones without needing a fresh iOS export. Stores in the
@@ -1433,11 +1478,11 @@ async function processPayload(body) {
         for (const w of windowWorkouts.rows) {
           const persistResult = await persistHrSamplesForWorkout(w.id, hrSamples);
           if (persistResult.persisted > 0) samplesPersisted++;
-          const zones = await computeHrZonesForWorkout(w.id, hrSamples);
-          if (zones) {
-            await query('UPDATE workouts SET hr_zones = $1::jsonb WHERE id = $2', [JSON.stringify(zones), w.id]);
-            zonesComputed++;
-          }
+          // v3.34: routed through attemptZoneCompute so silent skips
+          // (no zones row, no window match, no samples in slice) show
+          // up in the in-process log and surface via the sentinel.
+          const outcome = await attemptZoneCompute(w.id, hrSamples, 'ingest:format_b');
+          if (outcome === 'wrote') zonesComputed++;
         }
       }
 
@@ -1508,11 +1553,10 @@ async function processPayload(body) {
           for (const w of windowWorkouts.rows) {
             const persistResult = await persistHrSamplesForWorkout(w.id, hrSamplesD);
             if (persistResult.persisted > 0) samplesPersistedD++;
-            const zones = await computeHrZonesForWorkout(w.id, hrSamplesD);
-            if (zones) {
-              await query('UPDATE workouts SET hr_zones = $1::jsonb WHERE id = $2', [JSON.stringify(zones), w.id]);
-              zonesComputedD++;
-            }
+            // v3.34: routed through attemptZoneCompute — see Format B
+            // parallel call site for rationale.
+            const outcome = await attemptZoneCompute(w.id, hrSamplesD, 'ingest:format_d');
+            if (outcome === 'wrote') zonesComputedD++;
           }
         }
       }
@@ -2378,11 +2422,30 @@ router.get('/diag/full-day', async (req, res) => {
                     hevy_id, metadata->>'hae_id' AS hae_id,
                     jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) AS hr_samples_count
              FROM workouts WHERE workout_date = $1 ORDER BY started_at NULLS LAST, created_at`, [date]),
-      query(`SELECT activity_date, steps, distance_mi, exercise_minutes, flights_climbed,
-                    active_energy_kcal, basal_energy_kcal, resting_hr_bpm, walking_hr_avg_bpm,
-                    hrv_sdnn_ms, sleep_total_min, sleep_deep_min, sleep_rem_min,
-                    workout_count, sources, updated_at
-             FROM daily_activity WHERE activity_date = $1`, [date]),
+      // v3.34 #2: movement + energy cols now live in daily_vitals_cache
+      // (consolidated by scripts/consolidate-daily-activity-to-vitals.js).
+      // FULL OUTER JOIN so the merged view survives both before the
+      // drop (data in both sources, cache wins via COALESCE) and after
+      // (cache-only). Sleep-phase + walking/mobility stay daily_activity-only
+      // until that table is dropped on Aug 5.
+      query(`SELECT
+               COALESCE(c.date, da.activity_date) AS activity_date,
+               COALESCE(c.steps, da.steps) AS steps,
+               COALESCE(c.distance_mi, da.distance_mi) AS distance_mi,
+               COALESCE(c.exercise_minutes, da.exercise_minutes) AS exercise_minutes,
+               COALESCE(c.flights_climbed, da.flights_climbed) AS flights_climbed,
+               COALESCE(c.workout_count, da.workout_count) AS workout_count,
+               COALESCE(c.active_energy_kcal, da.active_energy_kcal) AS active_energy_kcal,
+               COALESCE(c.basal_energy_kcal, da.basal_energy_kcal) AS basal_energy_kcal,
+               COALESCE(c.rhr_bpm, da.resting_hr_bpm) AS resting_hr_bpm,
+               da.walking_hr_avg_bpm,
+               COALESCE(c.hrv_ms, da.hrv_sdnn_ms) AS hrv_sdnn_ms,
+               COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
+               da.sleep_deep_min, da.sleep_rem_min,
+               da.sources, COALESCE(c.updated_at, da.updated_at) AS updated_at
+             FROM daily_vitals_cache c
+             FULL OUTER JOIN daily_activity da ON c.date = da.activity_date
+             WHERE COALESCE(c.date, da.activity_date) = $1`, [date]),
       query(`SELECT id, meal_type, meal_time, calories, protein_g, carbs_g, fat_g, source, notes
              FROM meals WHERE meal_date = $1 ORDER BY meal_time NULLS LAST`, [date]),
       query(`SELECT id, measurement_time, source, weight_lb, body_fat_pct, lean_mass_lb, bmi, notes
@@ -2567,6 +2630,33 @@ const DEPRECATED_COLUMNS = [
     stash_table: null, stash_key: null, jsonb: false },
   { table: 'workouts', column: 'adjustment', dropped_in: 'v3.33',
     stash_table: 'workouts', stash_key: 'legacy_adjustment', jsonb: false },
+  // v3.34 CI fix: same trigger-pinning class as adjustment. Drop ran
+  // every boot but was silently blocked because trg_injuries_search
+  // pinned NEW.treatment. Trigger fix + snapshot landed in this PR.
+  { table: 'injuries', column: 'treatment', dropped_in: 'v3.34',
+    stash_table: 'injuries', stash_key: 'legacy_treatment', jsonb: false },
+  { table: 'injuries', column: 'tags', dropped_in: 'v1.9.4',
+    stash_table: null, stash_key: null, jsonb: true },
+  // daily_context "design shuttle" drops — added, dropped, sometimes re-
+  // added under different names. The columns are gone today; their slots
+  // remain as Postgres tombstones until the daily_context rebuild script
+  // is run (scripts/rebuild-daily-context.js).
+  { table: 'daily_context', column: 'day_type', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'energy_rating', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'hunger_rating', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'recovery_rating', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'body_weight_lb', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'cravings', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'digestion', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'tags', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: true },
 ];
 
 // ─── GET /api/health/diag/deprecated-columns ───────────────────
@@ -2635,13 +2725,49 @@ router.get('/diag/deprecated-columns', async (req, res) => {
       cols.push(entry);
     }
 
+    // v3.34 #4: surface boot-time migration failures. safeQuery used
+    // to swallow these (the log line shipped but no one read it). The
+    // sentinel response now includes both the schema-drift snapshot and
+    // the boot-migration error log so a single GET tells the operator
+    // everything that's wrong.
+    const failedMigrations = typeof getFailedMigrations === 'function'
+      ? getFailedMigrations() : [];
+
+    // v3.34 hr_zones gap: same surfacing pattern for the silent-skip
+    // class of bug in HR-zone computation. attemptZoneCompute (above)
+    // records every ingest-path attempt; the sentinel reports the
+    // rolling summary + last 20 entries. by_outcome counts let
+    // operators spot patterns like "every Format A workout skipped for
+    // no_samples — iOS side needs to start exporting the HR stream".
+    const zoneSummary = zoneLog.summary();
+    const zoneRecent = zoneLog.getRecent(20);
+    const zoneSkipCount = Object.entries(zoneSummary.by_outcome)
+      .filter(([k]) => k.startsWith('skipped_') || k === 'error')
+      .reduce((s, [, v]) => s + v, 0);
+
+    const verdictParts = [];
+    if (drifts === 0) verdictParts.push('schema matches');
+    else verdictParts.push(`${drifts} schema drift(s)`);
+    if (failedMigrations.length === 0) verdictParts.push('all boot migrations OK');
+    else verdictParts.push(`${failedMigrations.length} boot migration failure(s)`);
+    if (zoneSkipCount === 0) verdictParts.push('zone compute clean');
+    else verdictParts.push(`${zoneSkipCount} zone-compute skip(s)/error(s) — see zone_compute.by_outcome`);
+
+    const ok = drifts === 0 && failedMigrations.length === 0 && zoneSkipCount === 0;
     res.json({
       generated_at: new Date().toISOString(),
       schema_drift_count: drifts,
-      verdict: drifts === 0
-        ? 'OK: live schema matches the deprecation manifest.'
-        : `DRIFT: ${drifts} deprecated column(s) still present — see entries with column_exists=true.`,
+      failed_migrations_count: failedMigrations.length,
+      zone_compute_skip_count: zoneSkipCount,
+      verdict: ok
+        ? 'OK: live schema matches manifest, all boot migrations succeeded, no zone-compute skips.'
+        : verdictParts.join('; '),
       columns: cols,
+      failed_migrations: failedMigrations,
+      zone_compute: {
+        ...zoneSummary,
+        last_20: zoneRecent,
+      },
     });
   } catch (err) {
     console.error(`[health/diag/deprecated-columns] ${err.stack}`);
