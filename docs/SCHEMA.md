@@ -175,38 +175,50 @@ tables today via FULL OUTER JOIN; daily_vitals_cache values win on
 overlap. See **Phase E plan** below for the consolidation script + the
 columns-without-a-home tradeoff.
 
-#### Phase E plan — daily_activity → daily_vitals_cache
+#### Phase E plan — daily_activity → daily_vitals_cache (v3.34 #2 decided)
+
+**Operator decision:** option 2 selective. Absorb movement + energy
+into `daily_vitals_cache`; accept the loss on sleep-phase and
+walking/mobility (Series 3 watch can't supply them — null going
+forward).
 
 | Source column (`daily_activity`) | Destination (`daily_vitals_cache`) | Status |
 |---|---|---|
-| `activity_date` | `date` | Mapped |
-| `hrv_sdnn_ms` | `hrv_ms` | Mapped — backfilled by `scripts/consolidate-daily-activity-to-vitals.js` |
-| `resting_hr_bpm` | `rhr_bpm` | Mapped |
-| `sleep_total_min` | `sleep_total_min` | Mapped |
-| `respiratory_rate_avg` | `respiratory_rate_bpm` | Mapped |
-| `steps`, `distance_mi`, `exercise_minutes`, `flights_climbed`, `workout_count` | — | **No home — would be lost on drop** |
-| `active_energy_kcal`, `basal_energy_kcal` | — | **No home — would be lost on drop** |
-| `sleep_deep_min`, `sleep_rem_min`, `sleep_core_min`, `sleep_awake_min`, `sleep_efficiency_pct` | — | **No home — would be lost on drop** (Series 3 watch can't supply these anyway, so post-May 2026 rows are null) |
-| `walking_hr_avg_bpm`, `vo2_max`, `walking_speed_mph`, `walking_steadiness_pct`, `walking_asymmetry_pct`, `walking_step_length_in`, `stand_hours`, `stand_minutes` | — | **No home — would be lost on drop** |
+| `activity_date` | `date` | Mapped (join key) |
+| `hrv_sdnn_ms` | `hrv_ms` | **Mapped — recovery vital** |
+| `resting_hr_bpm` | `rhr_bpm` | **Mapped — recovery vital** |
+| `sleep_total_min` | `sleep_total_min` | **Mapped — recovery vital** |
+| `respiratory_rate_avg` | `respiratory_rate_bpm` | **Mapped — recovery vital** |
+| `steps` | `steps` | **Mapped — movement (v3.34 #2)** |
+| `distance_mi` | `distance_mi` | **Mapped — movement (v3.34 #2)** |
+| `exercise_minutes` | `exercise_minutes` | **Mapped — movement (v3.34 #2)** |
+| `flights_climbed` | `flights_climbed` | **Mapped — movement (v3.34 #2)** |
+| `workout_count` | `workout_count` | **Mapped — movement (v3.34 #2)** |
+| `active_energy_kcal` | `active_energy_kcal` | **Mapped — energy (v3.34 #2)** |
+| `basal_energy_kcal` | `basal_energy_kcal` | **Mapped — energy (v3.34 #2)** |
+| `sleep_deep_min`, `sleep_rem_min`, `sleep_core_min`, `sleep_awake_min`, `sleep_efficiency_pct` | — | **Accepted loss** — Series 3 can't supply; null going forward |
+| `walking_hr_avg_bpm`, `vo2_max`, `walking_speed_mph`, `walking_steadiness_pct`, `walking_asymmetry_pct`, `walking_step_length_in`, `stand_hours`, `stand_minutes` | — | **Accepted loss** — same hardware constraint |
 
-**Operator decision before Aug 5 drop:** the bottom-three rows above
-contain real data on dates where the user wore a Series 9+ watch. Three
-options:
+**Execution sequence:**
 
-1. **Accept the loss.** Reads in `routes/insights.js:1250` and
-   `routes/health.js:2381` that pull these columns will return null
-   after the drop. The readiness `sleep_quality.deep_min/rem_min`
-   display becomes "—". Simpler schema, cleaner future.
-2. **Extend daily_vitals_cache** to absorb the wanted columns first,
-   then drop daily_activity. Loses the focused-vitals shape but
-   preserves the data.
-3. **Defer the drop.** Keep daily_activity indefinitely as the
-   movement/sleep-phase historical archive; daily_vitals_cache becomes
-   the live working set for forward-going Shortcut data.
+1. `db.js` adds the 7 movement + energy columns to `daily_vitals_cache`
+   via additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Auto-runs
+   on next deploy.
+2. Operator runs `scripts/consolidate-daily-activity-to-vitals.js`
+   (dry, inspect, `--apply`). Backfills 11 fields total from
+   historical `daily_activity` rows into `daily_vitals_cache`.
+3. Operator runs `scripts/drop-daily-activity-movement-cols.js` (dry,
+   inspect, `--apply`). Pre-flight blocks if any `daily_activity` row
+   still has data not mirrored in `daily_vitals_cache`. On apply,
+   drops the 7 source columns from `daily_activity`.
+4. (Aug 5, 2026) `daily_activity` itself is dropped, taking the
+   sleep-phase + walking/mobility columns with it.
 
-Until that's decided, `scripts/consolidate-daily-activity-to-vitals.js`
-only migrates the 4 overlap fields. It's idempotent (cache values
-always win) and safe to run repeatedly.
+After step 3, `daily_vitals_cache` is the canonical source for movement
++ energy. The `/diag/full-day` SELECT in `routes/health.js` already
+uses a `FULL OUTER JOIN` with `COALESCE` so it survives transparently
+across the transition (cache wins on overlap, daily_activity provides
+fallback only until its columns drop).
 
 ### Daily-context misplacement
 
@@ -254,7 +266,8 @@ Conventions the code follows:
 | Script | Purpose | Default |
 |---|---|---|
 | `scripts/rebuild-daily-context.js` | Reclaim the 8 tombstoned attribute slots on `daily_context` by rebuilding the table. Transactional, with row-count and md5 checksum assertions; rolls back on any mismatch. | Dry run; pass `--apply` to commit. |
-| `scripts/consolidate-daily-activity-to-vitals.js` | Backfill `daily_vitals_cache` rows from `daily_activity` for the 4 overlapping vitals fields (hrv, rhr, sleep_total, respiratory_rate). Idempotent — cache values always win on overlap. Prerequisite to the Aug 5, 2026 `daily_activity` drop. | Dry run; pass `--apply` to write. |
+| `scripts/consolidate-daily-activity-to-vitals.js` | Backfill `daily_vitals_cache` rows from `daily_activity` for the 11 mapped fields (4 vitals + 5 movement + 2 energy per v3.34 #2 selective absorb). Idempotent — cache values always win on overlap. Prerequisite to `scripts/drop-daily-activity-movement-cols.js`. | Dry run; pass `--apply` to write. |
+| `scripts/drop-daily-activity-movement-cols.js` | Drop the 7 movement + energy columns from `daily_activity` AFTER the consolidate script has backfilled them. Pre-flight blocks if any `daily_activity` row still has data not in `daily_vitals_cache`. | Dry run; pass `--apply` to write. |
 | `scripts/backfill-hr-zones-from-metadata.js` | Derive `workouts.hr_zones` from `metadata.heartRateData` for rows missing it. | Dry run; pass `--apply` to write. |
 
 When operating these in production, always run dry-run first and

@@ -25,46 +25,59 @@ test('consolidate: entire flow wrapped in withTransaction', () => {
     'must use withTransaction wrapper');
 });
 
-test('consolidate: only the 4 overlap fields are migrated', () => {
-  // If someone adds a daily_activity column to this list that has no
-  // daily_vitals_cache home, the UPSERT will 500. Pin the exact mapping.
+test('consolidate: v3.34 #2 expanded — vitals + movement + energy migrated, sleep-phase + mobility excluded', () => {
   const m = src.match(/const VITALS_FIELDS = \[([\s\S]*?)\];/);
   assert.ok(m, 'VITALS_FIELDS mapping present');
   const list = m[1];
 
+  // Pairs we MUST migrate (v3.34 #2 selective absorb).
   const expectedPairs = [
+    // Recovery vitals (original 4)
     ['hrv_sdnn_ms', 'hrv_ms'],
     ['resting_hr_bpm', 'rhr_bpm'],
     ['sleep_total_min', 'sleep_total_min'],
     ['respiratory_rate_avg', 'respiratory_rate_bpm'],
+    // Movement (v3.34 #2)
+    ['steps', 'steps'],
+    ['distance_mi', 'distance_mi'],
+    ['exercise_minutes', 'exercise_minutes'],
+    ['flights_climbed', 'flights_climbed'],
+    ['workout_count', 'workout_count'],
+    // Energy (v3.34 #2)
+    ['active_energy_kcal', 'active_energy_kcal'],
+    ['basal_energy_kcal', 'basal_energy_kcal'],
   ];
   for (const [src_col, dst_col] of expectedPairs) {
     assert.ok(new RegExp(`\\['${src_col}',\\s*'${dst_col}'\\]`).test(list),
       `VITALS_FIELDS must map daily_activity.${src_col} → daily_vitals_cache.${dst_col}`);
   }
-  // Non-overlap columns must not be in this list — those need a separate
-  // migration path because daily_vitals_cache has no home for them.
-  for (const col of ['steps', 'distance_mi', 'exercise_minutes',
-                     'sleep_deep_min', 'sleep_rem_min', 'sleep_core_min',
+
+  // Per operator decision (option 2 selective): sleep-phase + walking +
+  // mobility cluster columns explicitly stay daily_activity-only. They
+  // get dropped with the table on Aug 5; not worth a daily_vitals_cache
+  // home since Series 3 watch produces null for all of them going forward.
+  for (const col of ['sleep_deep_min', 'sleep_rem_min', 'sleep_core_min',
                      'sleep_awake_min', 'sleep_efficiency_pct',
-                     'active_energy_kcal', 'basal_energy_kcal',
-                     'vo2_max', 'walking_hr_avg_bpm']) {
+                     'vo2_max', 'walking_hr_avg_bpm',
+                     'walking_speed_mph', 'walking_steadiness_pct',
+                     'walking_asymmetry_pct', 'walking_step_length_in',
+                     'stand_hours', 'stand_minutes']) {
     assert.ok(!new RegExp(`'${col}'`).test(list),
-      `VITALS_FIELDS must NOT include '${col}' (no daily_vitals_cache target)`);
+      `VITALS_FIELDS must NOT include '${col}' (Series-3 can't supply; not worth preserving)`);
   }
 });
 
-test('consolidate: ON CONFLICT preserves existing cache values via COALESCE', () => {
-  // The UPSERT must never overwrite a non-null cache value with a
-  // daily_activity value (cache always wins on overlap — Shortcut data
-  // is canonical). Pin the COALESCE pattern.
-  const conflict = src.match(/ON CONFLICT \(date\) DO UPDATE SET[\s\S]*?updated_at = NOW\(\)/);
-  assert.ok(conflict, 'ON CONFLICT block present');
-  const cols = ['hrv_ms', 'rhr_bpm', 'sleep_total_min', 'respiratory_rate_bpm'];
-  for (const c of cols) {
-    assert.ok(new RegExp(`${c} = COALESCE\\(daily_vitals_cache\\.${c}, EXCLUDED\\.${c}\\)`).test(conflict[0]),
-      `${c} must use COALESCE(daily_vitals_cache.${c}, EXCLUDED.${c}) — cache wins on overlap`);
-  }
+test('consolidate: ON CONFLICT preserves existing cache values via COALESCE (dynamic across all VITALS_FIELDS)', () => {
+  // The UPSERT pattern: for EVERY destination column in VITALS_FIELDS,
+  // ON CONFLICT must use COALESCE(daily_vitals_cache.col, EXCLUDED.col).
+  // The script builds this dynamically; we assert the produced pattern
+  // is structurally correct.
+  assert.ok(/COALESCE\(daily_vitals_cache\.\$\{c\}, EXCLUDED\.\$\{c\}\)/.test(src),
+    'upsertCols template must use COALESCE(daily_vitals_cache.<col>, EXCLUDED.<col>)');
+  // Sanity: the dynamic template must enumerate dstCols (no hardcoded
+  // shortlist that could drift from VITALS_FIELDS).
+  assert.ok(/dstCols\.map\(c =>/.test(src),
+    'upsert COALESCE list must iterate dstCols, not a hardcoded list');
 });
 
 test('consolidate: per-row skip when nothing would change', () => {
@@ -79,9 +92,11 @@ test('consolidate: per-row skip when nothing would change', () => {
 test('consolidate: after-state assertion catches regressions', () => {
   // Some safeguard against an UPSERT that accidentally NULLs an
   // existing value. We compare per-field non-null counts before/after
-  // and roll back if any decreased.
-  assert.ok(/if \(after\.rows\[0\]\[f\] < before\.rows\[0\]\[f\]\)/.test(src),
-    'after-state must assert no field count regressed');
+  // and roll back if any decreased. v3.34 #2: refactored to iterate
+  // dstCols (key = `count_${dst}`) so the assertion auto-grows with
+  // VITALS_FIELDS.
+  assert.ok(/if \(after\.rows\[0\]\[key\] < before\.rows\[0\]\[key\]\)/.test(src),
+    'after-state must assert no field count regressed (via dstCols loop)');
   assert.ok(/throw new Error\(['"]regression_detected['"]\)/.test(src),
     'regression must throw to roll back the transaction');
 });

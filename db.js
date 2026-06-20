@@ -1988,6 +1988,20 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
   await safeQuery('daily_vitals_cache +respiratory_rate_bpm', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS respiratory_rate_bpm NUMERIC(4,1)`);
+  // v3.34 #2: absorb movement + energy from daily_activity ahead of
+  // its Aug 5, 2026 drop. Sleep-phase + walking/mobility columns are
+  // deliberately NOT moved — Series 3 hardware can't supply them,
+  // they're null going forward, no point preserving dead columns.
+  // The data migration runs via scripts/consolidate-daily-activity-to-vitals.js
+  // (operator-gated). Once that's --apply'd, scripts/drop-daily-activity-cols.js
+  // can drop the 7 source columns from daily_activity.
+  await safeQuery('daily_vitals_cache +steps', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS steps INTEGER`);
+  await safeQuery('daily_vitals_cache +distance_mi', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS distance_mi NUMERIC(7,3)`);
+  await safeQuery('daily_vitals_cache +exercise_minutes', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS exercise_minutes INTEGER`);
+  await safeQuery('daily_vitals_cache +flights_climbed', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS flights_climbed INTEGER`);
+  await safeQuery('daily_vitals_cache +workout_count', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS workout_count INTEGER`);
+  await safeQuery('daily_vitals_cache +active_energy_kcal', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS active_energy_kcal NUMERIC(8,2)`);
+  await safeQuery('daily_vitals_cache +basal_energy_kcal', `ALTER TABLE daily_vitals_cache ADD COLUMN IF NOT EXISTS basal_energy_kcal NUMERIC(8,2)`);
   await safeQuery('daily_vitals_cache idx', `CREATE INDEX IF NOT EXISTS idx_vitals_cache_recorded ON daily_vitals_cache(recorded_at DESC)`);
 
   // ─── v1.9.4 — Phase 2 schema cleanup ──────────────────────────

@@ -2378,11 +2378,30 @@ router.get('/diag/full-day', async (req, res) => {
                     hevy_id, metadata->>'hae_id' AS hae_id,
                     jsonb_array_length(COALESCE(metadata->'heartRateData', '[]'::jsonb)) AS hr_samples_count
              FROM workouts WHERE workout_date = $1 ORDER BY started_at NULLS LAST, created_at`, [date]),
-      query(`SELECT activity_date, steps, distance_mi, exercise_minutes, flights_climbed,
-                    active_energy_kcal, basal_energy_kcal, resting_hr_bpm, walking_hr_avg_bpm,
-                    hrv_sdnn_ms, sleep_total_min, sleep_deep_min, sleep_rem_min,
-                    workout_count, sources, updated_at
-             FROM daily_activity WHERE activity_date = $1`, [date]),
+      // v3.34 #2: movement + energy cols now live in daily_vitals_cache
+      // (consolidated by scripts/consolidate-daily-activity-to-vitals.js).
+      // FULL OUTER JOIN so the merged view survives both before the
+      // drop (data in both sources, cache wins via COALESCE) and after
+      // (cache-only). Sleep-phase + walking/mobility stay daily_activity-only
+      // until that table is dropped on Aug 5.
+      query(`SELECT
+               COALESCE(c.date, da.activity_date) AS activity_date,
+               COALESCE(c.steps, da.steps) AS steps,
+               COALESCE(c.distance_mi, da.distance_mi) AS distance_mi,
+               COALESCE(c.exercise_minutes, da.exercise_minutes) AS exercise_minutes,
+               COALESCE(c.flights_climbed, da.flights_climbed) AS flights_climbed,
+               COALESCE(c.workout_count, da.workout_count) AS workout_count,
+               COALESCE(c.active_energy_kcal, da.active_energy_kcal) AS active_energy_kcal,
+               COALESCE(c.basal_energy_kcal, da.basal_energy_kcal) AS basal_energy_kcal,
+               COALESCE(c.rhr_bpm, da.resting_hr_bpm) AS resting_hr_bpm,
+               da.walking_hr_avg_bpm,
+               COALESCE(c.hrv_ms, da.hrv_sdnn_ms) AS hrv_sdnn_ms,
+               COALESCE(c.sleep_total_min, da.sleep_total_min) AS sleep_total_min,
+               da.sleep_deep_min, da.sleep_rem_min,
+               da.sources, COALESCE(c.updated_at, da.updated_at) AS updated_at
+             FROM daily_vitals_cache c
+             FULL OUTER JOIN daily_activity da ON c.date = da.activity_date
+             WHERE COALESCE(c.date, da.activity_date) = $1`, [date]),
       query(`SELECT id, meal_type, meal_time, calories, protein_g, carbs_g, fat_g, source, notes
              FROM meals WHERE meal_date = $1 ORDER BY meal_time NULLS LAST`, [date]),
       query(`SELECT id, measurement_time, source, weight_lb, body_fat_pct, lean_mass_lb, bmi, notes
