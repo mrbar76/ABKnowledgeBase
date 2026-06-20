@@ -627,7 +627,6 @@ async function initDB() {
       onset_date DATE,
       resolved_date DATE,
       symptoms TEXT,
-      treatment TEXT,
       notes TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
       ai_source TEXT,
@@ -785,6 +784,13 @@ async function initDB() {
   await safeQuery('workouts +metadata', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
   await safeQuery('workouts +search_vector', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
   await safeQuery('workouts +updated_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+  // v3.34 CI fix: started_at/ended_at were referenced by later ALTERs +
+  // indexes but never explicitly added. On production the columns
+  // existed from pre-idempotent-migration history; on a fresh DB
+  // every "ALTER COLUMN started_at ..." failed. safeQuery swallowed
+  // the errors but they cascaded into 19 failed migrations in CI.
+  await safeQuery('workouts +started_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ`);
+  await safeQuery('workouts +ended_at', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ`);
   await safeQuery('workouts started_at default', `ALTER TABLE workouts ALTER COLUMN started_at SET DEFAULT NOW()`);
   await safeQuery('workouts started_at nullable', `ALTER TABLE workouts ALTER COLUMN started_at DROP NOT NULL`);
   await safeQuery('workouts drop type check', `ALTER TABLE workouts DROP CONSTRAINT IF EXISTS workouts_workout_type_check`);
@@ -1320,14 +1326,14 @@ async function initDB() {
 
     CREATE OR REPLACE FUNCTION update_injuries_search() RETURNS TRIGGER AS $$
     BEGIN
-      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.body_area,'') || ' ' || coalesce(NEW.symptoms,'') || ' ' || coalesce(NEW.treatment,'') || ' ' || coalesce(NEW.notes,''));
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.body_area,'') || ' ' || coalesce(NEW.symptoms,'') || ' ' || coalesce(NEW.notes,''));
       NEW.updated_at := NOW();
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
     DROP TRIGGER IF EXISTS trg_injuries_search ON injuries;
-    CREATE TRIGGER trg_injuries_search BEFORE INSERT OR UPDATE OF title, body_area, symptoms, treatment, notes ON injuries
+    CREATE TRIGGER trg_injuries_search BEFORE INSERT OR UPDATE OF title, body_area, symptoms, notes ON injuries
       FOR EACH ROW EXECUTE FUNCTION update_injuries_search();
 
   `);
@@ -1364,7 +1370,10 @@ async function initDB() {
   await safeQuery('injuries +onset_date', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS onset_date DATE`);
   await safeQuery('injuries +resolved_date', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS resolved_date DATE`);
   await safeQuery('injuries +symptoms', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS symptoms TEXT`);
-  await safeQuery('injuries +treatment', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS treatment TEXT`);
+  // v3.34: injuries.treatment removed. Snapshot + DROP below
+  // (~line 2060). Same Phase-B pattern as workouts.adjustment —
+  // removing the ADD COLUMN here prevents the add → drop shuttle that
+  // wastes one Postgres attribute slot per boot.
   await safeQuery('injuries +notes', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS notes TEXT`);
   await safeQuery('injuries +tags', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('injuries +ai_source', `ALTER TABLE injuries ADD COLUMN IF NOT EXISTS ai_source TEXT`);
@@ -1393,11 +1402,11 @@ async function initDB() {
   await safeQuery('dc +travel_status', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS travel_status TEXT`);
   await safeQuery('dc +bedtime', `ALTER TABLE daily_context ADD COLUMN IF NOT EXISTS bedtime_self_report TIME`);
 
-  // -- daily_activity bedtime/wake (HAE Format B/D writes them; sleep score
-  // consistency + regularity stddev read them). Until populated, sleep score
-  // consistency component returns 0 and regularity stddev returns null --
-  await safeQuery('da +sleep_in_bed_start', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS sleep_in_bed_start TIMESTAMPTZ`);
-  await safeQuery('da +sleep_in_bed_end', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS sleep_in_bed_end TIMESTAMPTZ`);
+  // v3.34 CI fix: daily_activity bedtime/wake ALTERs used to live here,
+  // but daily_activity isn't CREATEd until ~line 1430. On a fresh DB
+  // the ALTER ran against a non-existent table and failed silently.
+  // Moved to immediately after the CREATE TABLE block (see "daily_activity
+  // table" below).
 
   // -- simplify daily_context: drop unused fields (sleep + hydration + notes kept) --
   await safeQuery('dc drop day_type', `ALTER TABLE daily_context DROP COLUMN IF EXISTS day_type`);
@@ -1465,6 +1474,12 @@ async function initDB() {
     )`);
   await safeQuery('daily_activity index', `
     CREATE INDEX IF NOT EXISTS idx_daily_activity_date ON daily_activity(activity_date DESC)`);
+
+  // v3.34 CI fix: bedtime/wake ALTERs moved here from the daily_context
+  // block above so they run AFTER daily_activity is created. HAE Format
+  // B/D writes them; sleep score consistency + regularity stddev read them.
+  await safeQuery('da +sleep_in_bed_start', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS sleep_in_bed_start TIMESTAMPTZ`);
+  await safeQuery('da +sleep_in_bed_end', `ALTER TABLE daily_activity ADD COLUMN IF NOT EXISTS sleep_in_bed_end TIMESTAMPTZ`);
 
   // File-level idempotency + reprocess log for raw exports
   await safeQuery('raw_health_imports table', `
@@ -2053,7 +2068,30 @@ async function initDB() {
   await safeQuery('meals -sodium_mg', `ALTER TABLE meals DROP COLUMN IF EXISTS sodium_mg`);
   await safeQuery('meals -serving_size', `ALTER TABLE meals DROP COLUMN IF EXISTS serving_size`);
 
-  // injuries — treatment merged into modifications (single free-text field)
+  // injuries — treatment merged into modifications (single free-text field).
+  //
+  // v3.34 CI fix: same Phase-B pattern as workouts.adjustment. The DROP
+  // below was failing on every boot because trg_injuries_search pinned
+  // NEW.treatment in its UPDATE OF list. Trigger now omits it; before
+  // the DROP runs, snapshot any non-empty treatment text into
+  // metadata.legacy_treatment so forensic recovery is still possible.
+  // Idempotent via the information_schema gate.
+  await safeQuery('injuries treatment snapshot', `
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'injuries' AND column_name = 'treatment'
+      ) THEN
+        UPDATE injuries
+        SET metadata = COALESCE(metadata, '{}'::jsonb)
+                       || jsonb_build_object('legacy_treatment', treatment)
+        WHERE treatment IS NOT NULL
+          AND length(trim(treatment)) > 0
+          AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'legacy_treatment');
+      END IF;
+    END $$;
+  `);
   await safeQuery('injuries -treatment', `ALTER TABLE injuries DROP COLUMN IF EXISTS treatment`);
   await safeQuery('injuries -tags', `ALTER TABLE injuries DROP COLUMN IF EXISTS tags`);
 
@@ -2437,7 +2475,7 @@ async function initDB() {
   await safeQuery('backfill dc search', `UPDATE daily_context SET search_vector = to_tsvector('english', coalesce(notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill coaching_sessions search', `UPDATE coaching_sessions SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(injury_notes,'') || ' ' || coalesce(next_steps,'') || ' ' || coalesce(recovery_notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill exercises search', `UPDATE exercises SET search_vector = to_tsvector('english', coalesce(name,'') || ' ' || coalesce(equipment,'') || ' ' || coalesce(primary_muscle_groups,'') || ' ' || coalesce(category,'') || ' ' || coalesce(description,'')) WHERE search_vector IS NULL`);
-  await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill injuries search', `UPDATE injuries SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill email_threads search', `UPDATE email_threads SET search_vector = to_tsvector('english', coalesce(subject,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill calendar_events search', `UPDATE calendar_events SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(location,'')) WHERE search_vector IS NULL`);
 

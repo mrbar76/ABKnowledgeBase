@@ -34,7 +34,11 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # pgvector/pgvector:pg16 is postgres:16 with the vector extension
+        # pre-installed. db.js's `CREATE EXTENSION IF NOT EXISTS vector`
+        # for email_threads and calendar_events would otherwise fail and
+        # cascade into 7+ dependent migration failures on bare postgres:16.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

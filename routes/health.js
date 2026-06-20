@@ -2630,6 +2630,13 @@ const DEPRECATED_COLUMNS = [
     stash_table: null, stash_key: null, jsonb: false },
   { table: 'workouts', column: 'adjustment', dropped_in: 'v3.33',
     stash_table: 'workouts', stash_key: 'legacy_adjustment', jsonb: false },
+  // v3.34 CI fix: same trigger-pinning class as adjustment. Drop ran
+  // every boot but was silently blocked because trg_injuries_search
+  // pinned NEW.treatment. Trigger fix + snapshot landed in this PR.
+  { table: 'injuries', column: 'treatment', dropped_in: 'v3.34',
+    stash_table: 'injuries', stash_key: 'legacy_treatment', jsonb: false },
+  { table: 'injuries', column: 'tags', dropped_in: 'v1.9.4',
+    stash_table: null, stash_key: null, jsonb: true },
   // daily_context "design shuttle" drops — added, dropped, sometimes re-
   // added under different names. The columns are gone today; their slots
   // remain as Postgres tombstones until the daily_context rebuild script
