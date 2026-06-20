@@ -225,3 +225,64 @@ test('coach.js: is_stale derived inline (not from a column)', () => {
   assert.ok(!/c\.is_stale\s+AS/i.test(coachSrc),
     'coach.js must not select c.is_stale as a column (does not exist)');
 });
+
+// ─── Phase B: workouts.adjustment fully excised from the schema ─────
+test('db.js: workouts CREATE TABLE no longer declares adjustment column', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  // Match the CREATE TABLE IF NOT EXISTS workouts (...) block. The column
+  // list ends at the closing paren before the index/trigger statements.
+  const m = src.match(/CREATE TABLE IF NOT EXISTS workouts \(([\s\S]*?)\n\s*\)/);
+  assert.ok(m, 'workouts CREATE TABLE block present');
+  assert.ok(!/\badjustment\b/.test(m[1]),
+    'adjustment must not be in the workouts CREATE TABLE column list');
+});
+
+test('db.js: no ADD COLUMN ... adjustment (no resurrection)', () => {
+  // The add-then-drop shuttle was the original sin. Removing the ADD
+  // closes that loop and protects the slot budget.
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  assert.ok(!/ALTER TABLE workouts ADD COLUMN IF NOT EXISTS adjustment\b/i.test(src),
+    'workouts.adjustment must not have an ADD COLUMN migration anymore');
+});
+
+test('db.js: update_workouts_search trigger does not reference adjustment', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  const fnMatch = src.match(/CREATE OR REPLACE FUNCTION update_workouts_search[\s\S]*?\$\$ LANGUAGE plpgsql/);
+  assert.ok(fnMatch, 'update_workouts_search function present');
+  assert.ok(!/NEW\.adjustment/.test(fnMatch[0]),
+    'trigger function must not reference NEW.adjustment (blocks the DROP)');
+  const triggerMatch = src.match(/CREATE TRIGGER trg_workouts_search[\s\S]*?update_workouts_search\(\)/);
+  assert.ok(triggerMatch, 'trg_workouts_search DDL present');
+  assert.ok(!/\badjustment\b/.test(triggerMatch[0]),
+    'trigger DDL must not list adjustment in UPDATE OF columns');
+});
+
+test('db.js: search_vector backfill for workouts does not reference adjustment', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  const m = src.match(/backfill workouts search[\s\S]*?WHERE search_vector IS NULL`/);
+  assert.ok(m, 'backfill workouts search statement present');
+  assert.ok(!/\badjustment\b/.test(m[0]),
+    'workouts search backfill must not reference adjustment');
+});
+
+test('db.js: adjustment snapshot migration runs before the DROP', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  // The snapshot copies the column value into metadata.legacy_adjustment
+  // so the irreversible DROP doesn't lose user-typed text. Two conditions:
+  // (1) the snapshot tag exists and uses information_schema gating;
+  // (2) it appears before the DROP COLUMN statement in source order.
+  const snapshotIdx = src.indexOf("safeQuery('workouts adjustment snapshot'");
+  const dropIdx = src.indexOf("safeQuery('workouts -adjustment'");
+  assert.ok(snapshotIdx > 0, 'snapshot migration must exist');
+  assert.ok(dropIdx > 0, 'DROP COLUMN migration must still exist');
+  assert.ok(snapshotIdx < dropIdx,
+    'snapshot must run BEFORE the DROP (otherwise the column data is lost)');
+  // Idempotency gate
+  const snapshotBlock = src.slice(snapshotIdx, dropIdx);
+  assert.ok(/information_schema\.columns/.test(snapshotBlock),
+    'snapshot must gate on information_schema so post-drop boots no-op');
+  assert.ok(/legacy_adjustment/.test(snapshotBlock),
+    'snapshot must write metadata.legacy_adjustment');
+  assert.ok(/NOT \(COALESCE\(metadata.*?\) \? 'legacy_adjustment'\)/.test(snapshotBlock),
+    'snapshot must skip rows already snapshotted (idempotent for repeat boots)');
+});
