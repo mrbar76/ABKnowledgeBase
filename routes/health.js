@@ -2882,6 +2882,160 @@ router.post('/backfill/hr-zones-from-metadata', async (req, res) => {
   }
 });
 
+// ─── GET /api/health/diag/tss-integrity ──────────────────────────
+// Read-only diagnostic for the TSB-divergence investigation. Returns
+// four orthogonal data integrity checks against the workouts table,
+// each one focused on a specific failure mode that can inflate the
+// SUM(tss) GROUP BY workout_date roll-up the dashboard reads.
+//
+// Use cases:
+//   (a) Same-day cross-source duplicates — apple_health + manual +
+//       hevy can all coexist for one physical session because no
+//       constraint enforces single-source dedupe across providers.
+//   (b) Stale TSS values — workouts.tss is computed once at insert
+//       against the athlete_zones row in effect at that time. If
+//       zones change later (canonical-correct), the cached tss is
+//       stale and likely high.
+//   (c) Fallback-formula rows — when HR is missing, computeTSS uses
+//       (durSec/60) * effort * 1.5 capped at 200. The cap itself is
+//       above the ~100/hour physiological max at threshold and can
+//       bias CTL upward.
+//   (d) Implausibly high per-hour TSS — anything above 130 TSS/hour
+//       is suspicious regardless of cause; surfaces rows the operator
+//       should review individually.
+//
+// Query string: ?days=42 (default 42, max 365).
+router.get('/diag/tss-integrity', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 42, 1), 365);
+
+    const [dupes, staleZones, fallback, perHour] = await Promise.all([
+      // (a) Same-day cross-source duplicates
+      query(
+        `SELECT workout_date,
+                COUNT(*)::int AS n,
+                COUNT(DISTINCT source)::int AS distinct_sources,
+                array_agg(DISTINCT source ORDER BY source) AS sources,
+                SUM(tss)::int AS daily_tss_sum,
+                ROUND(AVG(tss))::int AS daily_tss_avg,
+                array_agg(json_build_object(
+                  'id', id, 'source', source, 'title', title,
+                  'started_at', started_at,
+                  'duration_minutes', duration_minutes,
+                  'tss', tss
+                ) ORDER BY started_at) AS rows
+           FROM workouts
+          WHERE workout_date >= CURRENT_DATE - ($1::int || ' days')::interval
+            AND tss IS NOT NULL
+          GROUP BY workout_date
+         HAVING COUNT(*) > 1
+          ORDER BY workout_date DESC
+          LIMIT 100`,
+        [days]
+      ),
+      // (b) TSS values computed before the most recent athlete_zones
+      // canonical row. Heuristic: workout.updated_at < canonical_zones.created_at.
+      // Returns count + sample rows for spot-check.
+      query(
+        `WITH canonical AS (
+           SELECT created_at FROM athlete_zones
+            WHERE method = 'absolute_bpm'
+            ORDER BY created_at DESC LIMIT 1
+         )
+         SELECT
+           (SELECT COUNT(*)::int FROM workouts w, canonical c
+             WHERE w.tss IS NOT NULL
+               AND w.workout_date >= CURRENT_DATE - ($1::int || ' days')::interval
+               AND w.updated_at < c.created_at) AS stale_count,
+           (SELECT created_at FROM canonical) AS canonical_zones_created_at,
+           (SELECT json_agg(row_to_json(t)) FROM (
+              SELECT w.id, w.workout_date, w.source, w.tss,
+                     w.heart_rate_avg, w.time_duration, w.effort, w.updated_at
+                FROM workouts w, canonical c
+               WHERE w.tss IS NOT NULL
+                 AND w.workout_date >= CURRENT_DATE - ($1::int || ' days')::interval
+                 AND w.updated_at < c.created_at
+               ORDER BY w.tss DESC LIMIT 20
+            ) t) AS sample_stale_rows`,
+        [days]
+      ),
+      // (c) Rows that almost certainly hit the effort-fallback path
+      // (no usable heart_rate_avg). Effort-fallback caps at 200 which
+      // is above the per-hour TSS ceiling.
+      query(
+        `SELECT COUNT(*)::int AS n_fallback_likely,
+                array_agg(json_build_object(
+                  'id', id, 'workout_date', workout_date, 'source', source,
+                  'time_duration', time_duration, 'effort', effort, 'tss', tss
+                ) ORDER BY tss DESC) FILTER (WHERE 1=1) AS top_rows
+           FROM (
+             SELECT id, workout_date, source, time_duration, effort, tss
+               FROM workouts
+              WHERE tss IS NOT NULL
+                AND workout_date >= CURRENT_DATE - ($1::int || ' days')::interval
+                AND (heart_rate_avg IS NULL
+                     OR lower(heart_rate_avg) IN ('nan', 'null', 'none', '-', ''))
+              ORDER BY tss DESC LIMIT 30
+           ) t`,
+        [days]
+      ),
+      // (d) Implausibly high per-hour TSS. Threshold = 130 TSS/hr
+      // (physiological max ~100; 130 leaves headroom for legitimate
+      // short hard intervals but flags durably inflated rows).
+      query(
+        `SELECT id, workout_date, source, title, time_duration, duration_minutes,
+                heart_rate_avg, effort, tss,
+                ROUND(tss::numeric / NULLIF(duration_minutes, 0) * 60, 1) AS tss_per_hour
+           FROM workouts
+          WHERE tss IS NOT NULL
+            AND duration_minutes IS NOT NULL AND duration_minutes > 0
+            AND workout_date >= CURRENT_DATE - ($1::int || ' days')::interval
+            AND (tss::numeric / duration_minutes * 60) > 130
+          ORDER BY tss_per_hour DESC LIMIT 50`,
+        [days]
+      ),
+    ]);
+
+    // Top-line summary so the operator can decide what to do without
+    // reading the per-row arrays.
+    const summary = {
+      window_days: days,
+      same_day_duplicate_rows: dupes.rows.reduce((s, r) => s + r.n, 0),
+      same_day_duplicate_dates: dupes.rows.length,
+      stale_tss_rows: staleZones.rows[0]?.stale_count || 0,
+      canonical_zones_created_at: staleZones.rows[0]?.canonical_zones_created_at || null,
+      effort_fallback_likely_rows: fallback.rows[0]?.n_fallback_likely || 0,
+      implausible_per_hour_rows: perHour.rows.length,
+      verdict: null,
+    };
+
+    const concerns = [];
+    if (summary.same_day_duplicate_rows > 0) concerns.push(`${summary.same_day_duplicate_rows} duplicate-row(s) on ${summary.same_day_duplicate_dates} day(s) — cross-source dedupe needed`);
+    if (summary.stale_tss_rows > 0) concerns.push(`${summary.stale_tss_rows} row(s) with TSS computed against pre-canonical zones — run /insights/recompute-tss`);
+    if (summary.effort_fallback_likely_rows > 0) concerns.push(`${summary.effort_fallback_likely_rows} row(s) likely using effort-fallback (no HR) — TSS may be artificially capped at 200`);
+    if (summary.implausible_per_hour_rows > 0) concerns.push(`${summary.implausible_per_hour_rows} row(s) above 130 TSS/hour — likely inflated`);
+    summary.verdict = concerns.length ? concerns.join('; ') : 'No obvious integrity issues in the window.';
+
+    res.json({
+      summary,
+      same_day_duplicates: dupes.rows,
+      stale_zones: {
+        canonical_zones_created_at: staleZones.rows[0]?.canonical_zones_created_at,
+        stale_count: staleZones.rows[0]?.stale_count || 0,
+        sample: staleZones.rows[0]?.sample_stale_rows || [],
+      },
+      effort_fallback: {
+        n_likely: fallback.rows[0]?.n_fallback_likely || 0,
+        top_rows: fallback.rows[0]?.top_rows || [],
+      },
+      implausible_per_hour: perHour.rows,
+    });
+  } catch (err) {
+    console.error(`[health/diag/tss-integrity] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.computeHrZonesForWorkout = computeHrZonesForWorkout;
 module.exports.bucketSamplesByZone = bucketSamplesByZone;
