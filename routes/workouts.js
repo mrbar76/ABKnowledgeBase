@@ -6,7 +6,7 @@ const router = express.Router();
 
 const WORKOUT_TEXT_FIELDS = [
   'title', 'focus', 'workout_focus', 'warmup', 'main_sets',
-  'body_notes', 'adjustment', 'splits',
+  'body_notes',
   'slowdown_notes', 'carries', 'failure_first',
   'grip_feedback', 'legs_feedback', 'shoulder_feedback', 'cardio_feedback',
   'plan_comparison_notes',

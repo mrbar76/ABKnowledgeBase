@@ -40,6 +40,84 @@ test('workouts: POST INSERT does not reference dropped cols', () => {
   }
 });
 
+test('workouts: WORKOUT_TEXT_FIELDS does not list dropped cols', () => {
+  // Lists drive cleanFields/cleanRows over SELECT results. Dropped columns
+  // won't be on rows but listing them invites future copy-paste regressions.
+  const src = readRoute('workouts');
+  const m = src.match(/const WORKOUT_TEXT_FIELDS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'WORKOUT_TEXT_FIELDS declared');
+  const list = m[1];
+  for (const col of ['adjustment', 'splits', 'pace_avg', 'cadence_avg']) {
+    assert.ok(!new RegExp(`['"]${col}['"]`).test(list),
+      `${col} must not be in WORKOUT_TEXT_FIELDS (dropped in v1.9.4)`);
+  }
+});
+
+// ─── routes/health.js: Apple Health ingest SQL — the production-bug surface ──
+test('health.js: Apple Health UPSERT does not reference dropped cols', () => {
+  // routes/health.js held the actual runtime bug: every Apple Health workout
+  // INSERT/UPSERT failed silently (caught + logged, never surfaced) because
+  // the SQL referenced pace_avg after db.js dropped the column.
+  //
+  // Anchor on the backtick template-literal boundary so the match stays
+  // inside one SQL statement instead of spilling across surrounding JS
+  // (in-memory objects like `{ pace_avg: ... }` are intentional payload
+  // shapes and shouldn't trip the assertion).
+  const src = readRoute('health');
+  // Apple-health merge UPDATE: the one whose body starts with time_duration.
+  const updateMatch = src.match(/`UPDATE workouts SET\s+time_duration[\s\S]*?WHERE id = \$1`/);
+  assert.ok(updateMatch, 'merge UPDATE statement present');
+  // Apple-health INSERT...ON CONFLICT: confined to its own template literal.
+  const insertMatch = src.match(/`\s*INSERT INTO workouts \([\s\S]*?RETURNING[^`]*`/);
+  assert.ok(insertMatch, 'apple_health INSERT ... ON CONFLICT statement present');
+  for (const sql of [updateMatch[0], insertMatch[0]]) {
+    for (const col of ['pace_avg', 'splits', 'cadence_avg']) {
+      assert.ok(!new RegExp(`\\b${col}\\b`).test(sql),
+        `${col} must not appear in apple_health ingest SQL (dropped in v1.9.4)`);
+    }
+  }
+});
+
+test('health.js: SENSOR_FIELDS used by dedupe scoring omits dropped cols', () => {
+  // SENSOR_FIELDS drives pickSurvivor() during cross-source dedupe. Listing
+  // dropped columns here makes the score function always 0 for them, which
+  // is harmless on read but misleading documentation.
+  const src = readRoute('health');
+  const m = src.match(/const SENSOR_FIELDS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'SENSOR_FIELDS declared');
+  const list = m[1];
+  for (const col of ['pace_avg', 'splits', 'cadence_avg', 'adjustment']) {
+    assert.ok(!new RegExp(`['"]${col}['"]`).test(list),
+      `${col} must not be in SENSOR_FIELDS (dropped in v1.9.4)`);
+  }
+});
+
+test('health.js: dedupe SELECT does not request dropped cols', () => {
+  const src = readRoute('health');
+  // The candidates SELECT inside dedupeAppleWorkouts pulls workout rows
+  // for parent-overlap scoring. Same dropped-col risk.
+  const selectMatch = src.match(/SELECT id, started_at, ended_at,[\s\S]*?FROM workouts/);
+  assert.ok(selectMatch, 'dedupe candidates SELECT present');
+  for (const col of ['pace_avg', 'splits', 'cadence_avg']) {
+    assert.ok(!new RegExp(`\\b${col}\\b`).test(selectMatch[0]),
+      `${col} must not appear in dedupe SELECT`);
+  }
+});
+
+// ─── routes/coach.js: SELECTs no longer ask for dropped cols ─────────
+test('coach.js: cleanFields/cleanRows do not reference dropped cols', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/coach.js'), 'utf8');
+  // The coach endpoint passes column lists to cleanFields/cleanRows over
+  // workout rows. If those rows came from a SELECT that asked for dropped
+  // columns, the SELECT would 500 first; defensively also keep the list
+  // accurate.
+  const calls = src.match(/clean(Fields|Rows)\([^)]*\)/g) || [];
+  for (const call of calls) {
+    assert.ok(!/['"]adjustment['"]/.test(call),
+      `adjustment must not appear in coach.js clean call: ${call.slice(0, 80)}`);
+  }
+});
+
 // ─── meals: fiber_g, sugar_g, sodium_mg, serving_size dropped ──────
 test('meals: INSERT_SQL does not reference dropped cols', () => {
   const src = readRoute('meals');

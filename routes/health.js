@@ -988,18 +988,17 @@ async function upsertWorkouts(workouts) {
              elevation_gain  = COALESCE($4, elevation_gain),
              heart_rate_avg  = COALESCE($5, heart_rate_avg),
              heart_rate_max  = COALESCE($6, heart_rate_max),
-             pace_avg        = COALESCE($7, pace_avg),
-             active_calories = COALESCE($8, active_calories),
-             total_calories  = COALESCE($9, total_calories),
-             cal_active      = COALESCE($12, cal_active),
-             cal_total       = COALESCE($13, cal_total),
-             ended_at        = COALESCE($10, ended_at),
-             metadata        = metadata || $11::jsonb,
+             active_calories = COALESCE($7, active_calories),
+             total_calories  = COALESCE($8, total_calories),
+             cal_active      = COALESCE($11, cal_active),
+             cal_total       = COALESCE($12, cal_total),
+             ended_at        = COALESCE($9, ended_at),
+             metadata        = metadata || $10::jsonb,
              updated_at      = NOW()
            WHERE id = $1`,
           [nearby.rows[0].id,
            w.time_duration, w.distance, w.elevation_gain,
-           w.heart_rate_avg, w.heart_rate_max, w.pace_avg,
+           w.heart_rate_avg, w.heart_rate_max,
            w.active_calories, w.total_calories, w.ended_at,
            JSON.stringify({ apple_health: w.metadata || {} }),
            mergeCalActive, mergeCalTotal]
@@ -1030,17 +1029,17 @@ async function upsertWorkouts(workouts) {
       INSERT INTO workouts (
         title, workout_date, workout_type, inferred_workout_type, location,
         time_duration, distance, elevation_gain,
-        heart_rate_avg, heart_rate_max, pace_avg,
+        heart_rate_avg, heart_rate_max,
         active_calories, total_calories,
         cal_active, cal_total,
         started_at, ended_at, source, ai_source, metadata
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8,
-        $9, $10, $11,
-        $12, $13,
-        $14, $15,
-        $16, $17, $18, $19, $20
+        $9, $10,
+        $11, $12,
+        $13, $14,
+        $15, $16, $17, $18, $19
       )
       ON CONFLICT (started_at) WHERE source = 'apple_health' AND started_at IS NOT NULL
       DO UPDATE SET
@@ -1049,7 +1048,6 @@ async function upsertWorkouts(workouts) {
         elevation_gain = EXCLUDED.elevation_gain,
         heart_rate_avg = EXCLUDED.heart_rate_avg,
         heart_rate_max = EXCLUDED.heart_rate_max,
-        pace_avg = EXCLUDED.pace_avg,
         active_calories = EXCLUDED.active_calories,
         total_calories = EXCLUDED.total_calories,
         cal_active = EXCLUDED.cal_active,
@@ -1063,7 +1061,7 @@ async function upsertWorkouts(workouts) {
       const result = await query(sql, [
         title, w.workout_date, w.workout_type, w.inferred_workout_type === true, w.location,
         w.time_duration, w.distance, w.elevation_gain,
-        w.heart_rate_avg, w.heart_rate_max, w.pace_avg,
+        w.heart_rate_avg, w.heart_rate_max,
         w.active_calories, w.total_calories,
         calActiveInt, calTotalInt,
         w.started_at, w.ended_at, w.source, w.ai_source,
@@ -1864,7 +1862,7 @@ async function dedupeAppleWorkouts() {
     // on each side to catch warmup/cooldown blocks Apple split off).
     const candidates = await query(
       `SELECT id, started_at, ended_at, distance, heart_rate_avg, heart_rate_max,
-              elevation_gain, pace_avg, active_calories, total_calories,
+              elevation_gain, active_calories, total_calories,
               cal_active, cal_total, time_duration, metadata
        FROM workouts
        WHERE source = 'apple_health'
@@ -1959,9 +1957,8 @@ function durationToSeconds(s) {
 
 const SENSOR_FIELDS = [
   'time_duration', 'distance', 'elevation_gain',
-  'heart_rate_avg', 'heart_rate_max', 'pace_avg',
+  'heart_rate_avg', 'heart_rate_max',
   'active_calories', 'total_calories', 'ended_at',
-  'splits', 'cadence_avg',
 ];
 
 function scoreWorkout(w) {
