@@ -256,8 +256,21 @@ Conventions the code follows:
    churn has cost a table N attribute slots, the only way to reclaim
    them is to rebuild the table inside a transaction (CREATE v2,
    INSERT, assert row-count + checksum match, DROP old, RENAME v2 in).
-   See `scripts/rebuild-daily-context.js` for the v3.33 reference
-   implementation. Dry-run by default; `--apply` commits.
+   See `scripts/rebuild-daily-context.js` for the table-specific
+   reference, or `scripts/rebuild-table.js --table=<name>` for the
+   generalized version (auto-discovers live columns / indexes /
+   triggers from the live DB). Dry-run by default; `--apply` commits.
+7. **Never `ADD COLUMN IF NOT EXISTS X` paired with `DROP COLUMN IF
+   EXISTS X` in the same `initDB()` run.** This is the canonical
+   per-boot tombstone leak: the ADD allocates a new attribute slot
+   every boot, the DROP marks it dropped, the slot is permanently
+   consumed against Postgres's 1600-attribute table ceiling. When
+   deprecating a column, **remove both the CREATE TABLE entry AND
+   the ADD COLUMN line; keep only the DROP COLUMN for idempotency
+   on legacy DBs**. Production hit 1581 tombstones on `daily_context`
+   from this pattern alone before round 4 closed it. Enforced by
+   `tests/no-tombstone-leaks.test.js` — CI fails if a future commit
+   re-introduces the pattern.
 
 ---
 
