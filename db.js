@@ -642,7 +642,7 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_injuries_tags ON injuries USING gin(tags);
     CREATE INDEX IF NOT EXISTS idx_injuries_search ON injuries USING gin(search_vector);
     CREATE INDEX IF NOT EXISTS idx_injuries_trgm ON injuries USING gin(
-      (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(treatment,'') || ' ' || coalesce(notes,'')) gin_trgm_ops
+      (coalesce(title,'') || ' ' || coalesce(body_area,'') || ' ' || coalesce(symptoms,'') || ' ' || coalesce(notes,'')) gin_trgm_ops
     )`);
 
   // (goal_profiles table removed — readiness system removed)
@@ -2481,12 +2481,24 @@ async function initDB() {
 
 
   // ===== DATA MIGRATIONS =====
-  // Migrate facts into knowledge (one-time, safe with ON CONFLICT)
+  // Migrate facts into knowledge (one-time, safe with ON CONFLICT).
+  // v3.34 CI fix: gate on information_schema — on production the `facts`
+  // table existed historically and was merged + dropped; on a fresh DB
+  // it never existed and the bare INSERT...SELECT FROM facts raised
+  // "relation facts does not exist". safeQuery swallowed it on prod
+  // (no harm done since the table is also gone there), but CI now
+  // reports a non-zero failed_migrations_count. The DO $$ guard makes
+  // the migration a true no-op on any DB without a `facts` table.
   await safeQuery('migrate facts→knowledge', `
-    INSERT INTO knowledge (id, title, content, category, tags, source, confirmed, search_vector, created_at, updated_at)
-    SELECT id, title, content, category, tags, source, confirmed, search_vector, created_at, updated_at
-    FROM facts
-    ON CONFLICT (id) DO NOTHING
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'facts') THEN
+        INSERT INTO knowledge (id, title, content, category, tags, source, confirmed, search_vector, created_at, updated_at)
+        SELECT id, title, content, category, tags, source, confirmed, search_vector, created_at, updated_at
+        FROM facts
+        ON CONFLICT (id) DO NOTHING;
+      END IF;
+    END $$;
   `);
 
   console.log('PostgreSQL database initialized successfully');
