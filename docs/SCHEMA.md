@@ -205,3 +205,22 @@ Conventions the code follows:
    for `update_workouts_search()`.
 5. **No silent ENUMs.** Status/type fields are TEXT with `CHECK`
    constraints. Native ENUMs would be cleaner; tracked under design debt.
+6. **Table-level rebuilds for tombstone reclamation.** When add/drop
+   churn has cost a table N attribute slots, the only way to reclaim
+   them is to rebuild the table inside a transaction (CREATE v2,
+   INSERT, assert row-count + checksum match, DROP old, RENAME v2 in).
+   See `scripts/rebuild-daily-context.js` for the v3.33 reference
+   implementation. Dry-run by default; `--apply` commits.
+
+---
+
+## Operational scripts
+
+| Script | Purpose | Default |
+|---|---|---|
+| `scripts/rebuild-daily-context.js` | Reclaim the 8 tombstoned attribute slots on `daily_context` by rebuilding the table. Transactional, with row-count and md5 checksum assertions; rolls back on any mismatch. | Dry run; pass `--apply` to commit. |
+| `scripts/backfill-hr-zones-from-metadata.js` | Derive `workouts.hr_zones` from `metadata.heartRateData` for rows missing it. | Dry run; pass `--apply` to write. |
+
+When operating these in production, always run dry-run first and
+inspect the output. The drift detector at
+`GET /api/health/diag/deprecated-columns` confirms the post-state.

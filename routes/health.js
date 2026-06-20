@@ -2567,6 +2567,26 @@ const DEPRECATED_COLUMNS = [
     stash_table: null, stash_key: null, jsonb: false },
   { table: 'workouts', column: 'adjustment', dropped_in: 'v3.33',
     stash_table: 'workouts', stash_key: 'legacy_adjustment', jsonb: false },
+  // daily_context "design shuttle" drops — added, dropped, sometimes re-
+  // added under different names. The columns are gone today; their slots
+  // remain as Postgres tombstones until the daily_context rebuild script
+  // is run (scripts/rebuild-daily-context.js).
+  { table: 'daily_context', column: 'day_type', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'energy_rating', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'hunger_rating', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'recovery_rating', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'body_weight_lb', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'cravings', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'digestion', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: false },
+  { table: 'daily_context', column: 'tags', dropped_in: 'simplify',
+    stash_table: null, stash_key: null, jsonb: true },
 ];
 
 // ─── GET /api/health/diag/deprecated-columns ───────────────────
