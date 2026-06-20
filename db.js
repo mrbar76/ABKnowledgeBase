@@ -226,7 +226,6 @@ async function initDB() {
       total_calories TEXT,
       effort INTEGER CHECK(effort >= 1 AND effort <= 10),
       body_notes TEXT,
-      adjustment TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
       source TEXT DEFAULT 'manual',
       ai_source TEXT,
@@ -751,7 +750,9 @@ async function initDB() {
   await safeQuery('workouts +elevation_gain', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS elevation_gain TEXT`);
   await safeQuery('workouts +effort', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS effort INTEGER`);
   await safeQuery('workouts +body_notes', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS body_notes TEXT`);
-  await safeQuery('workouts +adjustment', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS adjustment TEXT`);
+  // v3.33 Phase B: workouts.adjustment removed. Snapshot + DROP below
+  // (~line 1990). Removing the ADD COLUMN here prevents the add → drop
+  // shuttle that wastes Postgres attribute slots on every boot.
   await safeQuery('workouts +tags', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb`);
   await safeQuery('workouts +source', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual'`);
   await safeQuery('workouts +ai_source', `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS ai_source TEXT`);
@@ -1228,14 +1229,14 @@ async function initDB() {
 
     CREATE OR REPLACE FUNCTION update_workouts_search() RETURNS TRIGGER AS $$
     BEGIN
-      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.focus,'') || ' ' || coalesce(NEW.main_sets,'') || ' ' || coalesce(NEW.body_notes,'') || ' ' || coalesce(NEW.adjustment,''));
+      NEW.search_vector := to_tsvector('english', coalesce(NEW.title,'') || ' ' || coalesce(NEW.focus,'') || ' ' || coalesce(NEW.main_sets,'') || ' ' || coalesce(NEW.body_notes,''));
       NEW.updated_at := NOW();
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
     DROP TRIGGER IF EXISTS trg_workouts_search ON workouts;
-    CREATE TRIGGER trg_workouts_search BEFORE INSERT OR UPDATE OF title, focus, main_sets, body_notes, adjustment ON workouts
+    CREATE TRIGGER trg_workouts_search BEFORE INSERT OR UPDATE OF title, focus, main_sets, body_notes ON workouts
       FOR EACH ROW EXECUTE FUNCTION update_workouts_search();
 
     CREATE OR REPLACE FUNCTION update_body_metrics_search() RETURNS TRIGGER AS $$
@@ -1982,6 +1983,32 @@ async function initDB() {
   // workouts — replaced by canonical numeric columns (cadence→cadence numeric,
   // splits→workout segments via plan_segments, pace_avg→duration/distance derive,
   // adjustment→body_notes free-text)
+  //
+  // v3.33 Phase B: workouts.adjustment used to be unrecoverable here. The
+  // DROP at line ~1996 was blocked on every boot because trg_workouts_search
+  // referenced NEW.adjustment, so the column stayed (with stale data) and
+  // the safeQuery error log was the only signal. Trigger now omits the
+  // reference; before the DROP runs, snapshot any non-empty adjustment text
+  // into metadata.legacy_adjustment so forensic recovery is still possible.
+  // Idempotent: the information_schema gate makes this a no-op once the
+  // column is gone, and the `NOT (metadata ? 'legacy_adjustment')` skips
+  // rows already snapshotted on an earlier boot.
+  await safeQuery('workouts adjustment snapshot', `
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'workouts' AND column_name = 'adjustment'
+      ) THEN
+        UPDATE workouts
+        SET metadata = COALESCE(metadata, '{}'::jsonb)
+                       || jsonb_build_object('legacy_adjustment', adjustment)
+        WHERE adjustment IS NOT NULL
+          AND length(trim(adjustment)) > 0
+          AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'legacy_adjustment');
+      END IF;
+    END $$;
+  `);
   await safeQuery('workouts -cadence_avg', `ALTER TABLE workouts DROP COLUMN IF EXISTS cadence_avg`);
   await safeQuery('workouts -splits', `ALTER TABLE workouts DROP COLUMN IF EXISTS splits`);
   await safeQuery('workouts -pace_avg', `ALTER TABLE workouts DROP COLUMN IF EXISTS pace_avg`);
@@ -2372,7 +2399,7 @@ async function initDB() {
   await safeQuery('backfill knowledge search', `UPDATE knowledge SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill transcripts search', `UPDATE transcripts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(raw_text,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill conversations search', `UPDATE conversations SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'')) WHERE search_vector IS NULL`);
-  await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'') || ' ' || coalesce(adjustment,'')) WHERE search_vector IS NULL`);
+  await safeQuery('backfill workouts search', `UPDATE workouts SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(focus,'') || ' ' || coalesce(main_sets,'') || ' ' || coalesce(body_notes,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill body_metrics search', `UPDATE body_metrics SET search_vector = to_tsvector('english', coalesce(source,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(measurement_context,'') || ' ' || coalesce(vendor_user_mode,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill meals search', `UPDATE meals SET search_vector = to_tsvector('english', coalesce(title,'') || ' ' || coalesce(notes,'') || ' ' || coalesce(meal_type,'')) WHERE search_vector IS NULL`);
   await safeQuery('backfill dc search', `UPDATE daily_context SET search_vector = to_tsvector('english', coalesce(notes,'')) WHERE search_vector IS NULL`);

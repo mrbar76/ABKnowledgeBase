@@ -444,7 +444,7 @@ router.get('/postworkout', async (req, res) => {
     res.json({
       generated_at: new Date().toISOString(),
       date: today,
-      latest_workout: cleanFields(latestWorkout.rows[0] || null, ['title', 'focus', 'workout_focus', 'body_notes', 'adjustment']),
+      latest_workout: cleanFields(latestWorkout.rows[0] || null, ['title', 'focus', 'workout_focus', 'body_notes']),
       macros: {
         kcal_consumed: Math.round(totalKcal),
         kcal_target: target.target_calories || null,
@@ -582,7 +582,7 @@ router.get('/end-of-day', async (req, res) => {
       generated_at: new Date().toISOString(),
       date: today,
       today_plan: cleanFields(todayPlan, PLAN_TEXT_FIELDS),
-      today_workouts: cleanRows(todayWorkouts.rows, ['title', 'focus', 'workout_focus', 'body_notes', 'adjustment']),
+      today_workouts: cleanRows(todayWorkouts.rows, ['title', 'focus', 'workout_focus', 'body_notes']),
       nutrition_summary: {
         meal_count: todayMeals.rows.length,
         kcal_consumed: Math.round(totalKcal),

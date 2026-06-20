@@ -40,6 +40,84 @@ test('workouts: POST INSERT does not reference dropped cols', () => {
   }
 });
 
+test('workouts: WORKOUT_TEXT_FIELDS does not list dropped cols', () => {
+  // Lists drive cleanFields/cleanRows over SELECT results. Dropped columns
+  // won't be on rows but listing them invites future copy-paste regressions.
+  const src = readRoute('workouts');
+  const m = src.match(/const WORKOUT_TEXT_FIELDS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'WORKOUT_TEXT_FIELDS declared');
+  const list = m[1];
+  for (const col of ['adjustment', 'splits', 'pace_avg', 'cadence_avg']) {
+    assert.ok(!new RegExp(`['"]${col}['"]`).test(list),
+      `${col} must not be in WORKOUT_TEXT_FIELDS (dropped in v1.9.4)`);
+  }
+});
+
+// ─── routes/health.js: Apple Health ingest SQL — the production-bug surface ──
+test('health.js: Apple Health UPSERT does not reference dropped cols', () => {
+  // routes/health.js held the actual runtime bug: every Apple Health workout
+  // INSERT/UPSERT failed silently (caught + logged, never surfaced) because
+  // the SQL referenced pace_avg after db.js dropped the column.
+  //
+  // Anchor on the backtick template-literal boundary so the match stays
+  // inside one SQL statement instead of spilling across surrounding JS
+  // (in-memory objects like `{ pace_avg: ... }` are intentional payload
+  // shapes and shouldn't trip the assertion).
+  const src = readRoute('health');
+  // Apple-health merge UPDATE: the one whose body starts with time_duration.
+  const updateMatch = src.match(/`UPDATE workouts SET\s+time_duration[\s\S]*?WHERE id = \$1`/);
+  assert.ok(updateMatch, 'merge UPDATE statement present');
+  // Apple-health INSERT...ON CONFLICT: confined to its own template literal.
+  const insertMatch = src.match(/`\s*INSERT INTO workouts \([\s\S]*?RETURNING[^`]*`/);
+  assert.ok(insertMatch, 'apple_health INSERT ... ON CONFLICT statement present');
+  for (const sql of [updateMatch[0], insertMatch[0]]) {
+    for (const col of ['pace_avg', 'splits', 'cadence_avg']) {
+      assert.ok(!new RegExp(`\\b${col}\\b`).test(sql),
+        `${col} must not appear in apple_health ingest SQL (dropped in v1.9.4)`);
+    }
+  }
+});
+
+test('health.js: SENSOR_FIELDS used by dedupe scoring omits dropped cols', () => {
+  // SENSOR_FIELDS drives pickSurvivor() during cross-source dedupe. Listing
+  // dropped columns here makes the score function always 0 for them, which
+  // is harmless on read but misleading documentation.
+  const src = readRoute('health');
+  const m = src.match(/const SENSOR_FIELDS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'SENSOR_FIELDS declared');
+  const list = m[1];
+  for (const col of ['pace_avg', 'splits', 'cadence_avg', 'adjustment']) {
+    assert.ok(!new RegExp(`['"]${col}['"]`).test(list),
+      `${col} must not be in SENSOR_FIELDS (dropped in v1.9.4)`);
+  }
+});
+
+test('health.js: dedupe SELECT does not request dropped cols', () => {
+  const src = readRoute('health');
+  // The candidates SELECT inside dedupeAppleWorkouts pulls workout rows
+  // for parent-overlap scoring. Same dropped-col risk.
+  const selectMatch = src.match(/SELECT id, started_at, ended_at,[\s\S]*?FROM workouts/);
+  assert.ok(selectMatch, 'dedupe candidates SELECT present');
+  for (const col of ['pace_avg', 'splits', 'cadence_avg']) {
+    assert.ok(!new RegExp(`\\b${col}\\b`).test(selectMatch[0]),
+      `${col} must not appear in dedupe SELECT`);
+  }
+});
+
+// ─── routes/coach.js: SELECTs no longer ask for dropped cols ─────────
+test('coach.js: cleanFields/cleanRows do not reference dropped cols', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../routes/coach.js'), 'utf8');
+  // The coach endpoint passes column lists to cleanFields/cleanRows over
+  // workout rows. If those rows came from a SELECT that asked for dropped
+  // columns, the SELECT would 500 first; defensively also keep the list
+  // accurate.
+  const calls = src.match(/clean(Fields|Rows)\([^)]*\)/g) || [];
+  for (const call of calls) {
+    assert.ok(!/['"]adjustment['"]/.test(call),
+      `adjustment must not appear in coach.js clean call: ${call.slice(0, 80)}`);
+  }
+});
+
 // ─── meals: fiber_g, sugar_g, sodium_mg, serving_size dropped ──────
 test('meals: INSERT_SQL does not reference dropped cols', () => {
   const src = readRoute('meals');
@@ -146,4 +224,106 @@ test('coach.js: is_stale derived inline (not from a column)', () => {
     'coach.js must derive cache_is_stale inline from updated_at');
   assert.ok(!/c\.is_stale\s+AS/i.test(coachSrc),
     'coach.js must not select c.is_stale as a column (does not exist)');
+});
+
+// ─── Phase B: workouts.adjustment fully excised from the schema ─────
+test('db.js: workouts CREATE TABLE no longer declares adjustment column', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  // Match the CREATE TABLE IF NOT EXISTS workouts (...) block. The column
+  // list ends at the closing paren before the index/trigger statements.
+  const m = src.match(/CREATE TABLE IF NOT EXISTS workouts \(([\s\S]*?)\n\s*\)/);
+  assert.ok(m, 'workouts CREATE TABLE block present');
+  assert.ok(!/\badjustment\b/.test(m[1]),
+    'adjustment must not be in the workouts CREATE TABLE column list');
+});
+
+test('db.js: no ADD COLUMN ... adjustment (no resurrection)', () => {
+  // The add-then-drop shuttle was the original sin. Removing the ADD
+  // closes that loop and protects the slot budget.
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  assert.ok(!/ALTER TABLE workouts ADD COLUMN IF NOT EXISTS adjustment\b/i.test(src),
+    'workouts.adjustment must not have an ADD COLUMN migration anymore');
+});
+
+test('db.js: update_workouts_search trigger does not reference adjustment', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  const fnMatch = src.match(/CREATE OR REPLACE FUNCTION update_workouts_search[\s\S]*?\$\$ LANGUAGE plpgsql/);
+  assert.ok(fnMatch, 'update_workouts_search function present');
+  assert.ok(!/NEW\.adjustment/.test(fnMatch[0]),
+    'trigger function must not reference NEW.adjustment (blocks the DROP)');
+  const triggerMatch = src.match(/CREATE TRIGGER trg_workouts_search[\s\S]*?update_workouts_search\(\)/);
+  assert.ok(triggerMatch, 'trg_workouts_search DDL present');
+  assert.ok(!/\badjustment\b/.test(triggerMatch[0]),
+    'trigger DDL must not list adjustment in UPDATE OF columns');
+});
+
+test('db.js: search_vector backfill for workouts does not reference adjustment', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  const m = src.match(/backfill workouts search[\s\S]*?WHERE search_vector IS NULL`/);
+  assert.ok(m, 'backfill workouts search statement present');
+  assert.ok(!/\badjustment\b/.test(m[0]),
+    'workouts search backfill must not reference adjustment');
+});
+
+// ─── Schema sentinel: deprecation manifest is the source of truth ──
+test('health.js: DEPRECATED_COLUMNS manifest covers every db.js DROP', () => {
+  // The /diag/deprecated-columns endpoint detects drift by comparing the
+  // live schema against this manifest. If a DROP exists in db.js but no
+  // manifest entry, the sentinel reports green when it shouldn't —
+  // worst-case the column is still on disk and we'd never know.
+  const healthSrc = fs.readFileSync(path.join(__dirname, '../routes/health.js'), 'utf8');
+  const dbSrc = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+
+  // Pull every (table, column) pair appearing in safeQuery('<table> -<col>', ...).
+  const dropTags = [...dbSrc.matchAll(/safeQuery\(['"]([a-z_]+) -([a-z_]+)['"]/g)]
+    .map(m => ({ table: m[1], column: m[2] }));
+  assert.ok(dropTags.length >= 4, 'expected at least 4 DROP tags in db.js');
+
+  // Pull every (table, column) pair from the manifest. Loose regex on the
+  // entry shape so reformatting doesn't break the test.
+  const manifestBlock = healthSrc.match(/const DEPRECATED_COLUMNS = \[([\s\S]*?)\];/);
+  assert.ok(manifestBlock, 'DEPRECATED_COLUMNS manifest must exist in routes/health.js');
+  const manifestEntries = [...manifestBlock[1].matchAll(/table:\s*'([a-z_]+)'[\s\S]*?column:\s*'([a-z_]+)'/g)]
+    .map(m => ({ table: m[1], column: m[2] }));
+  const manifestKeys = new Set(manifestEntries.map(e => `${e.table}.${e.column}`));
+
+  // Every workouts DROP must have a manifest entry (Phase A/B scope).
+  for (const d of dropTags.filter(t => t.table === 'workouts')) {
+    assert.ok(manifestKeys.has(`${d.table}.${d.column}`),
+      `DEPRECATED_COLUMNS missing entry for ${d.table}.${d.column} (DROP in db.js but no sentinel coverage)`);
+  }
+});
+
+test('health.js: DEPRECATED_COLUMNS lists workouts.adjustment with stash key', () => {
+  // Phase B preserves adjustment text into metadata.legacy_adjustment.
+  // The sentinel must report the stash row count so we can recover.
+  const src = fs.readFileSync(path.join(__dirname, '../routes/health.js'), 'utf8');
+  const manifestBlock = src.match(/const DEPRECATED_COLUMNS = \[([\s\S]*?)\];/);
+  assert.ok(manifestBlock, 'manifest present');
+  const adjustmentEntry = manifestBlock[1].match(/\{\s*table:\s*'workouts',\s*column:\s*'adjustment'[\s\S]*?\}/);
+  assert.ok(adjustmentEntry, 'workouts.adjustment entry must exist in DEPRECATED_COLUMNS');
+  assert.ok(/stash_key:\s*'legacy_adjustment'/.test(adjustmentEntry[0]),
+    'workouts.adjustment must declare stash_key=legacy_adjustment for recovery');
+});
+
+test('db.js: adjustment snapshot migration runs before the DROP', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8');
+  // The snapshot copies the column value into metadata.legacy_adjustment
+  // so the irreversible DROP doesn't lose user-typed text. Two conditions:
+  // (1) the snapshot tag exists and uses information_schema gating;
+  // (2) it appears before the DROP COLUMN statement in source order.
+  const snapshotIdx = src.indexOf("safeQuery('workouts adjustment snapshot'");
+  const dropIdx = src.indexOf("safeQuery('workouts -adjustment'");
+  assert.ok(snapshotIdx > 0, 'snapshot migration must exist');
+  assert.ok(dropIdx > 0, 'DROP COLUMN migration must still exist');
+  assert.ok(snapshotIdx < dropIdx,
+    'snapshot must run BEFORE the DROP (otherwise the column data is lost)');
+  // Idempotency gate
+  const snapshotBlock = src.slice(snapshotIdx, dropIdx);
+  assert.ok(/information_schema\.columns/.test(snapshotBlock),
+    'snapshot must gate on information_schema so post-drop boots no-op');
+  assert.ok(/legacy_adjustment/.test(snapshotBlock),
+    'snapshot must write metadata.legacy_adjustment');
+  assert.ok(/NOT \(COALESCE\(metadata.*?\) \? 'legacy_adjustment'\)/.test(snapshotBlock),
+    'snapshot must skip rows already snapshotted (idempotent for repeat boots)');
 });
