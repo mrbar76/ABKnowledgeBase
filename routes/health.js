@@ -6,7 +6,7 @@
 
 const crypto = require('crypto');
 const express = require('express');
-const { query, logActivity } = require('../db');
+const { query, logActivity, getFailedMigrations } = require('../db');
 const { computeTSS } = require('./insights');
 const { linkWorkoutToPlan: linkWorkoutToPlanShared } = require('../lib/workout-link');
 const router = express.Router();
@@ -2655,13 +2655,27 @@ router.get('/diag/deprecated-columns', async (req, res) => {
       cols.push(entry);
     }
 
+    // v3.34 #4: surface boot-time migration failures. safeQuery used
+    // to swallow these (the log line shipped but no one read it). The
+    // sentinel response now includes both the schema-drift snapshot and
+    // the boot-migration error log so a single GET tells the operator
+    // everything that's wrong.
+    const failedMigrations = typeof getFailedMigrations === 'function'
+      ? getFailedMigrations() : [];
+
     res.json({
       generated_at: new Date().toISOString(),
       schema_drift_count: drifts,
-      verdict: drifts === 0
-        ? 'OK: live schema matches the deprecation manifest.'
-        : `DRIFT: ${drifts} deprecated column(s) still present — see entries with column_exists=true.`,
+      failed_migrations_count: failedMigrations.length,
+      verdict: drifts === 0 && failedMigrations.length === 0
+        ? 'OK: live schema matches the deprecation manifest and all boot migrations succeeded.'
+        : drifts > 0 && failedMigrations.length > 0
+          ? `BOTH: ${drifts} drift(s) AND ${failedMigrations.length} failed migration(s) — investigate failed_migrations first (likely cause of drift).`
+          : drifts > 0
+            ? `DRIFT: ${drifts} deprecated column(s) still present — see entries with column_exists=true.`
+            : `BOOT FAILURES: ${failedMigrations.length} migration(s) failed at boot — see failed_migrations.`,
       columns: cols,
+      failed_migrations: failedMigrations,
     });
   } catch (err) {
     console.error(`[health/diag/deprecated-columns] ${err.stack}`);

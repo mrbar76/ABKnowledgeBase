@@ -48,12 +48,30 @@ async function withTransaction(fn) {
   }
 }
 
-// Run a query, log errors but don't throw (for init resilience)
+// v3.34 #4: track every failed initDB migration in-process so the
+// schema sentinel (GET /api/health/diag/deprecated-columns) can surface
+// the count + first error per label. The silent-swallow of
+// trigger-dependency errors on adjustment DROP is what hid the Phase A
+// bug for months — the log line was there but nobody read it. Now the
+// failure is also reportable via the same drift-detector endpoint
+// operators already use, so a non-zero count is impossible to miss.
+const FAILED_MIGRATIONS = [];
+function getFailedMigrations() { return FAILED_MIGRATIONS.slice(); }
+function resetFailedMigrations() { FAILED_MIGRATIONS.length = 0; }
+
+// Run a query, log errors but don't throw (for init resilience).
+// Errors are also recorded in FAILED_MIGRATIONS for the sentinel to surface.
 async function safeQuery(label, text, params) {
   try {
     await query(text, params);
   } catch (err) {
     console.error(`[initDB] ${label} failed: ${err.message}`);
+    FAILED_MIGRATIONS.push({
+      label,
+      message: err.message,
+      code: err.code || null,
+      ts: new Date().toISOString(),
+    });
   }
 }
 
@@ -2446,4 +2464,7 @@ async function logActivityWith(client, action, entityType, entityId, aiSource, d
   );
 }
 
-module.exports = { pool, query, withTransaction, initDB, logActivity, logActivityWith };
+module.exports = {
+  pool, query, withTransaction, initDB, logActivity, logActivityWith,
+  getFailedMigrations, resetFailedMigrations,
+};
