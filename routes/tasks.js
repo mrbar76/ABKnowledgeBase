@@ -701,14 +701,34 @@ async function extendAllRecurring() {
   try {
     const parents = await query(`SELECT * FROM tasks WHERE recurrence_rule IS NOT NULL AND status != 'done'`);
     let total = 0;
+    let skipped = 0;
     for (const task of parents.rows) {
-      const rule = typeof task.recurrence_rule === 'string' ? JSON.parse(task.recurrence_rule) : task.recurrence_rule;
+      // v3.34: per-task try/catch so a single malformed recurrence_rule
+      // (e.g. legacy iCal "FREQ=MONTH;BYMONTHDAY=1" stored as a string)
+      // doesn't crash the cron and skip every later task. The previous
+      // single outer catch killed the whole batch on the first bad row.
+      let rule;
+      try {
+        rule = typeof task.recurrence_rule === 'string'
+          ? JSON.parse(task.recurrence_rule)
+          : task.recurrence_rule;
+      } catch (parseErr) {
+        skipped++;
+        console.warn(`[recurring] task ${task.id} (${task.title}): recurrence_rule is not JSON (${String(task.recurrence_rule).slice(0, 40)}...). Skipping. Convert via PUT /api/tasks/:id with a {type, ...} body to repair.`);
+        continue;
+      }
       if (!rule || !task.due_date) continue;
       const today = new Date().toISOString().slice(0, 10);
       const startFrom = task.due_date < today ? today : toDateStr(new Date(task.due_date));
-      const created = await generateRecurringInstances(task.id, task.title, task.description, task.priority, task.context, task.notes, rule, startFrom);
-      total += created;
+      try {
+        const created = await generateRecurringInstances(task.id, task.title, task.description, task.priority, task.context, task.notes, rule, startFrom);
+        total += created;
+      } catch (genErr) {
+        skipped++;
+        console.warn(`[recurring] task ${task.id} (${task.title}): generateRecurringInstances threw "${genErr.message}". Skipping.`);
+      }
     }
+    if (skipped > 0) console.warn(`[recurring] Extension completed with ${skipped} task(s) skipped, ${total} instance(s) created.`);
     return total;
   } catch (err) {
     console.error('[recurring] Extension failed:', err.message);
