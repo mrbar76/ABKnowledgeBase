@@ -103,6 +103,7 @@ async function bmrForDate(weightKg, dateStr) {
   return Math.round(full * fraction);
 }
 const { query } = require('../db');
+const { loadWeeklyVolume } = require('../lib/weekly-volume');
 // v3.32: TSS / EWMA math lives in lib/training-load.js so the Recovery
 // panel (lib/recovery.js) and this dashboard compute from one source.
 // These were defined inline here pre-v3.32; re-exported below for the
@@ -1999,6 +2000,18 @@ router.get('/weekly-review', async (req, res) => {
       };
     });
 
+    // v3.35 Feature 2: weekly working-set volume per muscle bucket for the
+    // ET week containing week_of. Self-describing (carries its own
+    // week_start/week_end). Guarded so a volume failure never 500s the
+    // whole review.
+    let volume = null;
+    try {
+      volume = await loadWeeklyVolume(query, { weekStart: end });
+    } catch (volErr) {
+      console.error(`[insights/weekly-review] volume block failed: ${volErr.message}`);
+      volume = { error: volErr.message };
+    }
+
     res.json({
       week_start: start,
       week_end: end,
@@ -2020,6 +2033,7 @@ router.get('/weekly-review', async (req, res) => {
         avg_kcal: meals.rows.length ? Math.round(mean(meals.rows.map(m => Number(m.kcal)))) : null,
         avg_protein_g: meals.rows.length ? Math.round(mean(meals.rows.map(m => Number(m.protein)))) : null,
       },
+      volume,
       deltas,
     });
   } catch (err) {

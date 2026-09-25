@@ -9,6 +9,13 @@ const METRIC_FIELDS = [
   'bone_mass_lb', 'protein_pct', 'bmr_kcal', 'metabolic_age',
 ];
 
+// v3.35 Feature 1: tape (circumference) measurements, inches. All decimal,
+// all optional. A row may carry ONLY tape values (no weight) — see
+// validateBody. waist_in (at navel) is the primary physique measure.
+const TAPE_FIELDS = [
+  'waist_in', 'chest_in', 'arm_relaxed_in', 'shoulders_in', 'thigh_in', 'hip_in', 'neck_in',
+];
+
 // Integer-only metric fields
 const INT_FIELDS = ['visceral_fat', 'bmr_kcal', 'metabolic_age'];
 
@@ -18,8 +25,18 @@ const PCT_FIELDS = ['body_fat_pct', 'skeletal_muscle_pct', 'subcutaneous_fat_pct
 function validateBody(b) {
   const errors = [];
   if (!b.measurement_date) errors.push('measurement_date is required');
-  if (b.weight_lb == null || b.weight_lb === '') errors.push('weight_lb is required');
-  else if (typeof b.weight_lb !== 'number' || b.weight_lb <= 0) errors.push('weight_lb must be a positive number');
+
+  // v3.35: weight_lb is no longer mandatory — a tape-only row carries
+  // circumference values with no weigh-in. But a row must contain SOME
+  // measurement (weight, a scale metric, or a tape value), else it's an
+  // empty row. When weight_lb IS supplied it must still be a positive number.
+  if (b.weight_lb != null && b.weight_lb !== '') {
+    if (typeof b.weight_lb !== 'number' || b.weight_lb <= 0) errors.push('weight_lb must be a positive number');
+  }
+  const hasAnyValue = [...METRIC_FIELDS, ...TAPE_FIELDS].some(f => b[f] != null && b[f] !== '');
+  if (!hasAnyValue) {
+    errors.push('at least one measurement is required (weight_lb, a scale metric, or a tape field)');
+  }
 
   for (const f of METRIC_FIELDS) {
     if (b[f] != null && b[f] !== '') {
@@ -27,6 +44,17 @@ function validateBody(b) {
       if (isNaN(v)) { errors.push(`${f} must be a number`); continue; }
       if (v < 0) errors.push(`${f} must be >= 0`);
       if (PCT_FIELDS.includes(f) && v > 100) errors.push(`${f} must be <= 100`);
+    }
+  }
+
+  // Tape fields: positive numbers, inches. Guard against nonsense (a
+  // circumference over ~99in is a typo, and numeric(4,1) caps at 999.9).
+  for (const f of TAPE_FIELDS) {
+    if (b[f] != null && b[f] !== '') {
+      const v = Number(b[f]);
+      if (isNaN(v)) { errors.push(`${f} must be a number`); continue; }
+      if (v <= 0) errors.push(`${f} must be > 0`);
+      if (v > 99) errors.push(`${f} must be <= 99 (inches)`);
     }
   }
 
@@ -65,6 +93,14 @@ function buildInsertParams(b) {
     parseNumeric(b.metabolic_age, true),
     b.measurement_context || null,
     b.vendor_user_mode || null,
+    // v3.35 tape fields ($20-$26)
+    parseNumeric(b.waist_in, false),
+    parseNumeric(b.chest_in, false),
+    parseNumeric(b.arm_relaxed_in, false),
+    parseNumeric(b.shoulders_in, false),
+    parseNumeric(b.thigh_in, false),
+    parseNumeric(b.hip_in, false),
+    parseNumeric(b.neck_in, false),
     b.notes || null,
     JSON.stringify(b.tags || []),
     b.is_manual_entry === true,
@@ -78,6 +114,7 @@ const INSERT_SQL = `INSERT INTO body_metrics (
   subcutaneous_fat_pct, visceral_fat, body_water_pct, muscle_mass_lb,
   bone_mass_lb, protein_pct, bmr_kcal, metabolic_age,
   measurement_context, vendor_user_mode,
+  waist_in, chest_in, arm_relaxed_in, shoulders_in, thigh_in, hip_in, neck_in,
   notes, tags, is_manual_entry, raw_payload
 ) VALUES (
   $1, $2, $3, $4,
@@ -85,7 +122,8 @@ const INSERT_SQL = `INSERT INTO body_metrics (
   $10, $11, $12, $13,
   $14, $15, $16, $17,
   $18, $19,
-  $20, $21, $22, $23
+  $20, $21, $22, $23, $24, $25, $26,
+  $27, $28, $29, $30
 )`;
 
 // ─── List / Search Body Metrics ──────────────────────────────
@@ -269,6 +307,7 @@ router.patch('/:id', async (req, res) => {
     const allowed = [
       'measurement_date', 'measurement_time', 'source', 'source_type',
       ...METRIC_FIELDS,
+      ...TAPE_FIELDS,
       'measurement_context', 'vendor_user_mode',
       'notes', 'tags', 'is_manual_entry', 'raw_payload',
     ];
@@ -281,7 +320,7 @@ router.patch('/:id', async (req, res) => {
         } else if (key === 'raw_payload') {
           fields.push(`${key} = $${i++}::jsonb`);
           params.push(b[key] ? JSON.stringify(b[key]) : null);
-        } else if (METRIC_FIELDS.includes(key)) {
+        } else if (METRIC_FIELDS.includes(key) || TAPE_FIELDS.includes(key)) {
           fields.push(`${key} = $${i++}`);
           params.push(parseNumeric(b[key], INT_FIELDS.includes(key)));
         } else if (key === 'is_manual_entry') {
@@ -333,20 +372,82 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ─── Stats / Trends ─────────────────────────────────────────
+const dateStr = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+const round1 = (n) => Math.round(Number(n) * 10) / 10;
+
+// v3.35: compute tape analytics from the set of rows that carry any tape
+// value, ordered oldest→newest. Pure function so it's unit-testable.
+//   latest:            most recent non-null value + date per field
+//   change_vs_baseline: baseline value (on/after baseline_date) vs latest, with delta
+//   trend_4wk:         per-field readings within 28 days of the latest tape date
+function computeTapeAnalytics(rows, baselineDateParam) {
+  const asc = [...rows].sort((a, b) => dateStr(a.measurement_date).localeCompare(dateStr(b.measurement_date)));
+  const withAny = asc.filter(r => TAPE_FIELDS.some(f => r[f] != null));
+  if (!withAny.length) {
+    return { baseline_date: null, latest: {}, change_vs_baseline: {}, trend_4wk: {} };
+  }
+  const earliest = dateStr(withAny[0].measurement_date);
+  const baselineDate = baselineDateParam || earliest;
+  const latestTapeDate = dateStr(withAny[withAny.length - 1].measurement_date);
+  // 28-day window anchored on the latest tape reading.
+  const windowStart = new Date(latestTapeDate + 'T00:00:00Z');
+  windowStart.setUTCDate(windowStart.getUTCDate() - 28);
+  const windowStartStr = windowStart.toISOString().slice(0, 10);
+
+  const latest = {};
+  const change = {};
+  const trend = {};
+  for (const f of TAPE_FIELDS) {
+    // latest non-null
+    for (let i = withAny.length - 1; i >= 0; i--) {
+      if (withAny[i][f] != null) { latest[f] = { value: round1(withAny[i][f]), date: dateStr(withAny[i].measurement_date) }; break; }
+    }
+    // baseline = first non-null on/after baselineDate (falls back to earliest non-null)
+    let baseRow = withAny.find(r => r[f] != null && dateStr(r.measurement_date) >= baselineDate)
+      || withAny.find(r => r[f] != null);
+    if (baseRow && latest[f]) {
+      const bval = round1(baseRow[f]);
+      change[f] = { baseline: bval, baseline_date: dateStr(baseRow.measurement_date), latest: latest[f].value, delta: round1(latest[f].value - bval) };
+    }
+    // 4-week trend (readings within the 28-day window)
+    const pts = withAny
+      .filter(r => r[f] != null && dateStr(r.measurement_date) >= windowStartStr)
+      .map(r => ({ date: dateStr(r.measurement_date), value: round1(r[f]) }));
+    if (pts.length) trend[f] = pts;
+  }
+  return { baseline_date: baselineDate, latest, change_vs_baseline: change, trend_4wk: trend };
+}
+
 router.get('/stats/summary', async (req, res) => {
   try {
-    const [totals, latest, avgWeight, sources] = await Promise.all([
+    const tapeCols = TAPE_FIELDS.join(', ');
+    const [totals, latest, avgWeight, sources, tapeRows, weight7d] = await Promise.all([
       query('SELECT COUNT(*)::int as total FROM body_metrics'),
       query('SELECT * FROM body_metrics ORDER BY measurement_date DESC, measurement_time DESC NULLS LAST LIMIT 1'),
       query('SELECT ROUND(AVG(weight_lb)::numeric, 1)::text as avg_weight FROM body_metrics'),
       query('SELECT source, COUNT(*)::int as count FROM body_metrics GROUP BY source ORDER BY count DESC'),
+      // Only rows that carry at least one tape value — cheap, tape rows are sparse.
+      query(`SELECT measurement_date, measurement_time, ${tapeCols}
+               FROM body_metrics
+              WHERE ${TAPE_FIELDS.map(f => `${f} IS NOT NULL`).join(' OR ')}
+              ORDER BY measurement_date ASC, measurement_time ASC NULLS LAST`),
+      // 7-day average bodyweight (trailing 7 days, inclusive of today).
+      query(`SELECT ROUND(AVG(weight_lb)::numeric, 1)::float AS avg7
+               FROM body_metrics
+              WHERE weight_lb IS NOT NULL
+                AND measurement_date >= (CURRENT_DATE - INTERVAL '6 days')`),
     ]);
+
+    const baselineDate = req.query.baseline_date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.baseline_date)
+      ? req.query.baseline_date : null;
 
     res.json({
       total: totals.rows[0]?.total || 0,
-      latest: latest.rows[0] || null,
+      latest: latest.rows[0] ? deriveLeanMass(latest.rows[0]) : null,
       avg_weight_lb: avgWeight.rows[0]?.avg_weight || null,
+      weight_7day_avg_lb: weight7d.rows[0]?.avg7 ?? null,
       by_source: sources.rows,
+      tape: computeTapeAnalytics(tapeRows.rows, baselineDate),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -354,3 +455,6 @@ router.get('/stats/summary', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.computeTapeAnalytics = computeTapeAnalytics;
+module.exports.validateBody = validateBody;
+module.exports.TAPE_FIELDS = TAPE_FIELDS;

@@ -768,7 +768,7 @@ router.post('/exercise-map', async (req, res) => {
 // PUT /api/hevy/exercise-map/:id — partial update
 router.put('/exercise-map/:id', async (req, res) => {
   try {
-    const allowed = ['ab_brain_exercise_name','ab_brain_exercise_id','hevy_exercise_template_id','hevy_title','hevy_type','hevy_primary_muscle_group','hevy_equipment','is_custom','confidence','notes'];
+    const allowed = ['ab_brain_exercise_name','ab_brain_exercise_id','hevy_exercise_template_id','hevy_title','hevy_type','hevy_primary_muscle_group','hevy_secondary_muscle_groups','manual_muscle_override','muscle_unmapped','hevy_equipment','is_custom','confidence','notes'];
     const fields = [];
     const vals = [];
     let i = 1;
@@ -1105,6 +1105,90 @@ router.post('/exercise-map/merge', async (req, res) => {
     res.json({ ok: true, ...summary });
   } catch (err) {
     console.error(`[hevy/exercise-map/merge] ${err.stack}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/hevy/exercise-map/backfill-muscles
+//
+// v3.35 Feature 2. Populate hevy_primary_muscle_group +
+// hevy_secondary_muscle_groups on every exercise-map row from the Hevy
+// template cache, so weekly-volume math can bucket each logged exercise.
+//
+// Body: { refresh?: bool }  — when true (or the cache is empty), refresh
+//                             the template cache from Hevy first.
+//
+// Resolution per map row:
+//   1. Join hevy_template_cache on hevy_exercise_template_id.
+//   2. If the template has a primary muscle group → write primary +
+//      secondary, clear the unmapped flag.
+//   3. Else if a manual_muscle_override is already set → keep it, not
+//      unmapped.
+//   4. Else → flag muscle_unmapped = true. NEVER dropped; surfaced in the
+//      response `unmapped[]` and in the weekly-volume unmapped list so a
+//      human can set an override via PUT /exercise-map/:id.
+router.post('/exercise-map/backfill-muscles', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const { rows: cacheCount } = await query(`SELECT COUNT(*)::int AS n FROM hevy_template_cache`);
+    if (req.body?.refresh === true || !cacheCount[0].n) {
+      await refreshTemplateCache();
+    }
+
+    const { rows: maps } = await query(`SELECT * FROM hevy_exercise_map`);
+    let updated = 0;
+    let flagged = 0;
+    let keptOverride = 0;
+    const unmapped = [];
+
+    for (const m of maps) {
+      // Look up the cached template by id (the strong link).
+      const { rows: tpl } = await query(
+        `SELECT primary_muscle_group, secondary_muscle_groups
+           FROM hevy_template_cache WHERE hevy_id = $1`,
+        [m.hevy_exercise_template_id]
+      );
+      const primary = tpl[0]?.primary_muscle_group || null;
+      const secondary = Array.isArray(tpl[0]?.secondary_muscle_groups) ? tpl[0].secondary_muscle_groups : null;
+
+      if (primary) {
+        await query(
+          `UPDATE hevy_exercise_map
+              SET hevy_primary_muscle_group = $1,
+                  hevy_secondary_muscle_groups = $2,
+                  muscle_unmapped = FALSE,
+                  updated_at = NOW()
+            WHERE id = $3`,
+          [primary, secondary, m.id]
+        );
+        updated++;
+      } else if (m.manual_muscle_override) {
+        // Human already told us the muscle — respect it, not unmapped.
+        await query(
+          `UPDATE hevy_exercise_map SET muscle_unmapped = FALSE, updated_at = NOW() WHERE id = $1`,
+          [m.id]
+        );
+        keptOverride++;
+      } else {
+        await query(
+          `UPDATE hevy_exercise_map SET muscle_unmapped = TRUE, updated_at = NOW() WHERE id = $1`,
+          [m.id]
+        );
+        flagged++;
+        unmapped.push({ id: m.id, ab_brain_exercise_name: m.ab_brain_exercise_name, hevy_title: m.hevy_title, is_custom: m.is_custom });
+      }
+    }
+
+    res.json({
+      total: maps.length,
+      updated_from_hevy: updated,
+      kept_manual_override: keptOverride,
+      flagged_unmapped: flagged,
+      unmapped,
+      hint: flagged > 0 ? 'Set manual_muscle_override via PUT /api/hevy/exercise-map/:id for flagged customs.' : undefined,
+    });
+  } catch (err) {
+    console.error(`[hevy/exercise-map/backfill-muscles] ${err.stack}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1788,6 +1872,27 @@ function lbToKg(lb) {
   return Math.round(Number(lb) * 0.453592 * 100) / 100;
 }
 
+// v3.35 Feature 1: tape (circumference) measurements. AB Brain stores
+// inches; Hevy stores centimetres for every tape field (verified against
+// api.hevyapp.com OAS — examples: neck_cm 38, waist 80, thigh 55, all cm).
+function inToCm(inches) {
+  if (inches == null) return null;
+  return Math.round(Number(inches) * 2.54 * 10) / 10;
+}
+
+// AB Brain tape field → Hevy body_measurements field. Single-side AB
+// fields (arm, thigh) map to Hevy's LEFT field only, so any right_* value
+// the user set in Hevy survives the GET-merge-PUT untouched.
+const AB_TAPE_TO_HEVY = {
+  waist_in: 'waist',
+  chest_in: 'chest_cm',
+  arm_relaxed_in: 'left_bicep_cm',
+  shoulders_in: 'shoulder_cm',
+  thigh_in: 'left_thigh',
+  hip_in: 'hips',
+  neck_in: 'neck_cm',
+};
+
 // Convert AB Brain body_metrics row to Hevy body_measurements payload.
 //
 // Hevy's actual schema (verified against api.hevyapp.com OAS spec
@@ -1802,11 +1907,18 @@ function lbToKg(lb) {
 //                                                approximation)
 //   fat_percent   ← body_fat_pct (already a %)
 function abMetricsToHevy(row) {
-  return {
+  const out = {
     weight_kg: lbToKg(row.weight_lb),
     lean_mass_kg: lbToKg(row.fat_free_mass_lb),
     fat_percent: row.body_fat_pct != null ? Number(row.body_fat_pct) : null,
   };
+  // v3.35: tape fields (in → cm). Only emit a Hevy field when the AB row
+  // actually has that measurement, so the merge never nulls a Hevy field
+  // we have no value for.
+  for (const [abField, hevyField] of Object.entries(AB_TAPE_TO_HEVY)) {
+    if (row[abField] != null) out[hevyField] = inToCm(row[abField]);
+  }
+  return out;
 }
 
 async function getHevyMeasurement(date) {
@@ -1827,7 +1939,8 @@ router.post('/body-measurements/sync', async (req, res) => {
     // morning + evening RENPHO scans collapse cleanly.
     const { rows } = await query(
       `SELECT DISTINCT ON (measurement_date)
-              measurement_date, weight_lb, fat_free_mass_lb, body_fat_pct
+              measurement_date, weight_lb, fat_free_mass_lb, body_fat_pct,
+              waist_in, chest_in, arm_relaxed_in, shoulders_in, thigh_in, hip_in, neck_in
          FROM body_metrics
         WHERE measurement_date >= $1
         ORDER BY measurement_date DESC, measurement_time DESC NULLS LAST, created_at DESC`,

@@ -435,7 +435,9 @@ async function initDB() {
       measurement_time TIME,
       source TEXT DEFAULT 'RENPHO',
       source_type TEXT DEFAULT 'smart_scale',
-      weight_lb NUMERIC(6,2) NOT NULL,
+      -- v3.35: nullable so a tape-only row (measurement_context='tape')
+      -- can be inserted without a weigh-in.
+      weight_lb NUMERIC(6,2),
       bmi NUMERIC(5,2),
       body_fat_pct NUMERIC(5,2),
       skeletal_muscle_pct NUMERIC(5,2),
@@ -450,6 +452,14 @@ async function initDB() {
       metabolic_age INTEGER,
       measurement_context TEXT,
       vendor_user_mode TEXT,
+      -- v3.35 Feature 1: tape (circumference) measurements, inches.
+      waist_in NUMERIC(4,1),
+      chest_in NUMERIC(4,1),
+      arm_relaxed_in NUMERIC(4,1),
+      shoulders_in NUMERIC(4,1),
+      thigh_in NUMERIC(4,1),
+      hip_in NUMERIC(4,1),
+      neck_in NUMERIC(4,1),
       notes TEXT,
       tags JSONB DEFAULT '[]'::jsonb,
       is_manual_entry BOOLEAN DEFAULT false,
@@ -1009,6 +1019,19 @@ async function initDB() {
   await safeQuery('body_metrics +measurement_context', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS measurement_context TEXT`);
   await safeQuery('body_metrics +vendor_user_mode', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS vendor_user_mode TEXT`);
   await safeQuery('body_metrics +search_vector', `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS search_vector TSVECTOR`);
+
+  // -- v3.35 Feature 1: tape (circumference) measurements, inches --
+  // Primary physique measure from Oct 3, 2026. waist_in (at navel) is the
+  // headline number. All nullable numeric(4,1) — a row may carry ONLY tape
+  // values (no weight), flagged measurement_context='tape'. See the
+  // weight_lb DROP NOT NULL below that makes tape-only rows insertable.
+  for (const col of ['waist_in', 'chest_in', 'arm_relaxed_in', 'shoulders_in', 'thigh_in', 'hip_in', 'neck_in']) {
+    await safeQuery(`body_metrics +${col}`, `ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS ${col} NUMERIC(4,1)`);
+  }
+  // Tape-only rows have no weigh-in. weight_lb was NOT NULL from the
+  // RENPHO-only era; relax it so tape rows insert. Idempotent (DROP NOT
+  // NULL is a no-op once already nullable).
+  await safeQuery('body_metrics weight_lb nullable', `ALTER TABLE body_metrics ALTER COLUMN weight_lb DROP NOT NULL`);
 
   // (progress_checkins, progress_photos, progress_settings tables removed)
 
@@ -1759,6 +1782,43 @@ async function initDB() {
   `);
   await safeQuery('hevy_exercise_map name unique', `CREATE UNIQUE INDEX IF NOT EXISTS uq_hevy_map_ab_name ON hevy_exercise_map(lower(ab_brain_exercise_name))`);
   await safeQuery('hevy_exercise_map hevy_id idx', `CREATE INDEX IF NOT EXISTS idx_hevy_map_hevy_id ON hevy_exercise_map(hevy_exercise_template_id)`);
+
+  // -- v3.35 Feature 2: muscle-group data on the exercise map --
+  // hevy_primary_muscle_group already exists (nullable). Add the secondary
+  // list + a manual override for custom exercises Hevy has no muscle data
+  // for. Backfilled from hevy_template_cache by
+  // POST /api/hevy/exercise-map/backfill-muscles.
+  await safeQuery('hevy_exercise_map +hevy_secondary_muscle_groups', `ALTER TABLE hevy_exercise_map ADD COLUMN IF NOT EXISTS hevy_secondary_muscle_groups TEXT[]`);
+  await safeQuery('hevy_exercise_map +manual_muscle_override', `ALTER TABLE hevy_exercise_map ADD COLUMN IF NOT EXISTS manual_muscle_override TEXT`);
+  // Flag: true when we could not resolve muscle data from Hevy and no
+  // manual override is set — surfaced so custom exercises are never
+  // silently dropped from volume math.
+  await safeQuery('hevy_exercise_map +muscle_unmapped', `ALTER TABLE hevy_exercise_map ADD COLUMN IF NOT EXISTS muscle_unmapped BOOLEAN DEFAULT FALSE`);
+
+  // -- v3.35 Feature 2: weekly working-set volume targets (editable) --
+  await safeQuery('volume_targets table', `
+    CREATE TABLE IF NOT EXISTS volume_targets (
+      bucket TEXT PRIMARY KEY,
+      target_min INTEGER,
+      target_max INTEGER,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  // Seed the program's starting bands. ON CONFLICT DO NOTHING so operator
+  // edits via PUT are never clobbered on reboot. calves + core intentionally
+  // seeded with NULL bands (no target yet).
+  await safeQuery('volume_targets seed', `
+    INSERT INTO volume_targets (bucket, target_min, target_max) VALUES
+      ('delts', 10, 12),
+      ('chest', 8, 10),
+      ('back', 12, 14),
+      ('arms', 6, 8),
+      ('quads', 8, 10),
+      ('hinge', 6, 8),
+      ('calves', NULL, NULL),
+      ('core', NULL, NULL)
+    ON CONFLICT (bucket) DO NOTHING
+  `);
 
   await safeQuery('sync_state table', `
     CREATE TABLE IF NOT EXISTS sync_state (

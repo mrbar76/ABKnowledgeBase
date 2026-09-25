@@ -16,6 +16,27 @@ drop ever stops succeeding.
 
 ---
 
+## v3.35 additions (Oct 2026)
+
+**Feature 1 — tape measurements** (`body_metrics`):
+- 7 new nullable `NUMERIC(4,1)` inch columns: `waist_in` (at navel, primary),
+  `chest_in`, `arm_relaxed_in`, `shoulders_in`, `thigh_in`, `hip_in`, `neck_in`.
+- `weight_lb` relaxed to nullable (was NOT NULL) so a tape-only row
+  (`measurement_context='tape'`) inserts without a weigh-in.
+- Additive only — no drops, so `/diag/deprecated-columns` stays 0 drift.
+- Hevy push maps these inches → cm on `body_measurements` (waist_in→waist,
+  chest_in→chest_cm, arm_relaxed_in→left_bicep_cm, shoulders_in→shoulder_cm,
+  thigh_in→left_thigh, hip_in→hips, neck_in→neck_cm), merge-preserving.
+
+**Feature 2 — weekly volume**:
+- `hevy_exercise_map` gains `hevy_secondary_muscle_groups TEXT[]`,
+  `manual_muscle_override TEXT`, `muscle_unmapped BOOLEAN`.
+- New `volume_targets` table (PK `bucket`) — editable working-set target
+  bands, seeded delts 10-12 / chest 8-10 / back 12-14 / arms 6-8 /
+  quads 8-10 / hinge 6-8 (calves + core null).
+- Bucket config: `lib/muscle-buckets.js` (Hevy muscle → program bucket).
+- Volume math: `lib/weekly-volume.js` (ET-week bucketing, pure tally).
+
 ## Entity map
 
 ### Training core
