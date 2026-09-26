@@ -7202,7 +7202,7 @@ async function runGlobalSearch(q) {
     if (r.tasks?.length) html += renderSearchGroup('Tasks', r.tasks, i => `<div class="search-result-item"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.status||''}</span><span>${i.priority||''}</span></div></div>`);
     if (r.workouts?.length) html += renderSearchGroup('Workouts', r.workouts, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('workouts');setTimeout(()=>showWorkoutDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.workout_type||''}</span><span>${i.workout_date||''}</span>${i.effort?`<span>Effort: ${i.effort}/10</span>`:''}</div></div>`);
     if (r.meals?.length) html += renderSearchGroup('Meals', r.meals, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('nutrition');setTimeout(()=>showMealDetail('${i.id}'),300)"><div class="search-result-title">${highlightText(i.title,q)}</div><div class="search-result-meta"><span>${i.meal_type||''}</span><span>${i.meal_date||''}</span>${i.calories?`<span>${i.calories} cal</span>`:''}</div></div>`);
-    if (r.body_metrics?.length) html += renderSearchGroup('Body Metrics', r.body_metrics, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('body');setTimeout(()=>showBodyMetricDetail('${i.id}'),300)"><div class="search-result-title">${i.weight_lb}lb — ${i.measurement_date||''}</div><div class="search-result-meta"><span>${i.source||'RENPHO'}</span>${i.body_fat_pct?`<span>BF: ${i.body_fat_pct}%</span>`:''}</div></div>`);
+    if (r.body_metrics?.length) html += renderSearchGroup('Body Metrics', r.body_metrics, i => `<div class="search-result-item" onclick="closeGlobalSearch();switchTab('body');setTimeout(()=>showBodyMetricDetail('${i.id}'),300)"><div class="search-result-title">${bmPrimaryLabel(i)} — ${i.measurement_date||''}</div><div class="search-result-meta"><span>${i.source||'RENPHO'}</span>${i.body_fat_pct?`<span>BF: ${i.body_fat_pct}%</span>`:''}</div></div>`);
     el.innerHTML = html || '<div class="search-empty">No results</div>';
   } catch (e) { el.innerHTML = `<div class="search-empty">${esc(e.message)}</div>`; }
 }
@@ -8808,7 +8808,7 @@ async function loadFitnessToday() {
     if (bodyMetrics.length) {
       const bm = bodyMetrics[0];
       bodyHtml = `<div class="card mb-md"><div class="card-title">Body Metrics</div>
-        <div class="list-item-meta">${bm.weight_lb}lb${bm.body_fat_pct ? ' · ' + bm.body_fat_pct + '% BF' : ''}${bm.muscle_mass_lb ? ' · ' + bm.muscle_mass_lb + 'lb muscle' : ''}</div>
+        <div class="list-item-meta">${bmPrimaryLabel(bm)}${bm.body_fat_pct ? ' · ' + bm.body_fat_pct + '% BF' : ''}${bm.muscle_mass_lb ? ' · ' + bm.muscle_mass_lb + 'lb muscle' : ''}</div>
       </div>`;
     }
 
@@ -9275,7 +9275,7 @@ async function loadFitnessHistory() {
     }
     if (results.body) {
       (results.body.body_metrics || []).forEach(b => items.push({
-        type: 'body', date: b.measurement_date, title: `${b.weight_lb}lb`,
+        type: 'body', date: b.measurement_date, title: bmPrimaryLabel(b),
         meta: `${b.body_fat_pct ? b.body_fat_pct + '% BF' : ''}${b.source ? ' · ' + b.source : ''}`,
         color: '#8b5cf6', action: `showBodyMetricDetail('${b.id}')`, raw: b
       }));
@@ -10418,7 +10418,12 @@ async function loadBodyMetrics(searchQuery) {
         <button class="btn-submit btn-secondary btn-compact-sm" onclick="showBodyMetricImport()">Import</button>
         <button class="btn-submit btn-compact" onclick="showBodyMetricForm()">+ Log</button>
       </div>
-      <div class="transcript-count">${data.total} measurement${data.total !== 1 ? 's' : ''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="transcript-count">${data.total} measurement${data.total !== 1 ? 's' : ''}</div>
+        <a href="/tape-protocol.html" style="display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;color:#06b6d4;text-decoration:none;font-weight:600">
+          <span aria-hidden="true">📏</span> How to measure
+        </a>
+      </div>
       <div id="body-metric-list" class="fade-in">
         ${data.body_metrics.length ? data.body_metrics.map(m => {
           const d = new Date(m.measurement_date.slice(0,10) + 'T12:00:00');
@@ -10426,7 +10431,7 @@ async function loadBodyMetrics(searchQuery) {
           return `
           <div class="list-item workout-card" onclick="showBodyMetricDetail('${m.id}')" style="border-left:3px solid #06b6d4">
             <div class="transcript-card-header">
-              <div class="list-item-title">${esc(m.weight_lb)}lb</div>
+              <div class="list-item-title">${bmPrimaryLabel(m)}</div>
               <span class="badge-dynamic" style="background:#06b6d422;color:#06b6d4">${esc(m.source || 'RENPHO')}</span>
             </div>
             <div class="list-item-meta">
@@ -10778,7 +10783,7 @@ async function showBodyMetricDetail(id) {
         ${m.vendor_user_mode ? `<span class="badge-dynamic" style="background:#f59e0b22;color:#f59e0b">${esc(m.vendor_user_mode)}</span>` : ''}
       </div>
 
-      <div class="text-hero mb-md">${esc(String(m.weight_lb))} lb</div>
+      <div class="text-hero mb-md">${bmPrimaryLabel(m)}</div>
 
       <table class="detail-table">
         ${row('BMI', m.bmi, '')}
@@ -10793,6 +10798,13 @@ async function showBodyMetricDetail(id) {
         ${row('Protein', m.protein_pct, '%')}
         ${row('BMR', m.bmr_kcal, 'kcal')}
         ${row('Metabolic Age', m.metabolic_age, '')}
+        ${row('Waist · navel', m.waist_in, 'in')}
+        ${row('Chest', m.chest_in, 'in')}
+        ${row('Arm · relaxed', m.arm_relaxed_in, 'in')}
+        ${row('Shoulders', m.shoulders_in, 'in')}
+        ${row('Hip', m.hip_in, 'in')}
+        ${row('Thigh', m.thigh_in, 'in')}
+        ${row('Neck', m.neck_in, 'in')}
       </table>
 
       ${m.measurement_context ? `<div class="detail-info mt-md"><strong>Context:</strong> ${esc(m.measurement_context)}</div>` : ''}
@@ -10804,7 +10816,7 @@ async function showBodyMetricDetail(id) {
         <button class="btn-action btn-action-danger flex-half" onclick="deleteBodyMetric('${m.id}')">Delete</button>
       </div>
     `;
-    openModal(`${m.weight_lb} lb — ${dateLabel}`, html);
+    openModal(`${bmPrimaryLabel(m)} — ${dateLabel}`, html);
   } catch (e) { showToast('Error: ' + e.message); }
 }
 
@@ -10833,7 +10845,7 @@ async function showBodyMetricForm(editId) {
 
       <h3 class="form-section-title mt-lg">Core Metrics</h3>
       <div class="flex-row-wrap">
-        ${numField('bm-weight', 'Weight (lb)*', m.weight_lb, '0.1')}
+        ${numField('bm-weight', 'Weight (lb)', m.weight_lb, '0.1')}
         ${numField('bm-bmi', 'BMI', m.bmi, '0.1')}
         ${numField('bm-bf', 'Body Fat %', m.body_fat_pct, '0.1')}
       </div>
@@ -10856,6 +10868,25 @@ async function showBodyMetricForm(editId) {
         ${numField('bm-metage', 'Metabolic Age', m.metabolic_age, '1')}
       </div>
 
+      <h3 class="form-section-title mt-lg" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>Tape Measurements (in)</span>
+        <a href="/tape-protocol.html" style="font-size:0.75rem;color:#06b6d4;text-decoration:none;font-weight:600;text-transform:none;letter-spacing:0">📏 How to measure ↗</a>
+      </h3>
+      <div class="text-micro" style="color:var(--text-dim);margin-bottom:6px">Circumference in inches. A tape-only entry needs no weight — waist (at navel) is the primary.</div>
+      <div class="flex-row-wrap">
+        ${numField('bm-waist', 'Waist · navel ★', m.waist_in, '0.1')}
+        ${numField('bm-chest', 'Chest', m.chest_in, '0.1')}
+        ${numField('bm-arm', 'Arm · relaxed', m.arm_relaxed_in, '0.1')}
+      </div>
+      <div class="flex-row-wrap">
+        ${numField('bm-shoulders', 'Shoulders', m.shoulders_in, '0.1')}
+        ${numField('bm-hip', 'Hip', m.hip_in, '0.1')}
+        ${numField('bm-thigh', 'Thigh', m.thigh_in, '0.1')}
+      </div>
+      <div class="flex-row-wrap">
+        ${numField('bm-neck', 'Neck', m.neck_in, '0.1')}
+      </div>
+
       <h3 class="form-section-title mt-lg">Context</h3>
       <div class="form-group"><label>Measurement Context</label><input type="text" id="bm-context" value="${esc(m.measurement_context || '')}" placeholder="morning, fasted, post-bathroom"></div>
       <div class="form-group"><label>Notes</label><textarea id="bm-notes" rows="2" placeholder="Optional notes">${esc(m.notes || '')}</textarea></div>
@@ -10868,6 +10899,16 @@ async function showBodyMetricForm(editId) {
 }
 
 function numVal(id) { const v = document.getElementById(id)?.value; return v ? Number(v) : null; }
+
+// Primary display label for a body-metrics row. Weight rows show weight; a
+// tape-only row (no weight) shows waist, then falls back to "Tape" / "—".
+function bmPrimaryLabel(m) {
+  if (!m) return '—';
+  if (m.weight_lb != null) return `${m.weight_lb} lb`;
+  if (m.waist_in != null) return `${m.waist_in}" waist`;
+  if (['chest_in', 'arm_relaxed_in', 'shoulders_in', 'hip_in', 'thigh_in', 'neck_in'].some(k => m[k] != null)) return 'Tape';
+  return '—';
+}
 
 async function saveBodyMetric(editId) {
   const body = {
@@ -10889,13 +10930,28 @@ async function saveBodyMetric(editId) {
     protein_pct: numVal('bm-protein'),
     bmr_kcal: numVal('bm-bmr'),
     metabolic_age: numVal('bm-metage'),
+    waist_in: numVal('bm-waist'),
+    chest_in: numVal('bm-chest'),
+    arm_relaxed_in: numVal('bm-arm'),
+    shoulders_in: numVal('bm-shoulders'),
+    hip_in: numVal('bm-hip'),
+    thigh_in: numVal('bm-thigh'),
+    neck_in: numVal('bm-neck'),
     measurement_context: document.getElementById('bm-context').value || null,
     notes: document.getElementById('bm-notes').value || null,
     tags: document.getElementById('bm-tags').value.split(',').map(t => t.trim()).filter(Boolean),
   };
 
-  if (!body.weight_lb) { showToast('Weight is required', 'warning'); return; }
   if (!body.measurement_date) { showToast('Date is required', 'warning'); return; }
+  const TAPE_KEYS = ['waist_in', 'chest_in', 'arm_relaxed_in', 'shoulders_in', 'hip_in', 'thigh_in', 'neck_in'];
+  const CORE_KEYS = ['weight_lb', 'bmi', 'body_fat_pct', 'skeletal_muscle_pct', 'fat_free_mass_lb',
+    'subcutaneous_fat_pct', 'visceral_fat', 'body_water_pct', 'muscle_mass_lb', 'bone_mass_lb',
+    'protein_pct', 'bmr_kcal', 'metabolic_age'];
+  const hasTape = TAPE_KEYS.some(k => body[k] != null);
+  const hasCore = CORE_KEYS.some(k => body[k] != null);
+  if (!hasCore && !hasTape) { showToast('Enter a weight or at least one measurement', 'warning'); return; }
+  // A tape-only entry is a distinct context; tag it so trends/analytics bucket it correctly.
+  if (hasTape && !hasCore && !body.measurement_context) body.measurement_context = 'tape';
 
   try {
     if (editId) {
@@ -13742,7 +13798,7 @@ async function loadTrainingDay() {
       html += `<div class="card" style="margin-bottom:12px;padding:10px 14px">
         <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Body Metrics</div>
         <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:0.8rem">
-          <span><strong>Weight:</strong> ${bm.weight_lb} lb</span>
+          ${bm.weight_lb != null ? `<span><strong>Weight:</strong> ${bm.weight_lb} lb</span>` : (bm.waist_in != null ? `<span><strong>Waist:</strong> ${bm.waist_in}"</span>` : '')}
           ${bm.body_fat_pct ? `<span><strong>BF:</strong> ${bm.body_fat_pct}%</span>` : ''}
           ${bm.muscle_mass_lb ? `<span><strong>Muscle:</strong> ${bm.muscle_mass_lb} lb</span>` : ''}
         </div>

@@ -588,10 +588,44 @@
     "/body-metrics/stats/summary": {
       "get": {
         "operationId": "getBodyMetricsSummary",
-        "summary": "Get body metrics summary stats",
+        "summary": "Body metrics summary: weight avg, 7-day bodyweight avg, and tape analytics (latest, change-vs-baseline, 4-week trend).",
+        "parameters": [
+          {
+            "name": "baseline_date",
+            "in": "query",
+            "required": false,
+            "description": "Baseline date (YYYY-MM-DD) for tape change deltas. Defaults to the earliest tape row.",
+            "schema": { "type": "string", "format": "date" },
+            "example": "2026-10-03"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Summary stats"
+            "description": "Summary stats",
+            "content": {
+              "application/json": {
+                "example": {
+                  "total": 412,
+                  "latest": { "measurement_date": "2026-11-01", "weight_lb": 177.4, "waist_in": 33.6 },
+                  "avg_weight_lb": "179.2",
+                  "weight_7day_avg_lb": 177.9,
+                  "by_source": [ { "source": "RENPHO", "count": 400 }, { "source": "manual", "count": 12 } ],
+                  "tape": {
+                    "baseline_date": "2026-10-03",
+                    "latest": {
+                      "waist_in": { "value": 33.6, "date": "2026-11-01" },
+                      "chest_in": { "value": 44.0, "date": "2026-11-01" }
+                    },
+                    "change_vs_baseline": {
+                      "waist_in": { "baseline": 35.0, "baseline_date": "2026-10-03", "latest": 33.6, "delta": -1.4 }
+                    },
+                    "trend_4wk": {
+                      "waist_in": [ { "date": "2026-10-20", "value": 34.2 }, { "date": "2026-11-01", "value": 33.6 } ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1203,6 +1237,42 @@
         "responses": { "200": { "description": "{ mapped, ambiguous, unmapped, details }" } }
       }
     },
+    "/hevy/exercise-map/backfill-muscles": {
+      "post": {
+        "operationId": "backfillExerciseMapMuscles",
+        "summary": "Populate hevy_primary_muscle_group + hevy_secondary_muscle_groups on the exercise map from the Hevy template cache (used by weekly volume). Custom exercises with no Hevy muscle data are flagged muscle_unmapped=true, never dropped — set a manual_muscle_override via PUT /hevy/exercise-map/{id}.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refresh": { "type": "boolean", "description": "Refresh the Hevy template cache from Hevy first." }
+                }
+              },
+              "example": { "refresh": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backfill result",
+            "content": {
+              "application/json": {
+                "example": {
+                  "total": 78,
+                  "updated_from_hevy": 71,
+                  "kept_manual_override": 2,
+                  "flagged_unmapped": 5,
+                  "unmapped": [ { "id": "…", "ab_brain_exercise_name": "Sled Push", "hevy_title": "Sled Push", "is_custom": true } ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/hevy/body-measurements/sync": {
       "post": {
         "operationId": "syncHevyBodyMeasurements",
@@ -1421,6 +1491,108 @@
           "200": {
             "description": "Array of daily recovery scores"
           }
+        }
+      }
+    },
+    "/training/volume/weekly": {
+      "get": {
+        "operationId": "getWeeklyVolume",
+        "summary": "Weekly working sets per muscle bucket for one ET week. Working sets = normal/failure/dropset (warmups excluded). Primary muscle counts 1.0 per set, each secondary 0.5 per set. Weeks bucketed in America/New_York so evening-ET sessions (stored as next-UTC-day) land in the right week.",
+        "parameters": [
+          {
+            "name": "week_start",
+            "in": "query",
+            "required": false,
+            "description": "ET week start (YYYY-MM-DD). Any date snaps to that week's Monday. Defaults to the current ET week.",
+            "schema": { "type": "string", "format": "date" },
+            "example": "2026-09-07"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Weekly volume by bucket",
+            "content": {
+              "application/json": {
+                "example": {
+                  "week_start": "2026-09-07",
+                  "week_end": "2026-09-13",
+                  "timezone": "America/New_York",
+                  "window_utc": { "start": "2026-09-07T04:00:00.000Z", "end": "2026-09-14T04:00:00.000Z" },
+                  "workouts_counted": 4,
+                  "buckets": [
+                    { "bucket": "delts", "primary_sets": 9, "secondary_sets": 3.0, "total": 12.0, "target_min": 10, "target_max": 12, "status": "in" },
+                    { "bucket": "chest", "primary_sets": 6, "secondary_sets": 0, "total": 6.0, "target_min": 8, "target_max": 10, "status": "under" },
+                    { "bucket": "calves", "primary_sets": 3, "secondary_sets": 0, "total": 3.0, "target_min": null, "target_max": null, "status": "no_target" }
+                  ],
+                  "unmapped_exercises": [
+                    { "name": "Assault Bike", "hevy_exercise_template_id": null, "working_sets": 1, "reason": "muscle_not_in_any_bucket" }
+                  ],
+                  "working_set_total": 34
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/volume/targets": {
+      "get": {
+        "operationId": "getVolumeTargets",
+        "summary": "List editable weekly working-set target bands per bucket.",
+        "responses": {
+          "200": {
+            "description": "Target bands",
+            "content": {
+              "application/json": {
+                "example": {
+                  "targets": [
+                    { "bucket": "delts", "target_min": 10, "target_max": 12 },
+                    { "bucket": "chest", "target_min": 8, "target_max": 10 },
+                    { "bucket": "back", "target_min": 12, "target_max": 14 },
+                    { "bucket": "arms", "target_min": 6, "target_max": 8 },
+                    { "bucket": "quads", "target_min": 8, "target_max": 10 },
+                    { "bucket": "hinge", "target_min": 6, "target_max": 8 },
+                    { "bucket": "calves", "target_min": null, "target_max": null },
+                    { "bucket": "core", "target_min": null, "target_max": null }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/volume/targets/{bucket}": {
+      "put": {
+        "operationId": "putVolumeTarget",
+        "summary": "Edit a bucket's weekly working-set target band. Send null min/max to clear (no target).",
+        "parameters": [
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "description": "One of: delts, chest, back, arms, quads, hinge, calves, core.",
+            "schema": { "type": "string" },
+            "example": "chest"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target_min": { "type": "integer", "nullable": true },
+                  "target_max": { "type": "integer", "nullable": true }
+                }
+              },
+              "example": { "target_min": 8, "target_max": 10 }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated target" }
         }
       }
     },
@@ -2506,8 +2678,9 @@
       },
       "BodyMetricCreate": {
         "type": "object",
+        "description": "Body measurement row. Requires measurement_date and at least one value (weight_lb, a scale metric, or a tape field). A tape-only row carries circumference inches with measurement_context='tape' and no weight.",
         "required": [
-          "weight_lb"
+          "measurement_date"
         ],
         "properties": {
           "measurement_date": {
@@ -2524,7 +2697,8 @@
             "description": "RENPHO, Withings, Apple Health, manual"
           },
           "weight_lb": {
-            "type": "number"
+            "type": "number",
+            "description": "Bodyweight in pounds. OPTIONAL as of v3.35 — a tape-only row may omit it."
           },
           "bmi": {
             "type": "number"
@@ -2561,7 +2735,43 @@
           },
           "measurement_context": {
             "type": "string",
-            "description": "morning, evening, fasted, fed"
+            "description": "morning, evening, fasted, fed. Use 'tape' for a tape-only row (circumference values, no weigh-in).",
+            "example": "tape"
+          },
+          "waist_in": {
+            "type": "number",
+            "description": "Waist circumference at navel, INCHES. Primary physique measure (from Oct 3 2026).",
+            "example": 34.5
+          },
+          "chest_in": {
+            "type": "number",
+            "description": "Chest circumference, inches.",
+            "example": 43.5
+          },
+          "arm_relaxed_in": {
+            "type": "number",
+            "description": "Upper-arm (relaxed) circumference, inches.",
+            "example": 15.2
+          },
+          "shoulders_in": {
+            "type": "number",
+            "description": "Shoulder circumference, inches.",
+            "example": 49.0
+          },
+          "thigh_in": {
+            "type": "number",
+            "description": "Thigh circumference, inches.",
+            "example": 23.5
+          },
+          "hip_in": {
+            "type": "number",
+            "description": "Hip circumference, inches.",
+            "example": 39.0
+          },
+          "neck_in": {
+            "type": "number",
+            "description": "Neck circumference, inches.",
+            "example": 15.5
           },
           "notes": {
             "type": "string"

@@ -1,5 +1,7 @@
 const express = require('express');
 const { query, logActivity } = require('../db');
+const { loadWeeklyVolume, resolveWeekStart } = require('../lib/weekly-volume');
+const { BUCKETS } = require('../lib/muscle-buckets');
 const router = express.Router();
 
 // (training_plans CRUD removed — table dropped, all planning uses daily_plans)
@@ -494,6 +496,62 @@ router.get('/injuries/active/summary', async (req, res) => {
        ORDER BY severity DESC NULLS LAST, onset_date DESC NULLS LAST`
     );
     res.json({ count: result.rows.length, injuries: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  WEEKLY VOLUME (v3.35 Feature 2)
+// ══════════════════════════════════════════════════════════════════
+
+// GET /api/training/volume/weekly?week_start=YYYY-MM-DD
+// Working sets per program bucket for one ET week (Monday default).
+// Weeks bucketed in America/New_York so evening-ET sessions (stored as
+// next-UTC-day) land in the right week. See lib/weekly-volume.js.
+router.get('/volume/weekly', async (req, res) => {
+  try {
+    const result = await loadWeeklyVolume(query, { weekStart: req.query.week_start });
+    res.json(result);
+  } catch (err) {
+    console.error('[training/volume/weekly]', err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/training/volume/targets — list the editable target bands.
+router.get('/volume/targets', async (req, res) => {
+  try {
+    const { rows } = await query(`SELECT bucket, target_min, target_max, updated_at FROM volume_targets ORDER BY bucket`);
+    res.json({ targets: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/training/volume/targets/:bucket  { target_min, target_max }
+// Edit a bucket's band. null/absent min or max clears it (no target).
+router.put('/volume/targets/:bucket', async (req, res) => {
+  try {
+    const bucket = String(req.params.bucket || '').toLowerCase();
+    if (!BUCKETS.includes(bucket)) {
+      return res.status(400).json({ error: `unknown bucket '${bucket}'`, valid_buckets: BUCKETS });
+    }
+    const min = req.body?.target_min == null || req.body.target_min === '' ? null : parseInt(req.body.target_min, 10);
+    const max = req.body?.target_max == null || req.body.target_max === '' ? null : parseInt(req.body.target_max, 10);
+    if (min != null && (!Number.isInteger(min) || min < 0)) return res.status(400).json({ error: 'target_min must be a non-negative integer or null' });
+    if (max != null && (!Number.isInteger(max) || max < 0)) return res.status(400).json({ error: 'target_max must be a non-negative integer or null' });
+    if (min != null && max != null && min > max) return res.status(400).json({ error: 'target_min cannot exceed target_max' });
+
+    const { rows } = await query(
+      `INSERT INTO volume_targets (bucket, target_min, target_max, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (bucket) DO UPDATE SET target_min = EXCLUDED.target_min, target_max = EXCLUDED.target_max, updated_at = NOW()
+       RETURNING bucket, target_min, target_max, updated_at`,
+      [bucket, min, max]
+    );
+    await logActivity('update', 'volume_target', bucket, 'manual', `Volume target ${bucket}: ${min ?? '—'}-${max ?? '—'}`);
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
