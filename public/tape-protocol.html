@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tape Protocol · Forge</title>
+<meta name="description" content="Where and how to take the seven Forge tape measurements — a body diagram plus a step-by-step site guide.">
+<meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#e6eaef;
+    --ink:#171a1f; --muted:#5c6672; --line:#d6dbe2;
+    --accent:#c2410c; --accent-tint:#f7e7de;
+    --marker:#0f766e; --marker-tint:#dcefec;
+    --good:#0f766e; --warn:#b45309;
+    --fig-skin:#e3e8ee; --fig-line:#aab3be;
+    --shadow:0 1px 2px rgba(16,20,26,.06),0 8px 24px rgba(16,20,26,.06);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      color-scheme:dark;
+      --bg:#0f1216; --surface:#171b21; --surface-2:#1e242c;
+      --ink:#eceef1; --muted:#9aa4b0; --line:#2a313b;
+      --accent:#f97316; --accent-tint:#3a2415;
+      --marker:#2dd4bf; --marker-tint:#123433;
+      --good:#2dd4bf; --warn:#f59e0b;
+      --fig-skin:#232a33; --fig-line:#3c4552;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#0f1216; --surface:#171b21; --surface-2:#1e242c;
+    --ink:#eceef1; --muted:#9aa4b0; --line:#2a313b;
+    --accent:#f97316; --accent-tint:#3a2415;
+    --marker:#2dd4bf; --marker-tint:#123433;
+    --good:#2dd4bf; --warn:#f59e0b;
+    --fig-skin:#232a33; --fig-line:#3c4552;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:760px;margin:0 auto;padding-inline:18px;padding-block:0 56px;}
+
+  a{color:inherit}
+  h1,h2,h3{margin:0;text-wrap:balance;font-family:"Saira Condensed",system-ui,sans-serif;letter-spacing:.01em;}
+
+  /* header */
+  header{position:sticky;top:0;z-index:5;
+    padding-top:env(safe-area-inset-top,0px);
+    background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);}
+  .head-in{max-width:760px;margin:0 auto;padding:12px 18px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .brand{font-family:"Saira Condensed",sans-serif;font-weight:700;
+    font-size:24px;line-height:1;text-transform:uppercase;letter-spacing:.03em;}
+  .brand .dot{color:var(--accent)}
+  .back{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    border:1px solid var(--line);border-radius:9px;padding:7px 11px;background:var(--surface);}
+  .back svg{width:14px;height:14px}
+
+  .lede{margin:22px 0 6px;font-size:16px;color:var(--muted);max-width:60ch;}
+  .lede b{color:var(--ink);font-weight:600}
+
+  /* section label */
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.16em;color:var(--accent);
+    margin:34px 0 12px;display:flex;align-items:center;gap:10px;}
+  .eyebrow::after{content:"";height:1px;flex:1;background:var(--line)}
+
+  /* rules strip */
+  .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .rule{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:12px 13px;box-shadow:var(--shadow);}
+  .rule .k{font-family:"Saira Condensed",sans-serif;font-weight:600;font-size:15px;
+    display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+  .rule .k svg{width:17px;height:17px;flex:none;color:var(--marker)}
+  .rule p{margin:0;font-size:13px;color:var(--muted)}
+
+  /* figure + legend */
+  .diagram{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    padding:14px;box-shadow:var(--shadow);}
+  .figwrap{width:100%;max-width:360px;margin:0 auto}
+  .figwrap svg{width:100%;height:auto;display:block}
+  .caption{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:11px;
+    color:var(--muted);letter-spacing:.04em;}
+  .caption .pri{color:var(--accent);font-weight:600}
+
+  /* site cards */
+  .sites{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+  .site{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:16px;box-shadow:var(--shadow);scroll-margin-top:84px;
+    display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start;}
+  .site.primary{border-color:var(--accent);
+    background:linear-gradient(180deg,var(--accent-tint),var(--surface) 60%);}
+  .num{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;
+    font-family:"Saira Condensed",sans-serif;font-weight:700;font-size:22px;
+    background:var(--marker-tint);color:var(--marker);border:1px solid transparent;}
+  .site.primary .num{background:var(--accent);color:#fff}
+  .site-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+  .site-h h3{font-size:21px;font-weight:600}
+  .field{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);
+    background:var(--surface-2);border-radius:6px;padding:2px 7px;}
+  .tag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.08em;color:#fff;background:var(--accent);
+    border-radius:5px;padding:2px 7px;}
+  .site dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:14px}
+  .site dt{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding-top:2px;white-space:nowrap;}
+  .site dd{margin:0}
+  .site dd b{font-weight:600}
+  .tip{color:var(--marker)}
+  .site.primary .tip{color:var(--accent)}
+
+  /* log footer */
+  .log{margin-top:16px;background:var(--surface);border:1px solid var(--line);
+    border-radius:16px;padding:18px;box-shadow:var(--shadow);}
+  .log h3{font-size:20px;margin-bottom:8px}
+  .log ol{margin:0;padding-left:20px;font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+  .log ol b{color:var(--ink)}
+  code{font-family:"IBM Plex Mono",monospace;font-size:12.5px;background:var(--surface-2);
+    padding:1px 6px;border-radius:5px;color:var(--ink)}
+  .foot{margin-top:22px;text-align:center;font-family:"IBM Plex Mono",monospace;
+    font-size:11px;color:var(--muted);letter-spacing:.04em}
+
+  @media (max-width:430px){
+    .site{grid-template-columns:38px 1fr;gap:11px;padding:14px}
+    .num{width:38px;height:38px;font-size:19px}
+    .site dl{grid-template-columns:1fr;gap:2px 0}
+    .site dt{padding-top:8px}
+  }
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-in">
+    <div class="brand">Tape Protocol<span class="dot">.</span></div>
+    <a class="back" href="/" aria-label="Back to Forge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      Forge
+    </a>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <p class="lede">Seven circumference sites, one number each. <b>Waist at the navel is the primary measure.</b> The rules below matter more than the number itself — the value only means something when every week is taken the same way.</p>
+
+  <div class="eyebrow">Take every measurement this way</div>
+  <div class="rules">
+    <div class="rule">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Same time</div>
+      <p>Morning, fasted, after the bathroom, before training or water. Body size drifts all day.</p>
+    </div>
+    <div class="rule">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M7 8v8M17 8v8"/></svg>Snug, not tight</div>
+      <p>Tape flat to skin, no gap, no dent. If it leaves a mark it's too tight.</p>
+    </div>
+    <div class="rule">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M3 7h18M3 17h18" opacity=".4"/></svg>Level</div>
+      <p>Tape parallel to the floor, all the way around (the neck is the one exception).</p>
+    </div>
+    <div class="rule">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16"/><path d="M6 9c6 0 6 6 12 6" opacity=".5"/></svg>Relaxed</div>
+      <p>Don't flex, brace, or suck in. Measure at the end of a normal breath out.</p>
+    </div>
+    <div class="rule">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h16"/></svg>Twice</div>
+      <p>Measure each site 2–3×; log the reading you can repeat. Round to 0.1&nbsp;in.</p>
+    </div>
+    <div class="rule">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5 8l7-5 7 5" opacity=".5"/></svg>Same side</div>
+      <p>Arm and thigh are one side only — pick your right side and keep it forever.</p>
+    </div>
+  </div>
+
+  <div class="eyebrow">Where each site is</div>
+  <div class="diagram">
+    <div class="figwrap">
+      <svg viewBox="0 0 340 620" role="img" aria-label="Front-view body figure with seven numbered measurement sites">
+        <!-- body -->
+        <g fill="var(--fig-skin)" stroke="var(--fig-line)" stroke-width="2" stroke-linejoin="round">
+          <circle cx="170" cy="50" r="31"/>
+          <path d="M158 78 h24 v22 h-24 z"/>
+          <!-- torso: shoulders → waist → hips -->
+          <path d="M118 122
+                   C150 108 190 108 222 122
+                   L214 210 L202 288 L204 300
+                   L214 352 L126 352 L136 300 L138 288 L126 210 Z"/>
+          <!-- arms -->
+          <path d="M118 124 C104 135 100 150 100 176 L104 336 q12 8 22 0 L128 210 Z"/>
+          <path d="M222 124 C236 135 240 150 240 176 L236 336 q-12 8 -22 0 L212 210 Z"/>
+          <!-- legs -->
+          <path d="M132 352 h36 l-2 250 q-16 8 -32 0 Z"/>
+          <path d="M172 352 h36 l-2 250 q-16 8 -32 0 Z"/>
+        </g>
+
+        <!-- measurement bands -->
+        <g fill="none" stroke="var(--marker)" stroke-width="3" stroke-dasharray="3 4" opacity=".95">
+          <ellipse cx="170" cy="90"  rx="15" ry="6"/>   <!-- neck -->
+          <ellipse cx="170" cy="126" rx="60" ry="10"/>  <!-- shoulders -->
+          <ellipse cx="170" cy="172" rx="55" ry="11"/>  <!-- chest -->
+          <ellipse cx="228" cy="182" rx="14" ry="7"/>   <!-- arm (right) -->
+          <ellipse cx="170" cy="352" rx="47" ry="11"/>  <!-- hip -->
+          <ellipse cx="190" cy="410" rx="21" ry="8"/>   <!-- thigh (right) -->
+        </g>
+        <!-- primary: waist -->
+        <ellipse cx="170" cy="282" rx="40" ry="10" fill="none" stroke="var(--accent)" stroke-width="4"/>
+
+        <!-- connectors -->
+        <g stroke="var(--line)" stroke-width="1.5">
+          <line x1="186" y1="90"  x2="299" y2="64"/>
+          <line x1="230" y1="126" x2="299" y2="120"/>
+          <line x1="225" y1="172" x2="299" y2="176"/>
+          <line x1="242" y1="182" x2="299" y2="232"/>
+          <line x1="210" y1="282" x2="299" y2="292" stroke="var(--accent)"/>
+          <line x1="217" y1="352" x2="299" y2="360"/>
+          <line x1="211" y1="410" x2="299" y2="426"/>
+        </g>
+
+        <!-- numbered markers (tap to jump) -->
+        <g font-family="'Saira Condensed',sans-serif" font-weight="700" font-size="17" text-anchor="middle">
+          <a href="#s1"><circle cx="312" cy="64"  r="14" fill="var(--marker)"/><text x="312" y="70" fill="#fff">1</text></a>
+          <a href="#s2"><circle cx="312" cy="120" r="14" fill="var(--marker)"/><text x="312" y="126" fill="#fff">2</text></a>
+          <a href="#s3"><circle cx="312" cy="176" r="14" fill="var(--marker)"/><text x="312" y="182" fill="#fff">3</text></a>
+          <a href="#s4"><circle cx="312" cy="232" r="14" fill="var(--marker)"/><text x="312" y="238" fill="#fff">4</text></a>
+          <a href="#s5"><circle cx="312" cy="292" r="15" fill="var(--accent)"/><text x="312" y="298" fill="#fff">5</text></a>
+          <a href="#s6"><circle cx="312" cy="360" r="14" fill="var(--marker)"/><text x="312" y="366" fill="#fff">6</text></a>
+          <a href="#s7"><circle cx="312" cy="426" r="14" fill="var(--marker)"/><text x="312" y="432" fill="#fff">7</text></a>
+        </g>
+      </svg>
+    </div>
+    <div class="caption">7 sites · <span class="pri">5 = waist (primary)</span> · numbers match the cards below</div>
+  </div>
+
+  <div class="eyebrow">The seven sites, top to bottom</div>
+  <div class="sites">
+
+    <div class="site" id="s1">
+      <div class="num">1</div>
+      <div>
+        <div class="site-h"><h3>Neck</h3><span class="field">neck_in</span></div>
+        <dl>
+          <dt>Where</dt><dd>Base of the neck, <b>just below the Adam's apple</b>, where the neck meets the shoulders.</dd>
+          <dt>How</dt><dd>Tape sits a touch lower at the front than the back — the one site that isn't level. Loose, resting on the skin.</dd>
+          <dt>Tip</dt><dd class="tip">Keep your head straight ahead, shoulders down. Don't tuck the chin.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="site" id="s2">
+      <div class="num">2</div>
+      <div>
+        <div class="site-h"><h3>Shoulders</h3><span class="field">shoulders_in</span></div>
+        <dl>
+          <dt>Where</dt><dd>All the way around the <b>widest point of the delts</b>, at the top of the shoulder line.</dd>
+          <dt>How</dt><dd>Arms hang relaxed at your sides. Tape level, around the fullest part front and back.</dd>
+          <dt>Tip</dt><dd class="tip">Don't roll the shoulders forward or back — stand as you normally stand.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="site" id="s3">
+      <div class="num">3</div>
+      <div>
+        <div class="site-h"><h3>Chest</h3><span class="field">chest_in</span></div>
+        <dl>
+          <dt>Where</dt><dd>Around the <b>fullest part of the chest</b>, tape crossing at nipple line, under the armpits.</dd>
+          <dt>How</dt><dd>Arms down and relaxed. Measure at the end of a normal breath out — don't puff the chest up.</dd>
+          <dt>Tip</dt><dd class="tip">Level all the way around; check the tape isn't riding up your back.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="site" id="s4">
+      <div class="num">4</div>
+      <div>
+        <div class="site-h"><h3>Arm — relaxed</h3><span class="field">arm_relaxed_in</span></div>
+        <dl>
+          <dt>Where</dt><dd>The <b>largest part of the upper arm</b> (mid-bicep), roughly halfway between shoulder and elbow.</dd>
+          <dt>How</dt><dd>Arm hanging at your side, <b>not flexed</b>. Let it rest naturally; measure straight around.</dd>
+          <dt>Tip</dt><dd class="tip">Right arm every time. A relaxed arm reads smaller than a flexed one — keep it relaxed for a fair trend.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="site primary" id="s5">
+      <div class="num">5</div>
+      <div>
+        <div class="site-h"><h3>Waist — at navel</h3><span class="field">waist_in</span><span class="tag">Primary</span></div>
+        <dl>
+          <dt>Where</dt><dd>Straight around <b>at the belly button</b> — not the narrowest point, the navel line.</dd>
+          <dt>How</dt><dd>Stand relaxed, feet together. <b>Don't suck in or push out.</b> Measure at the end of a normal exhale.</dd>
+          <dt>Tip</dt><dd class="tip">This is the headline number Forge trends first. Consistency here matters most — same posture, same breath, every week.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="site" id="s6">
+      <div class="num">6</div>
+      <div>
+        <div class="site-h"><h3>Hip</h3><span class="field">hip_in</span></div>
+        <dl>
+          <dt>Where</dt><dd>Around the <b>widest part of the hips and glutes</b>, below the waist.</dd>
+          <dt>How</dt><dd>Feet together, weight even. Tape level all the way around the fullest point.</dd>
+          <dt>Tip</dt><dd class="tip">Look in a mirror side-on to find the true widest line before you read it.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="site" id="s7">
+      <div class="num">7</div>
+      <div>
+        <div class="site-h"><h3>Thigh</h3><span class="field">thigh_in</span></div>
+        <dl>
+          <dt>Where</dt><dd>The <b>largest part of the upper thigh</b>, just below the glute fold.</dd>
+          <dt>How</dt><dd>Stand tall, weight even on both legs. Tape level, straight around the thigh.</dd>
+          <dt>Tip</dt><dd class="tip">Right leg every time. Pick a fixed spot below the fold so you hit the same line weekly.</dd>
+        </dl>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="eyebrow">Log it in Forge</div>
+  <div class="log">
+    <h3>One entry, all seven</h3>
+    <ol>
+      <li>On the <b>Body</b> screen tap <b>+ Log</b>, then open the <b>Tape Measurements</b> section — a tape row needs <b>no weight</b>, just the sites you took.</li>
+      <li>Enter each number in inches to one decimal: <code>waist_in</code>, <code>chest_in</code>, <code>arm_relaxed_in</code>, <code>shoulders_in</code>, <code>thigh_in</code>, <code>hip_in</code>, <code>neck_in</code>.</li>
+      <li><b>Waist is the anchor.</b> If you only have two minutes, take waist. Forge trends it first.</li>
+      <li>Forge shows <b>change vs your baseline</b> and a <b>4-week trend</b> per site, and pushes the numbers to Hevy (arm &amp; thigh fill both sides there).</li>
+    </ol>
+  </div>
+
+  <div class="foot">Baseline starts Oct 3, 2026 · same time, same tape, same side — every week</div>
+
+</div>
+</body>
+</html>
