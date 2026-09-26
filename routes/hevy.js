@@ -1880,17 +1880,19 @@ function inToCm(inches) {
   return Math.round(Number(inches) * 2.54 * 10) / 10;
 }
 
-// AB Brain tape field → Hevy body_measurements field. Single-side AB
-// fields (arm, thigh) map to Hevy's LEFT field only, so any right_* value
-// the user set in Hevy survives the GET-merge-PUT untouched.
+// AB Brain tape field → Hevy body_measurements field(s). Each AB field
+// maps to a list of Hevy fields. Single-side AB fields (arm, thigh) push
+// to BOTH Hevy sides (operator decision, v3.35): AB tracks one number, so
+// Hevy shows a symmetric arm/thigh. This overwrites any right_* value on
+// those dates — intended, since AB is the source of truth for tape.
 const AB_TAPE_TO_HEVY = {
-  waist_in: 'waist',
-  chest_in: 'chest_cm',
-  arm_relaxed_in: 'left_bicep_cm',
-  shoulders_in: 'shoulder_cm',
-  thigh_in: 'left_thigh',
-  hip_in: 'hips',
-  neck_in: 'neck_cm',
+  waist_in: ['waist'],
+  chest_in: ['chest_cm'],
+  arm_relaxed_in: ['left_bicep_cm', 'right_bicep_cm'],
+  shoulders_in: ['shoulder_cm'],
+  thigh_in: ['left_thigh', 'right_thigh'],
+  hip_in: ['hips'],
+  neck_in: ['neck_cm'],
 };
 
 // Convert AB Brain body_metrics row to Hevy body_measurements payload.
@@ -1914,9 +1916,11 @@ function abMetricsToHevy(row) {
   };
   // v3.35: tape fields (in → cm). Only emit a Hevy field when the AB row
   // actually has that measurement, so the merge never nulls a Hevy field
-  // we have no value for.
-  for (const [abField, hevyField] of Object.entries(AB_TAPE_TO_HEVY)) {
-    if (row[abField] != null) out[hevyField] = inToCm(row[abField]);
+  // we have no value for. Single-side AB fields fan out to both L+R.
+  for (const [abField, hevyFields] of Object.entries(AB_TAPE_TO_HEVY)) {
+    if (row[abField] == null) continue;
+    const cm = inToCm(row[abField]);
+    for (const hf of hevyFields) out[hf] = cm;
   }
   return out;
 }

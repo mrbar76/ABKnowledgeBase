@@ -105,12 +105,18 @@ test('hevy abMetricsToHevy: tape inches → cm on correct Hevy fields', () => {
   const src = fs.readFileSync(path.join(__dirname, '../routes/hevy.js'), 'utf8');
   // in→cm factor
   assert.ok(/\* 2\.54/.test(src), 'inToCm must multiply by 2.54');
-  // field mapping present
-  for (const [ab, hevy] of [
-    ['waist_in', 'waist'], ['chest_in', 'chest_cm'], ['arm_relaxed_in', 'left_bicep_cm'],
-    ['shoulders_in', 'shoulder_cm'], ['thigh_in', 'left_thigh'], ['hip_in', 'hips'], ['neck_in', 'neck_cm'],
+  // field mapping present — each AB field → list of Hevy field(s).
+  // Single-value fields → one Hevy field; arm/thigh fan out to BOTH sides.
+  for (const [ab, hevyList] of [
+    ['waist_in', "['waist']"],
+    ['chest_in', "['chest_cm']"],
+    ['arm_relaxed_in', "['left_bicep_cm', 'right_bicep_cm']"],
+    ['shoulders_in', "['shoulder_cm']"],
+    ['thigh_in', "['left_thigh', 'right_thigh']"],
+    ['hip_in', "['hips']"],
+    ['neck_in', "['neck_cm']"],
   ]) {
-    assert.ok(new RegExp(`${ab}:\\s*'${hevy}'`).test(src),
-      `AB_TAPE_TO_HEVY must map ${ab} → ${hevy}`);
+    assert.ok(src.includes(`${ab}: ${hevyList}`),
+      `AB_TAPE_TO_HEVY must map ${ab} → ${hevyList}`);
   }
 });

@@ -25,8 +25,10 @@ drop ever stops succeeding.
   (`measurement_context='tape'`) inserts without a weigh-in.
 - Additive only — no drops, so `/diag/deprecated-columns` stays 0 drift.
 - Hevy push maps these inches → cm on `body_measurements` (waist_in→waist,
-  chest_in→chest_cm, arm_relaxed_in→left_bicep_cm, shoulders_in→shoulder_cm,
-  thigh_in→left_thigh, hip_in→hips, neck_in→neck_cm), merge-preserving.
+  chest_in→chest_cm, shoulders_in→shoulder_cm, hip_in→hips, neck_in→neck_cm;
+  arm_relaxed_in→left_bicep_cm+right_bicep_cm and thigh_in→left_thigh+right_thigh
+  — single-side AB fields fan out to both Hevy sides per operator decision),
+  merge-preserving for fields AB doesn't supply.
 
 **Feature 2 — weekly volume**:
 - `hevy_exercise_map` gains `hevy_secondary_muscle_groups TEXT[]`,
